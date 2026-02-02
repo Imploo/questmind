@@ -7,12 +7,13 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { Readable } from 'stream';
+import { randomUUID } from 'crypto';
 
 // ElevenLabs voice IDs - configure via environment variables or use defaults
 // You can find voice IDs at: https://elevenlabs.io/voice-library
 const HOST_VOICES: Record<'host1' | 'host2', string> = {
-  host1: process.env.ELEVENLABS_HOST1_VOICE || 'iiidtqDt9FBdT1vfBluA', // Adam - deep, professional male voice
-  host2: process.env.ELEVENLABS_HOST2_VOICE || 'D6MRWCKoavI2xUJXmaCb', // Sarah - warm, engaging female voice
+  host1: process.env.ELEVENLABS_HOST1_VOICE || 'tvFp0BgJPrEXGoDhDIA4', // Thomas  - deep, professional male voice
+  host2: process.env.ELEVENLABS_HOST2_VOICE || '7qdUFMklKPaaAVMsBTBt', // Roos - warm, engaging female voice
 };
 
 interface PodcastSegment {
@@ -130,8 +131,8 @@ export const generatePodcastAudio = onCall(
 
     try {
       // Generate segments with ElevenLabs
-      // ElevenLabs has generous rate limits, so we can use higher concurrency
-      const CONCURRENCY_LIMIT = 10;
+      // Limit to two concurrent calls to respect rate limits.
+      const CONCURRENCY_LIMIT = 3;
       const generatedSegments: string[] = [];
 
       for (let batchStart = 0; batchStart < script.segments.length; batchStart += CONCURRENCY_LIMIT) {
@@ -155,8 +156,7 @@ export const generatePodcastAudio = onCall(
                 text: segment.text,
                 modelId: 'eleven_turbo_v2_5', // Fast, high-quality model
                 voiceSettings: {
-                  stability: 0.5,
-                  similarityBoost: 0.75,
+                  stability: 0.3,
                   style: 0.0,
                   useSpeakerBoost: true
                 }
@@ -216,11 +216,14 @@ export const generatePodcastAudio = onCall(
       await combineAudioSegments(segmentFiles, outputPath);
 
       const storagePath = `campaigns/${campaignId}/podcasts/${sessionId}/v${version}.mp3`;
+      const downloadToken = randomUUID();
+
       await storage.upload(outputPath, {
         destination: storagePath,
         metadata: {
           contentType: 'audio/mpeg',
           metadata: {
+            firebaseStorageDownloadTokens: downloadToken,
             sessionId,
             campaignId,
             version: version.toString(),
@@ -229,10 +232,8 @@ export const generatePodcastAudio = onCall(
         }
       });
 
-      const [fileUrl] = await storage.file(storagePath).getSignedUrl({
-        action: 'read',
-        expires: '03-01-2030'
-      });
+      const encodedPath = encodeURIComponent(storagePath);
+      const fileUrl = `https://firebasestorage.googleapis.com/v0/b/${storage.name}/o/${encodedPath}?alt=media&token=${downloadToken}`;
 
       const fileSize = fs.statSync(outputPath).size;
       const completedEntry = {

@@ -111,7 +111,7 @@ export class SessionStoryService {
         ],
         config: {
           maxOutputTokens: 32000,
-          temperature: 0.5,
+          temperature: 0.4,
           topP: 0.95,
           topK: 40
         }
