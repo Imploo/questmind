@@ -72,12 +72,14 @@ interface SessionWithPodcasts {
                         <span class="text-sm font-medium text-gray-900">
                           Podcast versie {{ podcast.version }}
                         </span>
-                        @if (podcast.status === 'generating_script') {
+                        @if (podcast.status === 'generating_script' || podcast.status === 'generating_audio') {
                           <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">Generating...</span>
                         } @else if (podcast.status === 'failed') {
                           <span class="text-xs bg-red-100 text-red-700 px-2 py-1 rounded">Failed</span>
                         } @else if (podcast.status === 'completed') {
-                          <span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">Script Ready</span>
+                          <span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
+                            {{ podcast.audioUrl ? 'Audio Ready' : 'Audio Pending' }}
+                          </span>
                         }
                       </div>
                       <div class="flex items-center gap-3 mt-1 text-xs text-gray-500">
@@ -100,13 +102,10 @@ interface SessionWithPodcasts {
                         >
                           ⏹️ Stop
                         </button>
-                        @if (playProgress()) {
-                          <span class="text-xs text-gray-600">{{ playProgress() }}</span>
-                        }
                       } @else {
                         <button
                           (click)="playPodcast(podcast, session.sessionId)"
-                          [disabled]="isPlayingPodcast()"
+                          [disabled]="isPlayingPodcast() || !podcast.audioUrl"
                           class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
                           title="Podcast afspelen"
                         >
@@ -114,16 +113,10 @@ interface SessionWithPodcasts {
                         </button>
                       }
                       <button
-                        (click)="viewPodcastScript(podcast)"
-                        class="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors text-sm font-medium"
-                        title="Script bekijken"
-                      >
-                        📄 Script
-                      </button>
-                      <button
-                        (click)="downloadPodcastScript(podcast, session.sessionTitle)"
-                        class="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors text-sm font-medium"
-                        title="Script downloaden"
+                        (click)="downloadPodcast(podcast, session.sessionTitle)"
+                        [disabled]="!podcast.audioUrl"
+                        class="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Podcast downloaden"
                       >
                         ⬇️ Download
                       </button>
@@ -139,11 +132,8 @@ interface SessionWithPodcasts {
       @if (!loading() && sessions().length > 0) {
         <div class="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
           <p class="text-sm text-blue-700 m-0">
-            <strong>💡 Info:</strong> Podcasts gebruiken Google Cloud Text-to-Speech met natuurlijk klinkende Nederlandse WaveNet stemmen.
-            <br>
-            <span class="text-xs mt-1 inline-block">
-              Zorg dat je Google Cloud API key is geconfigureerd in de environment settings.
-            </span>
+            <strong>💡 Info:</strong> Podcasts worden opgeslagen als MP3 en gebruiken Gemini 2.5 Flash TTS voor natuurlijke
+            Nederlandse stemmen.
           </p>
         </div>
       }
@@ -165,8 +155,8 @@ export class PodcastLibraryComponent implements OnInit {
   sessions = signal<SessionWithPodcasts[]>([]);
   isPlayingPodcast = signal(false);
   playingPodcastId = signal<string | null>(null);
-  playProgress = signal<string>('');
   errorMessage = signal<string>('');
+  private currentPodcastAudio: HTMLAudioElement | null = null;
 
   constructor() {
     const app = getApp();
@@ -225,12 +215,7 @@ export class PodcastLibraryComponent implements OnInit {
   }
 
   async playPodcast(podcast: PodcastVersion, sessionId: string): Promise<void> {
-    if (!podcast.script || this.isPlayingPodcast()) {
-      return;
-    }
-
-    if (!this.podcastAudioService.isTTSConfigured()) {
-      this.errorMessage.set('Google Cloud TTS is niet geconfigureerd. Voeg uw API key toe aan de environment configuratie.');
+    if (!podcast.audioUrl || this.isPlayingPodcast()) {
       return;
     }
 
@@ -240,57 +225,37 @@ export class PodcastLibraryComponent implements OnInit {
     this.errorMessage.set('');
 
     try {
-      await this.podcastAudioService.generateAudioFromScript(
-        podcast.script,
-        (progress) => {
-          this.playProgress.set(`${progress}%`);
-        }
-      );
+      this.currentPodcastAudio = this.podcastAudioService.playPodcastMP3(podcast.audioUrl);
+      this.currentPodcastAudio.onended = () => {
+        this.isPlayingPodcast.set(false);
+        this.playingPodcastId.set(null);
+        this.currentPodcastAudio = null;
+      };
+      this.currentPodcastAudio.onerror = () => {
+        this.errorMessage.set('Afspelen mislukt');
+        this.stopPodcast();
+      };
     } catch (error: any) {
       console.error('Failed to play podcast:', error);
       this.errorMessage.set(error?.message || 'Afspelen mislukt');
     } finally {
-      this.isPlayingPodcast.set(false);
-      this.playingPodcastId.set(null);
-      this.playProgress.set('');
     }
   }
 
   stopPodcast(): void {
-    this.podcastAudioService.stopSpeech();
+    this.podcastAudioService.stopPlayback();
+    this.currentPodcastAudio = null;
     this.isPlayingPodcast.set(false);
     this.playingPodcastId.set(null);
-    this.playProgress.set('');
   }
 
-  viewPodcastScript(podcast: PodcastVersion): void {
-    if (!podcast.script) {
+  downloadPodcast(podcast: PodcastVersion, sessionTitle: string): void {
+    if (!podcast.audioUrl) {
+      this.errorMessage.set('Audio not available for download.');
       return;
     }
-    const scriptText = podcast.script.segments
-      .map(seg => `${seg.speaker === 'host1' ? 'HOST1' : 'HOST2'}: ${seg.text}`)
-      .join('\n\n');
-    
-    alert(`Podcast Script (v${podcast.version})\n\nGeschatte Duur: ${this.formatDuration(podcast.duration || 0)}\n\n${scriptText}`);
-  }
-
-  downloadPodcastScript(podcast: PodcastVersion, sessionTitle: string): void {
-    if (!podcast.script) {
-      return;
-    }
-    const scriptText = podcast.script.segments
-      .map(seg => `${seg.speaker === 'host1' ? 'HOST1' : 'HOST2'}: ${seg.text}`)
-      .join('\n\n');
-    
-    const filename = `${sessionTitle}-v${podcast.version}-script.txt`;
-    
-    const blob = new Blob([scriptText], { type: 'text/plain' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    window.URL.revokeObjectURL(url);
+    const filename = `${sessionTitle}-v${podcast.version}.mp3`;
+    this.podcastAudioService.downloadPodcastMP3(podcast.audioUrl, filename);
   }
 
   formatDuration(seconds?: number): string {

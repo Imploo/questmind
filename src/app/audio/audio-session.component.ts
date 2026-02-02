@@ -131,6 +131,24 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
               </div>
             }
 
+            @if (isGeneratingPodcast()) {
+              <div class="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-sm font-medium text-blue-900">{{ podcastGenerationProgress() }}</span>
+                  <span class="text-sm text-blue-700">{{ podcastGenerationProgressPercent() }}%</span>
+                </div>
+                <div class="w-full bg-blue-200 rounded-full h-2">
+                  <div
+                    class="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    [style.width.%]="podcastGenerationProgressPercent()"
+                  ></div>
+                </div>
+                <p class="text-xs text-blue-600 mt-2">
+                  Dit kan 2-3 minuten duren. De complete MP3 wordt gegenereerd en opgeslagen.
+                </p>
+              </div>
+            }
+
             @if (podcasts().length > 0) {
               <div class="mt-4 space-y-3">
                 <h4 class="text-sm font-medium text-purple-900 m-0">
@@ -149,12 +167,14 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
                         <span class="text-sm font-medium text-gray-900">
                           {{ currentSession()?.title || 'Untitled Session' }} - Podcast v{{ podcast.version }}
                         </span>
-                        @if (podcast.status === 'generating_script') {
+                        @if (podcast.status === 'generating_script' || podcast.status === 'generating_audio') {
                           <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">Generating...</span>
                         } @else if (podcast.status === 'failed') {
                           <span class="text-xs bg-red-100 text-red-700 px-2 py-1 rounded">Failed</span>
                         } @else if (podcast.status === 'completed') {
-                          <span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">Script Ready</span>
+                          <span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
+                            {{ podcast.audioUrl ? 'Audio Ready' : 'Audio Pending' }}
+                          </span>
                         }
                       </div>
                       <div class="flex items-center gap-3 mt-1 text-xs text-gray-500">
@@ -180,7 +200,7 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
                       } @else {
                         <button
                           (click)="playPodcast(podcast)"
-                          [disabled]="isPlayingPodcast()"
+                          [disabled]="isPlayingPodcast() || !podcast.audioUrl"
                           class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
                           title="Podcast afspelen"
                         >
@@ -188,16 +208,10 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
                         </button>
                       }
                       <button
-                        (click)="viewPodcastScript(podcast)"
-                        class="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors text-sm font-medium"
-                        title="Script bekijken"
-                      >
-                        📄 Script
-                      </button>
-                      <button
-                        (click)="downloadPodcastScript(podcast)"
-                        class="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors text-sm font-medium"
-                        title="Script downloaden"
+                        (click)="downloadPodcast(podcast)"
+                        [disabled]="!podcast.audioUrl"
+                        class="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Podcast downloaden"
                       >
                         ⬇️ Download
                       </button>
@@ -213,20 +227,8 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
                   Nog geen podcasts gegenereerd. Klik op "Genereer Podcast" om te beginnen.
                 </p>
                 <p class="text-xs text-gray-400 m-0 mt-1">
-                  Podcasts gebruiken Google Cloud Text-to-Speech met natuurlijk klinkende Nederlandse WaveNet stemmen
+                  Podcasts gebruiken Gemini 2.5 Flash TTS met natuurlijk klinkende Nederlandse stemmen
                 </p>
-              </div>
-            }
-
-            @if (isPlayingPodcast() && podcastGenerationProgress()) {
-              <div class="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <div class="flex items-center gap-2">
-                  <svg class="animate-spin h-4 w-4 text-blue-600" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  <span class="text-sm text-blue-700">{{ podcastGenerationProgress() }}</span>
-                </div>
               </div>
             }
           </div>
@@ -269,9 +271,11 @@ export class AudioSessionComponent implements OnDestroy {
   podcasts = computed(() => this.currentSession()?.podcasts || []);
   isGeneratingPodcast = signal(false);
   podcastGenerationProgress = signal<string>('');
+  podcastGenerationProgressPercent = signal<number>(0);
   podcastError = signal<string>('');
   isPlayingPodcast = signal(false);
   playingPodcastVersion = signal<number | null>(null);
+  private currentPodcastAudio: HTMLAudioElement | null = null;
 
   private processingSub?: Subscription;
   private stageTimerSub?: Subscription;
@@ -501,6 +505,7 @@ export class AudioSessionComponent implements OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.stopPodcast();
     this.processingSub?.unsubscribe();
     this.stageTimerSub?.unsubscribe();
     this.clearCorrectionsTimers();
@@ -722,6 +727,7 @@ export class AudioSessionComponent implements OnDestroy {
 
     this.isGeneratingPodcast.set(true);
     this.podcastGenerationProgress.set('Generating podcast script...');
+    this.podcastGenerationProgressPercent.set(5);
     this.podcastError.set('');
 
     try {
@@ -735,50 +741,44 @@ export class AudioSessionComponent implements OnDestroy {
         )
       );
 
-      this.podcastGenerationProgress.set('Saving podcast...');
+      this.podcastGenerationProgress.set('Creating podcast audio...');
+      this.podcastGenerationProgressPercent.set(25);
 
-      // Step 2: Create podcast version (script-only for now, audio TTS will be added later)
+      // Step 2: Generate MP3 via Cloud Function
       const version = (session.podcasts?.length || 0) + 1;
-      const podcastVersion: PodcastVersion = {
+      await this.podcastAudioService.generatePodcastMP3(
+        session.id,
         version,
-        createdAt: new Date(),
-        scriptGeneratedAt: new Date(),
-        duration: script.estimatedDuration,
-        storyVersion: session.storyRegenerationCount,
         script,
-        status: 'completed'
-      };
+        (progress, message) => {
+          const adjustedProgress = Math.min(90, Math.round(25 + (progress * 0.65)));
+          this.podcastGenerationProgressPercent.set(adjustedProgress);
+          this.podcastGenerationProgress.set(message);
+        }
+      );
 
-      // Step 3: Save to Firestore
-      await this.podcastAudioService['savePodcastVersion'](session.id, podcastVersion);
-
-      // Update local state
-      this.sessionStateService.updateSession(session.id, {
-        podcasts: [...(session.podcasts || []), podcastVersion],
-        latestPodcastVersion: version
-      });
+      this.podcastGenerationProgress.set('Saving podcast metadata...');
+      this.podcastGenerationProgressPercent.set(95);
+      this.refreshSessions();
 
       this.podcastGenerationProgress.set('Podcast ready!');
-      this.refreshSessions();
+      this.podcastGenerationProgressPercent.set(100);
     } catch (error: any) {
       console.error('Failed to generate podcast:', error);
       this.podcastError.set(error?.message || 'Failed to generate podcast');
       this.podcastGenerationProgress.set('');
+      this.podcastGenerationProgressPercent.set(0);
     } finally {
       setTimeout(() => {
         this.isGeneratingPodcast.set(false);
         this.podcastGenerationProgress.set('');
+        this.podcastGenerationProgressPercent.set(0);
       }, 2000);
     }
   }
 
   async playPodcast(podcast: PodcastVersion): Promise<void> {
-    if (!podcast.script || this.isPlayingPodcast()) {
-      return;
-    }
-
-    if (!this.podcastAudioService.isTTSConfigured()) {
-      this.podcastError.set('Google Cloud TTS is niet geconfigureerd. Voeg uw API key toe aan de environment configuratie.');
+    if (!podcast.audioUrl || this.isPlayingPodcast()) {
       return;
     }
 
@@ -787,61 +787,40 @@ export class AudioSessionComponent implements OnDestroy {
     this.podcastError.set('');
 
     try {
-      await this.podcastAudioService.generateAudioFromScript(
-        podcast.script,
-        (progress) => {
-          this.podcastGenerationProgress.set(`Afspelen: ${progress}%`);
-        }
-      );
+      this.currentPodcastAudio = this.podcastAudioService.playPodcastMP3(podcast.audioUrl);
+      this.currentPodcastAudio.onended = () => {
+        this.isPlayingPodcast.set(false);
+        this.playingPodcastVersion.set(null);
+        this.currentPodcastAudio = null;
+      };
+      this.currentPodcastAudio.onerror = () => {
+        this.podcastError.set('Afspelen mislukt');
+        this.stopPodcast();
+      };
     } catch (error: any) {
       console.error('Failed to play podcast:', error);
       this.podcastError.set(error?.message || 'Afspelen mislukt');
     } finally {
-      this.isPlayingPodcast.set(false);
-      this.playingPodcastVersion.set(null);
       this.podcastGenerationProgress.set('');
     }
   }
 
   stopPodcast(): void {
-    this.podcastAudioService.stopSpeech();
+    this.podcastAudioService.stopPlayback();
+    this.currentPodcastAudio = null;
     this.isPlayingPodcast.set(false);
     this.playingPodcastVersion.set(null);
     this.podcastGenerationProgress.set('');
   }
 
-  viewPodcastScript(podcast: PodcastVersion): void {
-    if (!podcast.script) {
+  downloadPodcast(podcast: PodcastVersion): void {
+    if (!podcast.audioUrl) {
+      this.podcastError.set('Audio not available for download.');
       return;
     }
-    // Format the script for display
-    const scriptText = podcast.script.segments
-      .map(seg => `${seg.speaker === 'host1' ? 'HOST1' : 'HOST2'}: ${seg.text}`)
-      .join('\n\n');
-    
-    // Open in a new window or modal (for now, we'll use alert as a simple solution)
-    // In a production app, you'd use a proper modal component
-    alert(`Podcast Script (v${podcast.version})\n\nGeschatte Duur: ${this.formatDuration(podcast.duration || 0)}\n\n${scriptText}`);
-  }
-
-  downloadPodcastScript(podcast: PodcastVersion): void {
-    if (!podcast.script) {
-      return;
-    }
-    const scriptText = podcast.script.segments
-      .map(seg => `${seg.speaker === 'host1' ? 'HOST1' : 'HOST2'}: ${seg.text}`)
-      .join('\n\n');
-    
     const session = this.currentSession();
-    const filename = `${session?.title || 'podcast'}-v${podcast.version}-script.txt`;
-    
-    const blob = new Blob([scriptText], { type: 'text/plain' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    window.URL.revokeObjectURL(url);
+    const filename = `${session?.title || 'podcast'}-v${podcast.version}.mp3`;
+    this.podcastAudioService.downloadPodcastMP3(podcast.audioUrl, filename);
   }
 
   formatDuration(seconds?: number): string {

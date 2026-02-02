@@ -10,7 +10,7 @@ import { ChatService, Message } from './chat.service';
   template: `
     <div class="w-full max-w-3xl mx-auto my-8 border border-gray-200 rounded-xl bg-white shadow-lg flex flex-col h-[calc(100vh-4rem)] max-h-[800px]">
       <div class="p-6 border-b border-gray-200 bg-gradient-to-br from-primary to-secondary text-white rounded-t-xl">
-        <h2 class="m-0 mb-2 text-2xl font-bold">D&D 5e Character Assistant</h2>
+        <h2 class="m-0 mb-2 text-2xl font-bold">D&D Assistant</h2>
         <p class="m-0 opacity-90 text-sm">Ask me anything about creating D&D 5e characters!</p>
       </div>
 
@@ -44,7 +44,7 @@ import { ChatService, Message } from './chat.service';
         @if (isLoading()) {
           <div class="max-w-[80%] p-4 rounded-xl self-start bg-white border border-gray-200 animate-slide-in">
             <div class="flex justify-between mb-2 text-xs opacity-80">
-              <span class="font-semibold">AI Assistant</span>
+              <span class="font-semibold">The Sidekick</span>
             </div>
             <div class="leading-relaxed">
               <div class="flex gap-1 py-2">

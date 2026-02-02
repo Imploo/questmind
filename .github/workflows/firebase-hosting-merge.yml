@@ -11,10 +11,34 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: npm ci && npm run build
-      - uses: FirebaseExtended/action-hosting-deploy@v0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_QUESTMIND_DND }}
-          channelId: live
-          projectId: questmind-dnd
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Replace environment placeholders
+        run: |
+          sed -i "s/googleAiApiKey: 'placeholder'/googleAiApiKey: '${{ secrets.GOOGLE_AI_API_KEY }}'/" src/environments/environment.ts
+          sed -i "s/googleCloudApiKey: 'YOUR_GOOGLE_CLOUD_API_KEY'/googleCloudApiKey: '${{ secrets.GOOGLE_CLOUD_API_KEY }}'/" src/environments/environment.ts
+          sed -i "s/token: 'YOUR_KANKA_PERSONAL_ACCESS_TOKEN'/token: '${{ secrets.KANKA_TOKEN }}'/" src/environments/environment.ts
+          sed -i "s/campaignId: 'YOUR_CAMPAIGN_ID'/campaignId: '${{ secrets.KANKA_CAMPAIGN_ID }}'/" src/environments/environment.ts
+          sed -i 's/apiKey: "private"/apiKey: "${{ secrets.FIREBASE_API_KEY }}"/' src/environments/environment.ts
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Deploy to Firebase
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_QUESTMIND_DND }}
+        run: |
+          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_QUESTMIND_DND }}' > $HOME/gcloud-service-key.json
+          export GOOGLE_APPLICATION_CREDENTIALS="$HOME/gcloud-service-key.json"
+          firebase deploy --only hosting --project questmind-dnd
