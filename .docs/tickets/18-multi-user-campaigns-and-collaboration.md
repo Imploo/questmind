@@ -713,36 +713,38 @@ import { Router } from '@angular/router';
         <div class="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto">
           <h3 class="text-xl font-bold mb-4">Manage Campaign: {{ selectedCampaign()!.name }}</h3>
 
-            <!-- Campaign Info -->
+          <!-- Campaign Info -->
           <div class="mb-6 p-4 bg-gray-50 rounded-lg">
             <div class="text-sm text-gray-600 mb-1">Owner</div>
             <div class="font-medium">{{ selectedCampaign()!.ownerEmail }}</div>
           </div>
 
-            <!-- Campaign Settings -->
-            <div class="mb-6">
-              <h4 class="font-semibold mb-2">Settings</h4>
-              <div class="space-y-3">
-                <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-1">Kanka Campaign ID</label>
-                  <input
-                    type="text"
-                    [(ngModel)]="kankaCampaignId"
-                    placeholder="e.g. 123456"
-                    class="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                  />
-                  <p class="text-xs text-gray-500 mt-1">
-                    Used for Kanka integration when generating stories.
-                  </p>
-                </div>
-                <button
-                  (click)="saveCampaignSettings()"
-                  class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          <!-- Campaign Settings -->
+          <div class="mb-6">
+            <h4 class="font-semibold mb-2">Settings</h4>
+            <div class="space-y-3">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1"
+                  >Kanka Campaign ID</label
                 >
-                  Save Settings
-                </button>
+                <input
+                  type="text"
+                  [(ngModel)]="kankaCampaignId"
+                  placeholder="e.g. 123456"
+                  class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                />
+                <p class="text-xs text-gray-500 mt-1">
+                  Used for Kanka integration when generating stories.
+                </p>
               </div>
+              <button
+                (click)="saveCampaignSettings()"
+                class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Save Settings
+              </button>
             </div>
+          </div>
 
           <!-- Members List -->
           <div class="mb-6">
