@@ -1,16 +1,19 @@
 import { Component, OnDestroy, effect, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Subscription, timer } from 'rxjs';
+import { Subscription, timer, firstValueFrom } from 'rxjs';
 import { AudioStorageService } from './audio-storage.service';
 import { AudioTranscriptionService } from './audio-transcription.service';
 import { SessionStoryService } from './session-story.service';
 import { AudioSessionStateService } from './audio-session-state.service';
+import { PodcastScriptService } from './podcast-script.service';
+import { PodcastAudioService } from './podcast-audio.service';
 import { AuthService } from '../auth/auth.service';
 import {
   AudioSessionRecord,
   AudioUpload,
   StorageMetadata,
-  TranscriptionResult
+  TranscriptionResult,
+  PodcastVersion
 } from './audio-session.models';
 import { AudioUploadComponent } from './audio-upload.component';
 import { TranscriptionStatusComponent } from './transcription-status.component';
@@ -94,6 +97,141 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
           ></app-session-story>
         }
 
+        @if (currentSession()?.content) {
+          <div class="mt-6 p-6 bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-xl">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h3 class="text-lg font-semibold text-purple-900 m-0">🎙️ Session Podcast</h3>
+                <p class="text-sm text-purple-700 m-0 mt-1">
+                  Genereer een boeiende audio recap met twee hosts die de sessie bespreken
+                </p>
+              </div>
+              <button
+                (click)="generatePodcast()"
+                [disabled]="isGeneratingPodcast() || isBusy()"
+                class="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+              >
+                @if (isGeneratingPodcast()) {
+                  <span class="flex items-center gap-2">
+                    <svg class="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>{{ podcastGenerationProgress() }}</span>
+                  </span>
+                } @else {
+                  Genereer Podcast
+                }
+              </button>
+            </div>
+
+            @if (podcastError()) {
+              <div class="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p class="text-sm text-red-700 m-0">{{ podcastError() }}</p>
+              </div>
+            }
+
+            @if (podcasts().length > 0) {
+              <div class="mt-4 space-y-3">
+                <h4 class="text-sm font-medium text-purple-900 m-0">
+                  Gegenereerde Podcasts ({{ podcasts().length }})
+                </h4>
+                @for (podcast of podcasts(); track podcast.version) {
+                  <div class="flex items-center gap-4 p-4 bg-white rounded-lg border border-purple-100 hover:border-purple-300 transition-colors">
+                    <div class="flex-shrink-0">
+                      <span class="inline-flex items-center justify-center w-10 h-10 bg-purple-100 text-purple-700 rounded-full font-semibold text-sm">
+                        v{{ podcast.version }}
+                      </span>
+                    </div>
+
+                    <div class="flex-1 min-w-0">
+                      <div class="flex items-center gap-2">
+                        <span class="text-sm font-medium text-gray-900">
+                          {{ currentSession()?.title || 'Untitled Session' }} - Podcast v{{ podcast.version }}
+                        </span>
+                        @if (podcast.status === 'generating_script') {
+                          <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">Generating...</span>
+                        } @else if (podcast.status === 'failed') {
+                          <span class="text-xs bg-red-100 text-red-700 px-2 py-1 rounded">Failed</span>
+                        } @else if (podcast.status === 'completed') {
+                          <span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">Script Ready</span>
+                        }
+                      </div>
+                      <div class="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                        <span>{{ formatDuration(podcast.duration) }}</span>
+                        @if (podcast.fileSize) {
+                          <span>•</span>
+                          <span>{{ formatFileSize(podcast.fileSize) }}</span>
+                        }
+                        <span>•</span>
+                        <span>{{ formatDate(podcast.createdAt) }}</span>
+                      </div>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                      @if (isPlayingPodcast() && playingPodcastVersion() === podcast.version) {
+                        <button
+                          (click)="stopPodcast()"
+                          class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors text-sm font-medium"
+                          title="Stop afspelen"
+                        >
+                          ⏹️ Stop
+                        </button>
+                      } @else {
+                        <button
+                          (click)="playPodcast(podcast)"
+                          [disabled]="isPlayingPodcast()"
+                          class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                          title="Podcast afspelen"
+                        >
+                          ▶️ Afspelen
+                        </button>
+                      }
+                      <button
+                        (click)="viewPodcastScript(podcast)"
+                        class="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors text-sm font-medium"
+                        title="Script bekijken"
+                      >
+                        📄 Script
+                      </button>
+                      <button
+                        (click)="downloadPodcastScript(podcast)"
+                        class="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors text-sm font-medium"
+                        title="Script downloaden"
+                      >
+                        ⬇️ Download
+                      </button>
+                    </div>
+                  </div>
+                }
+              </div>
+            }
+
+            @if (podcasts().length === 0 && !isGeneratingPodcast()) {
+              <div class="mt-4 p-4 bg-white rounded-lg border border-purple-100 text-center">
+                <p class="text-sm text-gray-500 m-0">
+                  Nog geen podcasts gegenereerd. Klik op "Genereer Podcast" om te beginnen.
+                </p>
+                <p class="text-xs text-gray-400 m-0 mt-1">
+                  Podcasts gebruiken Google Cloud Text-to-Speech met natuurlijk klinkende Nederlandse WaveNet stemmen
+                </p>
+              </div>
+            }
+
+            @if (isPlayingPodcast() && podcastGenerationProgress()) {
+              <div class="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <div class="flex items-center gap-2">
+                  <svg class="animate-spin h-4 w-4 text-blue-600" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <span class="text-sm text-blue-700">{{ podcastGenerationProgress() }}</span>
+                </div>
+              </div>
+            }
+          </div>
+        }
+
         <div class="border border-gray-200 rounded-xl bg-white shadow-sm p-6">
           <h3 class="text-lg font-semibold m-0 mb-4">Session History</h3>
           @if (sessions().length === 0) {
@@ -127,6 +265,14 @@ export class AudioSessionComponent implements OnDestroy {
   userCorrections = signal<string>('');
   correctionsSaveStatus = signal<'idle' | 'saving' | 'saved'>('idle');
 
+  // Podcast state
+  podcasts = computed(() => this.currentSession()?.podcasts || []);
+  isGeneratingPodcast = signal(false);
+  podcastGenerationProgress = signal<string>('');
+  podcastError = signal<string>('');
+  isPlayingPodcast = signal(false);
+  playingPodcastVersion = signal<number | null>(null);
+
   private processingSub?: Subscription;
   private stageTimerSub?: Subscription;
   private correctionsSaveTimer?: ReturnType<typeof setTimeout>;
@@ -146,6 +292,8 @@ export class AudioSessionComponent implements OnDestroy {
     private readonly audioTranscriptionService: AudioTranscriptionService,
     private readonly sessionStoryService: SessionStoryService,
     private readonly sessionStateService: AudioSessionStateService,
+    private readonly podcastScriptService: PodcastScriptService,
+    private readonly podcastAudioService: PodcastAudioService,
     public readonly authService: AuthService
   ) {
     const kankaAvailable = this.sessionStoryService.isKankaAvailable();
@@ -563,5 +711,178 @@ export class AudioSessionComponent implements OnDestroy {
     if (this.correctionsStatusTimer) {
       clearTimeout(this.correctionsStatusTimer);
     }
+  }
+
+  async generatePodcast(): Promise<void> {
+    const session = this.currentSession();
+    if (!session?.content || !session?.id) {
+      this.podcastError.set('No session story available to generate podcast.');
+      return;
+    }
+
+    this.isGeneratingPodcast.set(true);
+    this.podcastGenerationProgress.set('Generating podcast script...');
+    this.podcastError.set('');
+
+    try {
+      // Step 1: Generate script
+      const script = await firstValueFrom(
+        this.podcastScriptService.generatePodcastScript(
+          session.content,
+          session.title || 'Untitled Session',
+          session.sessionDate,
+          this.kankaEnabled() && this.kankaAvailable()
+        )
+      );
+
+      this.podcastGenerationProgress.set('Saving podcast...');
+
+      // Step 2: Create podcast version (script-only for now, audio TTS will be added later)
+      const version = (session.podcasts?.length || 0) + 1;
+      const podcastVersion: PodcastVersion = {
+        version,
+        createdAt: new Date(),
+        scriptGeneratedAt: new Date(),
+        duration: script.estimatedDuration,
+        storyVersion: session.storyRegenerationCount,
+        script,
+        status: 'completed'
+      };
+
+      // Step 3: Save to Firestore
+      await this.podcastAudioService['savePodcastVersion'](session.id, podcastVersion);
+
+      // Update local state
+      this.sessionStateService.updateSession(session.id, {
+        podcasts: [...(session.podcasts || []), podcastVersion],
+        latestPodcastVersion: version
+      });
+
+      this.podcastGenerationProgress.set('Podcast ready!');
+      this.refreshSessions();
+    } catch (error: any) {
+      console.error('Failed to generate podcast:', error);
+      this.podcastError.set(error?.message || 'Failed to generate podcast');
+      this.podcastGenerationProgress.set('');
+    } finally {
+      setTimeout(() => {
+        this.isGeneratingPodcast.set(false);
+        this.podcastGenerationProgress.set('');
+      }, 2000);
+    }
+  }
+
+  async playPodcast(podcast: PodcastVersion): Promise<void> {
+    if (!podcast.script || this.isPlayingPodcast()) {
+      return;
+    }
+
+    if (!this.podcastAudioService.isTTSConfigured()) {
+      this.podcastError.set('Google Cloud TTS is niet geconfigureerd. Voeg uw API key toe aan de environment configuratie.');
+      return;
+    }
+
+    this.isPlayingPodcast.set(true);
+    this.playingPodcastVersion.set(podcast.version);
+    this.podcastError.set('');
+
+    try {
+      await this.podcastAudioService.generateAudioFromScript(
+        podcast.script,
+        (progress) => {
+          this.podcastGenerationProgress.set(`Afspelen: ${progress}%`);
+        }
+      );
+    } catch (error: any) {
+      console.error('Failed to play podcast:', error);
+      this.podcastError.set(error?.message || 'Afspelen mislukt');
+    } finally {
+      this.isPlayingPodcast.set(false);
+      this.playingPodcastVersion.set(null);
+      this.podcastGenerationProgress.set('');
+    }
+  }
+
+  stopPodcast(): void {
+    this.podcastAudioService.stopSpeech();
+    this.isPlayingPodcast.set(false);
+    this.playingPodcastVersion.set(null);
+    this.podcastGenerationProgress.set('');
+  }
+
+  viewPodcastScript(podcast: PodcastVersion): void {
+    if (!podcast.script) {
+      return;
+    }
+    // Format the script for display
+    const scriptText = podcast.script.segments
+      .map(seg => `${seg.speaker === 'host1' ? 'HOST1' : 'HOST2'}: ${seg.text}`)
+      .join('\n\n');
+    
+    // Open in a new window or modal (for now, we'll use alert as a simple solution)
+    // In a production app, you'd use a proper modal component
+    alert(`Podcast Script (v${podcast.version})\n\nGeschatte Duur: ${this.formatDuration(podcast.duration || 0)}\n\n${scriptText}`);
+  }
+
+  downloadPodcastScript(podcast: PodcastVersion): void {
+    if (!podcast.script) {
+      return;
+    }
+    const scriptText = podcast.script.segments
+      .map(seg => `${seg.speaker === 'host1' ? 'HOST1' : 'HOST2'}: ${seg.text}`)
+      .join('\n\n');
+    
+    const session = this.currentSession();
+    const filename = `${session?.title || 'podcast'}-v${podcast.version}-script.txt`;
+    
+    const blob = new Blob([scriptText], { type: 'text/plain' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  }
+
+  formatDuration(seconds?: number): string {
+    if (!seconds) return '0:00';
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  }
+
+  formatFileSize(bytes?: number): string {
+    if (!bytes) return 'N/A';
+    const mb = bytes / (1024 * 1024);
+    if (mb >= 1) {
+      return `${mb.toFixed(1)} MB`;
+    }
+    const kb = bytes / 1024;
+    return `${kb.toFixed(1)} KB`;
+  }
+
+  formatDate(date: unknown): string {
+    if (!date) return '';
+    let d: Date | null = null;
+    if (date instanceof Date) {
+      d = date;
+    } else if (typeof date === 'string' || typeof date === 'number') {
+      d = new Date(date);
+    } else if (typeof date === 'object') {
+      const maybeTimestamp = date as { toDate?: () => Date; seconds?: number };
+      if (typeof maybeTimestamp.toDate === 'function') {
+        d = maybeTimestamp.toDate();
+      } else if (typeof maybeTimestamp.seconds === 'number') {
+        d = new Date(maybeTimestamp.seconds * 1000);
+      }
+    }
+    if (!d || Number.isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('nl-NL', { 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   }
 }

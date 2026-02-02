@@ -8,3 +8,4 @@
 export { DND_CHARACTER_ASSISTANT_PROMPT } from './dnd-character-assistant.prompt';
 export { SESSION_STORY_GENERATOR_PROMPT } from './session-story-generator.prompt';
 export { AUDIO_TRANSCRIPTION_PROMPT } from './audio-transcription.prompt';
+export { PODCAST_SCRIPT_GENERATOR_PROMPT } from './podcast-script-generator.prompt';

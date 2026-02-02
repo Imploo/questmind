@@ -78,6 +78,31 @@ export interface SessionStory {
   createdAt: string;
 }
 
+export interface PodcastSegment {
+  speaker: 'host1' | 'host2';
+  text: string;
+  emotion?: 'neutral' | 'excited' | 'curious' | 'amused';
+}
+
+export interface PodcastScript {
+  segments: PodcastSegment[];
+  estimatedDuration: number; // seconds
+}
+
+export interface PodcastVersion {
+  version: number;
+  createdAt: Date;
+  scriptGeneratedAt: Date;
+  audioGeneratedAt?: Date;
+  audioUrl?: string;
+  duration?: number; // seconds
+  fileSize?: number; // bytes
+  storyVersion?: number;
+  script?: PodcastScript;
+  status: 'generating_script' | 'generating_audio' | 'completed' | 'failed';
+  error?: string;
+}
+
 export interface UploadProgress {
   sessionId: string;
   progress: number;
@@ -100,4 +125,6 @@ export interface AudioSessionRecord extends SessionStory {
   correctionsUpdatedAt?: string;
   storyRegeneratedAt?: string;
   storyRegenerationCount?: number;
+  podcasts?: PodcastVersion[];
+  latestPodcastVersion?: number;
 }

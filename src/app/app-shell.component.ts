@@ -2,12 +2,13 @@ import { Component, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ChatComponent } from './chat/chat.component';
 import { AudioSessionComponent } from './audio/audio-session.component';
+import { PodcastLibraryComponent } from './audio/podcast-library.component';
 import { AuthButtonComponent } from './auth/auth-button.component';
 
 @Component({
   selector: 'app-shell',
   standalone: true,
-  imports: [CommonModule, ChatComponent, AudioSessionComponent, AuthButtonComponent],
+  imports: [CommonModule, ChatComponent, AudioSessionComponent, PodcastLibraryComponent, AuthButtonComponent],
   template: `
     <main class="w-full min-h-screen bg-gradient-to-br from-primary to-secondary">
       <div class="w-full min-h-screen max-w-7xl mx-auto flex flex-col lg:flex-row gap-6 p-4">
@@ -68,14 +69,29 @@ import { AuthButtonComponent } from './auth/auth-button.component';
               <span class="text-lg">🎙️</span>
               <span>Audio Transcription</span>
             </button>
+            <button
+              type="button"
+              class="w-full text-left px-4 py-3 rounded-xl text-sm font-semibold transition-colors flex items-center gap-3"
+              [class]="
+                activeView() === 'podcasts'
+                  ? 'bg-primary text-white shadow'
+                  : 'bg-white text-gray-600 hover:bg-gray-100'
+              "
+              (click)="setActiveView('podcasts')"
+            >
+              <span class="text-lg">📻</span>
+              <span>Podcast Bibliotheek</span>
+            </button>
           </nav>
         </aside>
 
         <section class="flex-1">
           @if (activeView() === 'chat') {
             <app-chat></app-chat>
-          } @else {
+          } @else if (activeView() === 'audio') {
             <app-audio-session></app-audio-session>
+          } @else if (activeView() === 'podcasts') {
+            <app-podcast-library></app-podcast-library>
           }
         </section>
       </div>
@@ -83,10 +99,10 @@ import { AuthButtonComponent } from './auth/auth-button.component';
   `
 })
 export class AppShellComponent {
-  activeView = signal<'chat' | 'audio'>('chat');
+  activeView = signal<'chat' | 'audio' | 'podcasts'>('chat');
   sidebarOpen = signal(true);
 
-  setActiveView(view: 'chat' | 'audio'): void {
+  setActiveView(view: 'chat' | 'audio' | 'podcasts'): void {
     this.activeView.set(view);
   }
 

@@ -4,13 +4,20 @@ service cloud.firestore {
   match /databases/{database}/documents {
     // User audio sessions
     match /users/{userId}/audioSessions/{sessionId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null && request.auth.uid == userId;
+      
+      // Allow write for the session owner
+      allow write: if request.auth != null && request.auth.uid == userId;
 
-      // Validate session data structure
-      allow create, update: if request.auth != null
-                            && request.auth.uid == userId
-                            && request.resource.data.keys().hasAll(['createdAt', 'status'])
-                            && request.resource.data.status in ['uploading', 'transcribing', 'completed', 'error', 'failed'];
+      // Validate session data structure on create
+      allow create: if request.auth != null
+                    && request.auth.uid == userId
+                    && request.resource.data.keys().hasAll(['createdAt', 'status'])
+                    && request.resource.data.status in ['uploading', 'transcribing', 'completed', 'error', 'failed'];
+      
+      // Allow update for podcasts and other fields
+      allow update: if request.auth != null
+                    && request.auth.uid == userId;
     }
 
     // User transcriptions subcollection
