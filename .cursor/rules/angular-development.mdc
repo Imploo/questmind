@@ -1,0 +1,20 @@
+---
+description: Angular development standards and build verification
+alwaysApply: true
+---
+
+# Angular Development Rule
+
+- Follow Angular best practices (standalone components, dependency injection, RxJS usage).
+- Keep components/services focused and testable; avoid heavy logic in templates.
+- Prefer TypeScript strictness and explicit types for public APIs.
+- Use DRY and SOLID principles.
+- Use the Angular MCP service to fetch best practices when needed.
+- Create smart and dumb components:
+  - Smart components: more TypeScript, less HTML.
+  - Dumb components: more HTML, less TypeScript.
+- Combine HTML and TypeScript in one file for AI readability.
+
+# Build Verification
+
+- After finishing code changes, always run `npm run build` to verify the build still runs.

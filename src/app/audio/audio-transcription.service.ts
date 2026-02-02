@@ -64,7 +64,7 @@ export class AudioTranscriptionService {
       }
     }
   };
-  private readonly MAX_TRANSCRIPTION_OUTPUT_TOKENS = 12000;
+  private readonly MAX_TRANSCRIPTION_OUTPUT_TOKENS = 64000;
   private readonly CHUNK_DURATION_SECONDS = 10 * 60;
   private readonly CHUNK_MIME_TYPE = 'audio/wav';
 
@@ -226,15 +226,26 @@ export class AudioTranscriptionService {
         responseMimeType: 'application/json',
         responseSchema: this.TRANSCRIPTION_SCHEMA,
         maxOutputTokens: this.MAX_TRANSCRIPTION_OUTPUT_TOKENS,
-        temperature: 0.2,
-        topP: 0.9,
-        topK: 20
+        temperature: 0.9,
+        topP: 0.95,
+        topK: 40,
+        stopSequences: ['\n\n\n\n']
       }
     });
 
     if (!response.text) {
       throw new Error('No response from transcription model.');
     }
+
+    // Validate response for truncation and repetition issues
+    const validation = this.validateTranscriptionResponse(response);
+    if (!validation.valid) {
+      console.error('Transcription validation failed:', validation.error);
+      throw new Error(validation.error || 'Invalid transcription response');
+    }
+
+    // Log warnings (non-fatal issues)
+    validation.warnings.forEach(warning => console.warn('[Transcription Warning]', warning));
 
     let result: any;
     try {
@@ -258,6 +269,107 @@ export class AudioTranscriptionService {
     }
 
     return result;
+  }
+
+  private validateTranscriptionResponse(response: any): {
+    valid: boolean;
+    error?: string;
+    warnings: string[];
+  } {
+    const warnings: string[] = [];
+
+    // Check finish reason
+    const finishReason = response.candidates?.[0]?.finishReason;
+    if (finishReason === 'MAX_TOKENS') {
+      return {
+        valid: false,
+        error: 'Transcription truncated at token limit. Try using shorter audio chunks.',
+        warnings
+      };
+    }
+
+    // Check for unusual finish reasons
+    if (finishReason && finishReason !== 'STOP') {
+      warnings.push(`Unusual finish reason: ${finishReason}`);
+    }
+
+    // Monitor thought token usage
+    const usageMetadata = response.usageMetadata;
+    if (usageMetadata) {
+      const thoughtTokens = usageMetadata.thoughtsTokenCount || 0;
+      const inputTokens = usageMetadata.promptTokenCount || 1;
+      const outputTokens = usageMetadata.candidatesTokenCount || 0;
+
+      if (thoughtTokens > inputTokens * 2) {
+        warnings.push(
+          `Excessive thought tokens: ${thoughtTokens} (${Math.round(thoughtTokens / inputTokens)}x input). ` +
+          `Model may be struggling with audio quality.`
+        );
+      }
+
+      // Log token usage for monitoring
+      console.info('[Transcription Tokens]', {
+        input: inputTokens,
+        output: outputTokens,
+        thoughts: thoughtTokens,
+        total: usageMetadata.totalTokenCount,
+        thoughtRatio: (thoughtTokens / inputTokens).toFixed(2)
+      });
+    }
+
+    // Check for repetition in the output
+    const text = response.text || response.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    if (this.detectRepetition(text)) {
+      return {
+        valid: false,
+        error: 'Catastrophic repetition detected in transcription output. This may indicate audio quality issues or model confusion.',
+        warnings
+      };
+    }
+
+    // Check if JSON is properly terminated
+    const trimmedText = text.trim();
+    if (trimmedText && !trimmedText.endsWith('}')) {
+      return {
+        valid: false,
+        error: 'Malformed JSON: response appears truncated (does not end with })',
+        warnings
+      };
+    }
+
+    return { valid: true, warnings };
+  }
+
+  private detectRepetition(text: string): boolean {
+    if (!text || text.length < 50) return false;
+
+    // Split into words, filtering out very short ones
+    const words = text.toLowerCase().split(/[\s,]+/).filter(w => w.length > 2);
+
+    if (words.length < 5) return false;
+
+    // Check for 5+ consecutive identical words (catastrophic repetition)
+    for (let i = 0; i < words.length - 4; i++) {
+      const word = words[i];
+      if (words.slice(i, i + 5).every(w => w === word)) {
+        console.error(`[Repetition Detected] Word "${word}" repeated 5+ times consecutively`);
+        return true;
+      }
+    }
+
+    // Check for high overall repetition ratio (same segments repeated)
+    const segments = text.split(/[.!?]+/).filter(s => s.trim().length > 20);
+    if (segments.length > 3) {
+      const uniqueSegments = new Set(segments.map(s => s.trim().toLowerCase()));
+      const repetitionRatio = 1 - (uniqueSegments.size / segments.length);
+
+      if (repetitionRatio > 0.5) {
+        console.error(`[Repetition Detected] High repetition ratio: ${(repetitionRatio * 100).toFixed(1)}%`);
+        return true;
+      }
+    }
+
+    return false;
   }
 
   private async resolveAudioFile(storageMetadata: StorageMetadata, file: File | undefined, mimeType: string): Promise<File> {
