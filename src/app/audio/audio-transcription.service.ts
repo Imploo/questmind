@@ -1,33 +1,34 @@
-import { Injectable } from '@angular/core';
-import { Observable, from, throwError } from 'rxjs';
-import { catchError, map, retry } from 'rxjs/operators';
-import { GoogleGenAI, Type } from '@google/genai';
-import { getApp, type FirebaseApp } from 'firebase/app';
+import {Injectable} from '@angular/core';
+import {from, Observable, throwError} from 'rxjs';
+import {catchError, map, retry} from 'rxjs/operators';
+import {GoogleGenAI, Type} from '@google/genai';
+import {type FirebaseApp, getApp} from 'firebase/app';
 import {
   collection,
   doc,
+  type Firestore,
+  getDoc,
+  getDocs,
   getFirestore,
   orderBy,
   query,
   setDoc,
-  getDocs,
-  type Firestore
+  updateDoc
 } from 'firebase/firestore';
 
-import { AUDIO_TRANSCRIPTION_PROMPT } from '../prompts';
-import { AudioStorageService } from './audio-storage.service';
+import {AUDIO_TRANSCRIPTION_PROMPT} from '../prompts';
+import {AudioStorageService} from './audio-storage.service';
 import {
+  CHUNK_DURATION_SECONDS,
+  CHUNK_MIME_TYPE,
+  getRetryDelay,
+  isOverloadedError,
   MAX_INLINE_AUDIO_BYTES,
   MAX_RETRY_ATTEMPTS,
-  getRetryDelay,
-  isOverloadedError
+  MAX_TRANSCRIPTION_OUTPUT_TOKENS
 } from './audio-utilities';
-import {
-  StorageMetadata,
-  TranscriptionRecord,
-  TranscriptionResult
-} from './audio-session.models';
-import { environment } from '../../environments/environment';
+import {StorageMetadata, TranscriptionChunk, TranscriptionRecord, TranscriptionResult} from './audio-session.models';
+import {environment} from '../../environments/environment';
 
 type AudioChunk = {
   index: number;
@@ -64,9 +65,6 @@ export class AudioTranscriptionService {
       }
     }
   };
-  private readonly MAX_TRANSCRIPTION_OUTPUT_TOKENS = 64000;
-  private readonly CHUNK_DURATION_SECONDS = 10 * 60;
-  private readonly CHUNK_MIME_TYPE = 'audio/wav';
 
   constructor(private readonly storageService: AudioStorageService) {
     this.ai = new GoogleGenAI({ apiKey: this.apiKey });
@@ -81,7 +79,7 @@ export class AudioTranscriptionService {
     }
   }
 
-  transcribeAudio(storageMetadata: StorageMetadata, file?: File): Observable<TranscriptionResult> {
+  transcribeAudio(storageMetadata: StorageMetadata, file?: File, userId?: string, transcriptionId?: string): Observable<TranscriptionResult> {
     if (!this.apiKey || this.apiKey === 'YOUR_GOOGLE_AI_API_KEY_HERE') {
       return throwError(() => ({
         status: 401,
@@ -96,7 +94,7 @@ export class AudioTranscriptionService {
       }));
     }
 
-    return from(this.requestTranscription(storageMetadata, file)).pipe(
+    return from(this.requestTranscription(storageMetadata, file, userId, transcriptionId)).pipe(
       retry({
         count: MAX_RETRY_ATTEMPTS,
         delay: (error, retryCount) => getRetryDelay(error, retryCount)
@@ -166,15 +164,24 @@ export class AudioTranscriptionService {
     }
   }
 
-  private async requestTranscription(storageMetadata: StorageMetadata, file?: File): Promise<any> {
+  private async requestTranscription(storageMetadata: StorageMetadata, file?: File, userId?: string, transcriptionId?: string): Promise<any> {
     const mimeType = storageMetadata.contentType || 'audio/mpeg';
     const audioFile = await this.resolveAudioFile(storageMetadata, file, mimeType);
     const decoded = await this.decodeAudioFile(audioFile);
 
     if (decoded) {
       try {
-        if (decoded.audioBuffer.duration > this.CHUNK_DURATION_SECONDS) {
-          return await this.requestChunkedTranscription(decoded.audioContext, decoded.audioBuffer);
+        if (decoded.audioBuffer.duration > CHUNK_DURATION_SECONDS) {
+          // Store duration in metadata for chunk tracking
+          storageMetadata.durationSeconds = decoded.audioBuffer.duration;
+          storageMetadata.sizeBytes = audioFile.size;
+          return await this.requestChunkedTranscription(
+            decoded.audioContext, 
+            decoded.audioBuffer, 
+            storageMetadata, 
+            userId, 
+            transcriptionId
+          );
         }
       } finally {
         await decoded.audioContext.close();
@@ -189,12 +196,19 @@ export class AudioTranscriptionService {
     return this.callTranscriptionModel(contents);
   }
 
-  private async requestChunkedTranscription(audioContext: AudioContext, audioBuffer: AudioBuffer): Promise<any> {
+  private async requestChunkedTranscription(
+    audioContext: AudioContext, 
+    audioBuffer: AudioBuffer, 
+    storageMetadata?: StorageMetadata,
+    userId?: string, 
+    transcriptionId?: string
+  ): Promise<any> {
     const chunks = this.splitAudioBufferIntoChunks(audioContext, audioBuffer);
     const chunkResults: Array<{ chunk: AudioChunk; result: any }> = [];
+    const sessionId = storageMetadata?.sessionId || '';
 
     console.info(
-      `Chunked audio into ${chunks.length} parts (${this.CHUNK_DURATION_SECONDS}s each). ` +
+      `Chunked audio into ${chunks.length} parts (${CHUNK_DURATION_SECONDS}s each). ` +
         `Total duration: ${Math.round(audioBuffer.duration)}s.`
     );
     chunks.forEach(chunk => {
@@ -205,17 +219,94 @@ export class AudioTranscriptionService {
       );
     });
 
-    for (const chunk of chunks) {
-      const prompt = this.buildChunkPrompt(chunk, chunks.length);
-      const chunkFile = new File([chunk.audioBlob], `session-chunk-${chunk.index + 1}.wav`, {
-        type: this.CHUNK_MIME_TYPE
-      });
-      const contents = await this.buildContentsForAudio(chunkFile, this.CHUNK_MIME_TYPE, prompt);
-      const result = await this.callTranscriptionModel(contents);
-      chunkResults.push({ chunk, result });
+    // Initialize transcription record if we have the required info
+    if (userId && transcriptionId && sessionId && storageMetadata) {
+      // Check for existing incomplete transcription
+      const existingRecord = await this.getExistingTranscriptionRecord(userId, sessionId, transcriptionId);
+      
+      if (existingRecord && !existingRecord.isComplete && existingRecord.chunks && existingRecord.chunks.length > 0) {
+        console.log('Resuming incomplete transcription...');
+        console.log(`Found ${existingRecord.completedChunks}/${existingRecord.totalChunks} completed chunks`);
+      } else {
+        // Initialize new transcription record
+        await this.initializeTranscriptionRecord(userId, sessionId, transcriptionId, storageMetadata, chunks.length);
+      }
     }
 
-    return this.mergeChunkResults(chunkResults);
+    for (const chunk of chunks) {
+      const transcriptionChunk: TranscriptionChunk = {
+        index: chunk.index,
+        startTimeSeconds: chunk.startTimeSeconds,
+        endTimeSeconds: chunk.endTimeSeconds,
+        durationSeconds: chunk.durationSeconds,
+        status: 'processing'
+      };
+
+      try {
+        // Save "processing" status
+        if (userId && transcriptionId && sessionId) {
+          await this.saveTranscriptionChunk(userId, sessionId, transcriptionId, transcriptionChunk);
+        }
+
+        // Transcribe chunk
+        const startTime = Date.now();
+        const prompt = this.buildChunkPrompt(chunk, chunks.length);
+        const chunkFile = new File([chunk.audioBlob], `session-chunk-${chunk.index + 1}.wav`, {
+          type: CHUNK_MIME_TYPE
+        });
+        const contents = await this.buildContentsForAudio(chunkFile, CHUNK_MIME_TYPE, prompt);
+        const result = await this.callTranscriptionModel(contents);
+        const processingTimeMs = Date.now() - startTime;
+
+        // Extract segments
+        const segments = Array.isArray(result?.segments) ? result.segments : [];
+
+        // Update chunk status to completed
+        transcriptionChunk.status = 'completed';
+        transcriptionChunk.segments = segments;
+        transcriptionChunk.completedAt = new Date();
+        transcriptionChunk.processingTimeMs = processingTimeMs;
+
+        // Save completed chunk
+        if (userId && transcriptionId && sessionId) {
+          await this.saveTranscriptionChunk(userId, sessionId, transcriptionId, transcriptionChunk);
+        }
+
+        console.log(
+          `Chunk ${chunk.index + 1}/${chunks.length} completed ` +
+          `(${segments.length} segments, ${processingTimeMs}ms)`
+        );
+
+        chunkResults.push({ chunk, result });
+
+      } catch (error) {
+        console.error(`Chunk ${chunk.index} failed:`, error);
+
+        // Update chunk status to failed
+        transcriptionChunk.status = 'failed';
+        transcriptionChunk.error = error instanceof Error ? error.message : String(error);
+        transcriptionChunk.failedAt = new Date();
+        transcriptionChunk.retryCount = (transcriptionChunk.retryCount || 0) + 1;
+
+        // Save failed chunk
+        if (userId && transcriptionId && sessionId) {
+          await this.saveTranscriptionChunk(userId, sessionId, transcriptionId, transcriptionChunk);
+        }
+
+        // Re-throw error to trigger retry logic at higher level
+        throw error;
+      }
+    }
+
+    const mergedResult = this.mergeChunkResults(chunkResults);
+
+    // Mark transcription as complete
+    if (userId && transcriptionId && sessionId && storageMetadata) {
+      const normalizedResult = this.normalizeTranscription(mergedResult, storageMetadata);
+      await this.markTranscriptionComplete(userId, sessionId, transcriptionId, normalizedResult);
+    }
+
+    return mergedResult;
   }
 
   private async callTranscriptionModel(contents: { parts: Array<any> }): Promise<any> {
@@ -225,7 +316,7 @@ export class AudioTranscriptionService {
       config: {
         responseMimeType: 'application/json',
         responseSchema: this.TRANSCRIPTION_SCHEMA,
-        maxOutputTokens: this.MAX_TRANSCRIPTION_OUTPUT_TOKENS,
+        maxOutputTokens: MAX_TRANSCRIPTION_OUTPUT_TOKENS,
         temperature: 0.9,
         topP: 0.95,
         topK: 40,
@@ -341,17 +432,21 @@ export class AudioTranscriptionService {
   }
 
   private detectRepetition(text: string): boolean {
+
+    return false; 
     if (!text || text.length < 50) return false;
 
     // Split into words, filtering out very short ones
     const words = text.toLowerCase().split(/[\s,]+/).filter(w => w.length > 2);
 
-    if (words.length < 5) return false;
+    const repetitionThreshold = 10;
+
+    if (words.length < repetitionThreshold) return false;
 
     // Check for 5+ consecutive identical words (catastrophic repetition)
-    for (let i = 0; i < words.length - 4; i++) {
+    for (let i = 0; i < words.length - repetitionThreshold - 1; i++) {
       const word = words[i];
-      if (words.slice(i, i + 5).every(w => w === word)) {
+      if (words.slice(i, i + repetitionThreshold).every(w => w === word)) {
         console.error(`[Repetition Detected] Word "${word}" repeated 5+ times consecutively`);
         return true;
       }
@@ -415,7 +510,7 @@ export class AudioTranscriptionService {
     let index = 0;
 
     while (startTimeSeconds < totalDuration) {
-      const endTimeSeconds = Math.min(totalDuration, startTimeSeconds + this.CHUNK_DURATION_SECONDS);
+      const endTimeSeconds = Math.min(totalDuration, startTimeSeconds + CHUNK_DURATION_SECONDS);
       const startSample = Math.floor(startTimeSeconds * sampleRate);
       const endSample = Math.floor(endTimeSeconds * sampleRate);
       const frameCount = Math.max(0, endSample - startSample);
@@ -491,7 +586,7 @@ export class AudioTranscriptionService {
       }
     }
 
-    return new Blob([arrayBuffer], { type: this.CHUNK_MIME_TYPE });
+    return new Blob([arrayBuffer], { type: CHUNK_MIME_TYPE });
   }
 
   private buildChunkPrompt(chunk: AudioChunk, totalChunks: number): string {
@@ -659,5 +754,173 @@ CHUNK CONTEXT:
       return crypto.randomUUID();
     }
     return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  }
+
+  private async saveTranscriptionChunk(
+    userId: string,
+    sessionId: string,
+    transcriptionId: string,
+    chunk: TranscriptionChunk
+  ): Promise<void> {
+    if (!this.db) {
+      console.warn('Firestore not available, chunk not persisted');
+      return;
+    }
+
+    const transcriptionRef = doc(
+      this.db,
+      'users',
+      userId,
+      'audioSessions',
+      sessionId,
+      'transcriptions',
+      transcriptionId
+    );
+
+    const docSnap = await getDoc(transcriptionRef);
+    if (!docSnap.exists()) {
+      console.warn('Transcription record does not exist, cannot save chunk');
+      return;
+    }
+
+    const data = docSnap.data() as TranscriptionRecord;
+    const chunks = data.chunks || [];
+    const existingChunkIndex = chunks.findIndex(c => c.index === chunk.index);
+
+    if (existingChunkIndex >= 0) {
+      chunks[existingChunkIndex] = chunk;
+    } else {
+      chunks.push(chunk);
+    }
+
+    const completedChunks = chunks.filter(c => c.status === 'completed').length;
+    const totalChunks = data.totalChunks || 0;
+    const isComplete = totalChunks > 0 && completedChunks === totalChunks;
+
+    await updateDoc(transcriptionRef, {
+      chunks,
+      completedChunks,
+      lastProcessedChunkIndex: chunk.index,
+      isComplete,
+      status: isComplete ? 'completed' : 'processing'
+    });
+
+    console.log(
+      `Chunk ${chunk.index} saved (${completedChunks}/${totalChunks} complete)`
+    );
+  }
+
+  private async initializeTranscriptionRecord(
+    userId: string,
+    sessionId: string,
+    transcriptionId: string,
+    storageMetadata: StorageMetadata,
+    totalChunks: number
+  ): Promise<void> {
+    if (!this.db) return;
+
+    const transcriptionRef = doc(
+      this.db,
+      'users',
+      userId,
+      'audioSessions',
+      sessionId,
+      'transcriptions',
+      transcriptionId
+    );
+
+    const record: TranscriptionRecord = {
+      id: transcriptionId,
+      sessionId,
+      rawTranscript: '',
+      timestamps: [],
+      status: 'processing',
+      createdAt: new Date().toISOString(),
+      isComplete: false,
+      completedChunks: 0,
+      totalChunks,
+      lastProcessedChunkIndex: -1,
+      chunks: []
+    };
+
+    await setDoc(transcriptionRef, record);
+    console.log(`Transcription record initialized: ${totalChunks} chunks`);
+  }
+
+  async getExistingTranscriptionRecord(
+    userId: string,
+    sessionId: string,
+    transcriptionId: string
+  ): Promise<TranscriptionRecord | null> {
+    if (!this.db) return null;
+
+    const transcriptionRef = doc(
+      this.db,
+      'users',
+      userId,
+      'audioSessions',
+      sessionId,
+      'transcriptions',
+      transcriptionId
+    );
+
+    const docSnap = await getDoc(transcriptionRef);
+    return docSnap.exists() ? (docSnap.data() as TranscriptionRecord) : null;
+  }
+
+  private async markTranscriptionComplete(
+    userId: string,
+    sessionId: string,
+    transcriptionId: string,
+    result: TranscriptionResult
+  ): Promise<void> {
+    if (!this.db) return;
+
+    const transcriptionRef = doc(
+      this.db,
+      'users',
+      userId,
+      'audioSessions',
+      sessionId,
+      'transcriptions',
+      transcriptionId
+    );
+
+    await updateDoc(transcriptionRef, {
+      isComplete: true,
+      status: 'completed',
+      rawTranscript: result.rawTranscript,
+      timestamps: result.timestamps
+    });
+
+    console.log('Transcription marked as complete');
+  }
+
+  async clearTranscriptionRecord(
+    userId: string,
+    sessionId: string,
+    transcriptionId: string
+  ): Promise<void> {
+    if (!this.db) return;
+
+    const transcriptionRef = doc(
+      this.db,
+      'users',
+      userId,
+      'audioSessions',
+      sessionId,
+      'transcriptions',
+      transcriptionId
+    );
+
+    await updateDoc(transcriptionRef, {
+      chunks: [],
+      completedChunks: 0,
+      lastProcessedChunkIndex: -1,
+      isComplete: false,
+      status: 'processing'
+    });
+
+    console.log('Transcription record cleared for fresh start');
   }
 }

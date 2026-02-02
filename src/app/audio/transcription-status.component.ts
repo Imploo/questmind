@@ -22,10 +22,37 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
       <div class="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
         <div
           class="h-full bg-primary transition-all duration-300"
-          [style.width.%]="progress"
+          [style.width.%]="effectiveProgress"
         ></div>
       </div>
-      <p class="text-xs text-gray-500 mt-2 mb-0">{{ progress }}% complete</p>
+      <p class="text-xs text-gray-500 mt-2 mb-0">{{ effectiveProgress }}% complete</p>
+
+      @if (totalChunks > 0 && stage === 'transcribing') {
+        <div class="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <p class="text-sm text-blue-800 m-0 mb-1">
+            {{ currentChunkMessage }}
+          </p>
+          <p class="text-xs text-blue-600 m-0">
+            {{ completedChunks }} of {{ totalChunks }} chunks complete
+          </p>
+        </div>
+      }
+
+      @if (failedChunks > 0) {
+        <div class="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+          <p class="text-sm text-amber-800 m-0">
+            ⚠️ {{ failedChunks }} chunk(s) failed and will be retried
+          </p>
+        </div>
+      }
+
+      @if (isResume) {
+        <div class="mt-3 p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+          <p class="text-sm text-emerald-800 m-0">
+            📋 Resuming from previous transcription
+          </p>
+        </div>
+      }
 
       <div class="mt-4 flex justify-end gap-3">
         <button
@@ -52,15 +79,34 @@ export class TranscriptionStatusComponent {
   @Input() stage: Stage = 'idle';
   @Input() progress = 0;
   @Input() statusMessage = 'Waiting for upload.';
+  @Input() completedChunks = 0;
+  @Input() totalChunks = 0;
+  @Input() currentChunkIndex = 0;
+  @Input() failedChunks = 0;
+  @Input() isResume = false;
   @Output() cancel = new EventEmitter<void>();
   @Output() retry = new EventEmitter<void>();
+
+  get effectiveProgress(): number {
+    if (this.totalChunks > 0 && this.stage === 'transcribing') {
+      return Math.round((this.completedChunks / this.totalChunks) * 100);
+    }
+    return this.progress;
+  }
+
+  get currentChunkMessage(): string {
+    if (this.currentChunkIndex >= this.totalChunks) {
+      return 'All chunks processed!';
+    }
+    return `Processing chunk ${this.currentChunkIndex + 1} of ${this.totalChunks}`;
+  }
 
   get stageLabel(): string {
     switch (this.stage) {
       case 'uploading':
         return 'Uploading';
       case 'transcribing':
-        return 'Transcribing';
+        return this.isResume ? 'Resuming' : 'Transcribing';
       case 'generating':
         return 'Writing Story';
       case 'completed':

@@ -282,21 +282,29 @@ export class AudioSessionComponent implements OnDestroy {
     this.statusMessage.set('Transcribing audio...');
     this.animateStageProgress(2200, 35);
     this.processingSub?.unsubscribe();
-    this.processingSub = this.audioTranscriptionService.transcribeAudio(storage, file).subscribe({
+
+    const session = this.currentSession();
+    const uid = this.userId();
+    if (!session || !uid) {
+      return;
+    }
+
+    // Generate transcription ID upfront for chunk persistence
+    const transcriptionId = this.generateId();
+
+    this.processingSub = this.audioTranscriptionService.transcribeAudio(storage, file, uid, transcriptionId).subscribe({
       next: transcription => {
-        const session = this.currentSession();
-        const uid = this.userId();
         if (!session || !uid) {
           return;
         }
 
         void this.audioTranscriptionService
           .saveTranscription(uid, session.id, transcription, 'Auto-generated')
-          .then(transcriptionId => {
+          .then(savedTranscriptionId => {
             this.sessionStateService.updateSession(session.id, {
               transcription,
               status: 'completed',
-              activeTranscriptionId: transcriptionId
+              activeTranscriptionId: savedTranscriptionId
             });
             this.refreshSessions();
             this.runStoryGeneration(transcription);
@@ -312,7 +320,6 @@ export class AudioSessionComponent implements OnDestroy {
           });
       },
       error: err => {
-        const session = this.currentSession();
         if (session) {
           this.sessionStateService.updateSession(session.id, {
             status: 'completed' // Keep as completed since upload succeeded
@@ -324,6 +331,13 @@ export class AudioSessionComponent implements OnDestroy {
         this.refreshSessions();
       }
     });
+  }
+
+  private generateId(): string {
+    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+      return crypto.randomUUID();
+    }
+    return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   }
 
   private runStoryGeneration(transcription: TranscriptionResult): void {

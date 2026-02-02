@@ -12,7 +12,7 @@ ANTI-REPETITION RULES (IMPORTANT):
 - NEVER repeat the same word more than 3 times in a row
 - If you find yourself generating repetitive content, STOP immediately and move to the next segment
 - Each segment should contain unique, meaningful dialogue or narration
-- If audio is unclear or contains static/noise, use [inaudible] or [unclear] rather than guessing or repeating
+- If audio is unclear or contains static/noise, skip the segment rather than guessing or repeating
 - When uncertain about what was said, it's better to skip that segment than to hallucinate or repeat
 - Silence and brevity are better than invention
 
