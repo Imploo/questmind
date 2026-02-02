@@ -73,7 +73,14 @@ export class CampaignContextService {
         campaignIds = [campaignId];
       }
 
-      const campaigns = await this.campaignService.getCampaignsByIds(campaignIds);
+      let campaigns = await this.campaignService.getCampaignsByIds(campaignIds);
+      if (campaigns.length === 0) {
+        const campaignId = await this.campaignService.createCampaign(
+          `${user.displayName || user.email || 'My'} Campaign`
+        );
+        campaignIds = [campaignId];
+        campaigns = await this.campaignService.getCampaignsByIds(campaignIds);
+      }
       this.campaigns.set(campaigns);
 
       let selectedId = profile.defaultCampaignId || null;

@@ -11,15 +11,21 @@ service cloud.firestore {
     }
 
     function isCampaignMember(campaignId) {
-      return isAuthenticated() &&
-        exists(/databases/$(database)/documents/campaigns/$(campaignId)/metadata) &&
-        get(/databases/$(database)/documents/campaigns/$(campaignId)/metadata).data.members[getUserId()] != null;
+      return isAuthenticated() && (
+        (exists(/databases/$(database)/documents/campaigns/$(campaignId)) &&
+          get(/databases/$(database)/documents/campaigns/$(campaignId)).data.members[getUserId()] != null) ||
+        (exists(/databases/$(database)/documents/campaigns/$(campaignId)/metadata) &&
+          get(/databases/$(database)/documents/campaigns/$(campaignId)/metadata).data.members[getUserId()] != null)
+      );
     }
 
     function isCampaignOwner(campaignId) {
-      return isAuthenticated() &&
-        exists(/databases/$(database)/documents/campaigns/$(campaignId)/metadata) &&
-        get(/databases/$(database)/documents/campaigns/$(campaignId)/metadata).data.ownerId == getUserId();
+      return isAuthenticated() && (
+        (exists(/databases/$(database)/documents/campaigns/$(campaignId)) &&
+          get(/databases/$(database)/documents/campaigns/$(campaignId)).data.ownerId == getUserId()) ||
+        (exists(/databases/$(database)/documents/campaigns/$(campaignId)/metadata) &&
+          get(/databases/$(database)/documents/campaigns/$(campaignId)/metadata).data.ownerId == getUserId())
+      );
     }
 
     function isSessionOwner(campaignId, sessionId) {
@@ -34,7 +40,16 @@ service cloud.firestore {
       allow write: if isAuthenticated() && getUserId() == userId;
     }
 
-    // Campaign metadata
+    // Campaigns
+    match /campaigns/{campaignId} {
+      allow read: if isCampaignMember(campaignId) ||
+        !exists(/databases/$(database)/documents/campaigns/$(campaignId));
+      allow create: if isAuthenticated() && request.resource.data.ownerId == getUserId();
+      allow update: if isCampaignOwner(campaignId);
+      allow delete: if isCampaignOwner(campaignId);
+    }
+
+    // Legacy campaign metadata (read-only during migration)
     match /campaigns/{campaignId}/metadata {
       allow read: if isCampaignMember(campaignId);
       allow create: if isAuthenticated() && request.resource.data.ownerId == getUserId();

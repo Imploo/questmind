@@ -46,7 +46,9 @@ export class CampaignService {
     const campaign: Campaign = {
       id: campaignId,
       name: name.trim(),
-      description: description?.trim() || undefined,
+      ...(description?.trim()
+        ? { description: description.trim() }
+        : {}),
       createdAt: now,
       updatedAt: now,
       ownerId: user.uid,
@@ -63,7 +65,7 @@ export class CampaignService {
       }
     };
 
-    const campaignRef = doc(this.db, 'campaigns', campaignId, 'metadata');
+    const campaignRef = doc(this.db, 'campaigns', campaignId);
     await setDoc(campaignRef, campaign);
     await this.userProfileService.addCampaign(user.uid, campaignId);
     await this.userProfileService.setDefaultCampaign(user.uid, campaignId);
@@ -75,7 +77,7 @@ export class CampaignService {
     if (!this.db) {
       return null;
     }
-    const campaignRef = doc(this.db, 'campaigns', campaignId, 'metadata');
+    const campaignRef = doc(this.db, 'campaigns', campaignId);
     const snapshot = await getDoc(campaignRef);
     return snapshot.exists() ? (snapshot.data() as Campaign) : null;
   }
@@ -98,7 +100,7 @@ export class CampaignService {
     updates: Partial<Pick<Campaign, 'name' | 'description' | 'settings'>>
   ): Promise<void> {
     if (!this.db) return;
-    const campaignRef = doc(this.db, 'campaigns', campaignId, 'metadata');
+    const campaignRef = doc(this.db, 'campaigns', campaignId);
     await updateDoc(campaignRef, {
       ...updates,
       updatedAt: new Date().toISOString()
@@ -135,7 +137,7 @@ export class CampaignService {
     }
 
     const now = new Date().toISOString();
-    const campaignRef = doc(this.db, 'campaigns', campaignId, 'metadata');
+    const campaignRef = doc(this.db, 'campaigns', campaignId);
     await updateDoc(campaignRef, {
       [`members.${targetUser.uid}`]: {
         role: 'member',
@@ -169,7 +171,7 @@ export class CampaignService {
 
     const nextMembers = { ...campaign.members };
     delete nextMembers[memberId];
-    const campaignRef = doc(this.db, 'campaigns', campaignId, 'metadata');
+    const campaignRef = doc(this.db, 'campaigns', campaignId);
     await updateDoc(campaignRef, {
       members: nextMembers,
       updatedAt: new Date().toISOString()

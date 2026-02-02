@@ -37,7 +37,14 @@ type CallableRequest<T> = {
 };
 
 export const generatePodcastAudio = onCall(
-  { cors: true },
+  {
+    cors: [
+      'https://questmind.nl',
+      'http://localhost:4200',
+      /^https:\/\/.*\.web\.app$/,
+      /^https:\/\/.*\.firebaseapp\.com$/
+    ]
+  },
   async (request: CallableRequest<PodcastGenerationRequest>) => {
     const { auth, data } = request;
 

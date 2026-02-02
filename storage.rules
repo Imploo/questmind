@@ -2,9 +2,12 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     function isCampaignMember(campaignId) {
-      return request.auth != null &&
-        firestore.get(/databases/(default)/documents/campaigns/$(campaignId)/metadata)
-          .data.members[request.auth.uid] != null;
+      return request.auth != null && (
+        (firestore.exists(/databases/(default)/documents/campaigns/$(campaignId)) &&
+          firestore.get(/databases/(default)/documents/campaigns/$(campaignId)).data.members[request.auth.uid] != null) ||
+        (firestore.exists(/databases/(default)/documents/campaigns/$(campaignId)/metadata) &&
+          firestore.get(/databases/(default)/documents/campaigns/$(campaignId)/metadata).data.members[request.auth.uid] != null)
+      );
     }
 
     // Audio files (campaigns)

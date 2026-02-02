@@ -52,3 +52,5 @@ src/environments/environment.prod.ts
 .firebase
 firebase-debug.log
 firestore-debug.log
+/functions/lib/
+/functions/lib/
