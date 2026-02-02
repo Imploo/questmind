@@ -8,7 +8,7 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
   imports: [CommonModule],
   template: `
     <div class="border border-gray-200 rounded-xl bg-white shadow-sm p-6">
-      <div class="flex items-center justify-between mb-4">
+      <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between mb-6">
         <div>
           <h3 class="text-lg font-semibold m-0">{{ title }}</h3>
           <p class="text-sm text-gray-500 m-0">{{ subtitle }}</p>
@@ -18,7 +18,7 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
             type="button"
             class="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:text-gray-800"
             (click)="toggleEdit()"
-            [disabled]="isBusy"
+            [disabled]="isBusy || !story.trim().length"
           >
             {{ isEditing() ? 'Preview' : 'Edit' }}
           </button>
@@ -30,77 +30,120 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
           >
             Re-transcribe
           </button>
-          <button
-            type="button"
-            class="px-3 py-2 text-xs font-semibold rounded-lg bg-primary text-white hover:bg-primary-dark disabled:bg-gray-300"
-            (click)="regenerate.emit()"
-            [disabled]="isBusy"
-          >
-            Regenerate
-          </button>
         </div>
       </div>
 
-      @if (isEditing()) {
-        <textarea
-          class="w-full min-h-[220px] border border-gray-200 rounded-lg p-3 text-sm focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none"
-          [value]="draft()"
-          (input)="onDraftInput($event)"
-          [disabled]="isBusy"
-        ></textarea>
-        <div class="mt-3 flex justify-end gap-2">
-          <button
-            type="button"
-            class="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:text-gray-800"
-            (click)="resetDraft()"
-            [disabled]="isBusy"
-          >
-            Reset
-          </button>
-          <button
-            type="button"
-            class="px-3 py-2 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-gray-300"
-            (click)="saveDraft()"
-            [disabled]="isBusy"
-          >
-            Save Story
-          </button>
+      @if (story.trim().length) {
+        <div class="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+          <div class="space-y-4">
+            <div class="flex items-center justify-between">
+              <h4 class="text-base font-semibold m-0">Generated Story</h4>
+              <button
+                type="button"
+                class="px-3 py-2 text-xs font-semibold rounded-lg bg-primary text-white hover:bg-primary-dark disabled:bg-gray-300"
+                (click)="regenerate.emit()"
+                [disabled]="isBusy"
+              >
+                Regenerate Story
+              </button>
+            </div>
+
+            <div class="border border-gray-200 rounded-lg p-4">
+              @if (isEditing()) {
+                <textarea
+                  class="w-full min-h-[220px] border border-gray-200 rounded-lg p-3 text-sm focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none"
+                  [value]="draft()"
+                  (input)="onDraftInput($event)"
+                  [disabled]="isBusy"
+                ></textarea>
+                <div class="mt-3 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    class="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:text-gray-800"
+                    (click)="resetDraft()"
+                    [disabled]="isBusy"
+                  >
+                    Reset
+                  </button>
+                  <button
+                    type="button"
+                    class="px-3 py-2 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-gray-300"
+                    (click)="saveDraft()"
+                    [disabled]="isBusy"
+                  >
+                    Save Story
+                  </button>
+                </div>
+              } @else {
+                <div class="text-sm text-gray-700 leading-relaxed" [innerHTML]="renderedStory()"></div>
+              }
+            </div>
+
+            <div class="flex flex-wrap gap-2">
+              <button
+                type="button"
+                class="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:text-gray-800"
+                (click)="downloadMarkdown()"
+              >
+                Download Markdown
+              </button>
+              <button
+                type="button"
+                class="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:text-gray-800"
+                (click)="downloadPdf()"
+              >
+                Export PDF
+              </button>
+            </div>
+
+            @if (transcript) {
+              <div class="border-t border-gray-100 pt-4">
+                <button
+                  type="button"
+                  class="text-sm font-semibold text-primary hover:underline"
+                  (click)="toggleTranscript()"
+                >
+                  {{ showTranscript() ? 'Hide transcript' : 'Show transcript preview' }}
+                </button>
+                @if (showTranscript()) {
+                  <pre class="mt-3 p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-600 whitespace-pre-wrap">
+{{ transcript }}
+                  </pre>
+                }
+              </div>
+            }
+          </div>
+
+          <div class="space-y-4">
+            <div class="flex items-center justify-between">
+              <h4 class="text-base font-semibold m-0">Corrections & Guidance</h4>
+              @if (correctionsStatus !== 'idle') {
+                <span class="text-xs text-gray-500">
+                  {{ correctionsStatus === 'saving' ? 'Saving...' : 'Saved ✓' }}
+                </span>
+              }
+            </div>
+
+            <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-3">
+              <p class="text-sm text-gray-600 m-0">
+                Review the story and add corrections below. The AI will apply these when you regenerate the story.
+              </p>
+              <textarea
+                class="w-full min-h-[240px] border border-gray-200 rounded-lg p-3 text-sm focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none resize-vertical font-mono"
+                [value]="corrections"
+                (input)="onCorrectionsInput($event)"
+                [disabled]="isBusy"
+                placeholder="Example: When you hear 'corikan', the correct name is 'Khuri-Khan'. The party is in Waterdeep, not Baldur's Gate."
+              ></textarea>
+              <p class="text-xs text-gray-500 m-0">
+                Corrections auto-save as you type. Click "Regenerate Story" to apply them.
+              </p>
+            </div>
+          </div>
         </div>
       } @else {
-        <div class="text-sm text-gray-700 leading-relaxed" [innerHTML]="renderedStory()"></div>
-      }
-
-      <div class="mt-4 flex flex-wrap gap-2">
-        <button
-          type="button"
-          class="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:text-gray-800"
-          (click)="downloadMarkdown()"
-        >
-          Download Markdown
-        </button>
-        <button
-          type="button"
-          class="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:text-gray-800"
-          (click)="downloadPdf()"
-        >
-          Export PDF
-        </button>
-      </div>
-
-      @if (transcript) {
-        <div class="mt-6 border-t border-gray-100 pt-4">
-          <button
-            type="button"
-            class="text-sm font-semibold text-primary hover:underline"
-            (click)="toggleTranscript()"
-          >
-            {{ showTranscript() ? 'Hide transcript' : 'Show transcript preview' }}
-          </button>
-          @if (showTranscript()) {
-            <pre class="mt-3 p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-600 whitespace-pre-wrap">
-{{ transcript }}
-            </pre>
-          }
+        <div class="border border-dashed border-gray-200 rounded-lg p-6 text-sm text-gray-500">
+          The session story will appear here once generation completes.
         </div>
       }
     </div>
@@ -115,9 +158,12 @@ export class SessionStoryComponent implements OnChanges {
   @Input() transcript = '';
   @Input() isBusy = false;
   @Input() canRetranscribe = false;
+  @Input() corrections = '';
+  @Input() correctionsStatus: 'idle' | 'saving' | 'saved' = 'idle';
   @Output() storyUpdated = new EventEmitter<string>();
   @Output() regenerate = new EventEmitter<void>();
   @Output() retranscribe = new EventEmitter<void>();
+  @Output() correctionsChanged = new EventEmitter<string>();
 
   isEditing = signal<boolean>(false);
   draft = signal<string>('');
@@ -151,6 +197,11 @@ export class SessionStoryComponent implements OnChanges {
 
   toggleTranscript(): void {
     this.showTranscript.set(!this.showTranscript());
+  }
+
+  onCorrectionsInput(event: Event): void {
+    const target = event.target as HTMLTextAreaElement;
+    this.correctionsChanged.emit(target.value);
   }
 
   downloadMarkdown(): void {

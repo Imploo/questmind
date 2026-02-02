@@ -85,9 +85,12 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
             [transcript]="currentSession()?.transcription?.rawTranscript || ''"
             [isBusy]="isBusy()"
             [canRetranscribe]="!!currentSession()?.storageMetadata"
+            [corrections]="userCorrections()"
+            [correctionsStatus]="correctionsSaveStatus()"
             (storyUpdated)="saveStoryEdits($event)"
             (regenerate)="regenerateStory()"
             (retranscribe)="retranscribeSession()"
+            (correctionsChanged)="onCorrectionsInput($event)"
           ></app-session-story>
         }
 
@@ -121,9 +124,14 @@ export class AudioSessionComponent implements OnDestroy {
   userId = computed(() => this.authService.currentUser()?.uid || null);
   kankaEnabled = signal(false);
   kankaAvailable = signal(false);
+  userCorrections = signal<string>('');
+  correctionsSaveStatus = signal<'idle' | 'saving' | 'saved'>('idle');
 
   private processingSub?: Subscription;
   private stageTimerSub?: Subscription;
+  private correctionsSaveTimer?: ReturnType<typeof setTimeout>;
+  private correctionsStatusTimer?: ReturnType<typeof setTimeout>;
+  private activeCorrectionsSessionId: string | null = null;
 
   stage = signal<Stage>('idle');
   progress = signal<number>(0);
@@ -159,6 +167,24 @@ export class AudioSessionComponent implements OnDestroy {
         this.selectSession(sessions[0]);
       }
     });
+
+    effect(() => {
+      const session = this.currentSession();
+      const sessionId = session?.id ?? null;
+      if (sessionId !== this.activeCorrectionsSessionId) {
+        this.activeCorrectionsSessionId = sessionId;
+        this.userCorrections.set(session?.userCorrections ?? '');
+        this.correctionsSaveStatus.set('idle');
+        this.clearCorrectionsTimers();
+        return;
+      }
+      if (this.correctionsSaveStatus() === 'idle') {
+        const corrections = session?.userCorrections ?? '';
+        if (corrections !== this.userCorrections()) {
+          this.userCorrections.set(corrections);
+        }
+      }
+    });
   }
 
   startProcessing(upload: AudioUpload): void {
@@ -176,6 +202,8 @@ export class AudioSessionComponent implements OnDestroy {
 
     const session = this.sessionStateService.createSessionDraft(upload);
     this.currentSession.set(session);
+    this.userCorrections.set(session.userCorrections ?? '');
+    this.correctionsSaveStatus.set('idle');
     this.refreshSessions();
 
     this.processingSub?.unsubscribe();
@@ -240,13 +268,17 @@ export class AudioSessionComponent implements OnDestroy {
         session.transcription.rawTranscript,
         session.title,
         session.sessionDate,
+        this.userCorrections(),
         this.kankaEnabled() && this.kankaAvailable()
       )
       .subscribe({
         next: content => {
+          const storyRegenerationCount = (session.storyRegenerationCount ?? 0) + 1;
           this.sessionStateService.updateSession(session.id, {
             content,
-            status: 'completed'
+            status: 'completed',
+            storyRegeneratedAt: new Date().toISOString(),
+            storyRegenerationCount
           });
           this.finishStage('completed', 'Story updated.');
         },
@@ -292,6 +324,8 @@ export class AudioSessionComponent implements OnDestroy {
 
   selectSession(session: AudioSessionRecord): void {
     this.currentSession.set(session);
+    this.userCorrections.set(session.userCorrections ?? '');
+    this.correctionsSaveStatus.set('idle');
     switch (session.status) {
       case 'completed':
         this.stage.set('completed');
@@ -321,6 +355,7 @@ export class AudioSessionComponent implements OnDestroy {
   ngOnDestroy(): void {
     this.processingSub?.unsubscribe();
     this.stageTimerSub?.unsubscribe();
+    this.clearCorrectionsTimers();
   }
 
   toggleKankaIntegration(): void {
@@ -406,6 +441,7 @@ export class AudioSessionComponent implements OnDestroy {
         transcription.rawTranscript,
         session.title,
         session.sessionDate,
+        this.userCorrections(),
         this.kankaEnabled() && this.kankaAvailable()
       )
       .subscribe({
@@ -467,6 +503,37 @@ export class AudioSessionComponent implements OnDestroy {
     this.statusMessage.set('Waiting for upload.');
   }
 
+  onCorrectionsInput(corrections: string): void {
+    this.userCorrections.set(corrections);
+    this.correctionsSaveStatus.set('saving');
+    this.clearCorrectionsSaveTimer();
+    this.correctionsSaveTimer = setTimeout(() => {
+      void this.saveCorrections(corrections);
+    }, 500);
+  }
+
+  private async saveCorrections(corrections: string): Promise<void> {
+    const session = this.currentSession();
+    if (!session) {
+      this.correctionsSaveStatus.set('idle');
+      return;
+    }
+    try {
+      await this.sessionStateService.persistSessionPatch(session.id, {
+        userCorrections: corrections,
+        correctionsUpdatedAt: new Date().toISOString()
+      });
+      this.correctionsSaveStatus.set('saved');
+      this.clearCorrectionsStatusTimer();
+      this.correctionsStatusTimer = setTimeout(() => {
+        this.correctionsSaveStatus.set('idle');
+      }, 2000);
+    } catch (error) {
+      console.error('Failed to save corrections:', error);
+      this.correctionsSaveStatus.set('idle');
+    }
+  }
+
   private refreshSessions(): void {
     const current = this.currentSession();
     if (current) {
@@ -479,5 +546,22 @@ export class AudioSessionComponent implements OnDestroy {
 
   isBusy(): boolean {
     return ['uploading', 'transcribing', 'generating'].includes(this.stage());
+  }
+
+  private clearCorrectionsTimers(): void {
+    this.clearCorrectionsSaveTimer();
+    this.clearCorrectionsStatusTimer();
+  }
+
+  private clearCorrectionsSaveTimer(): void {
+    if (this.correctionsSaveTimer) {
+      clearTimeout(this.correctionsSaveTimer);
+    }
+  }
+
+  private clearCorrectionsStatusTimer(): void {
+    if (this.correctionsStatusTimer) {
+      clearTimeout(this.correctionsStatusTimer);
+    }
   }
 }

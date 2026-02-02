@@ -14,6 +14,11 @@ WHEN CAMPAIGN CONTEXT IS PROVIDED:
 - Reference NPC descriptions to add depth
 - Maintain consistency with campaign lore
 
+WHEN DM CORRECTIONS ARE PROVIDED:
+- Apply the corrections exactly as written
+- Prioritize corrections over ambiguous transcript interpretations
+- Use corrected spellings for names, locations, and items
+
 INCLUDE:
 - Combat encounters with key rolls and outcomes
 - Character decisions and development

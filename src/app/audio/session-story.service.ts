@@ -24,6 +24,7 @@ export class SessionStoryService {
     transcript: string,
     title: string,
     sessionDate?: string,
+    userCorrections?: string,
     enableKankaLookup: boolean = true
   ): Observable<string> {
     if (!this.apiKeyConfigured()) {
@@ -36,12 +37,12 @@ export class SessionStoryService {
     const trimmedTranscript = transcript.trim();
 
     if (enableKankaLookup && this.kankaService.isConfigured()) {
-      return this.generateWithKankaContext(trimmedTranscript, title, sessionDate).pipe(
-        catchError(() => this.generateStory(trimmedTranscript, title, sessionDate))
+      return this.generateWithKankaContext(trimmedTranscript, title, sessionDate, userCorrections).pipe(
+        catchError(() => this.generateStory(trimmedTranscript, title, sessionDate, userCorrections))
       );
     }
 
-    return this.generateStory(trimmedTranscript, title, sessionDate);
+    return this.generateStory(trimmedTranscript, title, sessionDate, userCorrections);
   }
 
   isKankaAvailable(): boolean {
@@ -55,10 +56,11 @@ export class SessionStoryService {
   private generateWithKankaContext(
     transcript: string,
     title: string,
-    sessionDate?: string
+    sessionDate?: string,
+    userCorrections?: string
   ): Observable<string> {
     return this.kankaService.getAllEntities().pipe(
-      switchMap(context => this.generateStoryWithContext(transcript, title, sessionDate, context))
+      switchMap(context => this.generateStoryWithContext(transcript, title, sessionDate, context, userCorrections))
     );
   }
 
@@ -66,21 +68,29 @@ export class SessionStoryService {
     transcript: string,
     title: string,
     sessionDate: string | undefined,
-    context: KankaSearchResult
+    context: KankaSearchResult,
+    userCorrections?: string
   ): Observable<string> {
     const contextPrompt = this.buildContextPrompt(context);
-    const promptText = `${SESSION_STORY_GENERATOR_PROMPT}\n\nCAMPAIGN CONTEXT:\n${contextPrompt}\n\nSESSION TITLE: ${title}\nSESSION DATE: ${
+    const correctionsPrompt = this.buildCorrectionsPrompt(userCorrections);
+    const promptText = `${SESSION_STORY_GENERATOR_PROMPT}\n\nCAMPAIGN CONTEXT:\n${contextPrompt}${correctionsPrompt}\n\nSESSION TITLE: ${title}\nSESSION DATE: ${
       sessionDate || 'Unknown'
-    }\n\nTRANSCRIPT:\n${transcript}\n\nWrite the recap in markdown, using the campaign context to ensure accuracy of names, locations, and quest details.`;
+    }\n\nTRANSCRIPT:\n${transcript}\n\nWrite the recap in markdown, using the campaign context to ensure accuracy of names, locations, and quest details. Apply DM corrections when provided.`;
 
     console.log('Kanka prompt', promptText);
     return this.runPrompt(promptText);
   }
 
-  private generateStory(transcript: string, title: string, sessionDate?: string): Observable<string> {
-    const promptText = `${SESSION_STORY_GENERATOR_PROMPT}\n\nSESSION TITLE: ${title}\nSESSION DATE: ${
+  private generateStory(
+    transcript: string,
+    title: string,
+    sessionDate?: string,
+    userCorrections?: string
+  ): Observable<string> {
+    const correctionsPrompt = this.buildCorrectionsPrompt(userCorrections);
+    const promptText = `${SESSION_STORY_GENERATOR_PROMPT}${correctionsPrompt}\n\nSESSION TITLE: ${title}\nSESSION DATE: ${
       sessionDate || 'Unknown'
-    }\n\nTRANSCRIPT:\n${transcript}\n\nWrite the recap in markdown.`;
+    }\n\nTRANSCRIPT:\n${transcript}\n\nWrite the recap in markdown. Apply DM corrections when provided.`;
 
     return this.runPrompt(promptText);
   }
@@ -148,6 +158,14 @@ export class SessionStoryService {
     addSection('ORGANISATIONS', context.organisations);
 
     return sections.length ? sections.join('\n\n') : 'No matching campaign context found.';
+  }
+
+  private buildCorrectionsPrompt(corrections?: string): string {
+    const trimmed = corrections?.trim();
+    if (!trimmed) {
+      return '';
+    }
+    return `\n\nDM CORRECTIONS:\nThe Dungeon Master has provided the following corrections and guidance. Apply these over any ambiguous transcript interpretations.\n\n${trimmed}`;
   }
 
   private summarizeEntry(entry?: string): string {

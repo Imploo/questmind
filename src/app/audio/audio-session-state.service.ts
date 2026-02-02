@@ -86,32 +86,24 @@ export class AudioSessionStateService {
   }
 
   updateSession(id: string, patch: Partial<AudioSessionRecord>): void {
-    const userId = this.activeUserId;
-    const sessions = this.sessions();
-    const index = sessions.findIndex(session => session.id === id);
-    if (index === -1) {
-      return;
-    }
-    const updatedAt = new Date().toISOString();
-    const updated = {
-      ...sessions[index],
-      ...patch,
-      updatedAt
-    };
-    const next = [...sessions];
-    next[index] = updated;
-    this.sessions.set(next);
-
-    if (!this.db || !userId) {
-      if (!userId) {
-        console.error('No active user set for audio sessions.');
-      }
-      return;
-    }
-    const docRef = doc(this.db, 'users', userId, 'audioSessions', id);
-    void updateDoc(docRef, { ...patch, updatedAt }).catch(error => {
+    void this.persistSessionPatch(id, patch).catch(error => {
       console.error('Failed to update audio session in Firestore.', error);
     });
+  }
+
+  async persistSessionPatch(id: string, patch: Partial<AudioSessionRecord>): Promise<void> {
+    const { updatedAt } = this.applySessionPatch(id, patch) || {};
+
+    if (!updatedAt) {
+      return;
+    }
+
+    if (!this.db || !this.activeUserId) {
+      throw new Error('No active user set for audio sessions.');
+    }
+
+    const docRef = doc(this.db, 'users', this.activeUserId, 'audioSessions', id);
+    await updateDoc(docRef, { ...patch, updatedAt });
   }
 
   private setActiveUser(userId: string): void {
@@ -157,6 +149,27 @@ export class AudioSessionStateService {
       next[index] = record;
     }
     this.sessions.set(next);
+  }
+
+  private applySessionPatch(
+    id: string,
+    patch: Partial<AudioSessionRecord>
+  ): { updatedAt: string } | null {
+    const sessions = this.sessions();
+    const index = sessions.findIndex(session => session.id === id);
+    if (index === -1) {
+      return null;
+    }
+    const updatedAt = new Date().toISOString();
+    const updated = {
+      ...sessions[index],
+      ...patch,
+      updatedAt
+    };
+    const next = [...sessions];
+    next[index] = updated;
+    this.sessions.set(next);
+    return { updatedAt };
   }
 
   private defaultTitle(fileName: string): string {
