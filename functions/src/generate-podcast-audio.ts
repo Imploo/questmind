@@ -1,16 +1,18 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
-import { GoogleGenAI } from '@google/genai';
+import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import ffmpeg from 'fluent-ffmpeg';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { Readable } from 'stream';
 
-const GEMINI_TTS_MODEL = process.env.PODCAST_TTS_MODEL || 'gemini-2.5-flash-tts';
+// ElevenLabs voice IDs - configure via environment variables or use defaults
+// You can find voice IDs at: https://elevenlabs.io/voice-library
 const HOST_VOICES: Record<'host1' | 'host2', string> = {
-  host1: 'Puck',
-  host2: 'Aoede'
+  host1: process.env.ELEVENLABS_HOST1_VOICE || 'iiidtqDt9FBdT1vfBluA', // Adam - deep, professional male voice
+  host2: process.env.ELEVENLABS_HOST2_VOICE || 'D6MRWCKoavI2xUJXmaCb', // Sarah - warm, engaging female voice
 };
 
 interface PodcastSegment {
@@ -43,7 +45,10 @@ export const generatePodcastAudio = onCall(
       'http://localhost:4200',
       /^https:\/\/.*\.web\.app$/,
       /^https:\/\/.*\.firebaseapp\.com$/
-    ]
+    ],
+    secrets: ['ELEVENLABS_API_KEY'],
+    timeoutSeconds: 1200, // 20 minutes for multi-segment TTS generation
+    memory: '1GiB' // Increased memory for ffmpeg processing
   },
   async (request: CallableRequest<PodcastGenerationRequest>) => {
     const { auth, data } = request;
@@ -67,19 +72,16 @@ export const generatePodcastAudio = onCall(
       throw new HttpsError('invalid-argument', 'Script segments are required.');
     }
 
-    const apiKey =
-      process.env.GOOGLE_AI_API_KEY ||
-      process.env.GEMINI_API_KEY ||
-      process.env.GOOGLE_API_KEY;
+    const apiKey = process.env.ELEVENLABS_API_KEY;
 
     if (!apiKey) {
-      throw new HttpsError('failed-precondition', 'Google AI API key is not configured.');
+      throw new HttpsError('failed-precondition', 'ElevenLabs API key is not configured.');
     }
 
-    const ai = new GoogleGenAI({ apiKey });
+    const elevenlabs = new ElevenLabsClient({ apiKey });
     const db = getFirestore();
     const storage = getStorage().bucket();
-    const campaignRef = db.doc(`campaigns/${campaignId}/metadata`);
+    const campaignRef = db.doc(`campaigns/${campaignId}`);
     const campaignSnap = await campaignRef.get();
 
     if (!campaignSnap.exists) {
@@ -105,10 +107,11 @@ export const generatePodcastAudio = onCall(
     const existingPodcasts = Array.isArray(sessionData.podcasts) ? sessionData.podcasts : [];
     const existingEntry = existingPodcasts.find((podcast: any) => podcast?.version === version);
 
+    const now = new Date();
     const basePodcastEntry = {
       version,
-      createdAt: existingEntry?.createdAt ?? FieldValue.serverTimestamp(),
-      scriptGeneratedAt: existingEntry?.scriptGeneratedAt ?? FieldValue.serverTimestamp(),
+      createdAt: existingEntry?.createdAt ?? now,
+      scriptGeneratedAt: existingEntry?.scriptGeneratedAt ?? now,
       duration: script.estimatedDuration,
       storyVersion: sessionData.storyRegenerationCount ?? existingEntry?.storyVersion,
       script,
@@ -126,46 +129,89 @@ export const generatePodcastAudio = onCall(
     const outputPath = path.join(tempDir, `podcast-${sessionId}-v${version}.mp3`);
 
     try {
-      for (let i = 0; i < script.segments.length; i++) {
-        const segment = script.segments[i];
-        const voiceName = HOST_VOICES[segment.speaker] ?? HOST_VOICES.host1;
+      // Generate segments with ElevenLabs
+      // ElevenLabs has generous rate limits, so we can use higher concurrency
+      const CONCURRENCY_LIMIT = 10;
+      const generatedSegments: string[] = [];
 
-        const ttsConfig = {
-          responseModalities: ['AUDIO'],
-          audioConfig: {
-            audioEncoding: 'MP3',
-            voiceConfig: {
-              prebuiltVoiceConfig: {
-                voiceName
+      for (let batchStart = 0; batchStart < script.segments.length; batchStart += CONCURRENCY_LIMIT) {
+        const batchEnd = Math.min(batchStart + CONCURRENCY_LIMIT, script.segments.length);
+        const batch = script.segments.slice(batchStart, batchEnd);
+
+        console.log(`Processing segments ${batchStart + 1}-${batchEnd} of ${script.segments.length}`);
+
+        const batchPromises = batch.map(async (segment, batchIndex) => {
+          const i = batchStart + batchIndex;
+          const voiceId = HOST_VOICES[segment.speaker] ?? HOST_VOICES.host1;
+
+          // Retry logic with exponential backoff for rate limits
+          let audioStream;
+          let retries = 0;
+          const maxRetries = 3;
+
+          while (retries <= maxRetries) {
+            try {
+              audioStream = await elevenlabs.textToSpeech.convert(voiceId, {
+                text: segment.text,
+                modelId: 'eleven_turbo_v2_5', // Fast, high-quality model
+                voiceSettings: {
+                  stability: 0.5,
+                  similarityBoost: 0.75,
+                  style: 0.0,
+                  useSpeakerBoost: true
+                }
+              });
+              break; // Success, exit retry loop
+            } catch (error: any) {
+              if ((error?.status === 429 || error?.statusCode === 429) && retries < maxRetries) {
+                const delay = Math.pow(2, retries) * 2000; // 2s, 4s, 8s
+                console.log(`Rate limit hit for segment ${i + 1}, retrying in ${delay / 1000}s...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+                retries++;
+              } else {
+                throw error; // Re-throw if not rate limit or max retries exceeded
               }
             }
           }
-        } as any;
 
-        const response = await ai.models.generateContent({
-          model: GEMINI_TTS_MODEL,
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                {
-                  text: segment.text
-                }
-              ]
-            }
-          ],
-          config: ttsConfig
+          if (!audioStream) {
+            throw new Error(`No audio stream returned for segment ${i + 1}.`);
+          }
+
+          // Convert stream to buffer
+          const chunks: Buffer[] = [];
+          const readable = Readable.from(audioStream as any);
+
+          for await (const chunk of readable) {
+            chunks.push(Buffer.from(chunk));
+          }
+
+          const audioBuffer = Buffer.concat(chunks);
+
+          // Verify we have valid audio data
+          if (audioBuffer.length === 0) {
+            throw new Error(`Empty audio buffer for segment ${i + 1}.`);
+          }
+
+          console.log(`Segment ${i + 1}: Generated ${audioBuffer.length} bytes`);
+
+          const segmentPath = path.join(tempDir, `segment-${i}.mp3`);
+          fs.writeFileSync(segmentPath, audioBuffer);
+
+          return segmentPath;
         });
 
-        const audioData = extractAudioData(response);
-        if (!audioData) {
-          throw new Error(`No audio data returned for segment ${i + 1}.`);
-        }
+        const batchResults = await Promise.all(batchPromises);
+        generatedSegments.push(...batchResults);
 
-        const segmentPath = path.join(tempDir, `segment-${i}.mp3`);
-        fs.writeFileSync(segmentPath, Buffer.from(audioData, 'base64'));
-        segmentFiles.push(segmentPath);
+        // Small delay between batches to be respectful of API limits
+        if (batchEnd < script.segments.length) {
+          console.log('Waiting 2 seconds before next batch...');
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
       }
+
+      segmentFiles.push(...generatedSegments);
 
       await combineAudioSegments(segmentFiles, outputPath);
 
@@ -193,7 +239,7 @@ export const generatePodcastAudio = onCall(
         ...basePodcastEntry,
         audioUrl: fileUrl,
         fileSize,
-        audioGeneratedAt: FieldValue.serverTimestamp(),
+        audioGeneratedAt: new Date(),
         status: 'completed' as const,
         error: null
       };
@@ -233,15 +279,6 @@ export const generatePodcastAudio = onCall(
     }
   }
 );
-
-function extractAudioData(response: any): string | null {
-  const parts = response?.candidates?.[0]?.content?.parts;
-  if (!parts || !Array.isArray(parts)) {
-    return null;
-  }
-  const audioPart = parts.find((part: any) => part?.inlineData?.data);
-  return audioPart?.inlineData?.data ?? null;
-}
 
 function upsertPodcast(existing: any[], nextEntry: any): any[] {
   const index = existing.findIndex(podcast => podcast?.version === nextEntry.version);

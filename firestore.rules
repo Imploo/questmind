@@ -12,10 +12,12 @@ service cloud.firestore {
 
     function isCampaignMember(campaignId) {
       return isAuthenticated() && (
+        // Check if campaign ID is in user's profile
+        (exists(/databases/$(database)/documents/users/$(getUserId())) &&
+          campaignId in get(/databases/$(database)/documents/users/$(getUserId())).data.campaigns) ||
+        // Fallback: check campaign document directly
         (exists(/databases/$(database)/documents/campaigns/$(campaignId)) &&
-          get(/databases/$(database)/documents/campaigns/$(campaignId)).data.members[getUserId()] != null) ||
-        (exists(/databases/$(database)/documents/campaigns/$(campaignId)/metadata) &&
-          get(/databases/$(database)/documents/campaigns/$(campaignId)/metadata).data.members[getUserId()] != null)
+          getUserId() in get(/databases/$(database)/documents/campaigns/$(campaignId)).data.members)
       );
     }
 
@@ -37,7 +39,16 @@ service cloud.firestore {
     // User profiles
     match /users/{userId} {
       allow read: if isAuthenticated();
+
+      // Users can write to their own profile
       allow write: if isAuthenticated() && getUserId() == userId;
+
+      // Allow adding campaigns to other users' profiles (for invitations)
+      // Security is enforced by campaign document rules - users can only read campaigns they're members of
+      allow update: if isAuthenticated() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['campaigns', 'updatedAt']) &&
+        // Ensure campaigns array only grows (no removals)
+        request.resource.data.campaigns.hasAll(resource.data.get('campaigns', []));
     }
 
     // Campaigns

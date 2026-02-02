@@ -10,11 +10,11 @@ import { PodcastScript } from './audio-session.models';
   providedIn: 'root'
 })
 export class PodcastAudioService {
-  private readonly functions = getFunctions(getApp(), 'europe-west1');
+  private readonly functions = getFunctions(getApp(), 'europe-west4');
   private currentAudio: HTMLAudioElement | null = null;
 
   /**
-   * Generate a complete MP3 via Cloud Function using Gemini 2.5 Flash TTS.
+   * Generate a complete MP3 via Cloud Function using Gemini 2.5 Pro TTS.
    */
   async generatePodcastMP3(
     campaignId: string,
@@ -44,7 +44,7 @@ export class PodcastAudioService {
       >(this.functions, 'generatePodcastAudio');
 
       if (onProgress) {
-        onProgress(20, 'Synthesizing with Gemini 2.5 Flash TTS...');
+        onProgress(20, 'Synthesizing with Gemini 2.5 Pro TTS...');
       }
 
       const result = await generateAudio({

@@ -140,8 +140,8 @@ interface SessionWithPodcasts {
       @if (!loading() && campaignId() && sessions().length > 0) {
         <div class="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
           <p class="text-sm text-blue-700 m-0">
-            <strong>💡 Info:</strong> Podcasts worden opgeslagen als MP3 en gebruiken Gemini 2.5 Flash TTS voor natuurlijke
-            Nederlandse stemmen.
+            <strong>💡 Info:</strong> Podcasts worden opgeslagen als MP3 en gebruiken Gemini 2.5 Pro TTS voor hoogwaardige
+            Nederlandse stemmen met natuurlijke intonatie.
           </p>
         </div>
       }
@@ -171,13 +171,16 @@ export class PodcastLibraryComponent implements OnInit {
   constructor() {
     const app = getApp();
     this.firestore = getFirestore(app);
-  }
 
-  async ngOnInit() {
+    // Set up effect to reload podcasts when campaign changes
     effect(() => {
       this.campaignContext.selectedCampaignId();
       void this.loadPodcasts();
     });
+  }
+
+  async ngOnInit() {
+    // Initial load will be triggered by the effect in the constructor
   }
 
   private async loadPodcasts() {

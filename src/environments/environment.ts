@@ -1,5 +1,10 @@
 export const environment = {
   production: true,
+  eleven: {
+    voice1: 'Bill Oxley',
+    voice2: 'Ruth',
+    apiKey: 'private'
+  },
   // Get your free Google AI API key from: https://aistudio.google.com/app/apikey
   // Then replace the value below with your actual API key
   googleAiApiKey: 'placeholder',

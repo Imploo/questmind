@@ -1,7 +1,16 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(gsutil cors set:*)",
+      "Bash(gcloud projects:*)",
+      "Bash(gcloud config set:*)",
+      "Bash(gsutil cors get:*)",
+      "Bash(wc:*)",
+      "Bash(firebase deploy:*)",
+      "Bash(npm install:*)",
+      "Bash(npm uninstall:*)"
     ]
   }
 }

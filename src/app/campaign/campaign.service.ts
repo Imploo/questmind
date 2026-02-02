@@ -128,10 +128,20 @@ export class CampaignService {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
-    const targetUser = await this.findUserByEmail(normalizedEmail);
-    if (!targetUser) {
-      throw new Error("User doesn't exist");
+    console.log('Attempting to invite user with email:', normalizedEmail);
+
+    let targetUser;
+    try {
+      targetUser = await this.findUserByEmail(normalizedEmail);
+      if (!targetUser) {
+        throw new Error(`No user found with email: ${normalizedEmail}. The user must create an account first.`);
+      }
+      console.log('Target user found:', targetUser);
+    } catch (error: any) {
+      console.error('Error during user lookup:', error);
+      throw error;
     }
+
     if (campaign.members?.[targetUser.uid]) {
       throw new Error('User is already a member of this campaign');
     }
@@ -207,18 +217,34 @@ export class CampaignService {
 
   private async findUserByEmail(email: string): Promise<{ uid: string; email: string } | null> {
     if (!this.db) {
+      console.error('Firestore DB is not initialized');
       return null;
     }
-    const usersRef = collection(this.db, 'users');
-    const q = query(usersRef, where('email', '==', email.trim().toLowerCase()));
-    const snapshot = await getDocs(q);
-    if (snapshot.empty) {
-      return null;
+    const normalizedEmail = email.trim().toLowerCase();
+    console.log('Searching for user with email:', normalizedEmail);
+
+    try {
+      const usersRef = collection(this.db, 'users');
+      const q = query(usersRef, where('email', '==', normalizedEmail));
+      const snapshot = await getDocs(q);
+
+      console.log('Query returned', snapshot.size, 'results');
+
+      if (snapshot.empty) {
+        console.warn('No user found with email:', normalizedEmail);
+        return null;
+      }
+
+      const docSnap = snapshot.docs[0];
+      const userData = {
+        uid: docSnap.id,
+        email: docSnap.data()['email']
+      };
+      console.log('Found user:', userData);
+      return userData;
+    } catch (error) {
+      console.error('Error searching for user by email:', error);
+      throw error;
     }
-    const docSnap = snapshot.docs[0];
-    return {
-      uid: docSnap.id,
-      email: docSnap.data()['email']
-    };
   }
 }

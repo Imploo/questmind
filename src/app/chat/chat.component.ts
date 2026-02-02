@@ -32,7 +32,7 @@ import { ChatService, Message } from './chat.service';
               : 'self-start bg-white border border-gray-200 rounded-bl-sm'"
           >
             <div class="flex justify-between mb-2 text-xs opacity-80">
-              <span class="font-semibold">{{ message.sender === 'user' ? 'You' : 'AI Assistant' }}</span>
+              <span class="font-semibold">{{ message.sender === 'user' ? 'You' : 'The Sidekick' }}</span>
               <span class="text-[0.7rem]">{{ formatTime(message.timestamp) }}</span>
             </div>
             <div class="leading-relaxed">
