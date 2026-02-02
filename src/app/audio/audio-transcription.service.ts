@@ -220,13 +220,27 @@ export class AudioTranscriptionService {
     });
 
     // Initialize transcription record if we have the required info
+    let existingRecord: TranscriptionRecord | null = null;
     if (userId && transcriptionId && sessionId && storageMetadata) {
       // Check for existing incomplete transcription
-      const existingRecord = await this.getExistingTranscriptionRecord(userId, sessionId, transcriptionId);
+      existingRecord = await this.getExistingTranscriptionRecord(userId, sessionId, transcriptionId);
       
       if (existingRecord && !existingRecord.isComplete && existingRecord.chunks && existingRecord.chunks.length > 0) {
         console.log('Resuming incomplete transcription...');
         console.log(`Found ${existingRecord.completedChunks}/${existingRecord.totalChunks} completed chunks`);
+        
+        // Load completed chunk results from existing record
+        for (const existingChunk of existingRecord.chunks) {
+          if (existingChunk.status === 'completed' && existingChunk.segments) {
+            const matchingChunk = chunks.find(c => c.index === existingChunk.index);
+            if (matchingChunk) {
+              chunkResults.push({
+                chunk: matchingChunk,
+                result: { segments: existingChunk.segments }
+              });
+            }
+          }
+        }
       } else {
         // Initialize new transcription record
         await this.initializeTranscriptionRecord(userId, sessionId, transcriptionId, storageMetadata, chunks.length);
@@ -234,6 +248,13 @@ export class AudioTranscriptionService {
     }
 
     for (const chunk of chunks) {
+      // Check if this chunk was already completed
+      const existingChunk = existingRecord?.chunks?.find(c => c.index === chunk.index);
+      if (existingChunk?.status === 'completed') {
+        console.log(`Skipping already-completed chunk ${chunk.index + 1}/${chunks.length}`);
+        continue;
+      }
+
       const transcriptionChunk: TranscriptionChunk = {
         index: chunk.index,
         startTimeSeconds: chunk.startTimeSeconds,
@@ -866,6 +887,38 @@ CHUNK CONTEXT:
 
     const docSnap = await getDoc(transcriptionRef);
     return docSnap.exists() ? (docSnap.data() as TranscriptionRecord) : null;
+  }
+
+  async findIncompleteTranscription(userId: string, sessionId: string): Promise<string | null> {
+    if (!this.db) return null;
+
+    const transcriptionsRef = collection(
+      this.db,
+      'users',
+      userId,
+      'audioSessions',
+      sessionId,
+      'transcriptions'
+    );
+    const transcriptionsQuery = query(transcriptionsRef, orderBy('createdAt', 'desc'));
+
+    try {
+      const snapshot = await getDocs(transcriptionsQuery);
+      
+      // Find the first incomplete transcription
+      for (const docSnap of snapshot.docs) {
+        const record = docSnap.data() as TranscriptionRecord;
+        if (!record.isComplete && record.status === 'processing' && record.chunks && record.chunks.length > 0) {
+          console.log(`Found incomplete transcription: ${record.id} (${record.completedChunks}/${record.totalChunks} chunks)`);
+          return record.id;
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Failed to search for incomplete transcriptions:', error);
+      return null;
+    }
   }
 
   private async markTranscriptionComplete(

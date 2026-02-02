@@ -54,6 +54,30 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
         </div>
 
         @if (currentSession()) {
+          <div class="border border-gray-200 rounded-xl bg-white shadow-sm p-4">
+            <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p class="m-0 text-sm font-semibold text-gray-700">Kanka campaign context</p>
+                <p class="m-0 text-xs text-gray-500">
+                  Use campaign data to improve name accuracy and quest references.
+                </p>
+                @if (!kankaAvailable()) {
+                  <p class="m-0 text-xs text-amber-600">
+                    Configure Kanka token and campaign ID in the environment to enable this.
+                  </p>
+                }
+              </div>
+              <label class="inline-flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  [checked]="kankaEnabled()"
+                  [disabled]="!kankaAvailable() || isBusy()"
+                  (change)="toggleKankaIntegration()"
+                />
+                <span>Enable</span>
+              </label>
+            </div>
+          </div>
           <app-session-story
             [title]="currentSession()?.title || 'Session Story'"
             [subtitle]="formatSubtitle(currentSession())"
@@ -95,6 +119,8 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
 })
 export class AudioSessionComponent implements OnDestroy {
   userId = computed(() => this.authService.currentUser()?.uid || null);
+  kankaEnabled = signal(false);
+  kankaAvailable = signal(false);
 
   private processingSub?: Subscription;
   private stageTimerSub?: Subscription;
@@ -114,6 +140,9 @@ export class AudioSessionComponent implements OnDestroy {
     private readonly sessionStateService: AudioSessionStateService,
     public readonly authService: AuthService
   ) {
+    const kankaAvailable = this.sessionStoryService.isKankaAvailable();
+    this.kankaAvailable.set(kankaAvailable);
+    this.kankaEnabled.set(kankaAvailable);
     this.sessions = this.sessionStateService.sessions;
 
     effect(() => {
@@ -210,7 +239,8 @@ export class AudioSessionComponent implements OnDestroy {
       .generateStoryFromTranscript(
         session.transcription.rawTranscript,
         session.title,
-        session.sessionDate
+        session.sessionDate,
+        this.kankaEnabled() && this.kankaAvailable()
       )
       .subscribe({
         next: content => {
@@ -224,15 +254,31 @@ export class AudioSessionComponent implements OnDestroy {
       });
   }
 
-  retranscribeSession(): void {
+  async retranscribeSession(): Promise<void> {
     const session = this.currentSession();
+    const uid = this.userId();
     if (!session?.storageMetadata) {
       this.failSession('No stored audio file found for this session.');
       return;
     }
+    if (!uid) {
+      this.failSession('User not authenticated.');
+      return;
+    }
+
+    // Check for existing incomplete transcription
+    const existingTranscriptionId = await this.audioTranscriptionService.findIncompleteTranscription(
+      uid,
+      session.id
+    );
+
+    if (existingTranscriptionId) {
+      console.log('Found incomplete transcription, resuming:', existingTranscriptionId);
+      this.statusMessage.set('Resuming incomplete transcription...');
+    }
 
     // No need to download the file - Gemini can access Firebase Storage URLs directly
-    this.runTranscription(session.storageMetadata);
+    this.runTranscription(session.storageMetadata, undefined, existingTranscriptionId || undefined);
   }
 
   saveStoryEdits(content: string): void {
@@ -277,7 +323,11 @@ export class AudioSessionComponent implements OnDestroy {
     this.stageTimerSub?.unsubscribe();
   }
 
-  private runTranscription(storage: StorageMetadata, file?: File): void {
+  toggleKankaIntegration(): void {
+    this.kankaEnabled.update(value => !value);
+  }
+
+  private runTranscription(storage: StorageMetadata, file?: File, existingTranscriptionId?: string): void {
     this.stage.set('transcribing');
     this.statusMessage.set('Transcribing audio...');
     this.animateStageProgress(2200, 35);
@@ -289,8 +339,8 @@ export class AudioSessionComponent implements OnDestroy {
       return;
     }
 
-    // Generate transcription ID upfront for chunk persistence
-    const transcriptionId = this.generateId();
+    // Use existing transcription ID if provided (resuming), otherwise generate new one
+    const transcriptionId = existingTranscriptionId || this.generateId();
 
     this.processingSub = this.audioTranscriptionService.transcribeAudio(storage, file, uid, transcriptionId).subscribe({
       next: transcription => {
@@ -352,7 +402,12 @@ export class AudioSessionComponent implements OnDestroy {
 
     this.processingSub?.unsubscribe();
     this.processingSub = this.sessionStoryService
-      .generateStoryFromTranscript(transcription.rawTranscript, session.title, session.sessionDate)
+      .generateStoryFromTranscript(
+        transcription.rawTranscript,
+        session.title,
+        session.sessionDate,
+        this.kankaEnabled() && this.kankaAvailable()
+      )
       .subscribe({
         next: content => {
           this.sessionStateService.updateSession(session.id, {

@@ -32,6 +32,7 @@ REQUIREMENTS:
 - Use clear, complete sentences
 - Provide timestamps in seconds from the start of the audio for each segment
 - Keep speaker labels short if you can infer them, otherwise omit
+- Skip or remove segments that contain one word
 
 OUTPUT FORMAT EXAMPLE:
 {

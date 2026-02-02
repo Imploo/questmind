@@ -10,6 +10,14 @@ export const environment = {
   // Note: Gemma models don't support audio, use Gemini models for audio
   // Options: 'gemini-3-flash-preview', 'gemini-2.5-flash', 'gemini-2.0-flash', etc.
   audioModel: 'gemini-2.5-flash',
+  kanka: {
+    enabled: true,
+    apiUrl: 'https://api.kanka.io/1.0',
+    token: 'YOUR_KANKA_PERSONAL_ACCESS_TOKEN',
+    campaignId: 'YOUR_CAMPAIGN_ID',
+    maxContextEntities: 20,
+    cacheTimeout: 300000
+  },
   firebaseConfig: {
     apiKey: "AIzaSyCMNRdjyllSufbPLfxdVsVwrkL9HL0iO-I",
     authDomain: "questmind-dnd.firebaseapp.com",
