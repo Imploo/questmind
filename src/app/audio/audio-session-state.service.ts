@@ -13,6 +13,7 @@ import {
 } from 'firebase/firestore';
 
 import { AuthService } from '../auth/auth.service';
+import { CampaignContextService } from '../campaign/campaign-context.service';
 import {
   AudioSessionRecord,
   AudioUpload
@@ -26,9 +27,13 @@ export class AudioSessionStateService {
   private readonly app: FirebaseApp | null;
   private readonly db: Firestore | null;
   private activeUserId: string | null = null;
+  private activeCampaignId: string | null = null;
   private sessionsUnsubscribe?: () => void;
 
-  constructor(private readonly authService: AuthService) {
+  constructor(
+    private readonly authService: AuthService,
+    private readonly campaignContext: CampaignContextService
+  ) {
     try {
       this.app = getApp();
       this.db = getFirestore(this.app);
@@ -40,8 +45,9 @@ export class AudioSessionStateService {
 
     effect(() => {
       const user = this.authService.currentUser();
-      if (user?.uid) {
-        this.setActiveUser(user.uid);
+      const campaignId = this.campaignContext.selectedCampaignId();
+      if (user?.uid && campaignId) {
+        this.setActiveContext(user.uid, campaignId);
       } else {
         this.clearSessions();
       }
@@ -60,17 +66,25 @@ export class AudioSessionStateService {
     return this.activeUserId;
   }
 
+  getActiveCampaignId(): string | null {
+    return this.activeCampaignId;
+  }
+
   isAuthenticated(): boolean {
     return this.activeUserId !== null;
   }
 
   createSessionDraft(upload: AudioUpload): AudioSessionRecord {
-    this.setActiveUser(upload.userId);
+    this.setActiveContext(upload.userId, upload.campaignId);
     const now = new Date().toISOString();
     const id = this.generateId();
     const title = upload.sessionName?.trim() || this.defaultTitle(upload.file.name);
     const record: AudioSessionRecord = {
       id,
+      campaignId: upload.campaignId,
+      ownerId: upload.userId,
+      ownerEmail: this.authService.currentUser()?.email || '',
+      createdBy: upload.userId,
       title,
       content: '',
       sessionDate: upload.sessionDate,
@@ -81,7 +95,7 @@ export class AudioSessionStateService {
       status: 'uploading'
     };
     this.upsertSession(record);
-    this.writeSession(record, upload.userId);
+    this.writeSession(record, upload.campaignId);
     return record;
   }
 
@@ -98,25 +112,29 @@ export class AudioSessionStateService {
       return;
     }
 
-    if (!this.db || !this.activeUserId) {
-      throw new Error('No active user set for audio sessions.');
+    if (!this.db || !this.activeCampaignId) {
+      throw new Error('No active campaign set for audio sessions.');
     }
 
-    const docRef = doc(this.db, 'users', this.activeUserId, 'audioSessions', id);
+    const docRef = doc(this.db, 'campaigns', this.activeCampaignId, 'audioSessions', id);
     await updateDoc(docRef, { ...patch, updatedAt });
   }
 
-  private setActiveUser(userId: string): void {
-    if (!userId || this.activeUserId === userId) {
+  private setActiveContext(userId: string, campaignId: string): void {
+    if (!userId || !campaignId) {
+      return;
+    }
+    if (this.activeUserId === userId && this.activeCampaignId === campaignId) {
       return;
     }
     this.activeUserId = userId;
+    this.activeCampaignId = campaignId;
     this.sessionsUnsubscribe?.();
     if (!this.db) {
       console.error('Firebase is not configured. Cannot load sessions.');
       return;
     }
-    const sessionsRef = collection(this.db, 'users', userId, 'audioSessions');
+    const sessionsRef = collection(this.db, 'campaigns', campaignId, 'audioSessions');
     const sessionsQuery = query(sessionsRef, orderBy('createdAt', 'desc'));
     this.sessionsUnsubscribe = onSnapshot(
       sessionsQuery,
@@ -137,6 +155,7 @@ export class AudioSessionStateService {
     this.sessionsUnsubscribe?.();
     this.sessions.set([]);
     this.activeUserId = null;
+    this.activeCampaignId = null;
   }
 
   private upsertSession(record: AudioSessionRecord): void {
@@ -177,12 +196,12 @@ export class AudioSessionStateService {
     return `Session: ${base}`;
   }
 
-  private writeSession(record: AudioSessionRecord, userId: string): void {
+  private writeSession(record: AudioSessionRecord, campaignId: string): void {
     if (!this.db) {
       console.error('Firebase is not configured. Cannot save sessions.');
       return;
     }
-    const docRef = doc(this.db, 'users', userId, 'audioSessions', record.id);
+    const docRef = doc(this.db, 'campaigns', campaignId, 'audioSessions', record.id);
     void setDoc(docRef, record, { merge: true }).catch(error => {
       console.error('Failed to save audio session to Firestore.', error);
     });

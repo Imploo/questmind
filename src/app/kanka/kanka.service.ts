@@ -5,6 +5,7 @@ import { catchError, map, retry } from 'rxjs/operators';
 
 import { environment } from '../../environments/environment';
 import { KankaApiResponse, KankaEntity, KankaEntityType, KankaSearchResult } from './kanka.models';
+import { CampaignContextService } from '../campaign/campaign-context.service';
 
 const DEFAULT_TYPES: KankaEntityType[] = ['characters', 'locations', 'quests', 'organisations'];
 
@@ -13,6 +14,7 @@ const DEFAULT_TYPES: KankaEntityType[] = ['characters', 'locations', 'quests', '
 })
 export class KankaService {
   private readonly http = inject(HttpClient);
+  private readonly campaignContext = inject(CampaignContextService);
   private readonly cache = new Map<string, { timestamp: number; data: KankaEntity[] }>();
 
   private get headers(): HttpHeaders {
@@ -25,12 +27,13 @@ export class KankaService {
 
   isConfigured(): boolean {
     const config = environment.kanka;
+    const campaignId = this.getCampaignId();
     return (
       !!config?.enabled &&
       !!config?.token &&
       config.token !== 'YOUR_KANKA_PERSONAL_ACCESS_TOKEN' &&
-      !!config?.campaignId &&
-      config.campaignId !== 'YOUR_CAMPAIGN_ID'
+      !!campaignId &&
+      campaignId !== 'YOUR_CAMPAIGN_ID'
     );
   }
 
@@ -76,7 +79,8 @@ export class KankaService {
       return of({ id: entityId, name: 'Unknown', type: entityType });
     }
 
-    const url = `${environment.kanka.apiUrl}/campaigns/${environment.kanka.campaignId}/${entityType}/${entityId}`;
+    const campaignId = this.getCampaignId();
+    const url = `${environment.kanka.apiUrl}/campaigns/${campaignId}/${entityType}/${entityId}`;
     return this.http
       .get<{ data: KankaEntity }>(url, { headers: this.headers })
       .pipe(
@@ -123,7 +127,8 @@ export class KankaService {
       return of(cached);
     }
 
-    const url = `${environment.kanka.apiUrl}/campaigns/${environment.kanka.campaignId}/${type}`;
+    const campaignId = this.getCampaignId();
+    const url = `${environment.kanka.apiUrl}/campaigns/${campaignId}/${type}`;
     return this.http
       .get<KankaApiResponse<KankaEntity>>(url, {
         headers: this.headers,
@@ -143,7 +148,8 @@ export class KankaService {
       return of(cached);
     }
 
-    const url = `${environment.kanka.apiUrl}/campaigns/${environment.kanka.campaignId}/${type}`;
+    const campaignId = this.getCampaignId();
+    const url = `${environment.kanka.apiUrl}/campaigns/${campaignId}/${type}`;
     return this.http
       .get<KankaApiResponse<KankaEntity>>(url, { headers: this.headers })
       .pipe(
@@ -210,6 +216,11 @@ export class KankaService {
       result[type] = results[index] || [];
     });
     return result;
+  }
+
+  private getCampaignId(): string | undefined {
+    const selectedCampaign = this.campaignContext.selectedCampaign();
+    return selectedCampaign?.settings?.kankaCampaignId || environment.kanka.campaignId;
   }
 
   private emptyResult(): KankaSearchResult {

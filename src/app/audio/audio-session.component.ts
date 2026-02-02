@@ -1,4 +1,4 @@
-import { Component, OnDestroy, effect, signal, computed } from '@angular/core';
+import { Component, OnDestroy, effect, signal, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Subscription, timer, firstValueFrom } from 'rxjs';
 import { AudioStorageService } from './audio-storage.service';
@@ -8,6 +8,8 @@ import { AudioSessionStateService } from './audio-session-state.service';
 import { PodcastScriptService } from './podcast-script.service';
 import { PodcastAudioService } from './podcast-audio.service';
 import { AuthService } from '../auth/auth.service';
+import { CampaignContextService } from '../campaign/campaign-context.service';
+import { CampaignService } from '../campaign/campaign.service';
 import {
   AudioSessionRecord,
   AudioUpload,
@@ -41,20 +43,33 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
           </div>
         </div>
       } @else {
-        <div class="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-          <app-audio-upload
-            [isBusy]="isBusy()"
-            [userId]="userId()"
-            (uploadRequested)="startProcessing($event)"
-          ></app-audio-upload>
-          <app-transcription-status
-            [stage]="stage()"
-            [progress]="progress()"
-            [statusMessage]="statusMessage()"
-            (cancel)="cancelProcessing()"
-            (retry)="retryProcessing()"
-          ></app-transcription-status>
-        </div>
+        @if (!campaignId()) {
+          <div class="border border-gray-200 rounded-xl bg-white shadow-sm p-8 text-center">
+            <div class="max-w-md mx-auto">
+              <div class="text-4xl mb-3">🧭</div>
+              <h3 class="text-lg font-semibold text-gray-800 mb-2">Select a campaign</h3>
+              <p class="text-gray-600 m-0">
+                Choose a campaign to upload sessions and collaborate with your group.
+              </p>
+            </div>
+          </div>
+        } @else {
+          <div class="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+            <app-audio-upload
+              [isBusy]="isBusy()"
+              [userId]="userId()"
+              [campaignId]="campaignId()"
+              [canUpload]="canUploadAudio()"
+              (uploadRequested)="startProcessing($event)"
+            ></app-audio-upload>
+            <app-transcription-status
+              [stage]="stage()"
+              [progress]="progress()"
+              [statusMessage]="statusMessage()"
+              (cancel)="cancelProcessing()"
+              (retry)="retryProcessing()"
+            ></app-transcription-status>
+          </div>
 
         @if (currentSession()) {
           <div class="border border-gray-200 rounded-xl bg-white shadow-sm p-4">
@@ -87,7 +102,10 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
             [story]="currentSession()?.content || ''"
             [transcript]="currentSession()?.transcription?.rawTranscript || ''"
             [isBusy]="isBusy()"
-            [canRetranscribe]="!!currentSession()?.storageMetadata"
+            [canRetranscribe]="canRetranscribe()"
+            [canRegenerate]="canRegenerateStory()"
+            [canEditStory]="canEditStory()"
+            [canEditCorrections]="canEditCorrections()"
             [corrections]="userCorrections()"
             [correctionsStatus]="correctionsSaveStatus()"
             (storyUpdated)="saveStoryEdits($event)"
@@ -108,7 +126,7 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
               </div>
               <button
                 (click)="generatePodcast()"
-                [disabled]="isGeneratingPodcast() || isBusy()"
+                [disabled]="isGeneratingPodcast() || isBusy() || !canGeneratePodcast()"
                 class="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
               >
                 @if (isGeneratingPodcast()) {
@@ -251,17 +269,28 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
                     {{ session.sessionDate ? session.sessionDate : 'No date' }} ·
                     {{ session.status }}
                   </p>
+                  <p class="m-0 text-xs text-gray-400">
+                    Owner: {{ session.ownerEmail || 'Unknown' }}
+                    @if (session.ownerId === userId()) { (You) }
+                  </p>
                 </button>
               }
             </div>
           }
         </div>
       }
+    }
     </div>
   `
 })
 export class AudioSessionComponent implements OnDestroy {
+  private readonly campaignContext = inject(CampaignContextService);
+  private readonly campaignService = inject(CampaignService);
+
   userId = computed(() => this.authService.currentUser()?.uid || null);
+  campaignId = computed(() => this.campaignContext.selectedCampaignId());
+  selectedCampaign = this.campaignContext.selectedCampaign;
+  canUploadAudio = computed(() => this.campaignContext.canCreateSessions(this.userId()));
   kankaEnabled = signal(false);
   kankaAvailable = signal(false);
   userCorrections = signal<string>('');
@@ -269,6 +298,16 @@ export class AudioSessionComponent implements OnDestroy {
 
   // Podcast state
   podcasts = computed(() => this.currentSession()?.podcasts || []);
+  isSessionOwner = computed(() => {
+    const session = this.currentSession();
+    const userId = this.userId();
+    return !!session && this.campaignService.isSessionOwner(session, userId);
+  });
+  canRegenerateStory = computed(() => this.isSessionOwner());
+  canRetranscribe = computed(() => this.isSessionOwner() && !!this.currentSession()?.storageMetadata);
+  canGeneratePodcast = computed(() => this.isSessionOwner());
+  canEditStory = computed(() => this.isSessionOwner());
+  canEditCorrections = computed(() => !!this.currentSession());
   isGeneratingPodcast = signal(false);
   podcastGenerationProgress = signal<string>('');
   podcastGenerationProgressPercent = signal<number>(0);
@@ -300,9 +339,14 @@ export class AudioSessionComponent implements OnDestroy {
     private readonly podcastAudioService: PodcastAudioService,
     public readonly authService: AuthService
   ) {
-    const kankaAvailable = this.sessionStoryService.isKankaAvailable();
-    this.kankaAvailable.set(kankaAvailable);
-    this.kankaEnabled.set(kankaAvailable);
+    effect(() => {
+      this.selectedCampaign();
+      const kankaAvailable = this.sessionStoryService.isKankaAvailable();
+      this.kankaAvailable.set(kankaAvailable);
+      if (!kankaAvailable) {
+        this.kankaEnabled.set(false);
+      }
+    });
     this.sessions = this.sessionStateService.sessions;
 
     effect(() => {
@@ -340,6 +384,11 @@ export class AudioSessionComponent implements OnDestroy {
   }
 
   startProcessing(upload: AudioUpload): void {
+    if (!this.canUploadAudio()) {
+      this.statusMessage.set('You do not have permission to upload in this campaign.');
+      this.stage.set('failed');
+      return;
+    }
     this.lastUpload.set(upload);
     const validationError = this.audioStorageService.validateFile(upload.file);
     if (validationError) {
@@ -360,7 +409,7 @@ export class AudioSessionComponent implements OnDestroy {
 
     this.processingSub?.unsubscribe();
     this.processingSub = this.audioStorageService
-      .uploadAudioFile(upload.file, upload.userId, session.id)
+      .uploadAudioFile(upload.file, upload.campaignId, session.id)
       .subscribe({
         next: progress => {
           this.progress.set(progress.progress);
@@ -368,7 +417,7 @@ export class AudioSessionComponent implements OnDestroy {
         error: () => this.failSession('Upload failed. Please try again.'),
         complete: () => {
           void this.audioStorageService
-            .buildStorageMetadata(upload.file, upload.userId, session.id)
+            .buildStorageMetadata(upload.file, upload.campaignId, session.id)
             .then(storage => {
               this.sessionStateService.updateSession(session.id, {
                 status: 'completed',
@@ -406,6 +455,9 @@ export class AudioSessionComponent implements OnDestroy {
   }
 
   regenerateStory(): void {
+    if (!this.canRegenerateStory()) {
+      return;
+    }
     const session = this.currentSession();
     if (!session?.transcription) {
       return;
@@ -439,8 +491,12 @@ export class AudioSessionComponent implements OnDestroy {
   }
 
   async retranscribeSession(): Promise<void> {
+    if (!this.canRetranscribe()) {
+      return;
+    }
     const session = this.currentSession();
     const uid = this.userId();
+    const campaignId = session?.campaignId;
     if (!session?.storageMetadata) {
       this.failSession('No stored audio file found for this session.');
       return;
@@ -449,10 +505,14 @@ export class AudioSessionComponent implements OnDestroy {
       this.failSession('User not authenticated.');
       return;
     }
+    if (!campaignId) {
+      this.failSession('No campaign selected.');
+      return;
+    }
 
     // Check for existing incomplete transcription
     const existingTranscriptionId = await this.audioTranscriptionService.findIncompleteTranscription(
-      uid,
+      campaignId,
       session.id
     );
 
@@ -466,6 +526,9 @@ export class AudioSessionComponent implements OnDestroy {
   }
 
   saveStoryEdits(content: string): void {
+    if (!this.canEditStory()) {
+      return;
+    }
     const session = this.currentSession();
     if (!session) {
       return;
@@ -522,22 +585,24 @@ export class AudioSessionComponent implements OnDestroy {
     this.processingSub?.unsubscribe();
 
     const session = this.currentSession();
-    const uid = this.userId();
-    if (!session || !uid) {
+    const campaignId = session?.campaignId;
+    if (!session || !campaignId) {
       return;
     }
 
     // Use existing transcription ID if provided (resuming), otherwise generate new one
     const transcriptionId = existingTranscriptionId || this.generateId();
 
-    this.processingSub = this.audioTranscriptionService.transcribeAudio(storage, file, uid, transcriptionId).subscribe({
+    this.processingSub = this.audioTranscriptionService
+      .transcribeAudio(storage, file, campaignId, transcriptionId)
+      .subscribe({
       next: transcription => {
-        if (!session || !uid) {
+        if (!session || !campaignId) {
           return;
         }
 
         void this.audioTranscriptionService
-          .saveTranscription(uid, session.id, transcription, 'Auto-generated')
+          .saveTranscription(campaignId, session.id, transcription, 'Auto-generated')
           .then(savedTranscriptionId => {
             this.sessionStateService.updateSession(session.id, {
               transcription,
@@ -724,6 +789,14 @@ export class AudioSessionComponent implements OnDestroy {
       this.podcastError.set('No session story available to generate podcast.');
       return;
     }
+    if (!session.campaignId) {
+      this.podcastError.set('No campaign selected for this session.');
+      return;
+    }
+    if (!this.canGeneratePodcast()) {
+      this.podcastError.set('Only the session owner can generate a podcast.');
+      return;
+    }
 
     this.isGeneratingPodcast.set(true);
     this.podcastGenerationProgress.set('Generating podcast script...');
@@ -747,6 +820,7 @@ export class AudioSessionComponent implements OnDestroy {
       // Step 2: Generate MP3 via Cloud Function
       const version = (session.podcasts?.length || 0) + 1;
       await this.podcastAudioService.generatePodcastMP3(
+        session.campaignId,
         session.id,
         version,
         script,

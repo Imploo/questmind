@@ -3,10 +3,12 @@ export interface AudioUpload {
   sessionName?: string;
   sessionDate?: string;
   userId: string;
+  campaignId: string;
 }
 
 export interface StorageMetadata {
   sessionId: string;
+  campaignId: string;
   storagePath: string;
   downloadUrl: string;
   fileSize: number;
@@ -112,6 +114,10 @@ export interface UploadProgress {
 }
 
 export interface AudioSessionRecord extends SessionStory {
+  campaignId: string;
+  ownerId: string;
+  ownerEmail: string;
+  createdBy: string;
   status: 'uploading' | 'processing' | 'completed' | 'failed';
   updatedAt: string;
   transcription?: TranscriptionResult;

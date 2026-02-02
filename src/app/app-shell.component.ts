@@ -1,14 +1,24 @@
-import { Component, signal } from '@angular/core';
+import { Component, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { ActivatedRoute } from '@angular/router';
 import { ChatComponent } from './chat/chat.component';
 import { AudioSessionComponent } from './audio/audio-session.component';
 import { PodcastLibraryComponent } from './audio/podcast-library.component';
 import { AuthButtonComponent } from './auth/auth-button.component';
+import { CampaignSelectorComponent } from './campaign/campaign-selector.component';
+import { CampaignContextService } from './campaign/campaign-context.service';
 
 @Component({
   selector: 'app-shell',
   standalone: true,
-  imports: [CommonModule, ChatComponent, AudioSessionComponent, PodcastLibraryComponent, AuthButtonComponent],
+  imports: [
+    CommonModule,
+    ChatComponent,
+    AudioSessionComponent,
+    PodcastLibraryComponent,
+    AuthButtonComponent,
+    CampaignSelectorComponent
+  ],
   template: `
     <main class="w-full min-h-screen bg-gradient-to-br from-primary to-secondary">
       <div class="w-full min-h-screen max-w-7xl mx-auto flex flex-col lg:flex-row gap-6 p-4">
@@ -86,6 +96,9 @@ import { AuthButtonComponent } from './auth/auth-button.component';
         </aside>
 
         <section class="flex-1">
+          <div class="mb-6">
+            <app-campaign-selector></app-campaign-selector>
+          </div>
           @if (activeView() === 'chat') {
             <app-chat></app-chat>
           } @else if (activeView() === 'audio') {
@@ -99,8 +112,19 @@ import { AuthButtonComponent } from './auth/auth-button.component';
   `
 })
 export class AppShellComponent {
+  private readonly route = inject(ActivatedRoute);
+  private readonly campaignContext = inject(CampaignContextService);
   activeView = signal<'chat' | 'audio' | 'podcasts'>('chat');
   sidebarOpen = signal(true);
+
+  constructor() {
+    this.route.paramMap.subscribe(params => {
+      const campaignId = params.get('campaignId');
+      if (campaignId) {
+        void this.campaignContext.selectCampaign(campaignId);
+      }
+    });
+  }
 
   setActiveView(view: 'chat' | 'audio' | 'podcasts'): void {
     this.activeView.set(view);

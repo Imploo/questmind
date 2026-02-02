@@ -35,7 +35,7 @@ import { AudioUpload } from './audio-session.models';
           #fileInput
           accept=".mp3,.wav,.m4a,.ogg,audio/*"
           (change)="onFileSelected($event)"
-          [disabled]="isBusy"
+          [disabled]="isBusy || !canUpload"
         />
         <p class="text-sm text-gray-600 m-0">
           Drag and drop your audio file here, or
@@ -43,7 +43,7 @@ import { AudioUpload } from './audio-session.models';
             type="button"
             class="text-primary font-semibold hover:underline"
             (click)="fileInput.click()"
-            [disabled]="isBusy"
+            [disabled]="isBusy || !canUpload"
           >
             browse
           </button>
@@ -57,7 +57,7 @@ import { AudioUpload } from './audio-session.models';
             type="text"
             class="mt-1 px-3 py-2 border border-gray-200 rounded-lg focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none"
             [(ngModel)]="sessionName"
-            [disabled]="isBusy"
+            [disabled]="isBusy || !canUpload"
             placeholder="The Goblin Warrens"
           />
         </label>
@@ -67,7 +67,7 @@ import { AudioUpload } from './audio-session.models';
             type="date"
             class="mt-1 px-3 py-2 border border-gray-200 rounded-lg focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none"
             [(ngModel)]="sessionDate"
-            [disabled]="isBusy"
+            [disabled]="isBusy || !canUpload"
           />
         </label>
       </div>
@@ -82,7 +82,7 @@ import { AudioUpload } from './audio-session.models';
             type="button"
             class="text-xs text-gray-500 hover:text-gray-700"
             (click)="clearFile()"
-            [disabled]="isBusy"
+            [disabled]="isBusy || !canUpload"
           >
             Remove
           </button>
@@ -100,7 +100,7 @@ import { AudioUpload } from './audio-session.models';
           type="button"
           class="px-4 py-2 text-sm font-semibold rounded-lg border border-gray-200 text-gray-600 hover:text-gray-800"
           (click)="clearAll()"
-          [disabled]="isBusy"
+            [disabled]="isBusy || !canUpload"
         >
           Reset
         </button>
@@ -108,7 +108,7 @@ import { AudioUpload } from './audio-session.models';
           type="button"
           class="px-5 py-2 text-sm font-semibold rounded-lg bg-primary text-white hover:bg-primary-dark disabled:bg-gray-300"
           (click)="submitUpload()"
-          [disabled]="isBusy || !selectedFile()"
+          [disabled]="isBusy || !selectedFile() || !canUpload"
         >
           Upload & Transcribe
         </button>
@@ -119,6 +119,8 @@ import { AudioUpload } from './audio-session.models';
 export class AudioUploadComponent {
   @Input() isBusy = false;
   @Input() userId: string | null = null;
+  @Input() campaignId: string | null = null;
+  @Input() canUpload = true;
   @Output() uploadRequested = new EventEmitter<AudioUpload>();
 
   sessionName = '';
@@ -170,9 +172,13 @@ export class AudioUploadComponent {
 
   submitUpload(): void {
     const file = this.selectedFile();
-    if (!file || !this.userId) {
+    if (!file || !this.userId || !this.campaignId || !this.canUpload) {
       if (!this.userId) {
         this.error.set('You must be signed in to upload audio files.');
+      } else if (!this.campaignId) {
+        this.error.set('Select a campaign before uploading.');
+      } else if (!this.canUpload) {
+        this.error.set('You do not have permission to upload in this campaign.');
       }
       return;
     }
@@ -181,7 +187,8 @@ export class AudioUploadComponent {
       file,
       sessionName: this.sessionName,
       sessionDate: this.sessionDate,
-      userId: this.userId
+      userId: this.userId,
+      campaignId: this.campaignId
     });
   }
 

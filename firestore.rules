@@ -1,33 +1,70 @@
-rules_version='2'
+rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // User audio sessions
-    match /users/{userId}/audioSessions/{sessionId} {
-      allow read: if request.auth != null && request.auth.uid == userId;
-      
-      // Allow write for the session owner
-      allow write: if request.auth != null && request.auth.uid == userId;
-
-      // Validate session data structure on create
-      allow create: if request.auth != null
-                    && request.auth.uid == userId
-                    && request.resource.data.keys().hasAll(['createdAt', 'status'])
-                    && request.resource.data.status in ['uploading', 'transcribing', 'completed', 'error', 'failed'];
-      
-      // Allow update for podcasts and other fields
-      allow update: if request.auth != null
-                    && request.auth.uid == userId;
+    function isAuthenticated() {
+      return request.auth != null;
     }
 
-    // User transcriptions subcollection
-    match /users/{userId}/audioSessions/{sessionId}/transcriptions/{transcriptionId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    function getUserId() {
+      return request.auth.uid;
     }
 
-    // Block all other paths
-    match /{document=**} {
-      allow read, write: if false;
+    function isCampaignMember(campaignId) {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/campaigns/$(campaignId)/metadata) &&
+        get(/databases/$(database)/documents/campaigns/$(campaignId)/metadata).data.members[getUserId()] != null;
+    }
+
+    function isCampaignOwner(campaignId) {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/campaigns/$(campaignId)/metadata) &&
+        get(/databases/$(database)/documents/campaigns/$(campaignId)/metadata).data.ownerId == getUserId();
+    }
+
+    function isSessionOwner(campaignId, sessionId) {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/campaigns/$(campaignId)/audioSessions/$(sessionId)) &&
+        get(/databases/$(database)/documents/campaigns/$(campaignId)/audioSessions/$(sessionId)).data.ownerId == getUserId();
+    }
+
+    // User profiles
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && getUserId() == userId;
+    }
+
+    // Campaign metadata
+    match /campaigns/{campaignId}/metadata {
+      allow read: if isCampaignMember(campaignId);
+      allow create: if isAuthenticated() && request.resource.data.ownerId == getUserId();
+      allow update: if isCampaignOwner(campaignId);
+      allow delete: if isCampaignOwner(campaignId);
+    }
+
+    // Audio sessions in campaigns
+    match /campaigns/{campaignId}/audioSessions/{sessionId} {
+      allow read: if isCampaignMember(campaignId);
+
+      allow create: if isCampaignMember(campaignId) &&
+        request.resource.data.ownerId == getUserId();
+
+      allow update: if isCampaignMember(campaignId) && (
+        isSessionOwner(campaignId, sessionId) ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'userCorrections',
+          'correctionsUpdatedAt',
+          'updatedAt'
+        ])
+      );
+
+      allow delete: if isSessionOwner(campaignId, sessionId);
+    }
+
+    // Subcollections of audio sessions
+    match /campaigns/{campaignId}/audioSessions/{sessionId}/{subcollection=**} {
+      allow read: if isCampaignMember(campaignId);
+      allow write: if isSessionOwner(campaignId, sessionId);
     }
   }
 }

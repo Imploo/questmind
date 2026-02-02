@@ -25,6 +25,7 @@ interface PodcastScript {
 }
 
 interface PodcastGenerationRequest {
+  campaignId: string;
   sessionId: string;
   version: number;
   script: PodcastScript;
@@ -44,8 +45,11 @@ export const generatePodcastAudio = onCall(
       throw new HttpsError('unauthenticated', 'User must be authenticated.');
     }
 
-    const { sessionId, version, script } = data as PodcastGenerationRequest;
+    const { campaignId, sessionId, version, script } = data as PodcastGenerationRequest;
 
+    if (!campaignId || typeof campaignId !== 'string') {
+      throw new HttpsError('invalid-argument', 'Missing campaignId.');
+    }
     if (!sessionId || typeof sessionId !== 'string') {
       throw new HttpsError('invalid-argument', 'Missing sessionId.');
     }
@@ -68,7 +72,19 @@ export const generatePodcastAudio = onCall(
     const ai = new GoogleGenAI({ apiKey });
     const db = getFirestore();
     const storage = getStorage().bucket();
-    const sessionRef = db.doc(`users/${auth.uid}/audioSessions/${sessionId}`);
+    const campaignRef = db.doc(`campaigns/${campaignId}/metadata`);
+    const campaignSnap = await campaignRef.get();
+
+    if (!campaignSnap.exists) {
+      throw new HttpsError('not-found', 'Campaign not found.');
+    }
+
+    const campaignData = campaignSnap.data() || {};
+    if (!campaignData.members || !campaignData.members[auth.uid]) {
+      throw new HttpsError('permission-denied', 'User is not a campaign member.');
+    }
+
+    const sessionRef = db.doc(`campaigns/${campaignId}/audioSessions/${sessionId}`);
     const sessionSnap = await sessionRef.get();
 
     if (!sessionSnap.exists) {
@@ -76,6 +92,9 @@ export const generatePodcastAudio = onCall(
     }
 
     const sessionData = sessionSnap.data() || {};
+    if (sessionData.ownerId !== auth.uid) {
+      throw new HttpsError('permission-denied', 'Only the session owner can generate podcasts.');
+    }
     const existingPodcasts = Array.isArray(sessionData.podcasts) ? sessionData.podcasts : [];
     const existingEntry = existingPodcasts.find((podcast: any) => podcast?.version === version);
 
@@ -143,13 +162,14 @@ export const generatePodcastAudio = onCall(
 
       await combineAudioSegments(segmentFiles, outputPath);
 
-      const storagePath = `podcasts/${auth.uid}/${sessionId}/v${version}.mp3`;
+      const storagePath = `campaigns/${campaignId}/podcasts/${sessionId}/v${version}.mp3`;
       await storage.upload(outputPath, {
         destination: storagePath,
         metadata: {
           contentType: 'audio/mpeg',
           metadata: {
             sessionId,
+            campaignId,
             version: version.toString(),
             userId: auth.uid
           }

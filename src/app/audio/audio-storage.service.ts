@@ -49,11 +49,11 @@ export class AudioStorageService {
     return null;
   }
 
-  uploadAudioFile(file: File, userId: string, sessionId: string): Observable<UploadProgress> {
+  uploadAudioFile(file: File, campaignId: string, sessionId: string): Observable<UploadProgress> {
     if (!this.storage) {
       return throwError(() => new Error('Firebase Storage is not configured.'));
     }
-    const storagePath = this.getStoragePath(userId, sessionId, file.name);
+    const storagePath = this.getStoragePath(campaignId, sessionId, file.name);
     const storageRef = ref(this.storage, storagePath);
 
     return new Observable<UploadProgress>(observer => {
@@ -83,17 +83,18 @@ export class AudioStorageService {
     });
   }
 
-  async buildStorageMetadata(file: File, userId: string, sessionId: string): Promise<StorageMetadata> {
+  async buildStorageMetadata(file: File, campaignId: string, sessionId: string): Promise<StorageMetadata> {
     if (!this.storage) {
       throw new Error('Firebase Storage is not configured.');
     }
 
-    const storagePath = this.getStoragePath(userId, sessionId, file.name);
+    const storagePath = this.getStoragePath(campaignId, sessionId, file.name);
     const storageRef = ref(this.storage, storagePath);
     const downloadUrl = await getDownloadURL(storageRef);
 
     return {
       sessionId,
+      campaignId,
       storagePath,
       downloadUrl,
       fileSize: file.size,
@@ -102,8 +103,8 @@ export class AudioStorageService {
     };
   }
 
-  getStoragePath(userId: string, sessionId: string, fileName: string): string {
-    return `audio-sessions/${userId}/${sessionId}/${fileName}`;
+  getStoragePath(campaignId: string, sessionId: string, fileName: string): string {
+    return `campaigns/${campaignId}/audio/${sessionId}/${fileName}`;
   }
 
   async fetchAudioFromUrl(url: string): Promise<Blob> {

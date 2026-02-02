@@ -79,7 +79,12 @@ export class AudioTranscriptionService {
     }
   }
 
-  transcribeAudio(storageMetadata: StorageMetadata, file?: File, userId?: string, transcriptionId?: string): Observable<TranscriptionResult> {
+  transcribeAudio(
+    storageMetadata: StorageMetadata,
+    file?: File,
+    campaignId?: string,
+    transcriptionId?: string
+  ): Observable<TranscriptionResult> {
     if (!this.apiKey || this.apiKey === 'YOUR_GOOGLE_AI_API_KEY_HERE') {
       return throwError(() => ({
         status: 401,
@@ -94,7 +99,7 @@ export class AudioTranscriptionService {
       }));
     }
 
-    return from(this.requestTranscription(storageMetadata, file, userId, transcriptionId)).pipe(
+    return from(this.requestTranscription(storageMetadata, file, campaignId, transcriptionId)).pipe(
       retry({
         count: MAX_RETRY_ATTEMPTS,
         delay: (error, retryCount) => getRetryDelay(error, retryCount)
@@ -105,7 +110,7 @@ export class AudioTranscriptionService {
   }
 
   async saveTranscription(
-    userId: string,
+    campaignId: string,
     sessionId: string,
     transcription: TranscriptionResult,
     label?: string
@@ -127,8 +132,8 @@ export class AudioTranscriptionService {
 
     const transcriptionRef = doc(
       this.db,
-      'users',
-      userId,
+      'campaigns',
+      campaignId,
       'audioSessions',
       sessionId,
       'transcriptions',
@@ -139,7 +144,7 @@ export class AudioTranscriptionService {
     return transcriptionId;
   }
 
-  async loadTranscriptions(userId: string, sessionId: string): Promise<TranscriptionRecord[]> {
+  async loadTranscriptions(campaignId: string, sessionId: string): Promise<TranscriptionRecord[]> {
     if (!this.db) {
       console.error('Firebase is not configured. Cannot load transcriptions.');
       return [];
@@ -147,8 +152,8 @@ export class AudioTranscriptionService {
 
     const transcriptionsRef = collection(
       this.db,
-      'users',
-      userId,
+      'campaigns',
+      campaignId,
       'audioSessions',
       sessionId,
       'transcriptions'
@@ -164,7 +169,12 @@ export class AudioTranscriptionService {
     }
   }
 
-  private async requestTranscription(storageMetadata: StorageMetadata, file?: File, userId?: string, transcriptionId?: string): Promise<any> {
+  private async requestTranscription(
+    storageMetadata: StorageMetadata,
+    file?: File,
+    campaignId?: string,
+    transcriptionId?: string
+  ): Promise<any> {
     const mimeType = storageMetadata.contentType || 'audio/mpeg';
     const audioFile = await this.resolveAudioFile(storageMetadata, file, mimeType);
     const decoded = await this.decodeAudioFile(audioFile);
@@ -176,10 +186,10 @@ export class AudioTranscriptionService {
           storageMetadata.durationSeconds = decoded.audioBuffer.duration;
           storageMetadata.sizeBytes = audioFile.size;
           return await this.requestChunkedTranscription(
-            decoded.audioContext, 
-            decoded.audioBuffer, 
-            storageMetadata, 
-            userId, 
+            decoded.audioContext,
+            decoded.audioBuffer,
+            storageMetadata,
+            campaignId,
             transcriptionId
           );
         }
@@ -197,10 +207,10 @@ export class AudioTranscriptionService {
   }
 
   private async requestChunkedTranscription(
-    audioContext: AudioContext, 
-    audioBuffer: AudioBuffer, 
+    audioContext: AudioContext,
+    audioBuffer: AudioBuffer,
     storageMetadata?: StorageMetadata,
-    userId?: string, 
+    campaignId?: string,
     transcriptionId?: string
   ): Promise<any> {
     const chunks = this.splitAudioBufferIntoChunks(audioContext, audioBuffer);
@@ -221,9 +231,9 @@ export class AudioTranscriptionService {
 
     // Initialize transcription record if we have the required info
     let existingRecord: TranscriptionRecord | null = null;
-    if (userId && transcriptionId && sessionId && storageMetadata) {
+    if (campaignId && transcriptionId && sessionId && storageMetadata) {
       // Check for existing incomplete transcription
-      existingRecord = await this.getExistingTranscriptionRecord(userId, sessionId, transcriptionId);
+      existingRecord = await this.getExistingTranscriptionRecord(campaignId, sessionId, transcriptionId);
       
       if (existingRecord && !existingRecord.isComplete && existingRecord.chunks && existingRecord.chunks.length > 0) {
         console.log('Resuming incomplete transcription...');
@@ -243,7 +253,7 @@ export class AudioTranscriptionService {
         }
       } else {
         // Initialize new transcription record
-        await this.initializeTranscriptionRecord(userId, sessionId, transcriptionId, storageMetadata, chunks.length);
+        await this.initializeTranscriptionRecord(campaignId, sessionId, transcriptionId, storageMetadata, chunks.length);
       }
     }
 
@@ -265,8 +275,8 @@ export class AudioTranscriptionService {
 
       try {
         // Save "processing" status
-        if (userId && transcriptionId && sessionId) {
-          await this.saveTranscriptionChunk(userId, sessionId, transcriptionId, transcriptionChunk);
+        if (campaignId && transcriptionId && sessionId) {
+          await this.saveTranscriptionChunk(campaignId, sessionId, transcriptionId, transcriptionChunk);
         }
 
         // Transcribe chunk
@@ -289,8 +299,8 @@ export class AudioTranscriptionService {
         transcriptionChunk.processingTimeMs = processingTimeMs;
 
         // Save completed chunk
-        if (userId && transcriptionId && sessionId) {
-          await this.saveTranscriptionChunk(userId, sessionId, transcriptionId, transcriptionChunk);
+        if (campaignId && transcriptionId && sessionId) {
+          await this.saveTranscriptionChunk(campaignId, sessionId, transcriptionId, transcriptionChunk);
         }
 
         console.log(
@@ -310,8 +320,8 @@ export class AudioTranscriptionService {
         transcriptionChunk.retryCount = (transcriptionChunk.retryCount || 0) + 1;
 
         // Save failed chunk
-        if (userId && transcriptionId && sessionId) {
-          await this.saveTranscriptionChunk(userId, sessionId, transcriptionId, transcriptionChunk);
+        if (campaignId && transcriptionId && sessionId) {
+          await this.saveTranscriptionChunk(campaignId, sessionId, transcriptionId, transcriptionChunk);
         }
 
         // Re-throw error to trigger retry logic at higher level
@@ -322,9 +332,9 @@ export class AudioTranscriptionService {
     const mergedResult = this.mergeChunkResults(chunkResults);
 
     // Mark transcription as complete
-    if (userId && transcriptionId && sessionId && storageMetadata) {
+    if (campaignId && transcriptionId && sessionId && storageMetadata) {
       const normalizedResult = this.normalizeTranscription(mergedResult, storageMetadata);
-      await this.markTranscriptionComplete(userId, sessionId, transcriptionId, normalizedResult);
+      await this.markTranscriptionComplete(campaignId, sessionId, transcriptionId, normalizedResult);
     }
 
     return mergedResult;
@@ -778,7 +788,7 @@ CHUNK CONTEXT:
   }
 
   private async saveTranscriptionChunk(
-    userId: string,
+    campaignId: string,
     sessionId: string,
     transcriptionId: string,
     chunk: TranscriptionChunk
@@ -790,8 +800,8 @@ CHUNK CONTEXT:
 
     const transcriptionRef = doc(
       this.db,
-      'users',
-      userId,
+      'campaigns',
+      campaignId,
       'audioSessions',
       sessionId,
       'transcriptions',
@@ -832,7 +842,7 @@ CHUNK CONTEXT:
   }
 
   private async initializeTranscriptionRecord(
-    userId: string,
+    campaignId: string,
     sessionId: string,
     transcriptionId: string,
     storageMetadata: StorageMetadata,
@@ -842,8 +852,8 @@ CHUNK CONTEXT:
 
     const transcriptionRef = doc(
       this.db,
-      'users',
-      userId,
+      'campaigns',
+      campaignId,
       'audioSessions',
       sessionId,
       'transcriptions',
@@ -869,7 +879,7 @@ CHUNK CONTEXT:
   }
 
   async getExistingTranscriptionRecord(
-    userId: string,
+    campaignId: string,
     sessionId: string,
     transcriptionId: string
   ): Promise<TranscriptionRecord | null> {
@@ -877,8 +887,8 @@ CHUNK CONTEXT:
 
     const transcriptionRef = doc(
       this.db,
-      'users',
-      userId,
+      'campaigns',
+      campaignId,
       'audioSessions',
       sessionId,
       'transcriptions',
@@ -889,13 +899,13 @@ CHUNK CONTEXT:
     return docSnap.exists() ? (docSnap.data() as TranscriptionRecord) : null;
   }
 
-  async findIncompleteTranscription(userId: string, sessionId: string): Promise<string | null> {
+  async findIncompleteTranscription(campaignId: string, sessionId: string): Promise<string | null> {
     if (!this.db) return null;
 
     const transcriptionsRef = collection(
       this.db,
-      'users',
-      userId,
+      'campaigns',
+      campaignId,
       'audioSessions',
       sessionId,
       'transcriptions'
@@ -922,7 +932,7 @@ CHUNK CONTEXT:
   }
 
   private async markTranscriptionComplete(
-    userId: string,
+    campaignId: string,
     sessionId: string,
     transcriptionId: string,
     result: TranscriptionResult
@@ -931,8 +941,8 @@ CHUNK CONTEXT:
 
     const transcriptionRef = doc(
       this.db,
-      'users',
-      userId,
+      'campaigns',
+      campaignId,
       'audioSessions',
       sessionId,
       'transcriptions',
@@ -950,7 +960,7 @@ CHUNK CONTEXT:
   }
 
   async clearTranscriptionRecord(
-    userId: string,
+    campaignId: string,
     sessionId: string,
     transcriptionId: string
   ): Promise<void> {
@@ -958,8 +968,8 @@ CHUNK CONTEXT:
 
     const transcriptionRef = doc(
       this.db,
-      'users',
-      userId,
+      'campaigns',
+      campaignId,
       'audioSessions',
       sessionId,
       'transcriptions',

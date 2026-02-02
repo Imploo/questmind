@@ -17,6 +17,7 @@ export class PodcastAudioService {
    * Generate a complete MP3 via Cloud Function using Gemini 2.5 Flash TTS.
    */
   async generatePodcastMP3(
+    campaignId: string,
     sessionId: string,
     version: number,
     script: PodcastScript,
@@ -29,6 +30,7 @@ export class PodcastAudioService {
     try {
       const generateAudio = httpsCallable<
         {
+          campaignId: string;
           sessionId: string;
           version: number;
           script: PodcastScript;
@@ -46,6 +48,7 @@ export class PodcastAudioService {
       }
 
       const result = await generateAudio({
+        campaignId,
         sessionId,
         version,
         script

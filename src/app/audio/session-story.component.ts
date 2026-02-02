@@ -18,7 +18,7 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
             type="button"
             class="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:text-gray-800"
             (click)="toggleEdit()"
-            [disabled]="isBusy || !story.trim().length"
+            [disabled]="isBusy || !story.trim().length || !canEditStory"
           >
             {{ isEditing() ? 'Preview' : 'Edit' }}
           </button>
@@ -42,7 +42,7 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
                 type="button"
                 class="px-3 py-2 text-xs font-semibold rounded-lg bg-primary text-white hover:bg-primary-dark disabled:bg-gray-300"
                 (click)="regenerate.emit()"
-                [disabled]="isBusy"
+                [disabled]="isBusy || !canRegenerate"
               >
                 Regenerate Story
               </button>
@@ -54,14 +54,14 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
                   class="w-full min-h-[220px] border border-gray-200 rounded-lg p-3 text-sm focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none"
                   [value]="draft()"
                   (input)="onDraftInput($event)"
-                  [disabled]="isBusy"
+                  [disabled]="isBusy || !canEditStory"
                 ></textarea>
                 <div class="mt-3 flex justify-end gap-2">
                   <button
                     type="button"
                     class="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:text-gray-800"
                     (click)="resetDraft()"
-                    [disabled]="isBusy"
+                  [disabled]="isBusy || !canEditStory"
                   >
                     Reset
                   </button>
@@ -69,7 +69,7 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
                     type="button"
                     class="px-3 py-2 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-gray-300"
                     (click)="saveDraft()"
-                    [disabled]="isBusy"
+                  [disabled]="isBusy || !canEditStory"
                   >
                     Save Story
                   </button>
@@ -132,7 +132,7 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
                 class="w-full min-h-[240px] border border-gray-200 rounded-lg p-3 text-sm focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none resize-vertical font-mono"
                 [value]="corrections"
                 (input)="onCorrectionsInput($event)"
-                [disabled]="isBusy"
+                [disabled]="isBusy || !canEditCorrections"
                 placeholder="Example: When you hear 'corikan', the correct name is 'Khuri-Khan'. The party is in Waterdeep, not Baldur's Gate."
               ></textarea>
               <p class="text-xs text-gray-500 m-0">
@@ -158,6 +158,9 @@ export class SessionStoryComponent implements OnChanges {
   @Input() transcript = '';
   @Input() isBusy = false;
   @Input() canRetranscribe = false;
+  @Input() canRegenerate = false;
+  @Input() canEditStory = false;
+  @Input() canEditCorrections = true;
   @Input() corrections = '';
   @Input() correctionsStatus: 'idle' | 'saving' | 'saved' = 'idle';
   @Output() storyUpdated = new EventEmitter<string>();
@@ -178,6 +181,9 @@ export class SessionStoryComponent implements OnChanges {
   }
 
   toggleEdit(): void {
+    if (!this.canEditStory) {
+      return;
+    }
     this.isEditing.set(!this.isEditing());
   }
 

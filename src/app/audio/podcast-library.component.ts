@@ -1,10 +1,11 @@
-import { Component, signal, inject, OnInit } from '@angular/core';
+import { Component, signal, inject, OnInit, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { getApp } from 'firebase/app';
 import { getFirestore, collection, getDocs } from 'firebase/firestore';
 import { AuthService } from '../auth/auth.service';
 import { PodcastAudioService } from './podcast-audio.service';
 import { PodcastVersion } from './audio-session.models';
+import { CampaignContextService } from '../campaign/campaign-context.service';
 
 interface SessionWithPodcasts {
   sessionId: string;
@@ -27,14 +28,21 @@ interface SessionWithPodcasts {
         </p>
       </div>
 
-      @if (loading()) {
+      @if (!campaignId()) {
+        <div class="text-center py-12 bg-gray-50 rounded-lg">
+          <div class="text-5xl mb-4">🧭</div>
+          <p class="text-gray-600 m-0">Select a campaign to view its podcasts.</p>
+        </div>
+      }
+
+      @if (loading() && campaignId()) {
         <div class="text-center py-12">
           <div class="animate-spin h-12 w-12 border-4 border-purple-600 border-t-transparent rounded-full mx-auto"></div>
           <p class="mt-4 text-gray-600 m-0">Podcasts laden...</p>
         </div>
       }
 
-      @if (!loading() && sessions().length === 0) {
+      @if (!loading() && campaignId() && sessions().length === 0) {
         <div class="text-center py-12 bg-gray-50 rounded-lg">
           <div class="text-6xl mb-4">🎙️</div>
           <p class="text-gray-600 m-0">Nog geen podcasts gegenereerd.</p>
@@ -44,7 +52,7 @@ interface SessionWithPodcasts {
         </div>
       }
 
-      @if (!loading() && sessions().length > 0) {
+      @if (!loading() && campaignId() && sessions().length > 0) {
         <div class="space-y-6">
           @for (session of sessions(); track session.sessionId) {
             <div class="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
@@ -129,7 +137,7 @@ interface SessionWithPodcasts {
         </div>
       }
 
-      @if (!loading() && sessions().length > 0) {
+      @if (!loading() && campaignId() && sessions().length > 0) {
         <div class="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
           <p class="text-sm text-blue-700 m-0">
             <strong>💡 Info:</strong> Podcasts worden opgeslagen als MP3 en gebruiken Gemini 2.5 Flash TTS voor natuurlijke
@@ -150,12 +158,14 @@ export class PodcastLibraryComponent implements OnInit {
   private readonly firestore;
   private readonly authService = inject(AuthService);
   private readonly podcastAudioService = inject(PodcastAudioService);
+  private readonly campaignContext = inject(CampaignContextService);
 
   loading = signal(true);
   sessions = signal<SessionWithPodcasts[]>([]);
   isPlayingPodcast = signal(false);
   playingPodcastId = signal<string | null>(null);
   errorMessage = signal<string>('');
+  campaignId = this.campaignContext.selectedCampaignId;
   private currentPodcastAudio: HTMLAudioElement | null = null;
 
   constructor() {
@@ -164,18 +174,28 @@ export class PodcastLibraryComponent implements OnInit {
   }
 
   async ngOnInit() {
-    await this.loadPodcasts();
+    effect(() => {
+      this.campaignContext.selectedCampaignId();
+      void this.loadPodcasts();
+    });
   }
 
   private async loadPodcasts() {
     const userId = this.authService.currentUser()?.uid;
+    const campaignId = this.campaignContext.selectedCampaignId();
+    this.loading.set(true);
     if (!userId) {
+      this.loading.set(false);
+      return;
+    }
+    if (!campaignId) {
+      this.sessions.set([]);
       this.loading.set(false);
       return;
     }
 
     try {
-      const sessionsRef = collection(this.firestore, 'users', userId, 'audioSessions');
+      const sessionsRef = collection(this.firestore, 'campaigns', campaignId, 'audioSessions');
       const snapshot = await getDocs(sessionsRef);
       const sessions: SessionWithPodcasts[] = [];
 
