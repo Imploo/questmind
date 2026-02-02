@@ -1,6 +1,21 @@
 export const environment = {
-  production: false,
+  production: true,
   // Get your free Google AI API key from: https://aistudio.google.com/app/apikey
   // Then replace the value below with your actual API key
-  googleAiApiKey: 'AIzaSyAOs-jezAxgYVj1CuV6y6sccqQ1iB_T7Xg'
+  googleAiApiKey: 'placeholder',
+  // AI model to use for chat (text-only tasks)
+  // Options: 'gemini-3-flash-preview', 'gemini-2.5-flash', 'gemma-3-27b-it', etc.
+  aiModel: 'gemma-3-27b-it',
+  // AI model to use for audio transcription (must support audio input)
+  // Note: Gemma models don't support audio, use Gemini models for audio
+  // Options: 'gemini-3-flash-preview', 'gemini-2.5-flash', 'gemini-2.0-flash', etc.
+  audioModel: 'gemini-2.5-flash',
+  firebaseConfig: {
+    apiKey: "AIzaSyCMNRdjyllSufbPLfxdVsVwrkL9HL0iO-I",
+    authDomain: "questmind-dnd.firebaseapp.com",
+    projectId: "questmind-dnd",
+    storageBucket: "questmind-dnd.firebasestorage.app",
+    messagingSenderId: "894645983773",
+    appId: "1:894645983773:web:baed625b9d5ad4cb5bc4f4"
+  }
 };

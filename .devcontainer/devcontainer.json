@@ -1,0 +1,30 @@
+{
+  "name": "Angular & Firebase (Node 22)",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:22",
+  "postCreateCommand": "sudo npm install -g @angular/cli firebase-tools && sudo apt-get update && sudo apt-get install -y apt-transport-https ca-certificates gnupg curl && curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg && echo \"deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main\" | sudo tee /etc/apt/sources.list.d/google-cloud-sdk.list > /dev/null && sudo apt-get update && sudo apt-get install -y google-cloud-cli && npm install",
+  "forwardPorts": [
+    4200,
+    9005,
+    8080,
+    5000,
+    5001,
+    4000,
+    8085
+  ],
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "zsh"
+      },
+      "extensions": [
+        "angular.ng-template",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "toba.vsfire",
+        "bierner.markdown-mermaid",
+        "bruno-api-client.bruno"
+      ]
+    }
+  },
+  "remoteUser": "node"
+}
