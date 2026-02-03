@@ -1,6 +1,7 @@
 import { Component, EventEmitter, Input, OnChanges, Output, SimpleChanges, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { marked } from 'marked';
 
 @Component({
   selector: 'app-session-story',
@@ -75,7 +76,7 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
                   </button>
                 </div>
               } @else {
-                <div class="text-sm text-gray-700 leading-relaxed" [innerHTML]="renderedStory()"></div>
+                <div class="prose prose-gray max-w-none" [innerHTML]="renderedStory()"></div>
               }
             </div>
 
@@ -173,6 +174,14 @@ export class SessionStoryComponent implements OnChanges {
   renderedStory = signal<SafeHtml>('');
   showTranscript = signal<boolean>(false);
 
+  constructor() {
+    // Configure marked options
+    marked.setOptions({
+      breaks: true,
+      gfm: true
+    });
+  }
+
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['story']) {
       this.draft.set(this.story);
@@ -246,22 +255,10 @@ export class SessionStoryComponent implements OnChanges {
   }
 
   private convertMarkdown(markdown: string): string {
-    const escaped = markdown
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-
-    return escaped
-      .replace(/^### (.*)$/gm, '<h3>$1</h3>')
-      .replace(/^## (.*)$/gm, '<h2>$1</h2>')
-      .replace(/^# (.*)$/gm, '<h1>$1</h1>')
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*(.+?)\*/g, '<em>$1</em>')
-      .replace(/`(.+?)`/g, '<code>$1</code>')
-      .replace(/^\s*-\s+(.*)$/gm, '<li>$1</li>')
-      .replace(/(<li>.*<\/li>)/gms, '<ul>$1</ul>')
-      .replace(/\n{2,}/g, '<br/><br/>')
-      .replace(/\n/g, '<br/>');
+    if (!markdown) {
+      return '';
+    }
+    return marked.parse(markdown, { async: false }) as string;
   }
 
   private slugify(value: string): string {

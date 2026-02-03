@@ -1,7 +1,9 @@
 import { Component, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { ChatService, Message } from './chat.service';
+import { marked } from 'marked';
 
 @Component({
   selector: 'app-chat',
@@ -36,7 +38,11 @@ import { ChatService, Message } from './chat.service';
               <span class="text-[0.7rem]">{{ formatTime(message.timestamp) }}</span>
             </div>
             <div class="leading-relaxed">
-              <p class="m-0 whitespace-pre-wrap break-words">{{ message.text }}</p>
+              @if (message.sender === 'user') {
+                <p class="m-0 whitespace-pre-wrap break-words">{{ message.text }}</p>
+              } @else {
+                <div class="prose prose-sm prose-gray max-w-none" [innerHTML]="parseMarkdown(message.text)"></div>
+              }
             </div>
           </div>
         }
@@ -82,8 +88,7 @@ import { ChatService, Message } from './chat.service';
         </div>
       }
     </div>
-  `,
-  styles: []
+  `
 })
 export class ChatComponent {
   messages = signal<Message[]>([]);
@@ -92,10 +97,17 @@ export class ChatComponent {
   error = signal<string>('');
 
   private chatService = inject(ChatService);
+  private sanitizer = inject(DomSanitizer);
 
   constructor() {
     // Load chat history from service
     this.messages.set(this.chatService.getMessages());
+
+    // Configure marked options
+    marked.setOptions({
+      breaks: true,
+      gfm: true
+    });
   }
 
   sendMessage(): void {
@@ -164,6 +176,11 @@ export class ChatComponent {
       minute: 'numeric',
       hour12: true
     }).format(timestamp);
+  }
+
+  parseMarkdown(text: string): SafeHtml {
+    const html = marked.parse(text, { async: false }) as string;
+    return this.sanitizer.sanitize(1, html) || '';
   }
 
   private generateId(): string {
