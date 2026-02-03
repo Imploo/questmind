@@ -1,6 +1,6 @@
-import { Injectable, inject, signal, Signal } from '@angular/core';
-import { Firestore, doc, onSnapshot } from '@angular/fire/firestore';
+import { Injectable, signal, Signal } from '@angular/core';
 import { getApp } from 'firebase/app';
+import { getFirestore, doc, onSnapshot, DocumentSnapshot } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { PodcastScript } from './audio-session.models';
 
@@ -18,7 +18,7 @@ export interface PodcastProgress {
   providedIn: 'root'
 })
 export class PodcastAudioService {
-  private readonly firestore = inject(Firestore);
+  private readonly firestore = getFirestore(getApp());
   private readonly functions = getFunctions(getApp(), 'europe-west4');
   private currentAudio: HTMLAudioElement | null = null;
 
@@ -84,7 +84,7 @@ export class PodcastAudioService {
     // Listen to Firestore changes
     const unsubscribe = onSnapshot(
       sessionRef,
-      (snapshot) => {
+      (snapshot: DocumentSnapshot) => {
         if (!snapshot.exists()) {
           progressSignal.set({
             status: 'failed',
@@ -115,7 +115,7 @@ export class PodcastAudioService {
           error: podcast.error
         });
       },
-      (error) => {
+      (error: Error) => {
         console.error('Error listening to podcast progress:', error);
         progressSignal.set({
           status: 'failed',

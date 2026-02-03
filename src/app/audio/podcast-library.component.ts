@@ -80,8 +80,8 @@ interface SessionWithPodcasts {
                         <span class="text-sm font-medium text-gray-900">
                           Podcast versie {{ podcast.version }}
                         </span>
-                        @if (podcast.status === 'generating_script' || podcast.status === 'generating_audio') {
-                          <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">Generating...</span>
+                        @if (podcast.status === 'pending' || podcast.status === 'generating_audio' || podcast.status === 'uploading') {
+                          <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">{{ podcast.progressMessage || 'Generating...' }}</span>
                         } @else if (podcast.status === 'failed') {
                           <span class="text-xs bg-red-100 text-red-700 px-2 py-1 rounded">Failed</span>
                         } @else if (podcast.status === 'completed') {

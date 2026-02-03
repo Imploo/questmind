@@ -13,7 +13,8 @@
       "Bash(npm uninstall:*)",
       "WebSearch",
       "WebFetch(domain:elevenlabs.io)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(npm run build:*)"
     ]
   }
 }
