@@ -2,14 +2,12 @@ import {Injectable} from '@angular/core';
 import {from, Observable, throwError} from 'rxjs';
 import {catchError, map, retry} from 'rxjs/operators';
 import {GoogleGenAI, Type} from '@google/genai';
-import {type FirebaseApp, getApp} from 'firebase/app';
 import {
   collection,
   doc,
   type Firestore,
   getDoc,
   getDocs,
-  getFirestore,
   orderBy,
   query,
   setDoc,
@@ -18,6 +16,7 @@ import {
 
 import {AUDIO_TRANSCRIPTION_PROMPT} from '../prompts';
 import {AudioStorageService} from './audio-storage.service';
+import {FirebaseService} from '../core/firebase.service';
 import {
   CHUNK_DURATION_SECONDS,
   CHUNK_MIME_TYPE,
@@ -44,7 +43,6 @@ type AudioChunk = {
 export class AudioTranscriptionService {
   private readonly apiKey = environment.googleAiApiKey;
   private readonly ai: GoogleGenAI;
-  private readonly app: FirebaseApp | null;
   private readonly db: Firestore | null;
   private readonly TRANSCRIPTION_SCHEMA = {
     type: Type.OBJECT,
@@ -66,17 +64,12 @@ export class AudioTranscriptionService {
     }
   };
 
-  constructor(private readonly storageService: AudioStorageService) {
+  constructor(
+    private readonly storageService: AudioStorageService,
+    private readonly firebase: FirebaseService
+  ) {
     this.ai = new GoogleGenAI({ apiKey: this.apiKey });
-
-    try {
-      this.app = getApp();
-      this.db = getFirestore(this.app);
-    } catch (error) {
-      console.error('Firebase Firestore not initialized:', error);
-      this.app = null;
-      this.db = null;
-    }
+    this.db = this.firebase.firestore;
   }
 
   transcribeAudio(

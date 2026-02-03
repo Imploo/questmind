@@ -1,7 +1,6 @@
 import { Injectable, signal, computed } from '@angular/core';
-import { 
-  getAuth, 
-  signInWithPopup, 
+import {
+  signInWithPopup,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
@@ -12,7 +11,7 @@ import {
   type User,
   type UserCredential
 } from 'firebase/auth';
-import { getApp } from 'firebase/app';
+import { FirebaseService } from '../core/firebase.service';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -27,8 +26,8 @@ export class AuthService {
   readonly isLoading = this.loading.asReadonly();
   readonly authError = this.error.asReadonly();
 
-  constructor() {
-    this.auth = getAuth(getApp());
+  constructor(private readonly firebase: FirebaseService) {
+    this.auth = this.firebase.requireAuth();
     this.initAuthStateListener();
   }
 

@@ -2,14 +2,13 @@ import { Injectable } from '@angular/core';
 import { Observable, throwError } from 'rxjs';
 import {
   getDownloadURL,
-  getStorage,
   ref,
   uploadBytesResumable,
   type FirebaseStorage
 } from 'firebase/storage';
-import { getApp, type FirebaseApp } from 'firebase/app';
 
 import { StorageMetadata, UploadProgress } from './audio-session.models';
+import { FirebaseService } from '../core/firebase.service';
 
 const MAX_FILE_BYTES = 500 * 1024 * 1024;
 const SUPPORTED_TYPES = [
@@ -25,18 +24,10 @@ const SUPPORTED_TYPES = [
   providedIn: 'root'
 })
 export class AudioStorageService {
-  private readonly app: FirebaseApp | null;
   private readonly storage: FirebaseStorage | null;
 
-  constructor() {
-    try {
-      this.app = getApp();
-      this.storage = getStorage(this.app);
-    } catch (error) {
-      console.error('Firebase Storage not initialized:', error);
-      this.app = null;
-      this.storage = null;
-    }
+  constructor(private readonly firebase: FirebaseService) {
+    this.storage = this.firebase.storage;
   }
 
   validateFile(file: File): string | null {

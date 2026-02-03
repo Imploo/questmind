@@ -92,5 +92,12 @@ service cloud.firestore {
       allow read: if isCampaignMember(campaignId);
       allow write: if isSessionOwner(campaignId, sessionId);
     }
+
+    // Settings collection - read-only for authenticated users
+    match /settings/{document} {
+      allow read: if isAuthenticated();
+      // Admin-only writes (manage via Firebase Console)
+      allow write: if false;
+    }
   }
 }

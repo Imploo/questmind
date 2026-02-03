@@ -1,27 +1,21 @@
 import { Injectable } from '@angular/core';
-import { getApp } from 'firebase/app';
 import {
   doc,
   getDoc,
-  getFirestore,
   setDoc,
   updateDoc,
   type Firestore
 } from 'firebase/firestore';
 import type { User } from 'firebase/auth';
 import { UserProfile } from './campaign.models';
+import { FirebaseService } from '../core/firebase.service';
 
 @Injectable({ providedIn: 'root' })
 export class UserProfileService {
   private readonly db: Firestore | null;
 
-  constructor() {
-    try {
-      this.db = getFirestore(getApp());
-    } catch (error) {
-      console.error('Firestore not initialized for user profiles:', error);
-      this.db = null;
-    }
+  constructor(private readonly firebase: FirebaseService) {
+    this.db = this.firebase.firestore;
   }
 
   async getProfile(userId: string): Promise<UserProfile | null> {

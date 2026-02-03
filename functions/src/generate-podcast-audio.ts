@@ -7,6 +7,8 @@ import * as os from 'os';
 import * as path from 'path';
 import { Readable } from 'stream';
 import { randomUUID } from 'crypto';
+import { GoogleGenAI } from '@google/genai';
+import { PODCAST_SCRIPT_GENERATOR_PROMPT } from './prompts/podcast-script-generator.prompt';
 
 // ElevenLabs voice IDs - configure via environment variables or use defaults
 // You can find voice IDs at: https://elevenlabs.io/voice-library
@@ -50,11 +52,26 @@ interface PodcastScript {
   estimatedDuration: number;
 }
 
+interface AISettings {
+  defaultModel: string;
+  modelConfig: {
+    [key: string]: {
+      maxOutputTokens: number;
+      temperature: number;
+      topP: number;
+      topK: number;
+    };
+  };
+}
+
 interface PodcastGenerationRequest {
   campaignId: string;
   sessionId: string;
   version: number;
-  script: PodcastScript;
+  story?: string;           // For script generation
+  sessionTitle?: string;    // For script generation
+  sessionDate?: string;     // Optional
+  script?: PodcastScript;   // Optional (backward compatibility)
 }
 
 type CallableRequest<T> = {
@@ -70,9 +87,9 @@ export const generatePodcastAudio = onCall(
       /^https:\/\/.*\.web\.app$/,
       /^https:\/\/.*\.firebaseapp\.com$/
     ],
-    secrets: ['ELEVENLABS_API_KEY'],
-    timeoutSeconds: 600, // 10 minutes for text-to-dialogue generation
-    memory: '512MiB' // Reduced memory (no ffmpeg processing needed)
+    secrets: ['GOOGLE_AI_API_KEY', 'ELEVENLABS_API_KEY'],
+    timeoutSeconds: 900,    // 15 minutes
+    memory: '1GiB'         // 1GB
   },
   async (request: CallableRequest<PodcastGenerationRequest>) => {
     const { auth, data } = request;
@@ -81,8 +98,9 @@ export const generatePodcastAudio = onCall(
       throw new HttpsError('unauthenticated', 'User must be authenticated.');
     }
 
-    const { campaignId, sessionId, version, script } = data as PodcastGenerationRequest;
+    const { campaignId, sessionId, version, story, sessionTitle, sessionDate, script } = data;
 
+    // Standard validations
     if (!campaignId || typeof campaignId !== 'string') {
       throw new HttpsError('invalid-argument', 'Missing campaignId.');
     }
@@ -92,17 +110,31 @@ export const generatePodcastAudio = onCall(
     if (!version || typeof version !== 'number') {
       throw new HttpsError('invalid-argument', 'Missing version.');
     }
-    if (!script || !Array.isArray(script.segments) || script.segments.length === 0) {
-      throw new HttpsError('invalid-argument', 'Script segments are required.');
+
+    // If script not provided, story and sessionTitle required
+    if (!script) {
+      if (!story || typeof story !== 'string') {
+        throw new HttpsError('invalid-argument', 'Missing story (required for script generation).');
+      }
+      if (!sessionTitle || typeof sessionTitle !== 'string') {
+        throw new HttpsError('invalid-argument', 'Missing sessionTitle (required for script generation).');
+      }
+    } else {
+      if (!Array.isArray(script.segments) || script.segments.length === 0) {
+        throw new HttpsError('invalid-argument', 'Invalid script provided.');
+      }
     }
 
-    const apiKey = process.env.ELEVENLABS_API_KEY;
+    const googleAiKey = process.env.GOOGLE_AI_API_KEY;
+    const elevenlabsKey = process.env.ELEVENLABS_API_KEY;
 
-    if (!apiKey) {
-      throw new HttpsError('failed-precondition', 'ElevenLabs API key is not configured.');
+    if (!googleAiKey) {
+      throw new HttpsError('failed-precondition', 'Google AI API key not configured.');
+    }
+    if (!elevenlabsKey) {
+      throw new HttpsError('failed-precondition', 'ElevenLabs API key not configured.');
     }
 
-    const elevenlabs = new ElevenLabsClient({ apiKey });
     const db = getFirestore();
     const storage = getStorage().bucket();
     const campaignRef = db.doc(`campaigns/${campaignId}`);
@@ -135,13 +167,11 @@ export const generatePodcastAudio = onCall(
     const initialPodcastEntry = {
       version,
       createdAt: existingEntry?.createdAt ?? now,
-      scriptGeneratedAt: existingEntry?.scriptGeneratedAt ?? now,
-      duration: script.estimatedDuration,
       storyVersion: sessionData.storyRegenerationCount ?? existingEntry?.storyVersion,
-      script,
       status: 'pending' as const,
       progress: 0,
       progressMessage: 'Starting podcast generation...'
+      // Remove scriptGeneratedAt, duration, script - set during generation
     };
 
     await sessionRef.update({
@@ -158,7 +188,10 @@ export const generatePodcastAudio = onCall(
       campaignId,
       sessionId,
       version,
-      script,
+      script,        // May be undefined
+      story,         // May be undefined
+      sessionTitle,  // May be undefined
+      sessionDate,   // May be undefined
       sessionRef,
       existingPodcasts,
       auth.uid,
@@ -184,48 +217,166 @@ function upsertPodcast(existing: any[], nextEntry: any): any[] {
   return updated;
 }
 
+function parseScriptResponse(text: string): PodcastScript {
+  const segments: PodcastSegment[] = [];
+  const lines = text.split('\n').filter(line => line.trim());
+
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    if (trimmedLine.startsWith('HOST1:')) {
+      segments.push({
+        speaker: 'host1',
+        text: trimmedLine.replace('HOST1:', '').trim()
+      });
+    } else if (trimmedLine.startsWith('HOST2:')) {
+      segments.push({
+        speaker: 'host2',
+        text: trimmedLine.replace('HOST2:', '').trim()
+      });
+    }
+  }
+
+  const totalWords = segments.reduce((sum, seg) => sum + seg.text.split(/\s+/).length, 0);
+  const estimatedDuration = Math.ceil((totalWords / 150) * 60);
+
+  return { segments, estimatedDuration };
+}
+
 // Background generation function
 async function generatePodcastInBackground(
   campaignId: string,
   sessionId: string,
   version: number,
-  script: any,
+  script: PodcastScript | undefined,
+  story: string | undefined,
+  sessionTitle: string | undefined,
+  sessionDate: string | undefined,
   sessionRef: FirebaseFirestore.DocumentReference,
   existingPodcasts: any[],
   userId: string,
   storage: any
 ) {
-  const apiKey = process.env.ELEVENLABS_API_KEY;
-  if (!apiKey) {
-    await updateProgress(sessionRef, existingPodcasts, version, 'failed', 0, 'API key not configured', {
-      error: 'ElevenLabs API key is not configured'
+  const googleAiKey = process.env.GOOGLE_AI_API_KEY;
+  const elevenlabsKey = process.env.ELEVENLABS_API_KEY;
+
+  if (!googleAiKey || !elevenlabsKey) {
+    await updateProgress(sessionRef, existingPodcasts, version, 'failed', 0, 'API keys not configured', {
+      error: 'Required API keys are not configured'
     });
     return;
   }
 
-  const elevenlabs = new ElevenLabsClient({ apiKey });
+  const db = getFirestore();
+  const googleAi = new GoogleGenAI({ apiKey: googleAiKey });
+  const elevenlabs = new ElevenLabsClient({ apiKey: elevenlabsKey });
+
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'podcast-'));
   const outputPath = path.join(tempDir, `podcast-${sessionId}-v${version}.mp3`);
 
   try {
-    // Update: Starting audio generation
+    let finalScript: PodcastScript;
+    let modelUsed: string | undefined;
+
+    // STEP 1: Generate script if not provided
+    if (!script) {
+      // 1.1 Load AI settings
+      await updateProgress(sessionRef, existingPodcasts, version, 'loading_context', 5, 'Loading AI settings...');
+
+      const settingsSnap = await db.doc('settings/ai').get();
+      const aiSettings = settingsSnap.data() as AISettings | undefined;
+
+      if (!aiSettings) {
+        throw new Error('AI settings not configured in database');
+      }
+
+      const selectedModel = aiSettings.defaultModel;
+      const modelConfig = aiSettings.modelConfig[selectedModel];
+
+      if (!modelConfig) {
+        throw new Error(`Model configuration not found for: ${selectedModel}`);
+      }
+
+      modelUsed = selectedModel;
+      console.log(`Using model: ${selectedModel}`);
+
+      // 1.2 Generate script
+      await updateProgress(sessionRef, existingPodcasts, version, 'generating_script', 15,
+        `Generating script with ${selectedModel}...`);
+
+      const promptText = `${PODCAST_SCRIPT_GENERATOR_PROMPT}\n\nSESSION TITLE: ${sessionTitle}\nSESSION DATE: ${
+        sessionDate || 'Unknown'
+      }\n\nSESSION STORY:\n${story}\n\nGenereer een podcast script met natuurlijke dialoog tussen HOST1 (man) en HOST2 (vrouw).`;
+
+      const scriptResponse = await googleAi.models.generateContent({
+        model: selectedModel,
+        contents: [{ role: 'user', parts: [{ text: promptText }] }],
+        config: modelConfig
+      });
+
+      if (!scriptResponse.text) {
+        throw new Error('No script generated by AI');
+      }
+
+      // 1.3 Parse script
+      finalScript = parseScriptResponse(scriptResponse.text);
+
+      if (finalScript.segments.length === 0) {
+        throw new Error('Failed to parse script segments');
+      }
+
+      // Validate character limit
+      const totalCharacters = finalScript.segments.reduce((sum, seg) => sum + seg.text.length, 0);
+      console.log(`Generated script: ${totalCharacters} characters (limit: 5000)`);
+
+      if (totalCharacters > 5000) {
+        throw new Error(
+          `Script too long (${totalCharacters} chars). Maximum is 5000. Try a shorter story.`
+        );
+      }
+
+      await updateProgress(sessionRef, existingPodcasts, version, 'script_complete', 50,
+        `Script generated with ${finalScript.segments.length} segments`,
+        {
+          script: finalScript,
+          scriptGeneratedAt: new Date(),
+          duration: finalScript.estimatedDuration,
+          modelUsed: selectedModel
+        }
+      );
+
+      console.log(`Script: ${finalScript.segments.length} segments, ~${finalScript.estimatedDuration}s`);
+    } else {
+      // Script provided, skip generation
+      finalScript = script;
+      await updateProgress(sessionRef, existingPodcasts, version, 'script_complete', 50,
+        'Using provided script',
+        {
+          script: finalScript,
+          scriptGeneratedAt: new Date(),
+          duration: finalScript.estimatedDuration
+        }
+      );
+      console.log(`Using provided script: ${finalScript.segments.length} segments`);
+    }
+
+    // STEP 2: Generate audio (existing code continues)
     await updateProgress(
       sessionRef,
       existingPodcasts,
       version,
       'generating_audio',
-      10,
+      55,
       'Generating conversational audio with text-to-dialogue...'
     );
 
     // 1. Format script for text-to-dialogue
     // Convert segments to text-to-dialogue input format: array of { text, voiceId }
-    const dialogueInputs = script.segments.map((seg: any) => ({
+    const dialogueInputs = finalScript.segments.map((seg: any) => ({
       text: seg.text,
       voiceId: HOST_VOICES[seg.speaker as 'host1' | 'host2'] || HOST_VOICES.host1
     }));
 
-    console.log(`Generating podcast with text-to-dialogue (${script.segments.length} segments)`);
+    console.log(`Generating podcast with text-to-dialogue (${finalScript.segments.length} segments)`);
 
     // 2. Call ElevenLabs text-to-dialogue API (SINGLE CALL)
     await updateProgress(
@@ -233,7 +384,7 @@ async function generatePodcastInBackground(
       existingPodcasts,
       version,
       'generating_audio',
-      30,
+      60,
       'Calling ElevenLabs text-to-dialogue API...'
     );
 
@@ -247,7 +398,7 @@ async function generatePodcastInBackground(
       existingPodcasts,
       version,
       'generating_audio',
-      60,
+      70,
       'Receiving audio stream...'
     );
 
@@ -274,7 +425,7 @@ async function generatePodcastInBackground(
       existingPodcasts,
       version,
       'uploading',
-      80,
+      85,
       'Uploading podcast to storage...'
     );
 
@@ -312,6 +463,7 @@ async function generatePodcastInBackground(
         audioUrl: fileUrl,
         fileSize,
         audioGeneratedAt: new Date(),
+        modelUsed: modelUsed,  // Add model info
         error: null
       }
     );

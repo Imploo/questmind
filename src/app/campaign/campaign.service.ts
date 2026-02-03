@@ -1,11 +1,9 @@
 import { Injectable, inject } from '@angular/core';
-import { getApp } from 'firebase/app';
 import {
   collection,
   doc,
   getDoc,
   getDocs,
-  getFirestore,
   query,
   setDoc,
   updateDoc,
@@ -15,20 +13,17 @@ import {
 import { AuthService } from '../auth/auth.service';
 import { Campaign, CampaignMember, CampaignRole, CampaignSettings } from './campaign.models';
 import { UserProfileService } from './user-profile.service';
+import { FirebaseService } from '../core/firebase.service';
 
 @Injectable({ providedIn: 'root' })
 export class CampaignService {
   private readonly authService = inject(AuthService);
   private readonly userProfileService = inject(UserProfileService);
+  private readonly firebase = inject(FirebaseService);
   private readonly db: Firestore | null;
 
   constructor() {
-    try {
-      this.db = getFirestore(getApp());
-    } catch (error) {
-      console.error('Firestore not initialized for campaigns:', error);
-      this.db = null;
-    }
+    this.db = this.firebase.firestore;
   }
 
   async createCampaign(name: string, description?: string): Promise<string> {

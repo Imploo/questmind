@@ -1,9 +1,7 @@
 import { Injectable, signal, effect } from '@angular/core';
-import { getApp, type FirebaseApp } from 'firebase/app';
 import {
   collection,
   doc,
-  getFirestore,
   onSnapshot,
   orderBy,
   query,
@@ -14,6 +12,7 @@ import {
 
 import { AuthService } from '../auth/auth.service';
 import { CampaignContextService } from '../campaign/campaign-context.service';
+import { FirebaseService } from '../core/firebase.service';
 import {
   AudioSessionRecord,
   AudioUpload
@@ -24,7 +23,6 @@ import {
 })
 export class AudioSessionStateService {
   readonly sessions = signal<AudioSessionRecord[]>([]);
-  private readonly app: FirebaseApp | null;
   private readonly db: Firestore | null;
   private activeUserId: string | null = null;
   private activeCampaignId: string | null = null;
@@ -32,16 +30,10 @@ export class AudioSessionStateService {
 
   constructor(
     private readonly authService: AuthService,
-    private readonly campaignContext: CampaignContextService
+    private readonly campaignContext: CampaignContextService,
+    private readonly firebase: FirebaseService
   ) {
-    try {
-      this.app = getApp();
-      this.db = getFirestore(this.app);
-    } catch (error) {
-      console.error('Firebase not initialized:', error);
-      this.app = null;
-      this.db = null;
-    }
+    this.db = this.firebase.firestore;
 
     effect(() => {
       const user = this.authService.currentUser();

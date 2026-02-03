@@ -1,11 +1,19 @@
 import { Injectable, signal, Signal } from '@angular/core';
-import { getApp } from 'firebase/app';
-import { getFirestore, doc, onSnapshot, DocumentSnapshot } from 'firebase/firestore';
-import { getFunctions, httpsCallable } from 'firebase/functions';
+import { doc, onSnapshot, DocumentSnapshot, type Firestore } from 'firebase/firestore';
+import { httpsCallable, type Functions } from 'firebase/functions';
 import { PodcastScript } from './audio-session.models';
+import { FirebaseService } from '../core/firebase.service';
 
 export interface PodcastProgress {
-  status: 'pending' | 'generating_audio' | 'uploading' | 'completed' | 'failed';
+  status:
+    | 'pending'
+    | 'loading_context'      // NEW
+    | 'generating_script'    // NEW
+    | 'script_complete'      // NEW
+    | 'generating_audio'
+    | 'uploading'
+    | 'completed'
+    | 'failed';
   progress: number;
   message: string;
   error?: string;
@@ -18,19 +26,26 @@ export interface PodcastProgress {
   providedIn: 'root'
 })
 export class PodcastAudioService {
-  private readonly firestore = getFirestore(getApp());
-  private readonly functions = getFunctions(getApp(), 'europe-west4');
+  private readonly firestore: Firestore;
+  private readonly functions: Functions;
   private currentAudio: HTMLAudioElement | null = null;
 
+  constructor(private readonly firebase: FirebaseService) {
+    this.firestore = this.firebase.requireFirestore();
+    this.functions = this.firebase.requireFunctions();
+  }
+
   /**
-   * Start podcast generation (fire-and-forget).
-   * Returns immediately after validation. Use listenToPodcastProgress() to monitor.
+   * Start complete podcast generation (script + audio).
+   * Returns immediately. Use listenToPodcastProgress() to monitor.
    */
   async startPodcastGeneration(
     campaignId: string,
     sessionId: string,
     version: number,
-    script: PodcastScript
+    story: string,           // NEW: Story for script generation
+    sessionTitle: string,    // NEW: Session title
+    sessionDate?: string     // NEW: Optional session date
   ): Promise<void> {
     try {
       const generateAudio = httpsCallable<
@@ -38,26 +53,26 @@ export class PodcastAudioService {
           campaignId: string;
           sessionId: string;
           version: number;
-          script: PodcastScript;
+          story: string;
+          sessionTitle: string;
+          sessionDate?: string;
         },
-        {
-          success: boolean;
-          message: string;
-        }
+        { success: boolean; message: string; }
       >(this.functions, 'generatePodcastAudio');
 
       const result = await generateAudio({
         campaignId,
         sessionId,
         version,
-        script
+        story,
+        sessionTitle,
+        sessionDate
       });
 
       if (!result.data?.success) {
         throw new Error('Failed to start podcast generation');
       }
 
-      // Function returns immediately - generation continues in background
       console.log('Podcast generation started:', result.data.message);
     } catch (error) {
       console.error('Error starting podcast generation:', error);

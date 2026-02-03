@@ -1,17 +1,18 @@
 import { Injectable, computed, effect, inject, signal } from '@angular/core';
 import type { User } from 'firebase/auth';
-import { getApp } from 'firebase/app';
-import { doc, getFirestore, onSnapshot, type Firestore } from 'firebase/firestore';
+import { doc, onSnapshot, type Firestore } from 'firebase/firestore';
 import { AuthService } from '../auth/auth.service';
 import { Campaign, UserProfile } from './campaign.models';
 import { CampaignService } from './campaign.service';
 import { UserProfileService } from './user-profile.service';
+import { FirebaseService } from '../core/firebase.service';
 
 @Injectable({ providedIn: 'root' })
 export class CampaignContextService {
   private readonly authService = inject(AuthService);
   private readonly campaignService = inject(CampaignService);
   private readonly userProfileService = inject(UserProfileService);
+  private readonly firebase = inject(FirebaseService);
   private readonly db: Firestore | null;
   private profileUnsubscribe?: () => void;
   private activeUserId: string | null = null;
@@ -29,12 +30,7 @@ export class CampaignContextService {
   });
 
   constructor() {
-    try {
-      this.db = getFirestore(getApp());
-    } catch (error) {
-      console.error('Firestore not initialized for campaign context:', error);
-      this.db = null;
-    }
+    this.db = this.firebase.firestore;
 
     effect(() => {
       const user = this.authService.currentUser();

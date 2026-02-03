@@ -94,7 +94,7 @@ export interface PodcastScript {
 export interface PodcastVersion {
   version: number;
   createdAt: Date;
-  scriptGeneratedAt: Date;
+  scriptGeneratedAt?: Date;
   audioGeneratedAt?: Date;
   audioUrl?: string;
   duration?: number; // seconds
@@ -102,11 +102,22 @@ export interface PodcastVersion {
   storyVersion?: number;
   script?: PodcastScript;
 
-  // Progress tracking fields for fire-and-forget architecture
-  status: 'pending' | 'generating_audio' | 'uploading' | 'completed' | 'failed';
+  // Enhanced progress tracking
+  status:
+    | 'pending'
+    | 'loading_context'      // NEW: 0-10%
+    | 'generating_script'    // NEW: 10-50%
+    | 'script_complete'      // NEW: 50%
+    | 'generating_audio'     // 50-80%
+    | 'uploading'            // 80-95%
+    | 'completed'            // 100%
+    | 'failed';
   progress: number; // 0-100
   progressMessage: string; // e.g., "Generating audio with text-to-dialogue..."
   error?: string;
+
+  // NEW: Track model used
+  modelUsed?: string;
 }
 
 export interface UploadProgress {

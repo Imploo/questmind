@@ -1,16 +1,17 @@
 import { Component, OnDestroy, effect, signal, computed, inject, Injector, runInInjectionContext } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Subscription, timer, firstValueFrom } from 'rxjs';
+import { httpsCallable } from 'firebase/functions';
 import { AudioStorageService } from './audio-storage.service';
 import { AudioTranscriptionService } from './audio-transcription.service';
 import { SessionStoryService } from './session-story.service';
 import { AudioSessionStateService } from './audio-session-state.service';
-import { PodcastScriptService } from './podcast-script.service';
 import { PodcastAudioService, PodcastProgress } from './podcast-audio.service';
 import { AuthService } from '../auth/auth.service';
 import { FormattingService } from '../shared/formatting.service';
 import { CampaignContextService } from '../campaign/campaign-context.service';
 import { CampaignService } from '../campaign/campaign.service';
+import { FirebaseService } from '../core/firebase.service';
 import {
   AudioSessionRecord,
   AudioUpload,
@@ -338,11 +339,11 @@ export class AudioSessionComponent implements OnDestroy {
     private readonly audioTranscriptionService: AudioTranscriptionService,
     private readonly sessionStoryService: SessionStoryService,
     private readonly sessionStateService: AudioSessionStateService,
-    private readonly podcastScriptService: PodcastScriptService,
     private readonly podcastAudioService: PodcastAudioService,
     public readonly authService: AuthService,
     private readonly injector: Injector,
-    public readonly formatting: FormattingService
+    public readonly formatting: FormattingService,
+    private readonly firebase: FirebaseService
   ) {
     effect(() => {
       this.selectedCampaign();
@@ -799,50 +800,27 @@ export class AudioSessionComponent implements OnDestroy {
   async generatePodcast(): Promise<void> {
     const session = this.currentSession();
     if (!session?.content || !session?.id) {
-      this.podcastError.set('No session story available to generate podcast.');
+      this.podcastError.set('No session story available.');
       return;
     }
     if (!session.campaignId) {
-      this.podcastError.set('No campaign selected for this session.');
+      this.podcastError.set('No campaign selected.');
       return;
     }
     if (!this.canGeneratePodcast()) {
-      this.podcastError.set('Only the session owner can generate a podcast.');
+      this.podcastError.set('Only session owner can generate podcast.');
       return;
     }
 
     this.isGeneratingPodcast.set(true);
-    this.podcastGenerationProgress.set('Generating podcast script...');
-    this.podcastGenerationProgressPercent.set(5);
+    this.podcastGenerationProgress.set('Starting podcast generation...');
+    this.podcastGenerationProgressPercent.set(0);
     this.podcastError.set('');
 
     try {
-      // Step 1: Generate script
-      const script = await firstValueFrom(
-        this.podcastScriptService.generatePodcastScript(
-          session.content,
-          session.title || 'Untitled Session',
-          session.sessionDate,
-          this.kankaEnabled() && this.kankaAvailable()
-        )
-      );
-
-      // Validate script length (ElevenLabs has a 5000 character limit)
-      const totalCharacters = script.segments.reduce((sum, seg) => sum + seg.text.length, 0);
-      console.log(`Generated script with ${totalCharacters} characters (limit: 5000)`);
-
-      if (totalCharacters > 5000) {
-        throw new Error(
-          `Script is te lang (${totalCharacters} karakters). Maximum is 5000 karakters. ` +
-          `Probeer een kortere sessie story of regenereer de story.`
-        );
-      }
-
-      this.podcastGenerationProgress.set('Starting podcast audio generation...');
-      this.podcastGenerationProgressPercent.set(20);
-
-      // Step 2: Start listening to progress BEFORE starting generation
       const version = (session.podcasts?.length || 0) + 1;
+
+      // Step 1: Start listening BEFORE generation
       const { progress, unsubscribe } = this.podcastAudioService.listenToPodcastProgress(
         session.campaignId,
         session.id,
@@ -851,13 +829,12 @@ export class AudioSessionComponent implements OnDestroy {
 
       this.progressUnsubscribe = unsubscribe;
 
-      // Create effect to watch progress updates from Firestore
+      // Step 2: Create effect to watch progress
       const progressEffect = runInInjectionContext(this.injector, () => effect(() => {
         const currentProgress = progress();
         if (currentProgress) {
           console.log('Podcast progress:', currentProgress);
 
-          // Update UI with progress from database
           this.podcastProgress.set(currentProgress);
           this.podcastGenerationProgress.set(currentProgress.message);
           this.podcastGenerationProgressPercent.set(currentProgress.progress);
@@ -866,28 +843,28 @@ export class AudioSessionComponent implements OnDestroy {
             this.podcastError.set(currentProgress.error);
           }
 
-          // Auto-cleanup when completed or failed
           if (currentProgress.status === 'completed' || currentProgress.status === 'failed') {
             setTimeout(() => {
               this.isGeneratingPodcast.set(false);
               this.cleanupProgressListener();
-              progressEffect.destroy(); // Cleanup the effect
+              progressEffect.destroy();
               this.refreshSessions();
-            }, 3000); // Keep showing final state for 3 seconds
+            }, 3000);
           }
         }
       }));
 
-      // Step 3: Start generation (fire-and-forget)
+      // Step 3: Start generation (fire-and-forget) - now includes script
       await this.podcastAudioService.startPodcastGeneration(
         session.campaignId,
         session.id,
         version,
-        script
+        session.content,                      // Story
+        session.title || 'Untitled Session',  // Title
+        session.sessionDate                    // Date
       );
 
-      // Function returns immediately, progress updates come via Firestore
-      console.log('Podcast generation started, monitoring progress via onSnapshot...');
+      console.log('Podcast generation started (script + audio)');
 
     } catch (error: any) {
       console.error('Failed to start podcast generation:', error);
