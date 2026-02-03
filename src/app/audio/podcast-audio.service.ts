@@ -1,7 +1,15 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject, signal, Signal } from '@angular/core';
+import { Firestore, doc, onSnapshot } from '@angular/fire/firestore';
 import { getApp } from 'firebase/app';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { PodcastScript } from './audio-session.models';
+
+export interface PodcastProgress {
+  status: 'pending' | 'generating_audio' | 'uploading' | 'completed' | 'failed';
+  progress: number;
+  message: string;
+  error?: string;
+}
 
 /**
  * Service for generating and playing stored podcast MP3 files.
@@ -10,23 +18,20 @@ import { PodcastScript } from './audio-session.models';
   providedIn: 'root'
 })
 export class PodcastAudioService {
+  private readonly firestore = inject(Firestore);
   private readonly functions = getFunctions(getApp(), 'europe-west4');
   private currentAudio: HTMLAudioElement | null = null;
 
   /**
-   * Generate a complete MP3 via Cloud Function using Gemini 2.5 Pro TTS.
+   * Start podcast generation (fire-and-forget).
+   * Returns immediately after validation. Use listenToPodcastProgress() to monitor.
    */
-  async generatePodcastMP3(
+  async startPodcastGeneration(
     campaignId: string,
     sessionId: string,
     version: number,
-    script: PodcastScript,
-    onProgress?: (progress: number, message: string) => void
-  ): Promise<{ audioUrl: string; fileSize: number; duration: number }> {
-    if (onProgress) {
-      onProgress(0, 'Starting audio generation...');
-    }
-
+    script: PodcastScript
+  ): Promise<void> {
     try {
       const generateAudio = httpsCallable<
         {
@@ -37,15 +42,9 @@ export class PodcastAudioService {
         },
         {
           success: boolean;
-          audioUrl: string;
-          fileSize: number;
-          duration: number;
+          message: string;
         }
       >(this.functions, 'generatePodcastAudio');
-
-      if (onProgress) {
-        onProgress(20, 'Synthesizing with Gemini 2.5 Pro TTS...');
-      }
 
       const result = await generateAudio({
         campaignId,
@@ -55,22 +54,82 @@ export class PodcastAudioService {
       });
 
       if (!result.data?.success) {
-        throw new Error('Failed to generate audio');
+        throw new Error('Failed to start podcast generation');
       }
 
-      if (onProgress) {
-        onProgress(100, 'Audio ready!');
-      }
-
-      return {
-        audioUrl: result.data.audioUrl,
-        fileSize: result.data.fileSize,
-        duration: result.data.duration
-      };
+      // Function returns immediately - generation continues in background
+      console.log('Podcast generation started:', result.data.message);
     } catch (error) {
-      console.error('Error generating podcast MP3:', error);
-      throw new Error('Failed to generate podcast audio. Please try again.');
+      console.error('Error starting podcast generation:', error);
+      throw new Error('Failed to start podcast generation. Please try again.');
     }
+  }
+
+  /**
+   * Listen to podcast generation progress in real-time.
+   * Returns a signal that updates with progress and an unsubscribe function.
+   */
+  listenToPodcastProgress(
+    campaignId: string,
+    sessionId: string,
+    version: number
+  ): { progress: Signal<PodcastProgress | null>; unsubscribe: () => void } {
+    const progressSignal = signal<PodcastProgress | null>(null);
+
+    const sessionRef = doc(
+      this.firestore,
+      `campaigns/${campaignId}/audioSessions/${sessionId}`
+    );
+
+    // Listen to Firestore changes
+    const unsubscribe = onSnapshot(
+      sessionRef,
+      (snapshot) => {
+        if (!snapshot.exists()) {
+          progressSignal.set({
+            status: 'failed',
+            progress: 0,
+            message: 'Session not found',
+            error: 'Session document does not exist'
+          });
+          return;
+        }
+
+        const data = snapshot.data();
+        const podcasts = data?.['podcasts'] || [];
+        const podcast = podcasts.find((p: any) => p.version === version);
+
+        if (!podcast) {
+          progressSignal.set({
+            status: 'pending',
+            progress: 0,
+            message: 'Waiting to start...'
+          });
+          return;
+        }
+
+        progressSignal.set({
+          status: podcast.status || 'pending',
+          progress: podcast.progress || 0,
+          message: podcast.progressMessage || 'Processing...',
+          error: podcast.error
+        });
+      },
+      (error) => {
+        console.error('Error listening to podcast progress:', error);
+        progressSignal.set({
+          status: 'failed',
+          progress: 0,
+          message: 'Failed to monitor progress',
+          error: error.message
+        });
+      }
+    );
+
+    return {
+      progress: progressSignal.asReadonly(),
+      unsubscribe
+    };
   }
 
   /**

@@ -2,7 +2,6 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
-import ffmpeg from 'fluent-ffmpeg';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -15,6 +14,30 @@ const HOST_VOICES: Record<'host1' | 'host2', string> = {
   host1: process.env.ELEVENLABS_HOST1_VOICE || 'tvFp0BgJPrEXGoDhDIA4', // Thomas  - deep, professional male voice
   host2: process.env.ELEVENLABS_HOST2_VOICE || '7qdUFMklKPaaAVMsBTBt', // Roos - warm, engaging female voice
 };
+
+// Helper to update progress in Firestore
+async function updateProgress(
+  sessionRef: FirebaseFirestore.DocumentReference,
+  existingPodcasts: any[],
+  version: number,
+  status: string,
+  progress: number,
+  message: string,
+  additionalData: any = {}
+) {
+  const updatedPodcast = {
+    version,
+    status,
+    progress,
+    progressMessage: message,
+    ...additionalData
+  };
+
+  await sessionRef.update({
+    podcasts: upsertPodcast(existingPodcasts, updatedPodcast),
+    updatedAt: FieldValue.serverTimestamp()
+  });
+}
 
 interface PodcastSegment {
   speaker: 'host1' | 'host2';
@@ -48,8 +71,8 @@ export const generatePodcastAudio = onCall(
       /^https:\/\/.*\.firebaseapp\.com$/
     ],
     secrets: ['ELEVENLABS_API_KEY'],
-    timeoutSeconds: 1200, // 20 minutes for multi-segment TTS generation
-    memory: '1GiB' // Increased memory for ffmpeg processing
+    timeoutSeconds: 600, // 10 minutes for text-to-dialogue generation
+    memory: '512MiB' // Reduced memory (no ffmpeg processing needed)
   },
   async (request: CallableRequest<PodcastGenerationRequest>) => {
     const { auth, data } = request;
@@ -109,175 +132,45 @@ export const generatePodcastAudio = onCall(
     const existingEntry = existingPodcasts.find((podcast: any) => podcast?.version === version);
 
     const now = new Date();
-    const basePodcastEntry = {
+    const initialPodcastEntry = {
       version,
       createdAt: existingEntry?.createdAt ?? now,
       scriptGeneratedAt: existingEntry?.scriptGeneratedAt ?? now,
       duration: script.estimatedDuration,
       storyVersion: sessionData.storyRegenerationCount ?? existingEntry?.storyVersion,
       script,
-      status: 'generating_audio' as const
+      status: 'pending' as const,
+      progress: 0,
+      progressMessage: 'Starting podcast generation...'
     };
 
     await sessionRef.update({
-      podcasts: upsertPodcast(existingPodcasts, basePodcastEntry),
+      podcasts: upsertPodcast(existingPodcasts, initialPodcastEntry),
       latestPodcastVersion: version,
       updatedAt: FieldValue.serverTimestamp()
     });
 
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'podcast-'));
-    const segmentFiles: string[] = [];
-    const outputPath = path.join(tempDir, `podcast-${sessionId}-v${version}.mp3`);
+    // RETURN IMMEDIATELY - Generation continues in background
+    // Frontend will listen to Firestore updates via onSnapshot
 
-    try {
-      // Generate segments with ElevenLabs
-      // Limit to two concurrent calls to respect rate limits.
-      const CONCURRENCY_LIMIT = 3;
-      const generatedSegments: string[] = [];
+    // Start generation asynchronously (don't await)
+    generatePodcastInBackground(
+      campaignId,
+      sessionId,
+      version,
+      script,
+      sessionRef,
+      existingPodcasts,
+      auth.uid,
+      storage
+    ).catch(error => {
+      console.error('Background generation failed:', error);
+    });
 
-      for (let batchStart = 0; batchStart < script.segments.length; batchStart += CONCURRENCY_LIMIT) {
-        const batchEnd = Math.min(batchStart + CONCURRENCY_LIMIT, script.segments.length);
-        const batch = script.segments.slice(batchStart, batchEnd);
-
-        console.log(`Processing segments ${batchStart + 1}-${batchEnd} of ${script.segments.length}`);
-
-        const batchPromises = batch.map(async (segment, batchIndex) => {
-          const i = batchStart + batchIndex;
-          const voiceId = HOST_VOICES[segment.speaker] ?? HOST_VOICES.host1;
-
-          // Retry logic with exponential backoff for rate limits
-          let audioStream;
-          let retries = 0;
-          const maxRetries = 3;
-
-          while (retries <= maxRetries) {
-            try {
-              audioStream = await elevenlabs.textToSpeech.convert(voiceId, {
-                text: segment.text,
-                modelId: 'eleven_turbo_v2_5', // Fast, high-quality model
-                voiceSettings: {
-                  stability: 0.3,
-                  style: 0.0,
-                  useSpeakerBoost: true
-                }
-              });
-              break; // Success, exit retry loop
-            } catch (error: any) {
-              if ((error?.status === 429 || error?.statusCode === 429) && retries < maxRetries) {
-                const delay = Math.pow(2, retries) * 2000; // 2s, 4s, 8s
-                console.log(`Rate limit hit for segment ${i + 1}, retrying in ${delay / 1000}s...`);
-                await new Promise(resolve => setTimeout(resolve, delay));
-                retries++;
-              } else {
-                throw error; // Re-throw if not rate limit or max retries exceeded
-              }
-            }
-          }
-
-          if (!audioStream) {
-            throw new Error(`No audio stream returned for segment ${i + 1}.`);
-          }
-
-          // Convert stream to buffer
-          const chunks: Buffer[] = [];
-          const readable = Readable.from(audioStream as any);
-
-          for await (const chunk of readable) {
-            chunks.push(Buffer.from(chunk));
-          }
-
-          const audioBuffer = Buffer.concat(chunks);
-
-          // Verify we have valid audio data
-          if (audioBuffer.length === 0) {
-            throw new Error(`Empty audio buffer for segment ${i + 1}.`);
-          }
-
-          console.log(`Segment ${i + 1}: Generated ${audioBuffer.length} bytes`);
-
-          const segmentPath = path.join(tempDir, `segment-${i}.mp3`);
-          fs.writeFileSync(segmentPath, audioBuffer);
-
-          return segmentPath;
-        });
-
-        const batchResults = await Promise.all(batchPromises);
-        generatedSegments.push(...batchResults);
-
-        // Small delay between batches to be respectful of API limits
-        if (batchEnd < script.segments.length) {
-          console.log('Waiting 2 seconds before next batch...');
-          await new Promise(resolve => setTimeout(resolve, 2000));
-        }
-      }
-
-      segmentFiles.push(...generatedSegments);
-
-      await combineAudioSegments(segmentFiles, outputPath);
-
-      const storagePath = `campaigns/${campaignId}/podcasts/${sessionId}/v${version}.mp3`;
-      const downloadToken = randomUUID();
-
-      await storage.upload(outputPath, {
-        destination: storagePath,
-        metadata: {
-          contentType: 'audio/mpeg',
-          metadata: {
-            firebaseStorageDownloadTokens: downloadToken,
-            sessionId,
-            campaignId,
-            version: version.toString(),
-            userId: auth.uid
-          }
-        }
-      });
-
-      const encodedPath = encodeURIComponent(storagePath);
-      const fileUrl = `https://firebasestorage.googleapis.com/v0/b/${storage.name}/o/${encodedPath}?alt=media&token=${downloadToken}`;
-
-      const fileSize = fs.statSync(outputPath).size;
-      const completedEntry = {
-        ...basePodcastEntry,
-        audioUrl: fileUrl,
-        fileSize,
-        audioGeneratedAt: new Date(),
-        status: 'completed' as const,
-        error: null
-      };
-
-      await sessionRef.update({
-        podcasts: upsertPodcast(existingPodcasts, completedEntry),
-        latestPodcastVersion: version,
-        updatedAt: FieldValue.serverTimestamp()
-      });
-
-      return {
-        success: true,
-        audioUrl: fileUrl,
-        fileSize,
-        duration: script.estimatedDuration
-      };
-    } catch (error: any) {
-      console.error('Error generating podcast audio:', error);
-      const failedEntry = {
-        ...basePodcastEntry,
-        status: 'failed' as const,
-        error: error?.message || 'Audio generation failed.'
-      };
-
-      await sessionRef.update({
-        podcasts: upsertPodcast(existingPodcasts, failedEntry),
-        updatedAt: FieldValue.serverTimestamp()
-      });
-
-      throw new HttpsError('internal', 'Failed to generate podcast audio.');
-    } finally {
-      for (const file of segmentFiles) {
-        safeUnlink(file);
-      }
-      safeUnlink(outputPath);
-      safeRemoveDir(tempDir);
-    }
+    return {
+      success: true,
+      message: 'Podcast generation started'
+    };
   }
 );
 
@@ -291,29 +184,159 @@ function upsertPodcast(existing: any[], nextEntry: any): any[] {
   return updated;
 }
 
-function combineAudioSegments(segmentFiles: string[], outputPath: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (segmentFiles.length === 1) {
-      fs.copyFileSync(segmentFiles[0], outputPath);
-      resolve();
-      return;
+// Background generation function
+async function generatePodcastInBackground(
+  campaignId: string,
+  sessionId: string,
+  version: number,
+  script: any,
+  sessionRef: FirebaseFirestore.DocumentReference,
+  existingPodcasts: any[],
+  userId: string,
+  storage: any
+) {
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  if (!apiKey) {
+    await updateProgress(sessionRef, existingPodcasts, version, 'failed', 0, 'API key not configured', {
+      error: 'ElevenLabs API key is not configured'
+    });
+    return;
+  }
+
+  const elevenlabs = new ElevenLabsClient({ apiKey });
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'podcast-'));
+  const outputPath = path.join(tempDir, `podcast-${sessionId}-v${version}.mp3`);
+
+  try {
+    // Update: Starting audio generation
+    await updateProgress(
+      sessionRef,
+      existingPodcasts,
+      version,
+      'generating_audio',
+      10,
+      'Generating conversational audio with text-to-dialogue...'
+    );
+
+    // 1. Format script for text-to-dialogue
+    // Convert segments to text-to-dialogue input format: array of { text, voiceId }
+    const dialogueInputs = script.segments.map((seg: any) => ({
+      text: seg.text,
+      voiceId: HOST_VOICES[seg.speaker as 'host1' | 'host2'] || HOST_VOICES.host1
+    }));
+
+    console.log(`Generating podcast with text-to-dialogue (${script.segments.length} segments)`);
+
+    // 2. Call ElevenLabs text-to-dialogue API (SINGLE CALL)
+    await updateProgress(
+      sessionRef,
+      existingPodcasts,
+      version,
+      'generating_audio',
+      30,
+      'Calling ElevenLabs text-to-dialogue API...'
+    );
+
+    const audioStream = await elevenlabs.textToDialogue.convert({
+      inputs: dialogueInputs
+    });
+
+    // Update: Receiving audio
+    await updateProgress(
+      sessionRef,
+      existingPodcasts,
+      version,
+      'generating_audio',
+      60,
+      'Receiving audio stream...'
+    );
+
+    // 3. Convert stream to buffer
+    const chunks: Buffer[] = [];
+    const readable = Readable.from(audioStream as any);
+
+    for await (const chunk of readable) {
+      chunks.push(Buffer.from(chunk));
     }
 
-    const command = ffmpeg();
-    segmentFiles.forEach(file => command.input(file));
+    const audioBuffer = Buffer.concat(chunks);
 
-    const filter =
-      segmentFiles.map((_, index) => `[${index}:a]`).join('') +
-      `concat=n=${segmentFiles.length}:v=0:a=1[out]`;
+    if (audioBuffer.length === 0) {
+      throw new Error('Empty audio buffer from text-to-dialogue');
+    }
 
-    command
-      .complexFilter(filter)
-      .outputOptions(['-map [out]', '-ac 1', '-b:a 128k'])
-      .output(outputPath)
-      .on('end', () => resolve())
-      .on('error', (err: unknown) => reject(err))
-      .run();
-  });
+    console.log(`Generated podcast: ${audioBuffer.length} bytes`);
+    fs.writeFileSync(outputPath, audioBuffer);
+
+    // Update: Uploading to storage
+    await updateProgress(
+      sessionRef,
+      existingPodcasts,
+      version,
+      'uploading',
+      80,
+      'Uploading podcast to storage...'
+    );
+
+    // 4. Upload to Firebase Storage
+    const storagePath = `campaigns/${campaignId}/podcasts/${sessionId}/v${version}.mp3`;
+    const downloadToken = randomUUID();
+
+    await storage.upload(outputPath, {
+      destination: storagePath,
+      metadata: {
+        contentType: 'audio/mpeg',
+        metadata: {
+          firebaseStorageDownloadTokens: downloadToken,
+          sessionId,
+          campaignId,
+          version: version.toString(),
+          userId
+        }
+      }
+    });
+
+    const encodedPath = encodeURIComponent(storagePath);
+    const fileUrl = `https://firebasestorage.googleapis.com/v0/b/${storage.name}/o/${encodedPath}?alt=media&token=${downloadToken}`;
+    const fileSize = fs.statSync(outputPath).size;
+
+    // Update: Completed!
+    await updateProgress(
+      sessionRef,
+      existingPodcasts,
+      version,
+      'completed',
+      100,
+      'Podcast ready!',
+      {
+        audioUrl: fileUrl,
+        fileSize,
+        audioGeneratedAt: new Date(),
+        error: null
+      }
+    );
+
+    console.log(`Podcast generation completed: ${fileUrl}`);
+
+  } catch (error: any) {
+    console.error('Error generating podcast:', error);
+
+    await updateProgress(
+      sessionRef,
+      existingPodcasts,
+      version,
+      'failed',
+      0,
+      'Failed to generate podcast',
+      {
+        error: error?.message || 'Unknown error'
+      }
+    );
+  } finally {
+    // Cleanup
+    safeUnlink(outputPath);
+    safeRemoveDir(tempDir);
+  }
 }
 
 function safeUnlink(filePath: string): void {

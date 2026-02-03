@@ -101,7 +101,11 @@ export interface PodcastVersion {
   fileSize?: number; // bytes
   storyVersion?: number;
   script?: PodcastScript;
-  status: 'generating_script' | 'generating_audio' | 'completed' | 'failed';
+
+  // Progress tracking fields for fire-and-forget architecture
+  status: 'pending' | 'generating_audio' | 'uploading' | 'completed' | 'failed';
+  progress: number; // 0-100
+  progressMessage: string; // e.g., "Generating audio with text-to-dialogue..."
   error?: string;
 }
 

@@ -6,7 +6,7 @@ import { AudioTranscriptionService } from './audio-transcription.service';
 import { SessionStoryService } from './session-story.service';
 import { AudioSessionStateService } from './audio-session-state.service';
 import { PodcastScriptService } from './podcast-script.service';
-import { PodcastAudioService } from './podcast-audio.service';
+import { PodcastAudioService, PodcastProgress } from './podcast-audio.service';
 import { AuthService } from '../auth/auth.service';
 import { CampaignContextService } from '../campaign/campaign-context.service';
 import { CampaignService } from '../campaign/campaign.service';
@@ -185,8 +185,8 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
                         <span class="text-sm font-medium text-gray-900">
                           {{ currentSession()?.title || 'Untitled Session' }} - Podcast v{{ podcast.version }}
                         </span>
-                        @if (podcast.status === 'generating_script' || podcast.status === 'generating_audio') {
-                          <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">Generating...</span>
+                        @if (podcast.status === 'pending' || podcast.status === 'generating_audio' || podcast.status === 'uploading') {
+                          <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">{{ podcast.progressMessage || 'Generating...' }}</span>
                         } @else if (podcast.status === 'failed') {
                           <span class="text-xs bg-red-100 text-red-700 px-2 py-1 rounded">Failed</span>
                         } @else if (podcast.status === 'completed') {
@@ -309,12 +309,14 @@ export class AudioSessionComponent implements OnDestroy {
   canEditStory = computed(() => this.isSessionOwner());
   canEditCorrections = computed(() => !!this.currentSession());
   isGeneratingPodcast = signal(false);
+  podcastProgress = signal<PodcastProgress | null>(null);
   podcastGenerationProgress = signal<string>('');
   podcastGenerationProgressPercent = signal<number>(0);
   podcastError = signal<string>('');
   isPlayingPodcast = signal(false);
   playingPodcastVersion = signal<number | null>(null);
   private currentPodcastAudio: HTMLAudioElement | null = null;
+  private progressUnsubscribe?: () => void;
 
   private processingSub?: Subscription;
   private stageTimerSub?: Subscription;
@@ -569,9 +571,17 @@ export class AudioSessionComponent implements OnDestroy {
 
   ngOnDestroy(): void {
     this.stopPodcast();
+    this.cleanupProgressListener();
     this.processingSub?.unsubscribe();
     this.stageTimerSub?.unsubscribe();
     this.clearCorrectionsTimers();
+  }
+
+  private cleanupProgressListener(): void {
+    if (this.progressUnsubscribe) {
+      this.progressUnsubscribe();
+      this.progressUnsubscribe = undefined;
+    }
   }
 
   toggleKankaIntegration(): void {
@@ -814,40 +824,64 @@ export class AudioSessionComponent implements OnDestroy {
         )
       );
 
-      this.podcastGenerationProgress.set('Creating podcast audio...');
-      this.podcastGenerationProgressPercent.set(25);
+      this.podcastGenerationProgress.set('Starting podcast audio generation...');
+      this.podcastGenerationProgressPercent.set(20);
 
-      // Step 2: Generate MP3 via Cloud Function
+      // Step 2: Start listening to progress BEFORE starting generation
       const version = (session.podcasts?.length || 0) + 1;
-      await this.podcastAudioService.generatePodcastMP3(
+      const { progress, unsubscribe } = this.podcastAudioService.listenToPodcastProgress(
+        session.campaignId,
+        session.id,
+        version
+      );
+
+      this.progressUnsubscribe = unsubscribe;
+
+      // Create effect to watch progress updates from Firestore
+      const progressEffect = effect(() => {
+        const currentProgress = progress();
+        if (currentProgress) {
+          console.log('Podcast progress:', currentProgress);
+
+          // Update UI with progress from database
+          this.podcastProgress.set(currentProgress);
+          this.podcastGenerationProgress.set(currentProgress.message);
+          this.podcastGenerationProgressPercent.set(currentProgress.progress);
+
+          if (currentProgress.error) {
+            this.podcastError.set(currentProgress.error);
+          }
+
+          // Auto-cleanup when completed or failed
+          if (currentProgress.status === 'completed' || currentProgress.status === 'failed') {
+            setTimeout(() => {
+              this.isGeneratingPodcast.set(false);
+              this.cleanupProgressListener();
+              progressEffect.destroy(); // Cleanup the effect
+              this.refreshSessions();
+            }, 3000); // Keep showing final state for 3 seconds
+          }
+        }
+      });
+
+      // Step 3: Start generation (fire-and-forget)
+      await this.podcastAudioService.startPodcastGeneration(
         session.campaignId,
         session.id,
         version,
-        script,
-        (progress, message) => {
-          const adjustedProgress = Math.min(90, Math.round(25 + (progress * 0.65)));
-          this.podcastGenerationProgressPercent.set(adjustedProgress);
-          this.podcastGenerationProgress.set(message);
-        }
+        script
       );
 
-      this.podcastGenerationProgress.set('Saving podcast metadata...');
-      this.podcastGenerationProgressPercent.set(95);
-      this.refreshSessions();
+      // Function returns immediately, progress updates come via Firestore
+      console.log('Podcast generation started, monitoring progress via onSnapshot...');
 
-      this.podcastGenerationProgress.set('Podcast ready!');
-      this.podcastGenerationProgressPercent.set(100);
     } catch (error: any) {
-      console.error('Failed to generate podcast:', error);
-      this.podcastError.set(error?.message || 'Failed to generate podcast');
+      console.error('Failed to start podcast generation:', error);
+      this.podcastError.set(error?.message || 'Failed to start podcast generation');
       this.podcastGenerationProgress.set('');
       this.podcastGenerationProgressPercent.set(0);
-    } finally {
-      setTimeout(() => {
-        this.isGeneratingPodcast.set(false);
-        this.podcastGenerationProgress.set('');
-        this.podcastGenerationProgressPercent.set(0);
-      }, 2000);
+      this.isGeneratingPodcast.set(false);
+      this.cleanupProgressListener();
     }
   }
 
