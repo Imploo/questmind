@@ -1,0 +1,236 @@
+# QuestMind Refactoring Tickets - Index
+
+**Generated from:** CODE_REVIEW.md
+**Date:** 2026-02-03
+**Total Issues:** 23 identified
+**Total Tickets:** 11 created
+
+## Overview
+
+This index provides a quick reference to all refactoring tickets created from the comprehensive code review. Tickets are organized by priority and estimated effort.
+
+---
+
+## 🔴 Critical Priority (Week 1-4)
+
+**Focus:** Foundation and immediate code quality improvements
+
+| Ticket | Title | Effort | Lines Saved | Issues |
+|--------|-------|--------|-------------|--------|
+| [#23](./23-extract-shared-formatting-service.md) | Extract Shared Formatting Service | 2 hours | ~50 | #6, #7, #8 |
+| [#24](./24-create-firebase-service.md) | Create Centralized Firebase Service | 3 hours | ~30 | #5, #10 |
+| [#25](./25-extract-shared-utilities.md) | Extract Shared Utility Services | 2 hours | ~40 | #9, #20 |
+| [#26](./26-split-audio-session-component.md) | Split AudioSessionComponent | 1 week | ~400 | #1, #13, #14 |
+| [#27](./27-split-audio-transcription-service.md) | Split AudioTranscriptionService | 1 week | ~390 | #2 |
+
+**Total Effort:** 2-3 weeks
+**Total Lines Reduced:** ~910 lines
+
+---
+
+## 🟡 High Priority (Week 5-6)
+
+**Focus:** Architecture patterns and separation of concerns
+
+| Ticket | Title | Effort | Impact | Issues |
+|--------|-------|--------|--------|--------|
+| [#28](./28-implement-repository-pattern.md) | Implement Repository Pattern | 1 week | Decouples data access | #5, #22, #23 |
+| [#29](./29-create-error-handler-service.md) | Create Error Handler Service | 3 days | ~150 lines saved | #3, #11 |
+| [#30](./30-split-audio-session-record-interface.md) | Split AudioSessionRecord Interface | 3 days | Type safety | #4 |
+
+**Total Effort:** 2-3 weeks
+**Total Lines Reduced:** ~150 lines (+ architectural improvements)
+
+---
+
+## 🟢 Medium Priority (Week 7-8)
+
+**Focus:** Code quality and consistency
+
+| Ticket | Title | Effort | Key Improvements | Issues |
+|--------|-------|--------|------------------|--------|
+| [#31](./31-medium-priority-improvements.md) | Medium Priority Improvements | 1 week | Templates, constants, types | #13, #15-19 |
+
+**Includes:**
+- Extract inline templates to HTML
+- Extract magic numbers to constants
+- Replace manual subscriptions with DestroyRef
+- Improve type safety (remove `any`)
+- Standardize Signal/Observable usage
+
+**Total Effort:** 1 week
+
+---
+
+## 🔵 Low Priority (Week 9-10)
+
+**Focus:** Performance and optimization
+
+| Ticket | Title | Effort | Key Benefits | Issues |
+|--------|-------|--------|--------------|--------|
+| [#32](./32-low-priority-optimizations.md) | Low Priority Optimizations | 1 week | Performance, state machine | #15, #21 |
+
+**Includes:**
+- Add OnPush change detection
+- Lazy load audio module
+- Implement state machine
+- Remove dead code
+- Add feature flags
+- Add unit tests
+
+**Total Effort:** 1 week
+
+---
+
+## 📋 Planning & Coordination
+
+| Document | Purpose |
+|----------|---------|
+| [#33](./33-refactoring-roadmap.md) | Complete refactoring roadmap with phases |
+| [CODE_REVIEW.md](../CODE_REVIEW.md) | Original comprehensive code review |
+
+---
+
+## Quick Reference: Issues by Category
+
+### SOLID Principle Violations
+
+| Issue | Ticket | Priority |
+|-------|--------|----------|
+| #1: AudioSessionComponent - God Component | #26 | Critical |
+| #2: AudioTranscriptionService - Too Many Responsibilities | #27 | Critical |
+| #3: Hardcoded Error Handling (OCP) | #29 | High |
+| #4: AudioSessionRecord - Fat Interface (ISP) | #30 | High |
+| #5: Direct Firebase Dependencies (DIP) | #24, #28 | Critical, High |
+
+### DRY Violations
+
+| Issue | Ticket | Priority |
+|-------|--------|----------|
+| #6: formatDuration() duplicated | #23 | Critical |
+| #7: formatFileSize() duplicated | #23 | Critical |
+| #8: formatDate() duplicated | #23 | Critical |
+| #9: generateId() duplicated | #25 | Critical |
+| #10: Firebase initialization duplicated | #24 | Critical |
+| #11: Error handling duplicated | #29 | High |
+| #12: Podcast playback logic duplicated | #26 | Critical |
+
+### Angular Best Practices
+
+| Issue | Ticket | Priority |
+|-------|--------|----------|
+| #13: Massive inline template | #31 | Medium |
+| #14: Business logic in component | #26 | Critical |
+| #15: No clear state machine | #32 | Low |
+| #16: Manual subscription cleanup | #31 | Medium |
+| #17: Mixed reactive paradigms | #31 | Medium |
+
+### Code Quality
+
+| Issue | Ticket | Priority |
+|-------|--------|----------|
+| #18: Magic numbers | #31 | Medium |
+| #19: Loose `any` types | #31 | Medium |
+| #20: Production console logs | #25 | Critical |
+| #21: Dead code | #32 | Low |
+
+### Architecture
+
+| Issue | Ticket | Priority |
+|-------|--------|----------|
+| #22: No repository pattern | #28 | High |
+| #23: No clear separation of concerns | #28 | High |
+
+---
+
+## Recommended Implementation Order
+
+### Phase 1: Quick Wins (Week 1)
+Start here for immediate impact with minimal risk:
+
+1. #23: Extract Formatting Service (2 hours)
+2. #25: Extract Utilities (2 hours)
+3. #31: Extract Templates (1 day)
+4. #31: Extract Constants (1 day)
+
+**Total: 2-3 days, ~100 lines removed**
+
+### Phase 2: Foundation (Week 1-2)
+
+1. #24: Firebase Service (3 hours)
+2. Continue #31: Medium priority items
+
+### Phase 3: Data Layer (Week 3-4)
+
+1. #29: Error Handler Service (3 days)
+2. #28: Repository Pattern (1 week)
+
+### Phase 4: Service Decomposition (Week 5-6)
+
+1. #27: Split AudioTranscriptionService (1 week)
+2. #30: Split AudioSessionRecord (3 days)
+
+### Phase 5: Component Refactoring (Week 7-8)
+
+1. #26: Split AudioSessionComponent (1 week)
+2. Complete #31: Remaining medium priority
+
+### Phase 6: Polish (Week 9-10)
+
+1. #32: Low priority optimizations (1 week)
+
+---
+
+## Metrics Tracking
+
+### Before Refactoring
+
+| Metric | Value |
+|--------|-------|
+| Total Lines (TS) | ~6,500 |
+| Largest Component | 942 lines |
+| Largest Service | 990 lines |
+| Code Duplication | ~150 lines |
+| SOLID Violations | 23 |
+| Avg Service Dependencies | 6-7 |
+
+### After Refactoring (Target)
+
+| Metric | Target |
+|--------|--------|
+| Total Lines (TS) | ~5,500 (-15%) |
+| Largest Component | <300 lines |
+| Largest Service | <250 lines |
+| Code Duplication | <20 lines |
+| SOLID Violations | <5 |
+| Avg Service Dependencies | 1-2 |
+
+---
+
+## Notes
+
+- Tickets are designed to be independent where possible
+- Dependencies are clearly marked in each ticket
+- Each ticket includes:
+  - Problem description
+  - Proposed solution
+  - Implementation steps
+  - Testing strategy
+  - Expected benefits
+- Estimated efforts are for experienced Angular developers
+- Adjust timeline based on team capacity and priorities
+
+---
+
+## Getting Started
+
+1. Read [#33: Refactoring Roadmap](./33-refactoring-roadmap.md)
+2. Review [CODE_REVIEW.md](../CODE_REVIEW.md) for context
+3. Start with Phase 1 quick wins (#23, #25, #31)
+4. Follow the recommended implementation order
+5. Update this index as tickets are completed
+
+---
+
+**Last Updated:** 2026-02-03
+**Status:** Planning Complete, Ready to Begin

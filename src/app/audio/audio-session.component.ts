@@ -8,6 +8,7 @@ import { AudioSessionStateService } from './audio-session-state.service';
 import { PodcastScriptService } from './podcast-script.service';
 import { PodcastAudioService, PodcastProgress } from './podcast-audio.service';
 import { AuthService } from '../auth/auth.service';
+import { FormattingService } from '../shared/formatting.service';
 import { CampaignContextService } from '../campaign/campaign-context.service';
 import { CampaignService } from '../campaign/campaign.service';
 import {
@@ -196,13 +197,13 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
                         }
                       </div>
                       <div class="flex items-center gap-3 mt-1 text-xs text-gray-500">
-                        <span>{{ formatDuration(podcast.duration) }}</span>
+                        <span>{{ formatting.formatDuration(podcast.duration) }}</span>
                         @if (podcast.fileSize) {
                           <span>•</span>
-                          <span>{{ formatFileSize(podcast.fileSize) }}</span>
+                          <span>{{ formatting.formatFileSize(podcast.fileSize) }}</span>
                         }
                         <span>•</span>
-                        <span>{{ formatDate(podcast.createdAt) }}</span>
+                        <span>{{ formatting.formatDate(podcast.createdAt) }}</span>
                       </div>
                     </div>
 
@@ -340,7 +341,8 @@ export class AudioSessionComponent implements OnDestroy {
     private readonly podcastScriptService: PodcastScriptService,
     private readonly podcastAudioService: PodcastAudioService,
     public readonly authService: AuthService,
-    private readonly injector: Injector
+    private readonly injector: Injector,
+    public readonly formatting: FormattingService
   ) {
     effect(() => {
       this.selectedCampaign();
@@ -941,47 +943,5 @@ export class AudioSessionComponent implements OnDestroy {
     const session = this.currentSession();
     const filename = `${session?.title || 'podcast'}-v${podcast.version}.mp3`;
     this.podcastAudioService.downloadPodcastMP3(podcast.audioUrl, filename);
-  }
-
-  formatDuration(seconds?: number): string {
-    if (!seconds) return '0:00';
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-  }
-
-  formatFileSize(bytes?: number): string {
-    if (!bytes) return 'N/A';
-    const mb = bytes / (1024 * 1024);
-    if (mb >= 1) {
-      return `${mb.toFixed(1)} MB`;
-    }
-    const kb = bytes / 1024;
-    return `${kb.toFixed(1)} KB`;
-  }
-
-  formatDate(date: unknown): string {
-    if (!date) return '';
-    let d: Date | null = null;
-    if (date instanceof Date) {
-      d = date;
-    } else if (typeof date === 'string' || typeof date === 'number') {
-      d = new Date(date);
-    } else if (typeof date === 'object') {
-      const maybeTimestamp = date as { toDate?: () => Date; seconds?: number };
-      if (typeof maybeTimestamp.toDate === 'function') {
-        d = maybeTimestamp.toDate();
-      } else if (typeof maybeTimestamp.seconds === 'number') {
-        d = new Date(maybeTimestamp.seconds * 1000);
-      }
-    }
-    if (!d || Number.isNaN(d.getTime())) return '';
-    return d.toLocaleDateString('nl-NL', { 
-      year: 'numeric', 
-      month: 'short', 
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
   }
 }
