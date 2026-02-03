@@ -1,4 +1,4 @@
-import { Component, OnDestroy, effect, signal, computed, inject } from '@angular/core';
+import { Component, OnDestroy, effect, signal, computed, inject, Injector, runInInjectionContext } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Subscription, timer, firstValueFrom } from 'rxjs';
 import { AudioStorageService } from './audio-storage.service';
@@ -339,7 +339,8 @@ export class AudioSessionComponent implements OnDestroy {
     private readonly sessionStateService: AudioSessionStateService,
     private readonly podcastScriptService: PodcastScriptService,
     private readonly podcastAudioService: PodcastAudioService,
-    public readonly authService: AuthService
+    public readonly authService: AuthService,
+    private readonly injector: Injector
   ) {
     effect(() => {
       this.selectedCampaign();
@@ -824,6 +825,17 @@ export class AudioSessionComponent implements OnDestroy {
         )
       );
 
+      // Validate script length (ElevenLabs has a 5000 character limit)
+      const totalCharacters = script.segments.reduce((sum, seg) => sum + seg.text.length, 0);
+      console.log(`Generated script with ${totalCharacters} characters (limit: 5000)`);
+
+      if (totalCharacters > 5000) {
+        throw new Error(
+          `Script is te lang (${totalCharacters} karakters). Maximum is 5000 karakters. ` +
+          `Probeer een kortere sessie story of regenereer de story.`
+        );
+      }
+
       this.podcastGenerationProgress.set('Starting podcast audio generation...');
       this.podcastGenerationProgressPercent.set(20);
 
@@ -838,7 +850,7 @@ export class AudioSessionComponent implements OnDestroy {
       this.progressUnsubscribe = unsubscribe;
 
       // Create effect to watch progress updates from Firestore
-      const progressEffect = effect(() => {
+      const progressEffect = runInInjectionContext(this.injector, () => effect(() => {
         const currentProgress = progress();
         if (currentProgress) {
           console.log('Podcast progress:', currentProgress);
@@ -862,7 +874,7 @@ export class AudioSessionComponent implements OnDestroy {
             }, 3000); // Keep showing final state for 3 seconds
           }
         }
-      });
+      }));
 
       // Step 3: Start generation (fire-and-forget)
       await this.podcastAudioService.startPodcastGeneration(
