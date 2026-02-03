@@ -167,7 +167,7 @@ export const generatePodcastAudio = onCall(
     const initialPodcastEntry = {
       version,
       createdAt: existingEntry?.createdAt ?? now,
-      storyVersion: sessionData.storyRegenerationCount ?? existingEntry?.storyVersion,
+      storyVersion: sessionData.storyRegenerationCount ?? existingEntry?.storyVersion ?? 1,
       status: 'pending' as const,
       progress: 0,
       progressMessage: 'Starting podcast generation...'
