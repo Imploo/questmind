@@ -8,6 +8,7 @@ import { AuthButtonComponent } from './auth/auth-button.component';
 import { CampaignSelectorComponent } from './campaign/campaign-selector.component';
 import { CampaignContextService } from './campaign/campaign-context.service';
 import { AdminComponent } from './admin/admin.component';
+import { UserService } from './core/user.service';
 
 @Component({
   selector: 'app-shell',
@@ -94,19 +95,21 @@ import { AdminComponent } from './admin/admin.component';
               <span class="text-lg">📻</span>
               <span>Podcast Bibliotheek</span>
             </button>
-            <button
-              type="button"
-              class="w-full text-left px-4 py-3 rounded-xl text-sm font-semibold transition-colors flex items-center gap-3"
-              [class]="
-                activeView() === 'admin'
-                  ? 'bg-primary text-white shadow'
-                  : 'bg-white text-gray-600 hover:bg-gray-100'
-              "
-              (click)="setActiveView('admin')"
-            >
-              <span class="text-lg">⚙️</span>
-              <span>Admin</span>
-            </button>
+            @if (userService.isAdmin()) {
+              <button
+                type="button"
+                class="w-full text-left px-4 py-3 rounded-xl text-sm font-semibold transition-colors flex items-center gap-3"
+                [class]="
+                  activeView() === 'admin'
+                    ? 'bg-primary text-white shadow'
+                    : 'bg-white text-gray-600 hover:bg-gray-100'
+                "
+                (click)="setActiveView('admin')"
+              >
+                <span class="text-lg">⚙️</span>
+                <span>Admin</span>
+              </button>
+            }
           </nav>
         </aside>
 
@@ -131,6 +134,7 @@ import { AdminComponent } from './admin/admin.component';
 export class AppShellComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly campaignContext = inject(CampaignContextService);
+  readonly userService = inject(UserService);
   activeView = signal<'chat' | 'audio' | 'podcasts' | 'admin'>('chat');
   sidebarOpen = signal(true);
 
@@ -144,6 +148,11 @@ export class AppShellComponent {
   }
 
   setActiveView(view: 'chat' | 'audio' | 'podcasts' | 'admin'): void {
+    // Prevent non-admin users from accessing admin view
+    if (view === 'admin' && !this.userService.isAdmin()) {
+      console.warn('Access denied: Admin privileges required');
+      return;
+    }
     this.activeView.set(view);
   }
 

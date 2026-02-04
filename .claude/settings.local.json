@@ -18,7 +18,10 @@
       "Bash(npx tsc:*)",
       "Bash(xargs cat:*)",
       "Bash(ls:*)",
-      "Bash(xargs:*)"
+      "Bash(xargs:*)",
+      "Bash(git rm:*)",
+      "mcp__angular-cli__get_best_practices",
+      "Bash(npm run build:backend:*)"
     ]
   }
 }
