@@ -298,63 +298,112 @@ If issues occur:
 
 ## Frontend Cleanup Status
 
-### ✅ Removed
+### ✅ COMPLETE MIGRATION (2026-02-04)
+
+All audio processing features now use backend Cloud Functions. The Google AI API key has been completely removed from audio processing workflows.
+
+### Phase 1: Initial Upload (Original Ticket 35)
+**Removed**:
 - Old `startProcessing()` method - replaced by `startCompleteProcessing()`
 - Direct transcription/story generation flow - now handled by backend
 
-### 🔄 Still in Frontend (for good reason)
-These services remain because they support separate user actions:
+### Phase 2: Retranscribe & Regenerate (Migration Complete)
+**Removed**:
+- `AudioTranscriptionService` - Deleted
+- `SessionStoryService` - Deleted
+- Frontend Google AI usage for audio processing
 
-1. **AudioTranscriptionService**
-   - Used by "Retranscribe" button
-   - Allows users to retranscribe an existing audio file
-   - Still needs Google AI API key in frontend
+**Created**:
+- Backend Cloud Functions: `retranscribeAudio`, `regenerateStory`
+- Backend services: `transcription.service.ts`, `story-generator.service.ts`
+- Frontend service: `AudioBackendOperationsService`
 
-2. **SessionStoryService**
-   - Used by "Regenerate Story" button
-   - Allows users to regenerate story from existing transcript
-   - Still needs Google AI API key in frontend
+### 🎯 Services Still in Frontend
 
-3. **AudioStorageService**
+1. **AudioStorageService**
    - File validation before upload
    - Storage metadata management
    - No API keys needed
 
-### 📝 Architecture After Cleanup
+2. **AudioCompleteProcessingService**
+   - Calls backend `processAudioSession`
+   - Listens to progress updates
 
-**New Upload Flow** (Backend):
+3. **AudioBackendOperationsService**
+   - Calls backend `retranscribeAudio` and `regenerateStory`
+   - Listens to progress updates
+
+4. **ChatService** (separate feature)
+   - Real-time chat AI
+   - Still uses `@google/genai` and `googleAiApiKey`
+   - **Intentionally kept in frontend** for chat functionality
+
+### 📝 Architecture After Complete Migration
+
+**All Audio Processing** (Backend):
 ```
-User → Upload → startCompleteProcessing() → Backend Cloud Function
-                                           → Transcribe + Story + Podcast
-                                           → Real-time progress updates
+User → Upload → processAudioSession() → Backend: Transcribe + Story + Podcast
+User → Retranscribe → retranscribeAudio() → Backend: Transcribe + optional Story
+User → Regenerate → regenerateStory() → Backend: Story from existing transcript
+User → Generate Podcast → generatePodcastAudio() → Backend: Podcast from story
 ```
 
-**Regenerate Features** (Frontend - separate actions):
+**Chat Feature** (Frontend - separate feature):
 ```
-User clicks "Regenerate Story" → sessionStoryService → Google AI
-User clicks "Retranscribe" → audioTranscriptionService → Google AI
-User clicks "Generate Podcast" → podcastAudioService → Backend Cloud Function
+User → Chat → ChatService → Google AI (direct)
 ```
 
-### 🎯 Complete Migration (Future)
+### 📊 Migration Summary
 
-To fully remove Google AI API key from frontend:
-1. Create backend endpoints for:
-   - `regenerateStory` Cloud Function
-   - `retranscribeAudio` Cloud Function
-2. Update component to call these instead of frontend services
-3. Remove `audioTranscriptionService` and `sessionStoryService`
-4. Remove `@google/genai` from frontend `package.json`
-5. Remove Google AI API key from frontend environment
+| Feature | Before | After |
+|---------|--------|-------|
+| Initial Upload | Frontend AI calls | ✅ Backend |
+| Retranscribe | Frontend AI calls | ✅ Backend |
+| Regenerate Story | Frontend AI calls | ✅ Backend |
+| Generate Podcast | Backend | ✅ Backend |
+| Chat | Frontend AI calls | Frontend (intentional) |
 
-Estimated effort: 2-3 days
+**Result**: 100% of audio processing now in backend. Chat remains in frontend for real-time UX.
+
+## Deployment Steps for Phase 2 (Retranscribe & Regenerate Migration)
+
+### 1. Build Backend
+```bash
+cd functions
+npm run build
+```
+
+### 2. Deploy New Functions
+```bash
+firebase deploy --only functions:retranscribeAudio,functions:regenerateStory
+```
+
+### 3. Deploy Frontend
+```bash
+npm run build
+firebase deploy --only hosting
+```
+
+### 4. Test New Features
+- [ ] Test retranscribe with short audio
+- [ ] Test retranscribe with long audio (chunked)
+- [ ] Test retranscribe with Kanka context
+- [ ] Test regenerate story with user corrections
+- [ ] Verify progress updates in real-time
+- [ ] Test page refresh during processing
+
+### 5. Verify Cleanup
+- [ ] Confirm `audio-transcription.service.ts` is deleted
+- [ ] Confirm `session-story.service.ts` is deleted
+- [ ] Verify chat AI still works (uses Google AI API)
+- [ ] Verify no console errors in frontend
 
 ## Next Steps (Future Enhancements)
 
-1. **Complete Backend Migration**: Move regenerate/retranscribe to backend (see above)
+1. ✅ **Complete Backend Migration**: DONE - All audio processing in backend
 2. **Add Retry Logic**: Automatic retry for transient failures
 3. **Queue System**: Handle multiple uploads from same user
-4. **Progress Persistence**: Store progress in Firestore for resumption after failures
+4. **Progress Persistence**: Enhanced resumption after failures
 5. **Analytics**: Track processing times, model usage, costs
 6. **Optimization**: Parallel chunking where possible
 

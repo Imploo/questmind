@@ -69,6 +69,21 @@ export type CompleteProcessingStatus =
   | 'completed'
   | 'failed';
 
+export type RetranscribeStatus =
+  | 'loading_context'
+  | 'transcribing'
+  | 'transcription_complete'
+  | 'generating_story'
+  | 'story_complete'
+  | 'completed'
+  | 'failed';
+
+export type RegenerateStoryStatus =
+  | 'loading_context'
+  | 'generating_story'
+  | 'completed'
+  | 'failed';
+
 export interface AIFeatureConfig {
   model: string;
   temperature: number;
@@ -105,6 +120,21 @@ export interface ProcessAudioSessionRequest {
   audioFileSize: number;
   sessionTitle: string;
   sessionDate?: string;
+  enableKankaContext?: boolean;
+  userCorrections?: string;
+}
+
+export interface RetranscribeAudioRequest {
+  campaignId: string;
+  sessionId: string;
+  enableKankaContext?: boolean;
+  userCorrections?: string;
+  regenerateStoryAfterTranscription?: boolean;
+}
+
+export interface RegenerateStoryRequest {
+  campaignId: string;
+  sessionId: string;
   enableKankaContext?: boolean;
   userCorrections?: string;
 }

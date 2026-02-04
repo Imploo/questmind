@@ -1,8 +1,9 @@
 import { Injectable, inject } from '@angular/core';
-import { Functions, httpsCallable } from '@angular/fire/functions';
-import { Storage, ref, uploadBytes, getDownloadURL } from '@angular/fire/storage';
-import { Firestore, doc, onSnapshot, Unsubscribe } from '@angular/fire/firestore';
+import { httpsCallable, type Functions } from 'firebase/functions';
+import { ref, uploadBytes, getDownloadURL, type FirebaseStorage } from 'firebase/storage';
+import { doc, onSnapshot, type Firestore, type Unsubscribe } from 'firebase/firestore';
 import { ProcessingProgress } from './audio-session.models';
+import { FirebaseService } from '../core/firebase.service';
 
 export interface StartProcessingOptions {
   sessionTitle: string;
@@ -25,9 +26,16 @@ export interface StartProcessingOptions {
   providedIn: 'root'
 })
 export class AudioCompleteProcessingService {
-  private functions = inject(Functions);
-  private storage = inject(Storage);
-  private firestore = inject(Firestore);
+  private firebase = inject(FirebaseService);
+  private functions: Functions;
+  private storage: FirebaseStorage;
+  private firestore: Firestore;
+
+  constructor() {
+    this.functions = this.firebase.requireFunctions();
+    this.storage = this.firebase.storage!;
+    this.firestore = this.firebase.requireFirestore();
+  }
 
   /**
    * Start complete audio processing

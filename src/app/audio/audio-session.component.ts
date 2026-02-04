@@ -1,16 +1,11 @@
 import { Component, OnDestroy, effect, signal, computed, inject, Injector, runInInjectionContext } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Subscription, timer, firstValueFrom, catchError } from 'rxjs';
-import { switchMap } from 'rxjs/operators';
+import { timer, firstValueFrom, Subscription } from 'rxjs';
 import { httpsCallable } from 'firebase/functions';
 import { AudioStorageService } from './audio-storage.service';
-// NOTE: These frontend services are still used for "Regenerate" and "Retranscribe" features
-// Initial processing now uses backend (AudioCompleteProcessingService)
-// TODO: Migrate regenerate/retranscribe to backend for complete migration
-import { AudioTranscriptionService } from './audio-transcription.service';
-import { SessionStoryService } from './session-story.service';
 import { AudioSessionStateService } from './audio-session-state.service';
 import { AudioCompleteProcessingService } from './audio-complete-processing.service';
+import { AudioBackendOperationsService, RetranscribeProgress, RegenerateStoryProgress } from './audio-backend-operations.service';
 import { PodcastAudioService, PodcastProgress } from './podcast-audio.service';
 import { AuthService } from '../auth/auth.service';
 import { FormattingService } from '../shared/formatting.service';
@@ -327,8 +322,6 @@ export class AudioSessionComponent implements OnDestroy {
   playingPodcastVersion = signal<number | null>(null);
   private currentPodcastAudio: HTMLAudioElement | null = null;
   private progressUnsubscribe?: () => void;
-
-  private processingSub?: Subscription;
   private stageTimerSub?: Subscription;
   private correctionsSaveTimer?: ReturnType<typeof setTimeout>;
   private correctionsStatusTimer?: ReturnType<typeof setTimeout>;
@@ -344,10 +337,9 @@ export class AudioSessionComponent implements OnDestroy {
 
   constructor(
     private readonly audioStorageService: AudioStorageService,
-    private readonly audioTranscriptionService: AudioTranscriptionService,
-    private readonly sessionStoryService: SessionStoryService,
     private readonly sessionStateService: AudioSessionStateService,
     private readonly completeProcessingService: AudioCompleteProcessingService,
+    private readonly backendOperations: AudioBackendOperationsService,
     private readonly podcastAudioService: PodcastAudioService,
     public readonly authService: AuthService,
     private readonly injector: Injector,
@@ -357,7 +349,7 @@ export class AudioSessionComponent implements OnDestroy {
   ) {
     effect(() => {
       this.selectedCampaign();
-      const kankaAvailable = this.sessionStoryService.isKankaAvailable();
+      const kankaAvailable = this.kankaService.isConfigured();
       this.kankaAvailable.set(kankaAvailable);
       if (!kankaAvailable) {
         this.kankaEnabled.set(false);
@@ -502,7 +494,7 @@ export class AudioSessionComponent implements OnDestroy {
 
 
   cancelProcessing(): void {
-    this.processingSub?.unsubscribe();
+    this.cleanupProgressListener();
     this.stageTimerSub?.unsubscribe();
     this.statusMessage.set('Processing cancelled.');
     this.stage.set('failed');
@@ -517,7 +509,7 @@ export class AudioSessionComponent implements OnDestroy {
     void this.startCompleteProcessing(lastUpload);
   }
 
-  regenerateStory(): void {
+  async regenerateStory(): Promise<void> {
     if (!this.canRegenerateStory()) {
       return;
     }
@@ -525,32 +517,72 @@ export class AudioSessionComponent implements OnDestroy {
     if (!session?.transcription) {
       return;
     }
-    this.stage.set('generating');
-    this.statusMessage.set('Regenerating story...');
-    this.animateStageProgress(1500, 20);
 
-    this.processingSub?.unsubscribe();
-    this.processingSub = this.sessionStoryService
-      .generateStoryFromTranscript(
-        session.transcription.rawTranscript,
-        session.title,
-        session.sessionDate,
-        this.userCorrections(),
-        this.kankaEnabled() && this.kankaAvailable()
-      )
-      .subscribe({
-        next: content => {
-          const storyRegenerationCount = (session.storyRegenerationCount ?? 0) + 1;
-          this.sessionStateService.updateSession(session.id, {
-            content,
-            status: 'completed',
-            storyRegeneratedAt: new Date().toISOString(),
-            storyRegenerationCount
-          });
-          this.finishStage('completed', 'Story updated.');
-        },
-        error: err => this.failSession(err.message || 'Story generation failed.')
-      });
+    const campaignId = session.campaignId;
+    if (!campaignId) {
+      this.failSession('No campaign selected.');
+      return;
+    }
+
+    this.resetProgress();
+    this.stage.set('generating');
+    this.statusMessage.set('Starting story regeneration...');
+
+    try {
+      // Start listening to progress BEFORE starting processing
+      this.cleanupProgressListener();
+      this.progressUnsubscribe = this.backendOperations.listenToRegenerateStoryProgress(
+        campaignId,
+        session.id,
+        (progress: RegenerateStoryProgress) => {
+          console.log('Regenerate story progress:', progress);
+
+          // Update UI based on status
+          this.progress.set(progress.progress);
+          this.statusMessage.set(progress.message);
+
+          if (progress.error) {
+            this.failSession(progress.error);
+            this.cleanupProgressListener();
+            return;
+          }
+
+          // Map backend status to frontend stage
+          switch (progress.status) {
+            case 'loading_context':
+            case 'generating_story':
+              this.stage.set('generating');
+              break;
+            case 'completed':
+              this.stage.set('completed');
+              this.cleanupProgressListener();
+              this.refreshSessions();
+              break;
+            case 'failed':
+              this.failSession(progress.error || 'Story regeneration failed');
+              this.cleanupProgressListener();
+              break;
+          }
+        }
+      );
+
+      // Start processing (fire-and-forget)
+      await this.backendOperations.regenerateStory(
+        campaignId,
+        session.id,
+        {
+          enableKankaContext: this.kankaEnabled() && this.kankaAvailable(),
+          userCorrections: this.userCorrections()
+        }
+      );
+
+      console.log('Story regeneration started, listening for updates...');
+
+    } catch (error: any) {
+      console.error('Failed to start story regeneration:', error);
+      this.failSession(error?.message || 'Failed to start story regeneration');
+      this.cleanupProgressListener();
+    }
   }
 
   async retranscribeSession(): Promise<void> {
@@ -560,6 +592,7 @@ export class AudioSessionComponent implements OnDestroy {
     const session = this.currentSession();
     const uid = this.userId();
     const campaignId = session?.campaignId;
+
     if (!session?.storageMetadata) {
       this.failSession('No stored audio file found for this session.');
       return;
@@ -573,19 +606,73 @@ export class AudioSessionComponent implements OnDestroy {
       return;
     }
 
-    // Check for existing incomplete transcription
-    const existingTranscriptionId = await this.audioTranscriptionService.findIncompleteTranscription(
-      campaignId,
-      session.id
-    );
+    this.resetProgress();
+    this.stage.set('transcribing');
+    this.statusMessage.set('Starting retranscription...');
 
-    if (existingTranscriptionId) {
-      console.log('Found incomplete transcription, resuming:', existingTranscriptionId);
-      this.statusMessage.set('Resuming incomplete transcription...');
+    try {
+      // Start listening to progress BEFORE starting processing
+      this.cleanupProgressListener();
+      this.progressUnsubscribe = this.backendOperations.listenToRetranscribeProgress(
+        campaignId,
+        session.id,
+        (progress: RetranscribeProgress) => {
+          console.log('Retranscribe progress:', progress);
+
+          // Update UI based on status
+          this.progress.set(progress.progress);
+          this.statusMessage.set(progress.message);
+
+          if (progress.error) {
+            this.failSession(progress.error);
+            this.cleanupProgressListener();
+            return;
+          }
+
+          // Map backend status to frontend stage
+          switch (progress.status) {
+            case 'loading_context':
+              this.stage.set('transcribing');
+              break;
+            case 'transcribing':
+            case 'transcription_complete':
+              this.stage.set('transcribing');
+              break;
+            case 'generating_story':
+            case 'story_complete':
+              this.stage.set('generating');
+              break;
+            case 'completed':
+              this.stage.set('completed');
+              this.cleanupProgressListener();
+              this.refreshSessions();
+              break;
+            case 'failed':
+              this.failSession(progress.error || 'Retranscription failed');
+              this.cleanupProgressListener();
+              break;
+          }
+        }
+      );
+
+      // Start processing (fire-and-forget)
+      await this.backendOperations.retranscribeAudio(
+        campaignId,
+        session.id,
+        {
+          enableKankaContext: this.kankaEnabled() && this.kankaAvailable(),
+          userCorrections: this.userCorrections(),
+          regenerateStoryAfterTranscription: true
+        }
+      );
+
+      console.log('Retranscription started, listening for updates...');
+
+    } catch (error: any) {
+      console.error('Failed to start retranscription:', error);
+      this.failSession(error?.message || 'Failed to start retranscription');
+      this.cleanupProgressListener();
     }
-
-    // No need to download the file - Gemini can access Firebase Storage URLs directly
-    this.runTranscription(session.storageMetadata, undefined, existingTranscriptionId || undefined);
   }
 
   saveStoryEdits(content: string): void {
@@ -633,7 +720,6 @@ export class AudioSessionComponent implements OnDestroy {
   ngOnDestroy(): void {
     this.stopPodcast();
     this.cleanupProgressListener();
-    this.processingSub?.unsubscribe();
     this.stageTimerSub?.unsubscribe();
     this.clearCorrectionsTimers();
   }
@@ -647,171 +733,6 @@ export class AudioSessionComponent implements OnDestroy {
 
   toggleKankaIntegration(): void {
     this.kankaEnabled.update(value => !value);
-  }
-
-  private runTranscription(storage: StorageMetadata, file?: File, existingTranscriptionId?: string): void {
-    this.stage.set('transcribing');
-    this.statusMessage.set('Transcribing audio...');
-    this.animateStageProgress(2200, 35);
-    this.processingSub?.unsubscribe();
-
-    const session = this.currentSession();
-    const campaignId = session?.campaignId;
-    if (!session || !campaignId) {
-      return;
-    }
-
-    // Use existing transcription ID if provided (resuming), otherwise generate new one
-    const transcriptionId = existingTranscriptionId || this.generateId();
-
-    // Check if Kanka context should be fetched
-    const shouldFetchKanka = this.kankaEnabled() && this.kankaAvailable() && this.kankaService.isConfigured();
-
-    if (shouldFetchKanka) {
-      // Fetch Kanka context and then transcribe
-      this.processingSub = this.kankaService.getAllEntities().pipe(
-        switchMap((kankaContext: KankaSearchResult) => {
-          console.log('Transcribing with Kanka context:', {
-            characters: kankaContext.characters.length,
-            locations: kankaContext.locations.length,
-            quests: kankaContext.quests.length,
-            organisations: kankaContext.organisations.length
-          });
-          return this.audioTranscriptionService.transcribeAudio(storage, file, campaignId, transcriptionId, kankaContext);
-        }),
-        catchError(() => {
-          // If Kanka fetch fails, continue without context
-          console.warn('Failed to fetch Kanka context, continuing transcription without it');
-          return this.audioTranscriptionService.transcribeAudio(storage, file, campaignId, transcriptionId);
-        })
-      ).subscribe({
-        next: transcription => {
-        if (!session || !campaignId) {
-          return;
-        }
-
-        void this.audioTranscriptionService
-          .saveTranscription(campaignId, session.id, transcription, 'Auto-generated')
-          .then(savedTranscriptionId => {
-            this.sessionStateService.updateSession(session.id, {
-              transcription,
-              status: 'completed',
-              activeTranscriptionId: savedTranscriptionId
-            });
-            this.refreshSessions();
-            this.runStoryGeneration(transcription);
-          })
-          .catch(error => {
-            console.error('Failed to save transcription, continuing anyway:', error);
-            this.sessionStateService.updateSession(session.id, {
-              transcription,
-              status: 'completed'
-            });
-            this.refreshSessions();
-            this.runStoryGeneration(transcription);
-          });
-      },
-      error: err => {
-        if (session) {
-          this.sessionStateService.updateSession(session.id, {
-            status: 'completed' // Keep as completed since upload succeeded
-          });
-        }
-        this.stageTimerSub?.unsubscribe();
-        this.stage.set('failed');
-        this.statusMessage.set(err.message || 'Transcription failed. File saved - you can retry transcription later.');
-        this.refreshSessions();
-      }
-    });
-    } else {
-      // Transcribe without Kanka context
-      this.processingSub = this.audioTranscriptionService
-        .transcribeAudio(storage, file, campaignId, transcriptionId)
-        .subscribe({
-          next: transcription => {
-            if (!session || !campaignId) {
-              return;
-            }
-
-            void this.audioTranscriptionService
-              .saveTranscription(campaignId, session.id, transcription, 'Auto-generated')
-              .then(savedTranscriptionId => {
-                this.sessionStateService.updateSession(session.id, {
-                  transcription,
-                  status: 'completed',
-                  activeTranscriptionId: savedTranscriptionId
-                });
-                this.refreshSessions();
-                this.runStoryGeneration(transcription);
-              })
-              .catch(error => {
-                console.error('Failed to save transcription, continuing anyway:', error);
-                this.sessionStateService.updateSession(session.id, {
-                  transcription,
-                  status: 'completed'
-                });
-                this.refreshSessions();
-                this.runStoryGeneration(transcription);
-              });
-          },
-          error: err => {
-            if (session) {
-              this.sessionStateService.updateSession(session.id, {
-                status: 'completed' // Keep as completed since upload succeeded
-              });
-            }
-            this.stageTimerSub?.unsubscribe();
-            this.stage.set('failed');
-            this.statusMessage.set(err.message || 'Transcription failed. File saved - you can retry transcription later.');
-            this.refreshSessions();
-          }
-        });
-    }
-  }
-
-  private generateId(): string {
-    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-      return crypto.randomUUID();
-    }
-    return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-  }
-
-  private runStoryGeneration(transcription: TranscriptionResult): void {
-    const session = this.currentSession();
-    if (!session) {
-      return;
-    }
-
-    this.stage.set('generating');
-    this.statusMessage.set('Generating story...');
-    this.animateStageProgress(3000, 60);
-
-    this.processingSub?.unsubscribe();
-    this.processingSub = this.sessionStoryService
-      .generateStoryFromTranscript(
-        transcription.rawTranscript,
-        session.title,
-        session.sessionDate,
-        this.userCorrections(),
-        this.kankaEnabled() && this.kankaAvailable()
-      )
-      .subscribe({
-        next: content => {
-          this.sessionStateService.updateSession(session.id, {
-            content,
-            status: 'completed'
-          });
-          this.finishStage('completed', 'Story ready.');
-        },
-        error: err => {
-          this.stageTimerSub?.unsubscribe();
-          this.stage.set('failed');
-          this.statusMessage.set(
-            err.message || 'Story generation failed. Transcription saved - you can regenerate the story later.'
-          );
-          this.refreshSessions();
-        }
-      });
   }
 
   private finishStage(stage: Stage, message: string): void {

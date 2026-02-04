@@ -9,15 +9,14 @@ import * as os from 'os';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 
-import { AUDIO_TRANSCRIPTION_PROMPT } from './prompts/audio-transcription.prompt';
-import { SESSION_STORY_GENERATOR_PROMPT } from './prompts/session-story-generator.prompt';
 import { PODCAST_SCRIPT_GENERATOR_PROMPT } from './prompts/podcast-script-generator.prompt';
-import { AudioChunkingService, AudioChunk, CHUNK_DURATION_SECONDS } from './audio/chunking.service';
+import { AudioChunkingService } from './audio/chunking.service';
+import { transcribeAudioFile } from './audio/transcription.service';
+import { generateStoryFromTranscription } from './story/story-generator.service';
 import {
   ProcessAudioSessionRequest,
   AISettings,
   KankaSearchResult,
-  TranscriptionSegment,
   CompleteProcessingStatus
 } from './types/audio-session.types';
 
@@ -41,26 +40,6 @@ interface PodcastScript {
 type CallableRequest<T> = {
   auth?: { uid?: string };
   data: T;
-};
-
-const TRANSCRIPTION_SCHEMA = {
-  type: Type.OBJECT,
-  properties: {
-    error: { type: Type.STRING },
-    message: { type: Type.STRING },
-    segments: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          timeSeconds: { type: Type.NUMBER },
-          text: { type: Type.STRING },
-          speaker: { type: Type.STRING }
-        },
-        required: ['timeSeconds', 'text']
-      }
-    }
-  }
 };
 
 // Helper to update progress
@@ -235,9 +214,6 @@ async function processAudioInBackground(
   const googleAi = new GoogleGenAI({ apiKey: googleAiKey });
   const elevenlabs = new ElevenLabsClient({ apiKey: elevenlabsKey });
 
-  let tempAudioPath: string | null = null;
-  let chunks: AudioChunk[] = [];
-
   try {
     // Fetch current session data for podcast versioning
     const sessionSnap = await sessionRef.get();
@@ -290,77 +266,14 @@ async function processAudioInBackground(
     await updateProgress(sessionRef, 'loading_context', 5, 'Context loaded');
 
     // STEP 2: Transcribe audio (5-40%)
-    await updateProgress(sessionRef, 'transcribing', 5, 'Downloading audio file...');
+    await updateProgress(sessionRef, 'transcribing', 5, 'Transcribing audio...');
 
-    tempAudioPath = await AudioChunkingService.downloadAudioToTemp(audioStorageUrl, audioFileName);
-    const audioDuration = await AudioChunkingService.getAudioDuration(tempAudioPath);
-
-    console.log(`Audio duration: ${Math.round(audioDuration)}s (${(audioDuration / 60).toFixed(1)} minutes)`);
-
-    let transcriptionText: string;
-    let timestamps: Array<{ time: number; text: string }>;
-
-    if (audioDuration > CHUNK_DURATION_SECONDS) {
-      // Chunked transcription
-      await updateProgress(sessionRef, 'transcribing', 10, `Splitting audio into chunks...`);
-      chunks = await AudioChunkingService.splitAudioIntoChunks(tempAudioPath, audioDuration);
-
-      const chunkResults: Array<{ chunk: AudioChunk; segments: TranscriptionSegment[] }> = [];
-
-      for (let i = 0; i < chunks.length; i++) {
-        const chunk = chunks[i];
-        const chunkProgress = 10 + ((i / chunks.length) * 30);
-
-        await updateProgress(
-          sessionRef,
-          'transcribing',
-          Math.round(chunkProgress),
-          `Transcribing chunk ${i + 1}/${chunks.length}...`
-        );
-
-        const chunkPrompt = buildChunkPrompt(chunk, chunks.length, kankaContext);
-        const segments = await transcribeChunk(googleAi, chunk.audioPath, transcriptionConfig, chunkPrompt);
-
-        // Adjust timestamps to absolute position
-        const adjustedSegments = segments.map(seg => ({
-          ...seg,
-          timeSeconds: seg.timeSeconds < chunk.startTimeSeconds - 5
-            ? seg.timeSeconds + chunk.startTimeSeconds
-            : seg.timeSeconds
-        }));
-
-        chunkResults.push({ chunk, segments: adjustedSegments });
-      }
-
-      // Merge chunks
-      const allSegments = chunkResults.flatMap(r => r.segments);
-      allSegments.sort((a, b) => a.timeSeconds - b.timeSeconds);
-
-      timestamps = allSegments.map(seg => ({
-        time: Math.max(0, Math.round(seg.timeSeconds)),
-        text: seg.speaker ? `${seg.speaker}: ${seg.text}` : seg.text
-      }));
-
-      transcriptionText = timestamps
-        .map(entry => `[${formatTimestamp(entry.time)}] ${entry.text}`)
-        .join('\n');
-
-    } else {
-      // Single transcription
-      await updateProgress(sessionRef, 'transcribing', 10, 'Transcribing audio...');
-
-      const prompt = buildTranscriptionPrompt(kankaContext);
-      const segments = await transcribeChunk(googleAi, tempAudioPath, transcriptionConfig, prompt);
-
-      timestamps = segments.map(seg => ({
-        time: Math.max(0, Math.round(seg.timeSeconds)),
-        text: seg.speaker ? `${seg.speaker}: ${seg.text}` : seg.text
-      }));
-
-      transcriptionText = timestamps
-        .map(entry => `[${formatTimestamp(entry.time)}] ${entry.text}`)
-        .join('\n');
-    }
+    const { transcriptionText, timestamps } = await transcribeAudioFile(
+      audioStorageUrl,
+      audioFileName,
+      transcriptionConfig,
+      kankaContext
+    );
 
     // CHECKPOINT: Save transcription
     await updateProgress(
@@ -381,23 +294,14 @@ async function processAudioInBackground(
     // STEP 3: Generate story (40-60%)
     await updateProgress(sessionRef, 'generating_story', 45, `Generating story with ${storyConfig.model}...`);
 
-    const storyPrompt = buildStoryPrompt(transcriptionText, kankaContext, userCorrections);
-    const storyResponse = await googleAi.models.generateContent({
-      model: storyConfig.model,
-      contents: [{ role: 'user', parts: [{ text: storyPrompt }] }],
-      config: {
-        temperature: storyConfig.temperature,
-        topP: storyConfig.topP,
-        topK: storyConfig.topK,
-        maxOutputTokens: storyConfig.maxOutputTokens
-      }
-    });
-
-    if (!storyResponse.text) {
-      throw new Error('No story generated by AI');
-    }
-
-    const storyContent = storyResponse.text.trim();
+    const storyContent = await generateStoryFromTranscription(
+      transcriptionText,
+      sessionTitle,
+      sessionDate,
+      storyConfig,
+      kankaContext,
+      userCorrections
+    );
 
     // CHECKPOINT: Save story
     await updateProgress(
@@ -596,14 +500,18 @@ async function processAudioInBackground(
         completeProcessingError: error?.message || 'Unknown error'
       }
     );
-  } finally {
-    // Cleanup
-    if (tempAudioPath) {
-      AudioChunkingService.cleanupTempFile(tempAudioPath);
-    }
-    if (chunks.length > 0) {
-      AudioChunkingService.cleanupChunks(chunks);
-    }
+  } catch (error: any) {
+    console.error('Error processing audio:', error);
+
+    await updateProgress(
+      sessionRef,
+      'failed',
+      0,
+      'Processing failed',
+      {
+        completeProcessingError: error?.message || 'Unknown error'
+      }
+    );
   }
 }
 
@@ -615,130 +523,6 @@ async function loadKankaContext(db: FirebaseFirestore.Firestore, campaignId: str
   return {};
 }
 
-function buildTranscriptionPrompt(kankaContext?: KankaSearchResult): string {
-  if (!kankaContext || Object.keys(kankaContext).length === 0) {
-    return AUDIO_TRANSCRIPTION_PROMPT;
-  }
-
-  const contextPrompt = buildKankaContextPrompt(kankaContext);
-  return `${AUDIO_TRANSCRIPTION_PROMPT}\n\n${contextPrompt}`;
-}
-
-function buildChunkPrompt(
-  chunk: AudioChunk,
-  totalChunks: number,
-  kankaContext?: KankaSearchResult
-): string {
-  const startTimestamp = formatTimestamp(chunk.startTimeSeconds);
-  const endTimestamp = formatTimestamp(chunk.endTimeSeconds);
-  const basePrompt = buildTranscriptionPrompt(kankaContext);
-
-  return `${basePrompt}
-
-CHUNK CONTEXT:
-- This is chunk ${chunk.index + 1} of ${totalChunks} in a longer recording.
-- This chunk covers ${startTimestamp} to ${endTimestamp} from the full session start.
-- All timestamps must be relative to the FULL session start, not this chunk's start.
-- If someone speaks 30 seconds into this chunk, timestamp should be ${formatTimestamp(
-    Math.round(chunk.startTimeSeconds + 30)
-  )}.`;
-}
-
-function buildKankaContextPrompt(context: KankaSearchResult): string {
-  const sections: string[] = [];
-
-  const addSection = (
-    label: string,
-    entities: Array<{ name: string; entry?: string; entry_parsed?: string }> | undefined
-  ) => {
-    if (!entities?.length) {
-      return;
-    }
-    const names = entities.map(entity => entity.name).join(', ');
-    sections.push(`${label}: ${names}`);
-  };
-
-  addSection('Characters', context.characters);
-  addSection('Locations', context.locations);
-  addSection('Quests', context.quests);
-  addSection('Organisations', context.organisations);
-
-  if (sections.length === 0) {
-    return '';
-  }
-
-  return `CAMPAIGN REFERENCE (for name/place accuracy only):
-${sections.join('\n')}
-
-Remember: Use this context ONLY to spell names and places correctly when you hear them. Do not add information that wasn't spoken.`;
-}
-
-function buildStoryPrompt(
-  transcription: string,
-  kankaContext?: KankaSearchResult,
-  userCorrections?: string
-): string {
-  let prompt = SESSION_STORY_GENERATOR_PROMPT;
-
-  if (kankaContext && Object.keys(kankaContext).length > 0) {
-    const contextPrompt = buildKankaContextPrompt(kankaContext);
-    prompt += `\n\n${contextPrompt}`;
-  }
-
-  if (userCorrections && userCorrections.trim().length > 0) {
-    prompt += `\n\nDM CORRECTIONS:\n${userCorrections}`;
-  }
-
-  prompt += `\n\nSESSION TRANSCRIPT:\n${transcription}`;
-
-  return prompt;
-}
-
-async function transcribeChunk(
-  googleAi: GoogleGenAI,
-  audioPath: string,
-  config: any,
-  prompt: string
-): Promise<TranscriptionSegment[]> {
-  const base64Audio = AudioChunkingService.fileToBase64(audioPath);
-
-  const response = await googleAi.models.generateContent({
-    model: config.model,
-    contents: [
-      {
-        role: 'user',
-        parts: [
-          { inlineData: { mimeType: 'audio/wav', data: base64Audio } },
-          { text: prompt }
-        ]
-      }
-    ],
-    config: {
-      responseMimeType: 'application/json',
-      responseSchema: TRANSCRIPTION_SCHEMA,
-      maxOutputTokens: config.maxOutputTokens,
-      temperature: config.temperature,
-      topP: config.topP,
-      topK: config.topK
-    }
-  });
-
-  if (!response.text) {
-    throw new Error('No response from transcription model');
-  }
-
-  const result = JSON.parse(response.text);
-
-  if (result.error) {
-    throw new Error(result.message || 'Audio processing failed');
-  }
-
-  if (!result.segments || !Array.isArray(result.segments) || result.segments.length === 0) {
-    throw new Error('No valid transcription segments returned');
-  }
-
-  return result.segments;
-}
 
 function parseScriptResponse(text: string): PodcastScript {
   const segments: PodcastSegment[] = [];
@@ -773,12 +557,6 @@ function upsertPodcast(existing: any[], nextEntry: any): any[] {
   const updated = [...existing];
   updated[index] = { ...existing[index], ...nextEntry };
   return updated;
-}
-
-function formatTimestamp(seconds: number): string {
-  const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
-  const secs = Math.floor(seconds % 60).toString().padStart(2, '0');
-  return `${mins}:${secs}`;
 }
 
 function safeUnlink(filePath: string): void {
