@@ -73,7 +73,6 @@ export class PodcastAudioService {
         throw new Error('Failed to start podcast generation');
       }
 
-      console.log('Podcast generation started:', result.data.message);
     } catch (error) {
       console.error('Error starting podcast generation:', error);
       throw new Error('Failed to start podcast generation. Please try again.');

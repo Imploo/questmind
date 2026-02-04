@@ -396,7 +396,6 @@ export class AdminComponent implements OnInit {
         message: 'AI settings saved successfully'
       });
 
-      console.log('AI settings saved:', settings);
     } catch (error) {
       console.error('Error saving AI settings:', error);
       this.saveResult.set({

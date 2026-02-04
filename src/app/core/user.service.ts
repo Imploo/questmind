@@ -62,8 +62,6 @@ export class UserService {
           createdAt: data['createdAt']?.toDate ? data['createdAt'].toDate() : data['createdAt'],
           updatedAt: data['updatedAt']?.toDate ? data['updatedAt'].toDate() : data['updatedAt']
         };
-        console.log('User profile loaded:', profile);
-        console.log('Is admin:', profile.admin);
         this.userProfile.set(profile);
       } else {
         console.warn('User document does not exist in Firestore for uid:', uid);

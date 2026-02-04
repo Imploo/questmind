@@ -184,7 +184,7 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
             ></app-audio-upload>
 
             @if (currentSession()) {
-              <!-- Session story -->
+              <!-- Session story with integrated podcasts tab -->
               <app-session-story
                 [title]="currentSession()?.title || 'Session Story'"
                 [subtitle]="formatSubtitle(currentSession())"
@@ -197,149 +197,23 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
                 [canEditCorrections]="canEditCorrections()"
                 [corrections]="userCorrections()"
                 [correctionsStatus]="correctionsSaveStatus()"
+                [podcasts]="podcasts()"
+                [isGeneratingPodcast]="isGeneratingPodcast()"
+                [podcastGenerationProgress]="podcastGenerationProgress()"
+                [podcastGenerationProgressPercent]="podcastGenerationProgressPercent()"
+                [podcastError]="podcastError()"
+                [isPlayingPodcast]="isPlayingPodcast()"
+                [playingPodcastVersion]="playingPodcastVersion()"
+                [canGeneratePodcast]="canGeneratePodcast()"
                 (storyUpdated)="saveStoryEdits($event)"
                 (regenerate)="regenerateStory()"
                 (retranscribe)="retranscribeSession()"
                 (correctionsChanged)="onCorrectionsInput($event)"
+                (generatePodcast)="generatePodcast()"
+                (playPodcast)="playPodcast($event)"
+                (stopPodcast)="stopPodcast()"
+                (downloadPodcast)="downloadPodcast($event)"
               ></app-session-story>
-            }
-
-            <!-- Podcast section -->
-            @if (currentSession()?.content) {
-              <div class="p-6 bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-xl">
-                <div class="flex items-center justify-between mb-4">
-                  <div>
-                    <h3 class="text-lg font-semibold text-purple-900 m-0">🎙️ Session Podcast</h3>
-                    <p class="text-sm text-purple-700 m-0 mt-1">
-                      Genereer een boeiende audio recap met twee hosts die de sessie bespreken
-                    </p>
-                  </div>
-                  <button
-                    (click)="generatePodcast()"
-                    [disabled]="isGeneratingPodcast() || isBusy() || !canGeneratePodcast()"
-                    class="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
-                  >
-                    @if (isGeneratingPodcast()) {
-                      <span class="flex items-center gap-2">
-                        <svg class="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
-                          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        <span>{{ podcastGenerationProgress() }}</span>
-                      </span>
-                    } @else {
-                      Genereer Podcast
-                    }
-                  </button>
-                </div>
-
-                @if (podcastError()) {
-                  <div class="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
-                    <p class="text-sm text-red-700 m-0">{{ podcastError() }}</p>
-                  </div>
-                }
-
-                @if (isGeneratingPodcast()) {
-                  <div class="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                    <div class="flex items-center justify-between mb-2">
-                      <span class="text-sm font-medium text-blue-900">{{ podcastGenerationProgress() }}</span>
-                      <span class="text-sm text-blue-700">{{ podcastGenerationProgressPercent() }}%</span>
-                    </div>
-                    <div class="w-full bg-blue-200 rounded-full h-2">
-                      <div
-                        class="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                        [style.width.%]="podcastGenerationProgressPercent()"
-                      ></div>
-                    </div>
-                    <p class="text-xs text-blue-600 mt-2">
-                      Dit kan 2-3 minuten duren. De complete MP3 wordt gegenereerd en opgeslagen.
-                    </p>
-                  </div>
-                }
-
-                @if (podcasts().length > 0) {
-                  <div class="mt-4 space-y-3">
-                    <h4 class="text-sm font-medium text-purple-900 m-0">
-                      Gegenereerde Podcasts ({{ podcasts().length }})
-                    </h4>
-                    @for (podcast of podcasts(); track podcast.version) {
-                      <div class="flex items-center gap-4 p-4 bg-white rounded-lg border border-purple-100 hover:border-purple-300 transition-colors">
-                        <div class="flex-shrink-0">
-                          <span class="inline-flex items-center justify-center w-10 h-10 bg-purple-100 text-purple-700 rounded-full font-semibold text-sm">
-                            v{{ podcast.version }}
-                          </span>
-                        </div>
-
-                        <div class="flex-1 min-w-0">
-                          <div class="flex items-center gap-2">
-                            <span class="text-sm font-medium text-gray-900">
-                              {{ currentSession()?.title || 'Untitled Session' }} - Podcast v{{ podcast.version }}
-                            </span>
-                            @if (podcast.status === 'pending' || podcast.status === 'generating_audio' || podcast.status === 'uploading') {
-                              <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">{{ podcast.progressMessage || 'Generating...' }}</span>
-                            } @else if (podcast.status === 'failed') {
-                              <span class="text-xs bg-red-100 text-red-700 px-2 py-1 rounded">Failed</span>
-                            } @else if (podcast.status === 'completed') {
-                              <span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
-                                {{ podcast.audioUrl ? 'Audio Ready' : 'Audio Pending' }}
-                              </span>
-                            }
-                          </div>
-                          <div class="flex items-center gap-3 mt-1 text-xs text-gray-500">
-                            <span>{{ formatting.formatDuration(podcast.duration) }}</span>
-                            @if (podcast.fileSize) {
-                              <span>•</span>
-                              <span>{{ formatting.formatFileSize(podcast.fileSize) }}</span>
-                            }
-                            <span>•</span>
-                            <span>{{ formatting.formatDate(podcast.createdAt) }}</span>
-                          </div>
-                        </div>
-
-                        <div class="flex items-center gap-2">
-                          @if (isPlayingPodcast() && playingPodcastVersion() === podcast.version) {
-                            <button
-                              (click)="stopPodcast()"
-                              class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors text-sm font-medium"
-                              title="Stop afspelen"
-                            >
-                              ⏹️ Stop
-                            </button>
-                          } @else {
-                            <button
-                              (click)="playPodcast(podcast)"
-                              [disabled]="isPlayingPodcast() || !podcast.audioUrl"
-                              class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-                              title="Podcast afspelen"
-                            >
-                              ▶️ Afspelen
-                            </button>
-                          }
-                          <button
-                            (click)="downloadPodcast(podcast)"
-                            [disabled]="!podcast.audioUrl"
-                            class="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                            title="Podcast downloaden"
-                          >
-                            ⬇️ Download
-                          </button>
-                        </div>
-                      </div>
-                    }
-                  </div>
-                }
-
-                @if (podcasts().length === 0 && !isGeneratingPodcast()) {
-                  <div class="mt-4 p-4 bg-white rounded-lg border border-purple-100 text-center">
-                    <p class="text-sm text-gray-500 m-0">
-                      Nog geen podcasts gegenereerd. Klik op "Genereer Podcast" om te beginnen.
-                    </p>
-                    <p class="text-xs text-gray-400 m-0 mt-1">
-                      Podcasts gebruiken Gemini 2.5 Flash TTS met natuurlijk klinkende Nederlandse stemmen
-                    </p>
-                  </div>
-                }
-              </div>
             }
 
             <!-- Empty state when no session selected -->
@@ -383,7 +257,7 @@ export class AudioSessionComponent implements OnDestroy {
     return !!session && this.campaignService.isSessionOwner(session, userId);
   });
   canRegenerateStory = computed(() => this.isSessionOwner());
-  canRetranscribe = computed(() => this.isSessionOwner() && !!this.currentSession()?.audioStorageUrl);
+  canRetranscribe = computed(() => this.isSessionOwner() && !!this.resolveAudioStorageUrl(this.currentSession()));
   canGeneratePodcast = computed(() => this.isSessionOwner());
   canEditStory = computed(() => this.isSessionOwner());
   canEditCorrections = computed(() => !!this.currentSession());
@@ -533,7 +407,6 @@ export class AudioSessionComponent implements OnDestroy {
         upload.campaignId,
         session.id,
         (progress: ProcessingProgress) => {
-          console.log('Complete processing progress:', progress);
 
           // Update UI based on status
           this.progress.set(progress.progress);
@@ -590,8 +463,6 @@ export class AudioSessionComponent implements OnDestroy {
         }
       );
 
-      console.log('Complete processing started, listening for updates...');
-
     } catch (error: any) {
       console.error('Failed to start complete processing:', error);
       this.failSession(error?.message || 'Failed to start audio processing');
@@ -621,6 +492,7 @@ export class AudioSessionComponent implements OnDestroy {
       return;
     }
     const session = this.currentSession();
+    const audioStorageUrl = this.resolveAudioStorageUrl(session);
     if (!session?.transcription) {
       return;
     }
@@ -642,8 +514,6 @@ export class AudioSessionComponent implements OnDestroy {
         campaignId,
         session.id,
         (progress: RegenerateStoryProgress) => {
-          console.log('Regenerate story progress:', progress);
-
           // Update UI based on status
           this.progress.set(progress.progress);
           this.statusMessage.set(progress.message);
@@ -683,8 +553,6 @@ export class AudioSessionComponent implements OnDestroy {
         }
       );
 
-      console.log('Story regeneration started, listening for updates...');
-
     } catch (error: any) {
       console.error('Failed to start story regeneration:', error);
       this.failSession(error?.message || 'Failed to start story regeneration');
@@ -697,10 +565,11 @@ export class AudioSessionComponent implements OnDestroy {
       return;
     }
     const session = this.currentSession();
+    const audioStorageUrl = this.resolveAudioStorageUrl(session);
     const uid = this.userId();
     const campaignId = session?.campaignId;
 
-    if (!session?.audioStorageUrl) {
+    if (!audioStorageUrl) {
       this.failSession('No stored audio file found for this session.');
       return;
     }
@@ -724,8 +593,6 @@ export class AudioSessionComponent implements OnDestroy {
         campaignId,
         session.id,
         (progress: RetranscribeProgress) => {
-          console.log('Retranscribe progress:', progress);
-
           // Update UI based on status
           this.progress.set(progress.progress);
           this.statusMessage.set(progress.message);
@@ -772,8 +639,6 @@ export class AudioSessionComponent implements OnDestroy {
           regenerateStoryAfterTranscription: true
         }
       );
-
-      console.log('Retranscription started, listening for updates...');
 
     } catch (error: any) {
       console.error('Failed to start retranscription:', error);
@@ -950,6 +815,15 @@ export class AudioSessionComponent implements OnDestroy {
     }
   }
 
+  private resolveAudioStorageUrl(session: AudioSessionRecord | null): string | null {
+    return (
+      session?.audioStorageUrl ||
+      session?.storageUrl ||
+      session?.storageMetadata?.downloadUrl ||
+      null
+    );
+  }
+
   async generatePodcast(): Promise<void> {
     const session = this.currentSession();
     if (!session?.content || !session?.id) {
@@ -986,8 +860,6 @@ export class AudioSessionComponent implements OnDestroy {
       const progressEffect = runInInjectionContext(this.injector, () => effect(() => {
         const currentProgress = progress();
         if (currentProgress) {
-          console.log('Podcast progress:', currentProgress);
-
           this.podcastProgress.set(currentProgress);
           this.podcastGenerationProgress.set(currentProgress.message);
           this.podcastGenerationProgressPercent.set(currentProgress.progress);
@@ -1016,8 +888,6 @@ export class AudioSessionComponent implements OnDestroy {
         session.title || 'Untitled Session',  // Title
         session.sessionDate                    // Date
       );
-
-      console.log('Podcast generation started (script + audio)');
 
     } catch (error: any) {
       console.error('Failed to start podcast generation:', error);

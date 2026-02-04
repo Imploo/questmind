@@ -297,7 +297,6 @@ async function generatePodcastInBackground(
       }
 
       modelUsed = selectedModel;
-      console.log(`Using model: ${selectedModel}`);
 
       // 1.2 Generate script
       await updateProgress(sessionRef, existingPodcasts, version, 'generating_script', 15,

@@ -52,11 +52,9 @@ export class AudioCompleteProcessingService {
     const storagePath = `campaigns/${campaignId}/audio/${sessionId}/${audioFile.name}`;
     const storageRef = ref(this.storage, storagePath);
 
-    console.log(`Uploading audio to ${storagePath}...`);
     await uploadBytes(storageRef, audioFile);
 
     const audioStorageUrl = await getDownloadURL(storageRef);
-    console.log(`Audio uploaded: ${audioStorageUrl}`);
 
     // 2. Call Cloud Function (fire-and-forget)
     const processAudio = httpsCallable(this.functions, 'processAudioSession');
@@ -73,10 +71,7 @@ export class AudioCompleteProcessingService {
       userCorrections: options.userCorrections
     };
 
-    console.log('Calling processAudioSession Cloud Function...');
     const result = await processAudio(request);
-
-    console.log('Cloud Function called successfully:', result);
   }
 
   /**

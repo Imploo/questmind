@@ -125,10 +125,8 @@ export class CampaignContextService {
     this.error.set(null);
     try {
       let campaignIds = profile.campaigns || [];
-      console.log('[CampaignContext] Loading campaigns for user:', user.email, 'Campaign IDs:', campaignIds);
 
       if (campaignIds.length === 0) {
-        console.log('[CampaignContext] No campaigns found, creating default campaign');
         const campaignId = await this.campaignService.createCampaign(
           `${user.displayName || user.email || 'My'} Campaign`
         );
@@ -136,10 +134,8 @@ export class CampaignContextService {
       }
 
       let campaigns = await this.campaignService.getCampaignsByIds(campaignIds);
-      console.log('[CampaignContext] Loaded campaigns:', campaigns.length, 'of', campaignIds.length);
 
       if (campaigns.length === 0) {
-        console.log('[CampaignContext] Failed to load any campaigns, creating new one');
         const campaignId = await this.campaignService.createCampaign(
           `${user.displayName || user.email || 'My'} Campaign`
         );

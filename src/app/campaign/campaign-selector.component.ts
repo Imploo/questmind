@@ -1,7 +1,6 @@
 import { Component, effect, inject, signal, input, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { PlusOutlineIconComponent, Cog6ToothOutlineIconComponent, Squares2X2OutlineIconComponent } from '@dimaslz/ng-heroicons';
 import { AuthService } from '../auth/auth.service';
 import { CampaignContextService } from './campaign-context.service';
 import { CampaignService } from './campaign.service';
@@ -9,7 +8,7 @@ import { Campaign } from './campaign.models';
 
 @Component({
   selector: 'app-campaign-selector',
-  imports: [FormsModule, PlusOutlineIconComponent, Cog6ToothOutlineIconComponent, Squares2X2OutlineIconComponent],
+  imports: [FormsModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <!-- When expanded: Full layout -->
@@ -36,7 +35,7 @@ import { Campaign } from './campaign.models';
             (click)="showCreateCampaign.set(true)"
             class="flex-1 px-2 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center justify-center gap-1"
           >
-            <plus-outline-icon [size]="12" />
+            <span>➕</span>
             <span>New</span>
           </button>
           @if (selectedCampaign()) {
@@ -44,7 +43,7 @@ import { Campaign } from './campaign.models';
               (click)="openManageCampaign(); showDropdown.set(false)"
               class="flex-1 px-2 py-1.5 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors flex items-center justify-center gap-1"
             >
-              <cog-6-tooth-outline-icon [size]="12" />
+              <span>⚙️</span>
               <span>Settings</span>
             </button>
           }
@@ -65,7 +64,7 @@ import { Campaign } from './campaign.models';
           class="p-2 rounded-lg hover:bg-gray-100 transition-colors w-full"
           [title]="selectedCampaign()?.name || 'Select campaign'"
         >
-          <squares-2-x-2-outline-icon [size]="24" class="text-gray-600 mx-auto" />
+          <span class="text-2xl block text-center">📚</span>
         </button>
         @if (showDropdown()) {
           <div class="absolute left-full ml-2 top-0 w-64 bg-white rounded-lg shadow-xl z-50 border border-gray-200">
@@ -89,7 +88,7 @@ import { Campaign } from './campaign.models';
                 (click)="showCreateCampaign.set(true); showDropdown.set(false)"
                 class="w-full px-3 py-2 text-left text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors flex items-center gap-2"
               >
-                <plus-outline-icon [size]="16" />
+                <span>➕</span>
                 <span>New Campaign</span>
               </button>
               @if (selectedCampaign()) {
@@ -97,7 +96,7 @@ import { Campaign } from './campaign.models';
                   (click)="openManageCampaign(); showDropdown.set(false)"
                   class="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors flex items-center gap-2"
                 >
-                  <cog-6-tooth-outline-icon [size]="16" />
+                  <span>⚙️</span>
                   <span>Campaign Settings</span>
                 </button>
               }

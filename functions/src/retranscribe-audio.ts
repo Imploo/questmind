@@ -118,8 +118,20 @@ export const retranscribeAudio = onCall(
       throw new HttpsError('permission-denied', 'Only the session owner can retranscribe audio.');
     }
 
-    if (!sessionData.audioStorageUrl) {
+    const audioStorageUrl =
+      sessionData.audioStorageUrl ||
+      sessionData.storageUrl ||
+      sessionData.storageMetadata?.downloadUrl;
+
+    if (!audioStorageUrl) {
       throw new HttpsError('failed-precondition', 'No audio file found for this session.');
+    }
+
+    if (!sessionData.audioStorageUrl) {
+      await sessionRef.update({
+        audioStorageUrl,
+        updatedAt: FieldValue.serverTimestamp()
+      });
     }
 
     // Initialize progress
@@ -136,7 +148,7 @@ export const retranscribeAudio = onCall(
     retranscribeInBackground(
       campaignId,
       sessionId,
-      sessionData.audioStorageUrl,
+      audioStorageUrl,
       sessionData.audioFileName || 'audio.wav',
       sessionData.sessionTitle || 'Untitled Session',
       sessionData.sessionDate,

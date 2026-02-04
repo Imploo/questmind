@@ -1,6 +1,7 @@
 import { Injectable, signal, computed } from '@angular/core';
 import {
-  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
@@ -29,6 +30,7 @@ export class AuthService {
   constructor(private readonly firebase: FirebaseService) {
     this.auth = this.firebase.requireAuth();
     this.initAuthStateListener();
+    this.checkRedirectResult();
   }
 
   private initAuthStateListener(): void {
@@ -45,16 +47,29 @@ export class AuthService {
     });
   }
 
-  async signInWithGoogle(): Promise<UserCredential> {
+  private async checkRedirectResult(): Promise<void> {
+    try {
+      const result = await getRedirectResult(this.auth);
+      if (result) {
+        // User successfully signed in via redirect
+        console.log('Successfully signed in via redirect:', result.user.email);
+      }
+    } catch (err: unknown) {
+      console.error('Redirect result error:', err);
+      this.error.set(this.getErrorMessage(err));
+    }
+  }
+
+  async signInWithGoogle(): Promise<void> {
     this.loading.set(true);
     this.error.set(null);
     
     try {
       const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(this.auth, provider);
-      this.loading.set(false);
-      return result;
-    } catch (err: any) {
+      // Use redirect instead of popup for better compatibility with embedded browsers
+      await signInWithRedirect(this.auth, provider);
+      // Note: The page will redirect, so code after this won't execute
+    } catch (err: unknown) {
       this.loading.set(false);
       const errorMessage = this.getErrorMessage(err);
       this.error.set(errorMessage);
@@ -70,7 +85,7 @@ export class AuthService {
       const result = await signInWithEmailAndPassword(this.auth, email, password);
       this.loading.set(false);
       return result;
-    } catch (err: any) {
+    } catch (err: unknown) {
       this.loading.set(false);
       const errorMessage = this.getErrorMessage(err);
       this.error.set(errorMessage);
@@ -86,7 +101,7 @@ export class AuthService {
       const result = await createUserWithEmailAndPassword(this.auth, email, password);
       this.loading.set(false);
       return result;
-    } catch (err: any) {
+    } catch (err: unknown) {
       this.loading.set(false);
       const errorMessage = this.getErrorMessage(err);
       this.error.set(errorMessage);
@@ -101,7 +116,7 @@ export class AuthService {
     try {
       await sendPasswordResetEmail(this.auth, email);
       this.loading.set(false);
-    } catch (err: any) {
+    } catch (err: unknown) {
       this.loading.set(false);
       const errorMessage = this.getErrorMessage(err);
       this.error.set(errorMessage);
@@ -117,7 +132,7 @@ export class AuthService {
       await firebaseSignOut(this.auth);
       this.user.set(null);
       this.loading.set(false);
-    } catch (err: any) {
+    } catch (err: unknown) {
       this.loading.set(false);
       const errorMessage = this.getErrorMessage(err);
       this.error.set(errorMessage);
@@ -125,8 +140,10 @@ export class AuthService {
     }
   }
 
-  private getErrorMessage(error: any): string {
-    if (!error?.code) return error?.message || 'An error occurred';
+  private getErrorMessage(error: unknown): string {
+    if (!error || typeof error !== 'object') return 'An error occurred';
+    const err = error as { code?: string; message?: string };
+    if (!err.code) return err.message || 'An error occurred';
     
     const errorMessages: Record<string, string> = {
       'auth/invalid-email': 'Invalid email address',
@@ -138,11 +155,12 @@ export class AuthService {
       'auth/operation-not-allowed': 'This sign-in method is not enabled',
       'auth/popup-blocked': 'Sign-in popup was blocked. Please allow popups for this site.',
       'auth/popup-closed-by-user': 'Sign-in was cancelled',
+      'auth/cancelled-popup-request': 'Sign-in was cancelled',
       'auth/network-request-failed': 'Network error. Please check your connection.',
       'auth/too-many-requests': 'Too many attempts. Please try again later.',
       'auth/invalid-credential': 'Invalid credentials provided'
     };
     
-    return errorMessages[error.code] || error.message || 'Authentication failed';
+    return errorMessages[err.code] || err.message || 'Authentication failed';
   }
 }

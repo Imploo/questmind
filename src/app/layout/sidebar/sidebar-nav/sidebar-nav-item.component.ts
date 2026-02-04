@@ -1,30 +1,10 @@
 import { Component, ChangeDetectionStrategy, input, computed } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import {
-  ChatBubbleLeftRightOutlineIconComponent,
-  ChatBubbleLeftRightSolidIconComponent,
-  MicrophoneOutlineIconComponent,
-  MicrophoneSolidIconComponent,
-  MusicalNoteOutlineIconComponent,
-  MusicalNoteSolidIconComponent,
-  Cog6ToothOutlineIconComponent,
-  Cog6ToothSolidIconComponent,
-} from '@dimaslz/ng-heroicons';
 import { NavItem } from '../../nav-item.model';
 
 @Component({
   selector: 'app-sidebar-nav-item',
-  imports: [
-    RouterLink,
-    ChatBubbleLeftRightOutlineIconComponent,
-    ChatBubbleLeftRightSolidIconComponent,
-    MicrophoneOutlineIconComponent,
-    MicrophoneSolidIconComponent,
-    MusicalNoteOutlineIconComponent,
-    MusicalNoteSolidIconComponent,
-    Cog6ToothOutlineIconComponent,
-    Cog6ToothSolidIconComponent,
-  ],
+  imports: [RouterLink],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <a
@@ -32,38 +12,7 @@ import { NavItem } from '../../nav-item.model';
       [class]="itemClasses()"
       [title]="isCollapsed() ? item().label : ''"
     >
-      <span class="shrink-0">
-        @switch (item().icon) {
-          @case ('chat-bubble-left-right') {
-            @if (isActive()) {
-              <chat-bubble-left-right-solid-icon [size]="iconSize()" />
-            } @else {
-              <chat-bubble-left-right-outline-icon [size]="iconSize()" />
-            }
-          }
-          @case ('microphone') {
-            @if (isActive()) {
-              <microphone-solid-icon [size]="iconSize()" />
-            } @else {
-              <microphone-outline-icon [size]="iconSize()" />
-            }
-          }
-          @case ('musical-note') {
-            @if (isActive()) {
-              <musical-note-solid-icon [size]="iconSize()" />
-            } @else {
-              <musical-note-outline-icon [size]="iconSize()" />
-            }
-          }
-          @case ('cog6-tooth') {
-            @if (isActive()) {
-              <cog-6-tooth-solid-icon [size]="iconSize()" />
-            } @else {
-              <cog-6-tooth-outline-icon [size]="iconSize()" />
-            }
-          }
-        }
-      </span>
+      <span [class]="iconClasses()">{{ item().icon }}</span>
       @if (!isCollapsed()) {
         <span>{{ item().label }}</span>
       }
@@ -85,7 +34,8 @@ export class SidebarNavItemComponent {
     return `${base} ${layout} ${active}`;
   });
 
-  readonly iconSize = computed(() => {
-    return this.isCollapsed() ? 24 : 20;
+  readonly iconClasses = computed(() => {
+    const size = this.isCollapsed() ? 'text-2xl' : 'text-xl';
+    return `shrink-0 ${size}`;
   });
 }

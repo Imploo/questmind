@@ -1,10 +1,9 @@
 import { Component, ChangeDetectionStrategy, input, output } from '@angular/core';
-import { ChevronLeftOutlineIconComponent, ChevronRightOutlineIconComponent } from '@dimaslz/ng-heroicons';
 import { CampaignSelectorComponent } from '../../../campaign/campaign-selector.component';
 
 @Component({
   selector: 'app-sidebar-header',
-  imports: [ChevronLeftOutlineIconComponent, ChevronRightOutlineIconComponent, CampaignSelectorComponent],
+  imports: [CampaignSelectorComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <!-- Expanded Layout -->
@@ -18,7 +17,7 @@ import { CampaignSelectorComponent } from '../../../campaign/campaign-selector.c
             [attr.aria-label]="'Collapse sidebar'"
             [title]="'Collapse sidebar'"
           >
-            <chevron-left-outline-icon [size]="16" class="text-gray-600" />
+            <span class="text-gray-600">◀️</span>
           </button>
         </div>
 
@@ -37,7 +36,7 @@ import { CampaignSelectorComponent } from '../../../campaign/campaign-selector.c
           [attr.aria-label]="'Expand sidebar'"
           [title]="'Expand sidebar'"
         >
-          <chevron-right-outline-icon [size]="20" class="text-gray-600" />
+          <span class="text-xl text-gray-600">▶️</span>
         </button>
 
         <!-- Campaign Selector -->

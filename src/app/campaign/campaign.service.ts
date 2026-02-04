@@ -123,7 +123,6 @@ export class CampaignService {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
-    console.log('Attempting to invite user with email:', normalizedEmail);
 
     let targetUser;
     try {
@@ -131,7 +130,6 @@ export class CampaignService {
       if (!targetUser) {
         throw new Error(`No user found with email: ${normalizedEmail}. The user must create an account first.`);
       }
-      console.log('Target user found:', targetUser);
     } catch (error: any) {
       console.error('Error during user lookup:', error);
       throw error;
@@ -216,14 +214,11 @@ export class CampaignService {
       return null;
     }
     const normalizedEmail = email.trim().toLowerCase();
-    console.log('Searching for user with email:', normalizedEmail);
 
     try {
       const usersRef = collection(this.db, 'users');
       const q = query(usersRef, where('email', '==', normalizedEmail));
       const snapshot = await getDocs(q);
-
-      console.log('Query returned', snapshot.size, 'results');
 
       if (snapshot.empty) {
         console.warn('No user found with email:', normalizedEmail);
@@ -235,7 +230,6 @@ export class CampaignService {
         uid: docSnap.id,
         email: docSnap.data()['email']
       };
-      console.log('Found user:', userData);
       return userData;
     } catch (error) {
       console.error('Error searching for user by email:', error);
