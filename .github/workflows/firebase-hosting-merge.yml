@@ -41,4 +41,4 @@ jobs:
           service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
 
       - name: Deploy to Firebase Hosting
-        run: npx firebase-tools deploy --only hosting --project questmind-dnd
+        run: npx firebase-tools deploy --project questmind-dnd
