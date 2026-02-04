@@ -1,4 +1,4 @@
-import { Component, OnDestroy, effect, signal, computed, inject, Injector, runInInjectionContext } from '@angular/core';
+import { Component, OnDestroy, effect, signal, computed, inject, Injector, runInInjectionContext, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { timer, firstValueFrom, Subscription } from 'rxjs';
 import { httpsCallable } from 'firebase/functions';
@@ -30,262 +30,366 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
 
 @Component({
   selector: 'app-audio-session',
-  standalone: true,
   imports: [CommonModule, AudioUploadComponent, TranscriptionStatusComponent, SessionStoryComponent],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="grid gap-6">
-      @if (!authService.isAuthenticated()) {
-        <div class="border border-gray-200 rounded-xl bg-white shadow-sm p-8 text-center">
-          <div class="max-w-md mx-auto">
-            <div class="text-6xl mb-4">🎙️</div>
-            <h3 class="text-xl font-semibold text-gray-800 mb-2">Audio Transcription</h3>
-            <p class="text-gray-600 mb-6">
-              Sign in to upload audio sessions and generate AI-powered transcriptions and session stories.
-            </p>
-            <p class="text-sm text-gray-500">
-              Your audio files and transcriptions will be securely stored and accessible only to you.
-            </p>
-          </div>
+    @if (!authService.isAuthenticated()) {
+      <div class="border border-gray-200 rounded-xl bg-white shadow-sm p-8 text-center">
+        <div class="max-w-md mx-auto">
+          <div class="text-6xl mb-4">🎙️</div>
+          <h3 class="text-xl font-semibold text-gray-800 mb-2">Audio Transcription</h3>
+          <p class="text-gray-600 mb-6">
+            Sign in to upload audio sessions and generate AI-powered transcriptions and session stories.
+          </p>
+          <p class="text-sm text-gray-500">
+            Your audio files and transcriptions will be securely stored and accessible only to you.
+          </p>
         </div>
-      } @else {
-        @if (!campaignId()) {
-          <div class="border border-gray-200 rounded-xl bg-white shadow-sm p-8 text-center">
-            <div class="max-w-md mx-auto">
-              <div class="text-4xl mb-3">🧭</div>
-              <h3 class="text-lg font-semibold text-gray-800 mb-2">Select a campaign</h3>
-              <p class="text-gray-600 m-0">
-                Choose a campaign to upload sessions and collaborate with your group.
-              </p>
-            </div>
-          </div>
-        } @else {
-          <div class="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-            <app-audio-upload
-              [isBusy]="isBusy()"
-              [userId]="userId()"
-              [campaignId]="campaignId()"
-              [canUpload]="canUploadAudio()"
-              (uploadRequested)="startCompleteProcessing($event)"
-            ></app-audio-upload>
-            <app-transcription-status
-              [stage]="stage()"
-              [progress]="progress()"
-              [statusMessage]="statusMessage()"
-              (cancel)="cancelProcessing()"
-              (retry)="retryProcessing()"
-            ></app-transcription-status>
-          </div>
-
-        @if (currentSession()) {
-          <div class="border border-gray-200 rounded-xl bg-white shadow-sm p-4">
-            <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-              <div>
-                <p class="m-0 text-sm font-semibold text-gray-700">Kanka campaign context</p>
-                <p class="m-0 text-xs text-gray-500">
-                  Use campaign data to improve name accuracy and quest references.
+      </div>
+    } @else if (!campaignId()) {
+      <div class="border border-gray-200 rounded-xl bg-white shadow-sm p-8 text-center">
+        <div class="max-w-md mx-auto">
+          <div class="text-4xl mb-3">🧭</div>
+          <h3 class="text-lg font-semibold text-gray-800 mb-2">Select a campaign</h3>
+          <p class="text-gray-600 m-0">
+            Choose a campaign to upload sessions and collaborate with your group.
+          </p>
+        </div>
+      </div>
+    } @else {
+      <div class="flex flex-col lg:flex-row gap-6">
+        <!-- Mobile: Toggle button at top -->
+        <div class="lg:hidden mb-4">
+          <button
+            type="button"
+            (click)="mobileDrawerOpen.set(true)"
+            class="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl shadow-sm flex items-center justify-between hover:bg-gray-50 transition-colors"
+          >
+            <div class="flex items-center gap-3">
+              <span class="text-lg">📋</span>
+              <div class="text-left">
+                <p class="m-0 text-sm font-semibold text-gray-700">
+                  {{ currentSession()?.title || 'Select a session' }}
                 </p>
-                @if (!kankaAvailable()) {
-                  <p class="m-0 text-xs text-amber-600">
-                    Configure Kanka token and campaign ID in the environment to enable this.
-                  </p>
-                }
+                <p class="m-0 text-xs text-gray-500">
+                  {{ sortedSessions().length }} session(s) available
+                </p>
               </div>
-              <label class="inline-flex items-center gap-2 text-sm text-gray-700">
-                <input
-                  type="checkbox"
-                  [checked]="kankaEnabled()"
-                  [disabled]="!kankaAvailable() || isBusy()"
-                  (change)="toggleKankaIntegration()"
-                />
-                <span>Enable</span>
-              </label>
             </div>
-          </div>
-          <app-session-story
-            [title]="currentSession()?.title || 'Session Story'"
-            [subtitle]="formatSubtitle(currentSession())"
-            [story]="currentSession()?.content || ''"
-            [transcript]="currentSession()?.transcription?.rawTranscript || ''"
-            [isBusy]="isBusy()"
-            [canRetranscribe]="canRetranscribe()"
-            [canRegenerate]="canRegenerateStory()"
-            [canEditStory]="canEditStory()"
-            [canEditCorrections]="canEditCorrections()"
-            [corrections]="userCorrections()"
-            [correctionsStatus]="correctionsSaveStatus()"
-            (storyUpdated)="saveStoryEdits($event)"
-            (regenerate)="regenerateStory()"
-            (retranscribe)="retranscribeSession()"
-            (correctionsChanged)="onCorrectionsInput($event)"
-          ></app-session-story>
+            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Mobile backdrop -->
+        @if (mobileDrawerOpen()) {
+          <div
+            class="fixed inset-0 bg-black/50 z-40 lg:hidden"
+            (click)="mobileDrawerOpen.set(false)"
+          ></div>
         }
 
-        @if (currentSession()?.content) {
-          <div class="mt-6 p-6 bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-xl">
-            <div class="flex items-center justify-between mb-4">
+        <!-- Left sidebar: Session list (sticky on desktop, drawer on mobile) -->
+        <aside
+          class="flex-shrink-0 lg:w-72 lg:sticky lg:top-4 lg:self-start lg:h-[calc(100vh-8rem)]"
+          [class.fixed]="mobileDrawerOpen()"
+          [class.inset-0]="mobileDrawerOpen()"
+          [class.flex]="mobileDrawerOpen()"
+          [class.items-center]="mobileDrawerOpen()"
+          [class.justify-center]="mobileDrawerOpen()"
+          [class.z-50]="mobileDrawerOpen()"
+          [class.p-4]="mobileDrawerOpen()"
+          [class.hidden]="!mobileDrawerOpen()"
+          [class.lg:block]="true"
+        >
+          <div
+            class="border border-gray-200 rounded-xl bg-white shadow-sm flex flex-col overflow-hidden h-full"
+            [class.w-full]="mobileDrawerOpen()"
+            [class.max-w-md]="mobileDrawerOpen()"
+            [class.max-h-[85vh]]="mobileDrawerOpen()"
+            [class.shadow-2xl]="mobileDrawerOpen()"
+          >
+            <div class="p-4 border-b border-gray-200 flex items-center justify-between">
               <div>
-                <h3 class="text-lg font-semibold text-purple-900 m-0">🎙️ Session Podcast</h3>
-                <p class="text-sm text-purple-700 m-0 mt-1">
-                  Genereer een boeiende audio recap met twee hosts die de sessie bespreken
-                </p>
+                <h3 class="text-sm font-semibold text-gray-700 m-0">Sessions</h3>
+                <p class="text-xs text-gray-500 m-0 mt-1">{{ sortedSessions().length }} session(s)</p>
               </div>
+              <!-- Close button for mobile -->
               <button
-                (click)="generatePodcast()"
-                [disabled]="isGeneratingPodcast() || isBusy() || !canGeneratePodcast()"
-                class="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+                type="button"
+                (click)="mobileDrawerOpen.set(false)"
+                class="lg:hidden p-1 hover:bg-gray-100 rounded transition-colors"
               >
-                @if (isGeneratingPodcast()) {
-                  <span class="flex items-center gap-2">
-                    <svg class="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
-                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <span>{{ podcastGenerationProgress() }}</span>
-                  </span>
-                } @else {
-                  Genereer Podcast
-                }
+                <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
               </button>
             </div>
+            <div class="flex-1 overflow-y-auto">
+              @if (sortedSessions().length === 0) {
+                <div class="p-4 text-center">
+                  <p class="text-sm text-gray-500 m-0">No sessions yet.</p>
+                  <p class="text-xs text-gray-400 m-0 mt-1">Upload audio to begin.</p>
+                </div>
+              } @else {
+                <nav class="p-2 flex flex-col gap-1">
+                  @for (session of sortedSessions(); track session.id) {
+                    <button
+                      type="button"
+                      class="text-left w-full rounded-lg p-3 transition-colors"
+                      [class.bg-primary/10]="currentSession()?.id === session.id"
+                      [class.border-primary]="currentSession()?.id === session.id"
+                      [class.border]="currentSession()?.id === session.id"
+                      [class.hover:bg-gray-50]="currentSession()?.id !== session.id"
+                      (click)="selectSession(session); mobileDrawerOpen.set(false)"
+                    >
+                      <p class="m-0 text-sm font-medium text-gray-800 truncate">{{ session.title }}</p>
+                      <p class="m-0 text-xs text-gray-500 mt-0.5">
+                        {{ session.sessionDate || 'No date' }}
+                      </p>
+                      <div class="flex items-center gap-2 mt-1">
+                        <span
+                          class="inline-block w-2 h-2 rounded-full"
+                          [class.bg-green-500]="session.status === 'completed'"
+                          [class.bg-yellow-500]="session.status === 'processing' || session.status === 'uploading'"
+                          [class.bg-red-500]="session.status === 'failed'"
+                        ></span>
+                        <span class="text-xs text-gray-400">{{ session.status }}</span>
+                        @if (session.ownerId === userId()) {
+                          <span class="text-xs text-primary font-medium ml-auto">You</span>
+                        }
+                      </div>
+                    </button>
+                  }
+                </nav>
+              }
+            </div>
+          </div>
+        </aside>
 
-            @if (podcastError()) {
-              <div class="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
-                <p class="text-sm text-red-700 m-0">{{ podcastError() }}</p>
+        <!-- Right panel: Session details (scrolls naturally with page) -->
+        <main class="flex-1 min-w-0">
+          <div class="grid gap-6">
+            <!-- Upload and status -->
+            <div class="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+              <app-audio-upload
+                [isBusy]="isBusy()"
+                [userId]="userId()"
+                [campaignId]="campaignId()"
+                [canUpload]="canUploadAudio()"
+                (uploadRequested)="startCompleteProcessing($event)"
+              ></app-audio-upload>
+              <app-transcription-status
+                [stage]="stage()"
+                [progress]="progress()"
+                [statusMessage]="statusMessage()"
+                (cancel)="cancelProcessing()"
+                (retry)="retryProcessing()"
+              ></app-transcription-status>
+            </div>
+
+            @if (currentSession()) {
+              <!-- Kanka context -->
+              <div class="border border-gray-200 rounded-xl bg-white shadow-sm p-4">
+                <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p class="m-0 text-sm font-semibold text-gray-700">Kanka campaign context</p>
+                    <p class="m-0 text-xs text-gray-500">
+                      Use campaign data to improve name accuracy and quest references.
+                    </p>
+                    @if (!kankaAvailable()) {
+                      <p class="m-0 text-xs text-amber-600">
+                        Configure Kanka token and campaign ID in the environment to enable this.
+                      </p>
+                    }
+                  </div>
+                  <label class="inline-flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      [checked]="kankaEnabled()"
+                      [disabled]="!kankaAvailable() || isBusy()"
+                      (change)="toggleKankaIntegration()"
+                    />
+                    <span>Enable</span>
+                  </label>
+                </div>
               </div>
+
+              <!-- Session story -->
+              <app-session-story
+                [title]="currentSession()?.title || 'Session Story'"
+                [subtitle]="formatSubtitle(currentSession())"
+                [story]="currentSession()?.content || ''"
+                [transcript]="currentSession()?.transcription?.rawTranscript || ''"
+                [isBusy]="isBusy()"
+                [canRetranscribe]="canRetranscribe()"
+                [canRegenerate]="canRegenerateStory()"
+                [canEditStory]="canEditStory()"
+                [canEditCorrections]="canEditCorrections()"
+                [corrections]="userCorrections()"
+                [correctionsStatus]="correctionsSaveStatus()"
+                (storyUpdated)="saveStoryEdits($event)"
+                (regenerate)="regenerateStory()"
+                (retranscribe)="retranscribeSession()"
+                (correctionsChanged)="onCorrectionsInput($event)"
+              ></app-session-story>
             }
 
-            @if (isGeneratingPodcast()) {
-              <div class="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <div class="flex items-center justify-between mb-2">
-                  <span class="text-sm font-medium text-blue-900">{{ podcastGenerationProgress() }}</span>
-                  <span class="text-sm text-blue-700">{{ podcastGenerationProgressPercent() }}%</span>
-                </div>
-                <div class="w-full bg-blue-200 rounded-full h-2">
-                  <div
-                    class="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                    [style.width.%]="podcastGenerationProgressPercent()"
-                  ></div>
-                </div>
-                <p class="text-xs text-blue-600 mt-2">
-                  Dit kan 2-3 minuten duren. De complete MP3 wordt gegenereerd en opgeslagen.
-                </p>
-              </div>
-            }
-
-            @if (podcasts().length > 0) {
-              <div class="mt-4 space-y-3">
-                <h4 class="text-sm font-medium text-purple-900 m-0">
-                  Gegenereerde Podcasts ({{ podcasts().length }})
-                </h4>
-                @for (podcast of podcasts(); track podcast.version) {
-                  <div class="flex items-center gap-4 p-4 bg-white rounded-lg border border-purple-100 hover:border-purple-300 transition-colors">
-                    <div class="flex-shrink-0">
-                      <span class="inline-flex items-center justify-center w-10 h-10 bg-purple-100 text-purple-700 rounded-full font-semibold text-sm">
-                        v{{ podcast.version }}
+            <!-- Podcast section -->
+            @if (currentSession()?.content) {
+              <div class="p-6 bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-xl">
+                <div class="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 class="text-lg font-semibold text-purple-900 m-0">🎙️ Session Podcast</h3>
+                    <p class="text-sm text-purple-700 m-0 mt-1">
+                      Genereer een boeiende audio recap met twee hosts die de sessie bespreken
+                    </p>
+                  </div>
+                  <button
+                    (click)="generatePodcast()"
+                    [disabled]="isGeneratingPodcast() || isBusy() || !canGeneratePodcast()"
+                    class="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+                  >
+                    @if (isGeneratingPodcast()) {
+                      <span class="flex items-center gap-2">
+                        <svg class="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
+                          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span>{{ podcastGenerationProgress() }}</span>
                       </span>
-                    </div>
+                    } @else {
+                      Genereer Podcast
+                    }
+                  </button>
+                </div>
 
-                    <div class="flex-1 min-w-0">
-                      <div class="flex items-center gap-2">
-                        <span class="text-sm font-medium text-gray-900">
-                          {{ currentSession()?.title || 'Untitled Session' }} - Podcast v{{ podcast.version }}
-                        </span>
-                        @if (podcast.status === 'pending' || podcast.status === 'generating_audio' || podcast.status === 'uploading') {
-                          <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">{{ podcast.progressMessage || 'Generating...' }}</span>
-                        } @else if (podcast.status === 'failed') {
-                          <span class="text-xs bg-red-100 text-red-700 px-2 py-1 rounded">Failed</span>
-                        } @else if (podcast.status === 'completed') {
-                          <span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
-                            {{ podcast.audioUrl ? 'Audio Ready' : 'Audio Pending' }}
+                @if (podcastError()) {
+                  <div class="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <p class="text-sm text-red-700 m-0">{{ podcastError() }}</p>
+                  </div>
+                }
+
+                @if (isGeneratingPodcast()) {
+                  <div class="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div class="flex items-center justify-between mb-2">
+                      <span class="text-sm font-medium text-blue-900">{{ podcastGenerationProgress() }}</span>
+                      <span class="text-sm text-blue-700">{{ podcastGenerationProgressPercent() }}%</span>
+                    </div>
+                    <div class="w-full bg-blue-200 rounded-full h-2">
+                      <div
+                        class="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                        [style.width.%]="podcastGenerationProgressPercent()"
+                      ></div>
+                    </div>
+                    <p class="text-xs text-blue-600 mt-2">
+                      Dit kan 2-3 minuten duren. De complete MP3 wordt gegenereerd en opgeslagen.
+                    </p>
+                  </div>
+                }
+
+                @if (podcasts().length > 0) {
+                  <div class="mt-4 space-y-3">
+                    <h4 class="text-sm font-medium text-purple-900 m-0">
+                      Gegenereerde Podcasts ({{ podcasts().length }})
+                    </h4>
+                    @for (podcast of podcasts(); track podcast.version) {
+                      <div class="flex items-center gap-4 p-4 bg-white rounded-lg border border-purple-100 hover:border-purple-300 transition-colors">
+                        <div class="flex-shrink-0">
+                          <span class="inline-flex items-center justify-center w-10 h-10 bg-purple-100 text-purple-700 rounded-full font-semibold text-sm">
+                            v{{ podcast.version }}
                           </span>
-                        }
-                      </div>
-                      <div class="flex items-center gap-3 mt-1 text-xs text-gray-500">
-                        <span>{{ formatting.formatDuration(podcast.duration) }}</span>
-                        @if (podcast.fileSize) {
-                          <span>•</span>
-                          <span>{{ formatting.formatFileSize(podcast.fileSize) }}</span>
-                        }
-                        <span>•</span>
-                        <span>{{ formatting.formatDate(podcast.createdAt) }}</span>
-                      </div>
-                    </div>
+                        </div>
 
-                    <div class="flex items-center gap-2">
-                      @if (isPlayingPodcast() && playingPodcastVersion() === podcast.version) {
-                        <button
-                          (click)="stopPodcast()"
-                          class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors text-sm font-medium"
-                          title="Stop afspelen"
-                        >
-                          ⏹️ Stop
-                        </button>
-                      } @else {
-                        <button
-                          (click)="playPodcast(podcast)"
-                          [disabled]="isPlayingPodcast() || !podcast.audioUrl"
-                          class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-                          title="Podcast afspelen"
-                        >
-                          ▶️ Afspelen
-                        </button>
-                      }
-                      <button
-                        (click)="downloadPodcast(podcast)"
-                        [disabled]="!podcast.audioUrl"
-                        class="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                        title="Podcast downloaden"
-                      >
-                        ⬇️ Download
-                      </button>
-                    </div>
+                        <div class="flex-1 min-w-0">
+                          <div class="flex items-center gap-2">
+                            <span class="text-sm font-medium text-gray-900">
+                              {{ currentSession()?.title || 'Untitled Session' }} - Podcast v{{ podcast.version }}
+                            </span>
+                            @if (podcast.status === 'pending' || podcast.status === 'generating_audio' || podcast.status === 'uploading') {
+                              <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">{{ podcast.progressMessage || 'Generating...' }}</span>
+                            } @else if (podcast.status === 'failed') {
+                              <span class="text-xs bg-red-100 text-red-700 px-2 py-1 rounded">Failed</span>
+                            } @else if (podcast.status === 'completed') {
+                              <span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
+                                {{ podcast.audioUrl ? 'Audio Ready' : 'Audio Pending' }}
+                              </span>
+                            }
+                          </div>
+                          <div class="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                            <span>{{ formatting.formatDuration(podcast.duration) }}</span>
+                            @if (podcast.fileSize) {
+                              <span>•</span>
+                              <span>{{ formatting.formatFileSize(podcast.fileSize) }}</span>
+                            }
+                            <span>•</span>
+                            <span>{{ formatting.formatDate(podcast.createdAt) }}</span>
+                          </div>
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                          @if (isPlayingPodcast() && playingPodcastVersion() === podcast.version) {
+                            <button
+                              (click)="stopPodcast()"
+                              class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors text-sm font-medium"
+                              title="Stop afspelen"
+                            >
+                              ⏹️ Stop
+                            </button>
+                          } @else {
+                            <button
+                              (click)="playPodcast(podcast)"
+                              [disabled]="isPlayingPodcast() || !podcast.audioUrl"
+                              class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                              title="Podcast afspelen"
+                            >
+                              ▶️ Afspelen
+                            </button>
+                          }
+                          <button
+                            (click)="downloadPodcast(podcast)"
+                            [disabled]="!podcast.audioUrl"
+                            class="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Podcast downloaden"
+                          >
+                            ⬇️ Download
+                          </button>
+                        </div>
+                      </div>
+                    }
+                  </div>
+                }
+
+                @if (podcasts().length === 0 && !isGeneratingPodcast()) {
+                  <div class="mt-4 p-4 bg-white rounded-lg border border-purple-100 text-center">
+                    <p class="text-sm text-gray-500 m-0">
+                      Nog geen podcasts gegenereerd. Klik op "Genereer Podcast" om te beginnen.
+                    </p>
+                    <p class="text-xs text-gray-400 m-0 mt-1">
+                      Podcasts gebruiken Gemini 2.5 Flash TTS met natuurlijk klinkende Nederlandse stemmen
+                    </p>
                   </div>
                 }
               </div>
             }
 
-            @if (podcasts().length === 0 && !isGeneratingPodcast()) {
-              <div class="mt-4 p-4 bg-white rounded-lg border border-purple-100 text-center">
-                <p class="text-sm text-gray-500 m-0">
-                  Nog geen podcasts gegenereerd. Klik op "Genereer Podcast" om te beginnen.
-                </p>
-                <p class="text-xs text-gray-400 m-0 mt-1">
-                  Podcasts gebruiken Gemini 2.5 Flash TTS met natuurlijk klinkende Nederlandse stemmen
-                </p>
+            <!-- Empty state when no session selected -->
+            @if (!currentSession() && sortedSessions().length > 0) {
+              <div class="border border-gray-200 rounded-xl bg-white shadow-sm p-8 text-center">
+                <div class="max-w-md mx-auto">
+                  <div class="text-4xl mb-3">👈</div>
+                  <h3 class="text-lg font-semibold text-gray-800 mb-2">Select a session</h3>
+                  <p class="text-gray-600 m-0">
+                    Choose a session from the list to view its details and story.
+                  </p>
+                </div>
               </div>
             }
           </div>
-        }
-
-        <div class="border border-gray-200 rounded-xl bg-white shadow-sm p-6">
-          <h3 class="text-lg font-semibold m-0 mb-4">Session History</h3>
-          @if (sessions().length === 0) {
-            <p class="text-sm text-gray-500 m-0">No sessions yet. Upload audio to begin.</p>
-          } @else {
-            <div class="grid gap-3 md:grid-cols-2">
-              @for (session of sessions(); track session.id) {
-                <button
-                  type="button"
-                  class="text-left border border-gray-200 rounded-lg p-4 hover:border-primary/50 hover:bg-primary/5 transition-colors"
-                  (click)="selectSession(session)"
-                >
-                  <p class="m-0 text-sm font-semibold text-gray-700">{{ session.title }}</p>
-                  <p class="m-0 text-xs text-gray-500">
-                    {{ session.sessionDate ? session.sessionDate : 'No date' }} ·
-                    {{ session.status }}
-                  </p>
-                  <p class="m-0 text-xs text-gray-400">
-                    Owner: {{ session.ownerEmail || 'Unknown' }}
-                    @if (session.ownerId === userId()) { (You) }
-                  </p>
-                </button>
-              }
-            </div>
-          }
-        </div>
-      }
+        </main>
+      </div>
     }
-    </div>
   `
 })
 export class AudioSessionComponent implements OnDestroy {
@@ -334,6 +438,20 @@ export class AudioSessionComponent implements OnDestroy {
   lastUpload = signal<AudioUpload | null>(null);
 
   sessions = signal<AudioSessionRecord[]>([]);
+  
+  // Sorted sessions by date (newest first)
+  sortedSessions = computed(() => {
+    const sessions = this.sessions();
+    return [...sessions].sort((a, b) => {
+      const dateA = a.sessionDate || '';
+      const dateB = b.sessionDate || '';
+      // Sort in descending order (newest first)
+      return dateB.localeCompare(dateA);
+    });
+  });
+
+  // Mobile drawer state
+  mobileDrawerOpen = signal(false);
 
   constructor(
     private readonly audioStorageService: AudioStorageService,
@@ -358,7 +476,7 @@ export class AudioSessionComponent implements OnDestroy {
     this.sessions = this.sessionStateService.sessions;
 
     effect(() => {
-      const sessions = this.sessions();
+      const sessions = this.sortedSessions();
       const current = this.currentSession();
       if (sessions.length === 0) {
         if (current) {

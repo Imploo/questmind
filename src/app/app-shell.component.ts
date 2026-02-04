@@ -1,10 +1,9 @@
-import { Component, signal, inject } from '@angular/core';
+import { Component, signal, inject, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ActivatedRoute, Router, RouterLink, RouterOutlet } from '@angular/router';
-import { AuthButtonComponent } from './auth/auth-button.component';
-import { CampaignSelectorComponent } from './campaign/campaign-selector.component';
+import { ActivatedRoute, RouterOutlet } from '@angular/router';
 import { CampaignContextService } from './campaign/campaign-context.service';
-import { UserService } from './core/user.service';
+import { SidebarComponent } from './layout/sidebar/sidebar.component';
+import { SidebarService } from './layout/sidebar.service';
 
 @Component({
   selector: 'app-shell',
@@ -12,101 +11,35 @@ import { UserService } from './core/user.service';
   imports: [
     CommonModule,
     RouterOutlet,
-    RouterLink,
-    AuthButtonComponent,
-    CampaignSelectorComponent
+    SidebarComponent
   ],
   template: `
     <main class="w-full min-h-screen bg-gradient-to-br from-primary to-secondary">
-      <div class="w-full min-h-screen max-w-7xl mx-auto flex flex-col lg:flex-row gap-6 p-4">
-        <div class="flex items-center justify-between lg:hidden">
-          <div class="text-white">
-            <p class="m-0 text-xs uppercase tracking-wide text-white/70">Questmind</p>
-            <h2 class="m-0 text-lg font-semibold">Navigation</h2>
-          </div>
-          <div class="flex items-center gap-3">
-            <app-auth-button></app-auth-button>
-            <button
-              type="button"
-              class="px-4 py-2 text-sm font-semibold rounded-full bg-white/20 text-white"
-              (click)="toggleSidebar()"
-            >
-              {{ sidebarOpen() ? 'Hide Menu' : 'Show Menu' }}
-            </button>
-          </div>
+      <!-- Sticky Sidebar Component -->
+      <app-sidebar />
+
+      <!-- Mobile Backdrop -->
+      @if (isMobile() && sidebarService.isExpanded()) {
+        <div
+          class="fixed inset-0 bg-black/50 z-30 lg:hidden"
+          (click)="sidebarService.collapse()"
+        ></div>
+      }
+
+      <!-- Main Content with Dynamic Margin -->
+      <div [class]="contentClasses()">
+        <!-- Mobile Toggle (lg:hidden) -->
+        <div class="lg:hidden mb-4">
+          <button
+            (click)="sidebarService.toggle()"
+            class="px-4 py-2 bg-white/20 backdrop-blur text-white rounded-lg font-semibold"
+          >
+            {{ sidebarService.isExpanded() ? 'Hide Menu' : 'Show Menu' }}
+          </button>
         </div>
 
-        <aside
-          class="w-full lg:w-64 bg-white/90 backdrop-blur rounded-2xl p-5 shadow-lg h-fit lg:block"
-          [class.hidden]="!sidebarOpen()"
-        >
-          <div class="mb-6 flex items-center justify-between">
-            <div>
-              <p class="m-0 text-xs uppercase tracking-wide text-gray-400">Questmind</p>
-              <h2 class="m-0 text-lg font-semibold text-gray-800">Navigation</h2>
-            </div>
-            <div class="hidden lg:block">
-              <app-auth-button></app-auth-button>
-            </div>
-          </div>
-          <nav class="flex flex-col gap-2">
-            <a
-              routerLink="chat"
-              class="w-full text-left px-4 py-3 rounded-xl text-sm font-semibold transition-colors flex items-center gap-3 cursor-pointer"
-              [class]="
-                isActiveRoute('chat')
-                  ? 'bg-primary text-white shadow'
-                  : 'bg-white text-gray-600 hover:bg-gray-100'
-              "
-            >
-              <span class="text-lg">💬</span>
-              <span>Character Chat</span>
-            </a>
-            <a
-              routerLink="audio"
-              class="w-full text-left px-4 py-3 rounded-xl text-sm font-semibold transition-colors flex items-center gap-3 cursor-pointer"
-              [class]="
-                isActiveRoute('audio')
-                  ? 'bg-primary text-white shadow'
-                  : 'bg-white text-gray-600 hover:bg-gray-100'
-              "
-            >
-              <span class="text-lg">🎙️</span>
-              <span>Audio Transcription</span>
-            </a>
-            <a
-              routerLink="podcasts"
-              class="w-full text-left px-4 py-3 rounded-xl text-sm font-semibold transition-colors flex items-center gap-3 cursor-pointer"
-              [class]="
-                isActiveRoute('podcasts')
-                  ? 'bg-primary text-white shadow'
-                  : 'bg-white text-gray-600 hover:bg-gray-100'
-              "
-            >
-              <span class="text-lg">📻</span>
-              <span>Podcast Bibliotheek</span>
-            </a>
-            @if (userService.isAdmin()) {
-              <a
-                routerLink="admin"
-                class="w-full text-left px-4 py-3 rounded-xl text-sm font-semibold transition-colors flex items-center gap-3 cursor-pointer"
-                [class]="
-                  isActiveRoute('admin')
-                    ? 'bg-primary text-white shadow'
-                    : 'bg-white text-gray-600 hover:bg-gray-100'
-                "
-              >
-                <span class="text-lg">⚙️</span>
-                <span>Admin</span>
-              </a>
-            }
-          </nav>
-        </aside>
-
+        <!-- Router Outlet -->
         <section class="flex-1">
-          <div class="mb-6">
-            <app-campaign-selector></app-campaign-selector>
-          </div>
           <router-outlet></router-outlet>
         </section>
       </div>
@@ -115,10 +48,16 @@ import { UserService } from './core/user.service';
 })
 export class AppShellComponent {
   private readonly route = inject(ActivatedRoute);
-  private readonly router = inject(Router);
   private readonly campaignContext = inject(CampaignContextService);
-  readonly userService = inject(UserService);
-  sidebarOpen = signal(true);
+  readonly sidebarService = inject(SidebarService);
+
+  readonly isMobile = signal(typeof window !== 'undefined' && window.innerWidth < 1024);
+
+  readonly contentClasses = computed(() => {
+    const collapsed = this.sidebarService.isCollapsed();
+    const marginLeft = this.isMobile() ? '' : (collapsed ? 'ml-20' : 'ml-64');
+    return `min-h-screen ${marginLeft} transition-all duration-300 p-4`;
+  });
 
   constructor() {
     this.route.paramMap.subscribe(params => {
@@ -127,13 +66,11 @@ export class AppShellComponent {
         void this.campaignContext.selectCampaign(campaignId);
       }
     });
-  }
 
-  isActiveRoute(route: string): boolean {
-    return this.router.url.includes(`/${route}`);
-  }
-
-  toggleSidebar(): void {
-    this.sidebarOpen.update(open => !open);
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', () => {
+        this.isMobile.set(window.innerWidth < 1024);
+      });
+    }
   }
 }

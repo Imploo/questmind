@@ -29,6 +29,7 @@
     "@angular/forms": "^20.3.0",
     "@angular/platform-browser": "^20.3.0",
     "@angular/router": "^20.3.0",
+    "@dimaslz/ng-heroicons": "^1.19.1",
     "@google/genai": "^1.39.0",
     "@tailwindcss/typography": "^0.5.19",
     "firebase": "^12.8.0",

@@ -1,7 +1,7 @@
-import { Component, effect, inject, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, effect, inject, signal, input, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { PlusOutlineIconComponent, Cog6ToothOutlineIconComponent, Squares2X2OutlineIconComponent } from '@dimaslz/ng-heroicons';
 import { AuthService } from '../auth/auth.service';
 import { CampaignContextService } from './campaign-context.service';
 import { CampaignService } from './campaign.service';
@@ -9,17 +9,19 @@ import { Campaign } from './campaign.models';
 
 @Component({
   selector: 'app-campaign-selector',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [FormsModule, PlusOutlineIconComponent, Cog6ToothOutlineIconComponent, Squares2X2OutlineIconComponent],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="bg-white/90 backdrop-blur rounded-2xl p-4 shadow-lg">
-      <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div class="flex items-center gap-3">
-          <label class="text-sm font-semibold text-gray-700">Campaign</label>
+    <!-- When expanded: Full layout -->
+    @if (!isCollapsed()) {
+      <div class="w-full">
+      <div class="flex flex-col gap-2">
+        <div class="flex flex-col gap-2 w-full">
+          <label class="text-xs font-semibold text-gray-600">Campaign</label>
           <select
             [(ngModel)]="selectedId"
             (ngModelChange)="onCampaignChange($event)"
-            class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
           >
             @for (campaign of campaigns(); track campaign.id) {
               <option [value]="campaign.id">
@@ -29,28 +31,81 @@ import { Campaign } from './campaign.models';
             }
           </select>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex gap-2 w-full">
           <button
             (click)="showCreateCampaign.set(true)"
-            class="px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            class="flex-1 px-2 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center justify-center gap-1"
           >
-            + New Campaign
+            <plus-outline-icon [size]="12" />
+            <span>New</span>
           </button>
           @if (selectedCampaign()) {
             <button
               (click)="openManageCampaign()"
-              class="px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+              class="flex-1 px-2 py-1.5 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors flex items-center justify-center gap-1"
             >
-              ⚙️ Manage
+              <cog-6-tooth-outline-icon [size]="12" />
+              <span>Manage</span>
             </button>
           }
         </div>
       </div>
 
       @if (errorMessage()) {
-        <div class="mt-3 text-sm text-red-600">{{ errorMessage() }}</div>
+        <div class="text-xs text-red-600 mt-1">{{ errorMessage() }}</div>
       }
-    </div>
+      </div>
+    }
+
+    <!-- When collapsed: Compact dropdown only -->
+    @if (isCollapsed()) {
+      <div class="relative">
+        <button
+          (click)="toggleDropdown()"
+          class="p-2 rounded-lg hover:bg-gray-100 transition-colors w-full"
+          [title]="selectedCampaign()?.name || 'Select campaign'"
+        >
+          <squares-2-x-2-outline-icon [size]="24" class="text-gray-600 mx-auto" />
+        </button>
+        @if (showDropdown()) {
+          <div class="absolute left-full ml-2 top-0 w-64 bg-white rounded-lg shadow-xl z-50 border border-gray-200">
+            <div class="p-2">
+              <label class="block text-xs font-semibold text-gray-700 mb-2 px-2">Select Campaign</label>
+              <select
+                [(ngModel)]="selectedId"
+                (ngModelChange)="onCampaignChange($event); showDropdown.set(false)"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                @for (campaign of campaigns(); track campaign.id) {
+                  <option [value]="campaign.id">
+                    {{ campaign.name }}
+                    @if (isCampaignOwner(campaign)) { (Owner) }
+                  </option>
+                }
+              </select>
+            </div>
+            <div class="border-t border-gray-200 p-2">
+              <button
+                (click)="showCreateCampaign.set(true); showDropdown.set(false)"
+                class="w-full px-3 py-2 text-left text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors flex items-center gap-2"
+              >
+                <plus-outline-icon [size]="16" />
+                <span>New Campaign</span>
+              </button>
+              @if (selectedCampaign()) {
+                <button
+                  (click)="openManageCampaign(); showDropdown.set(false)"
+                  class="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors flex items-center gap-2"
+                >
+                  <cog-6-tooth-outline-icon [size]="16" />
+                  <span>Manage Campaign</span>
+                </button>
+              }
+            </div>
+          </div>
+        }
+      </div>
+    }
 
     @if (showCreateCampaign()) {
       <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -199,6 +254,8 @@ import { Campaign } from './campaign.models';
   `
 })
 export class CampaignSelectorComponent {
+  readonly isCollapsed = input<boolean>(false);
+
   private readonly router = inject(Router);
   private readonly authService = inject(AuthService);
   private readonly campaignService = inject(CampaignService);
@@ -210,6 +267,7 @@ export class CampaignSelectorComponent {
   selectedId: string | null = null;
   showCreateCampaign = signal(false);
   showManageCampaign = signal(false);
+  showDropdown = signal(false);
   errorMessage = signal('');
 
   newCampaignName = '';
@@ -309,6 +367,10 @@ export class CampaignSelectorComponent {
     } catch (error: any) {
       this.errorMessage.set(error?.message || 'Failed to save settings');
     }
+  }
+
+  toggleDropdown(): void {
+    this.showDropdown.update(v => !v);
   }
 
   isCampaignOwner(campaign: Campaign): boolean {
