@@ -1,12 +1,20 @@
 /**
  * System prompt for Audio Transcription
- * 
+ *
  * This prompt configures the AI to transcribe D&D session audio recordings
  * with specific formatting and validation requirements.
  */
 export const AUDIO_TRANSCRIPTION_PROMPT = `Transcribe this audio recording of a D&D 5e session.
 
 CRITICAL: You MUST actually listen to and process the provided audio file. DO NOT generate fictional content if you cannot access or hear the audio.
+
+CAMPAIGN CONTEXT USAGE:
+- If campaign context (characters, locations, quests, organisations) is provided below, use it ONLY to improve accuracy when hearing names and places
+- The context helps you recognize proper nouns correctly (e.g., "Khuri-Khan" instead of "corikan", "Waterdeep" instead of "water deep")
+- DO NOT mention or reference the campaign context in your transcription
+- DO NOT add information from the context that wasn't spoken in the audio
+- ONLY use the context to spell names and places correctly when you hear them
+- If you're unsure what was said, transcribe what you hear phonetically rather than guessing from context
 
 ANTI-REPETITION RULES (IMPORTANT):
 - NEVER repeat the same word more than 3 times in a row

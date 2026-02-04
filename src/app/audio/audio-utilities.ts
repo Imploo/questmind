@@ -4,7 +4,7 @@ export const MAX_RETRY_ATTEMPTS = 2;
 export const RETRY_BASE_DELAY_MS = 1500;
 export const MAX_INLINE_AUDIO_BYTES = 18 * 1024 * 1024;
 export const MAX_TRANSCRIPTION_OUTPUT_TOKENS = 128000;
-export const CHUNK_DURATION_SECONDS = 10 * 60;
+export const CHUNK_DURATION_SECONDS = 30 * 60;
 export const CHUNK_MIME_TYPE = 'audio/wav';
 
 export function isOverloadedError(error: any): boolean {

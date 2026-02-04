@@ -28,6 +28,7 @@ import {
 } from './audio-utilities';
 import {StorageMetadata, TranscriptionChunk, TranscriptionRecord, TranscriptionResult} from './audio-session.models';
 import {environment} from '../../environments/environment';
+import {KankaSearchResult} from '../kanka/kanka.models';
 
 type AudioChunk = {
   index: number;
@@ -76,7 +77,8 @@ export class AudioTranscriptionService {
     storageMetadata: StorageMetadata,
     file?: File,
     campaignId?: string,
-    transcriptionId?: string
+    transcriptionId?: string,
+    kankaContext?: KankaSearchResult
   ): Observable<TranscriptionResult> {
     if (!this.apiKey || this.apiKey === 'YOUR_GOOGLE_AI_API_KEY_HERE') {
       return throwError(() => ({
@@ -92,7 +94,7 @@ export class AudioTranscriptionService {
       }));
     }
 
-    return from(this.requestTranscription(storageMetadata, file, campaignId, transcriptionId)).pipe(
+    return from(this.requestTranscription(storageMetadata, file, campaignId, transcriptionId, kankaContext)).pipe(
       retry({
         count: MAX_RETRY_ATTEMPTS,
         delay: (error, retryCount) => getRetryDelay(error, retryCount)
@@ -137,36 +139,12 @@ export class AudioTranscriptionService {
     return transcriptionId;
   }
 
-  async loadTranscriptions(campaignId: string, sessionId: string): Promise<TranscriptionRecord[]> {
-    if (!this.db) {
-      console.error('Firebase is not configured. Cannot load transcriptions.');
-      return [];
-    }
-
-    const transcriptionsRef = collection(
-      this.db,
-      'campaigns',
-      campaignId,
-      'audioSessions',
-      sessionId,
-      'transcriptions'
-    );
-    const transcriptionsQuery = query(transcriptionsRef, orderBy('createdAt', 'desc'));
-
-    try {
-      const snapshot = await getDocs(transcriptionsQuery);
-      return snapshot.docs.map(docSnap => docSnap.data() as TranscriptionRecord);
-    } catch (error) {
-      console.error('Failed to load transcriptions from Firestore.', error);
-      return [];
-    }
-  }
-
   private async requestTranscription(
     storageMetadata: StorageMetadata,
     file?: File,
     campaignId?: string,
-    transcriptionId?: string
+    transcriptionId?: string,
+    kankaContext?: KankaSearchResult
   ): Promise<any> {
     const mimeType = storageMetadata.contentType || 'audio/mpeg';
     const audioFile = await this.resolveAudioFile(storageMetadata, file, mimeType);
@@ -183,7 +161,8 @@ export class AudioTranscriptionService {
             decoded.audioBuffer,
             storageMetadata,
             campaignId,
-            transcriptionId
+            transcriptionId,
+            kankaContext
           );
         }
       } finally {
@@ -191,11 +170,12 @@ export class AudioTranscriptionService {
       }
     }
 
-    return this.requestSingleTranscription(audioFile, mimeType);
+    return this.requestSingleTranscription(audioFile, mimeType, kankaContext);
   }
 
-  private async requestSingleTranscription(audioFile: File, mimeType: string): Promise<any> {
-    const contents = await this.buildContentsForAudio(audioFile, mimeType, AUDIO_TRANSCRIPTION_PROMPT);
+  private async requestSingleTranscription(audioFile: File, mimeType: string, kankaContext?: KankaSearchResult): Promise<any> {
+    const prompt = this.buildTranscriptionPrompt(kankaContext);
+    const contents = await this.buildContentsForAudio(audioFile, mimeType, prompt);
     return this.callTranscriptionModel(contents);
   }
 
@@ -204,7 +184,8 @@ export class AudioTranscriptionService {
     audioBuffer: AudioBuffer,
     storageMetadata?: StorageMetadata,
     campaignId?: string,
-    transcriptionId?: string
+    transcriptionId?: string,
+    kankaContext?: KankaSearchResult
   ): Promise<any> {
     const chunks = this.splitAudioBufferIntoChunks(audioContext, audioBuffer);
     const chunkResults: Array<{ chunk: AudioChunk; result: any }> = [];
@@ -274,7 +255,7 @@ export class AudioTranscriptionService {
 
         // Transcribe chunk
         const startTime = Date.now();
-        const prompt = this.buildChunkPrompt(chunk, chunks.length);
+        const prompt = this.buildChunkPrompt(chunk, chunks.length, kankaContext);
         const chunkFile = new File([chunk.audioBlob], `session-chunk-${chunk.index + 1}.wav`, {
           type: CHUNK_MIME_TYPE
         });
@@ -341,8 +322,8 @@ export class AudioTranscriptionService {
         responseMimeType: 'application/json',
         responseSchema: this.TRANSCRIPTION_SCHEMA,
         maxOutputTokens: MAX_TRANSCRIPTION_OUTPUT_TOKENS,
-        temperature: 0.9,
-        topP: 0.95,
+        temperature: 0.1,
+        topP: 1,
         topK: 40,
         stopSequences: ['\n\n\n\n']
       }
@@ -434,13 +415,6 @@ export class AudioTranscriptionService {
 
     // Check for repetition in the output
     const text = response.text || response.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    if (this.detectRepetition(text)) {
-      return {
-        valid: false,
-        error: 'Catastrophic repetition detected in transcription output. This may indicate audio quality issues or model confusion.',
-        warnings
-      };
-    }
 
     // Check if JSON is properly terminated
     const trimmedText = text.trim();
@@ -453,42 +427,6 @@ export class AudioTranscriptionService {
     }
 
     return { valid: true, warnings };
-  }
-
-  private detectRepetition(text: string): boolean {
-
-    return false; 
-    if (!text || text.length < 50) return false;
-
-    // Split into words, filtering out very short ones
-    const words = text.toLowerCase().split(/[\s,]+/).filter(w => w.length > 2);
-
-    const repetitionThreshold = 10;
-
-    if (words.length < repetitionThreshold) return false;
-
-    // Check for 5+ consecutive identical words (catastrophic repetition)
-    for (let i = 0; i < words.length - repetitionThreshold - 1; i++) {
-      const word = words[i];
-      if (words.slice(i, i + repetitionThreshold).every(w => w === word)) {
-        console.error(`[Repetition Detected] Word "${word}" repeated 5+ times consecutively`);
-        return true;
-      }
-    }
-
-    // Check for high overall repetition ratio (same segments repeated)
-    const segments = text.split(/[.!?]+/).filter(s => s.trim().length > 20);
-    if (segments.length > 3) {
-      const uniqueSegments = new Set(segments.map(s => s.trim().toLowerCase()));
-      const repetitionRatio = 1 - (uniqueSegments.size / segments.length);
-
-      if (repetitionRatio > 0.5) {
-        console.error(`[Repetition Detected] High repetition ratio: ${(repetitionRatio * 100).toFixed(1)}%`);
-        return true;
-      }
-    }
-
-    return false;
   }
 
   private async resolveAudioFile(storageMetadata: StorageMetadata, file: File | undefined, mimeType: string): Promise<File> {
@@ -613,10 +551,23 @@ export class AudioTranscriptionService {
     return new Blob([arrayBuffer], { type: CHUNK_MIME_TYPE });
   }
 
-  private buildChunkPrompt(chunk: AudioChunk, totalChunks: number): string {
+  private buildTranscriptionPrompt(kankaContext?: KankaSearchResult): string {
+    if (!kankaContext) {
+      return AUDIO_TRANSCRIPTION_PROMPT;
+    }
+
+    const contextPrompt = this.buildKankaContextPrompt(kankaContext);
+    return `${AUDIO_TRANSCRIPTION_PROMPT}
+
+${contextPrompt}`;
+  }
+
+  private buildChunkPrompt(chunk: AudioChunk, totalChunks: number, kankaContext?: KankaSearchResult): string {
     const startTimestamp = this.formatTimestamp(chunk.startTimeSeconds);
     const endTimestamp = this.formatTimestamp(chunk.endTimeSeconds);
-    return `${AUDIO_TRANSCRIPTION_PROMPT}
+    const basePrompt = this.buildTranscriptionPrompt(kankaContext);
+
+    return `${basePrompt}
 
 CHUNK CONTEXT:
 - This is chunk ${chunk.index + 1} of ${totalChunks} in a longer recording.
@@ -625,6 +576,35 @@ CHUNK CONTEXT:
 - If someone speaks 30 seconds into this chunk, timestamp should be ${this.formatTimestamp(
       Math.round(chunk.startTimeSeconds + 30)
     )}.`;
+  }
+
+  private buildKankaContextPrompt(context: KankaSearchResult): string {
+    const sections: string[] = [];
+
+    const addSection = (
+      label: string,
+      entities: Array<{ name: string; entry?: string; entry_parsed?: string }>
+    ) => {
+      if (!entities?.length) {
+        return;
+      }
+      const names = entities.map(entity => entity.name).join(', ');
+      sections.push(`${label}: ${names}`);
+    };
+
+    addSection('Characters', context.characters);
+    addSection('Locations', context.locations);
+    addSection('Quests', context.quests);
+    addSection('Organisations', context.organisations);
+
+    if (sections.length === 0) {
+      return '';
+    }
+
+    return `CAMPAIGN REFERENCE (for name/place accuracy only):
+${sections.join('\n')}
+
+Remember: Use this context ONLY to spell names and places correctly when you hear them. Do not add information that wasn't spoken.`;
   }
 
   private async buildContentsForAudio(audioFile: File, mimeType: string, promptText: string): Promise<{ parts: Array<any> }> {

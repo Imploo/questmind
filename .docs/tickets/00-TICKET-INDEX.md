@@ -232,5 +232,26 @@ Start here for immediate impact with minimal risk:
 
 ---
 
-**Last Updated:** 2026-02-03
+## 🚀 Feature Enhancement Tickets
+
+| Ticket | Title | Priority | Status | Dependencies |
+|--------|-------|----------|--------|--------------|
+| [#34](./34-backend-podcast-script-generation.md) | Backend Podcast Script Generation with Database-Driven Model Selection | High | Draft | #19, #17 |
+| [#35](./35-backend-transcription-and-story-generation.md) | Backend Audio Transcription and Story Generation with Configurable AI Parameters | High | Draft | #34, #19 |
+
+**Key Features:**
+- **Ticket 34**: Move podcast script generation to backend with Gemini 3 Flash
+  - Fire-and-forget pattern
+  - Database-driven model configuration
+  - Secure API key handling
+
+- **Ticket 35**: Move transcription and story generation to backend
+  - Complete audio-to-podcast pipeline in one call
+  - Configurable AI parameters (temperature, topK, topP) per feature
+  - Feature-specific parameter tuning for quality
+  - Unified fire-and-forget architecture
+
+---
+
+**Last Updated:** 2026-02-04
 **Status:** Planning Complete, Ready to Begin

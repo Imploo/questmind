@@ -1,6 +1,7 @@
 import { Component, OnDestroy, effect, signal, computed, inject, Injector, runInInjectionContext } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Subscription, timer, firstValueFrom } from 'rxjs';
+import { Subscription, timer, firstValueFrom, catchError } from 'rxjs';
+import { switchMap } from 'rxjs/operators';
 import { httpsCallable } from 'firebase/functions';
 import { AudioStorageService } from './audio-storage.service';
 import { AudioTranscriptionService } from './audio-transcription.service';
@@ -22,6 +23,8 @@ import {
 import { AudioUploadComponent } from './audio-upload.component';
 import { TranscriptionStatusComponent } from './transcription-status.component';
 import { SessionStoryComponent } from './session-story.component';
+import { KankaService } from '../kanka/kanka.service';
+import { KankaSearchResult } from '../kanka/kanka.models';
 
 type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' | 'failed';
 
@@ -343,7 +346,8 @@ export class AudioSessionComponent implements OnDestroy {
     public readonly authService: AuthService,
     private readonly injector: Injector,
     public readonly formatting: FormattingService,
-    private readonly firebase: FirebaseService
+    private readonly firebase: FirebaseService,
+    private readonly kankaService: KankaService
   ) {
     effect(() => {
       this.selectedCampaign();
@@ -607,10 +611,28 @@ export class AudioSessionComponent implements OnDestroy {
     // Use existing transcription ID if provided (resuming), otherwise generate new one
     const transcriptionId = existingTranscriptionId || this.generateId();
 
-    this.processingSub = this.audioTranscriptionService
-      .transcribeAudio(storage, file, campaignId, transcriptionId)
-      .subscribe({
-      next: transcription => {
+    // Check if Kanka context should be fetched
+    const shouldFetchKanka = this.kankaEnabled() && this.kankaAvailable() && this.kankaService.isConfigured();
+
+    if (shouldFetchKanka) {
+      // Fetch Kanka context and then transcribe
+      this.processingSub = this.kankaService.getAllEntities().pipe(
+        switchMap((kankaContext: KankaSearchResult) => {
+          console.log('Transcribing with Kanka context:', {
+            characters: kankaContext.characters.length,
+            locations: kankaContext.locations.length,
+            quests: kankaContext.quests.length,
+            organisations: kankaContext.organisations.length
+          });
+          return this.audioTranscriptionService.transcribeAudio(storage, file, campaignId, transcriptionId, kankaContext);
+        }),
+        catchError(() => {
+          // If Kanka fetch fails, continue without context
+          console.warn('Failed to fetch Kanka context, continuing transcription without it');
+          return this.audioTranscriptionService.transcribeAudio(storage, file, campaignId, transcriptionId);
+        })
+      ).subscribe({
+        next: transcription => {
         if (!session || !campaignId) {
           return;
         }
@@ -648,6 +670,50 @@ export class AudioSessionComponent implements OnDestroy {
         this.refreshSessions();
       }
     });
+    } else {
+      // Transcribe without Kanka context
+      this.processingSub = this.audioTranscriptionService
+        .transcribeAudio(storage, file, campaignId, transcriptionId)
+        .subscribe({
+          next: transcription => {
+            if (!session || !campaignId) {
+              return;
+            }
+
+            void this.audioTranscriptionService
+              .saveTranscription(campaignId, session.id, transcription, 'Auto-generated')
+              .then(savedTranscriptionId => {
+                this.sessionStateService.updateSession(session.id, {
+                  transcription,
+                  status: 'completed',
+                  activeTranscriptionId: savedTranscriptionId
+                });
+                this.refreshSessions();
+                this.runStoryGeneration(transcription);
+              })
+              .catch(error => {
+                console.error('Failed to save transcription, continuing anyway:', error);
+                this.sessionStateService.updateSession(session.id, {
+                  transcription,
+                  status: 'completed'
+                });
+                this.refreshSessions();
+                this.runStoryGeneration(transcription);
+              });
+          },
+          error: err => {
+            if (session) {
+              this.sessionStateService.updateSession(session.id, {
+                status: 'completed' // Keep as completed since upload succeeded
+              });
+            }
+            this.stageTimerSub?.unsubscribe();
+            this.stage.set('failed');
+            this.statusMessage.set(err.message || 'Transcription failed. File saved - you can retry transcription later.');
+            this.refreshSessions();
+          }
+        });
+    }
   }
 
   private generateId(): string {
