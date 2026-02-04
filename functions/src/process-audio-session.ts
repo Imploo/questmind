@@ -90,7 +90,7 @@ export const processAudioSession = onCall(
     const {
       campaignId,
       sessionId,
-      audioStorageUrl,
+      storageUrl,
       audioFileName,
       audioFileSize,
       sessionTitle,
@@ -106,8 +106,8 @@ export const processAudioSession = onCall(
     if (!sessionId || typeof sessionId !== 'string') {
       throw new HttpsError('invalid-argument', 'Missing sessionId.');
     }
-    if (!audioStorageUrl || typeof audioStorageUrl !== 'string') {
-      throw new HttpsError('invalid-argument', 'Missing audioStorageUrl.');
+    if (!storageUrl || typeof storageUrl !== 'string') {
+      throw new HttpsError('invalid-argument', 'Missing storageUrl.');
     }
     if (!sessionTitle || typeof sessionTitle !== 'string') {
       throw new HttpsError('invalid-argument', 'Missing sessionTitle.');
@@ -148,9 +148,9 @@ export const processAudioSession = onCall(
       throw new HttpsError('permission-denied', 'Only the session owner can process audio.');
     }
 
-    // Initialize progress and save audio storage URL for future retranscription
+    // Initialize progress and save storage URL for future retranscription
     await sessionRef.update({
-      audioStorageUrl,
+      storageUrl,
       audioFileName,
       audioFileSize,
       completeProcessingStatus: 'loading_context' as CompleteProcessingStatus,
@@ -165,7 +165,7 @@ export const processAudioSession = onCall(
     processAudioInBackground(
       campaignId,
       sessionId,
-      audioStorageUrl,
+      storageUrl,
       audioFileName,
       audioFileSize,
       sessionTitle,
@@ -191,7 +191,7 @@ export const processAudioSession = onCall(
 async function processAudioInBackground(
   campaignId: string,
   sessionId: string,
-  audioStorageUrl: string,
+  storageUrl: string,
   audioFileName: string,
   audioFileSize: number,
   sessionTitle: string,
@@ -272,7 +272,7 @@ async function processAudioInBackground(
     await updateProgress(sessionRef, 'transcribing', 5, 'Transcribing audio...');
 
     const { transcriptionText, timestamps } = await transcribeAudioFile(
-      audioStorageUrl,
+      storageUrl,
       audioFileName,
       transcriptionConfig,
       kankaContext

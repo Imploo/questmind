@@ -121,7 +121,7 @@ export interface AISettings {
 export interface ProcessAudioSessionRequest {
   campaignId: string;
   sessionId: string;
-  audioStorageUrl: string;
+  storageUrl: string;
   audioFileName: string;
   audioFileSize: number;
   sessionTitle: string;

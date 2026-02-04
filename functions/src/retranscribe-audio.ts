@@ -118,18 +118,17 @@ export const retranscribeAudio = onCall(
       throw new HttpsError('permission-denied', 'Only the session owner can retranscribe audio.');
     }
 
-    const audioStorageUrl =
-      sessionData.audioStorageUrl ||
+    const storageUrl =
       sessionData.storageUrl ||
       sessionData.storageMetadata?.downloadUrl;
 
-    if (!audioStorageUrl) {
+    if (!storageUrl) {
       throw new HttpsError('failed-precondition', 'No audio file found for this session.');
     }
 
-    if (!sessionData.audioStorageUrl) {
+    if (!sessionData.storageUrl) {
       await sessionRef.update({
-        audioStorageUrl,
+        storageUrl,
         updatedAt: FieldValue.serverTimestamp()
       });
     }
@@ -148,7 +147,7 @@ export const retranscribeAudio = onCall(
     retranscribeInBackground(
       campaignId,
       sessionId,
-      audioStorageUrl,
+      storageUrl,
       sessionData.audioFileName || 'audio.wav',
       sessionData.sessionTitle || 'Untitled Session',
       sessionData.sessionDate,
@@ -173,7 +172,7 @@ export const retranscribeAudio = onCall(
 async function retranscribeInBackground(
   campaignId: string,
   sessionId: string,
-  audioStorageUrl: string,
+  storageUrl: string,
   audioFileName: string,
   sessionTitle: string,
   sessionDate: string | undefined,
@@ -227,7 +226,7 @@ async function retranscribeInBackground(
     await updateProgress(sessionRef, 'transcribing', 5, 'Transcribing audio...');
 
     const { transcriptionText, timestamps } = await transcribeAudioFile(
-      audioStorageUrl,
+      storageUrl,
       audioFileName,
       transcriptionConfig,
       kankaContext

@@ -817,7 +817,6 @@ export class AudioSessionComponent implements OnDestroy {
 
   private resolveAudioStorageUrl(session: AudioSessionRecord | null): string | null {
     return (
-      session?.audioStorageUrl ||
       session?.storageUrl ||
       session?.storageMetadata?.downloadUrl ||
       null

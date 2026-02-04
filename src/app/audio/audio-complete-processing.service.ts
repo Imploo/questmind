@@ -54,7 +54,7 @@ export class AudioCompleteProcessingService {
 
     await uploadBytes(storageRef, audioFile);
 
-    const audioStorageUrl = await getDownloadURL(storageRef);
+    const storageUrl = await getDownloadURL(storageRef);
 
     // 2. Call Cloud Function (fire-and-forget)
     const processAudio = httpsCallable(this.functions, 'processAudioSession');
@@ -62,7 +62,7 @@ export class AudioCompleteProcessingService {
     const request = {
       campaignId,
       sessionId,
-      audioStorageUrl,
+      storageUrl,
       audioFileName: audioFile.name,
       audioFileSize: audioFile.size,
       sessionTitle: options.sessionTitle,

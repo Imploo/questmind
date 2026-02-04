@@ -159,7 +159,6 @@ export interface AudioSessionRecord extends SessionStory {
   transcription?: TranscriptionResult;
   storageMetadata?: StorageMetadata;
   storagePath?: string;
-  audioStorageUrl?: string;
   audioFileName?: string;
   audioFileSize?: number;
   fileSize?: number;
