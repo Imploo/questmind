@@ -1,15 +1,14 @@
 /**
  * Migration service to update AI settings with feature-specific configurations
  *
- * This service provides a client-side migration that can be triggered via a button
- * to add feature-specific AI parameters:
- * - transcription: Low temperature (0.3) for accuracy
- * - storyGeneration: Medium-high temperature (0.8) for creativity
+ * This service calls a Cloud Function to update settings with admin privileges:
+ * - transcription: Low temperature (0.1) for accuracy
+ * - storyGeneration: Medium temperature (0.4) for creativity
  * - podcastScript: High temperature (0.9) for conversational tone
  */
 
 import { Injectable } from '@angular/core';
-import { doc, setDoc } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
 import { FirebaseService } from './firebase.service';
 
 export interface AiSettings {
@@ -50,50 +49,39 @@ export class AiSettingsMigrationService {
 
   async updateAISettings(): Promise<MigrationResult> {
     try {
-      const firestore = this.firebaseService.requireFirestore();
+      const functions = this.firebaseService.requireFunctions();
 
-      const newSettings: AiSettings = {
-        features: {
-          transcription: {
-            model: 'gemini-3-flash',
-            temperature: 0.1,
-            topP: 1,
-            topK: 40,
-            maxOutputTokens: 128000
-          },
-          storyGeneration: {
-            model: 'gemini-3-flash',
-            temperature: 0.4,
-            topP: 0.95,
-            topK: 40,
-            maxOutputTokens: 32000
-          },
-          podcastScript: {
-            model: 'gemini-3-flash',
-            temperature: 0.9,
-            topP: 0.95,
-            topK: 40,
-            maxOutputTokens: 16000
-          }
-        }
-      };
+      // Call the Cloud Function to update AI settings
+      const migrateAiSettings = httpsCallable(functions, 'migrateAiSettings');
+      const result = await migrateAiSettings();
 
-      // Update the settings/ai document with merge
-      const settingsRef = doc(firestore, 'settings', 'ai');
-      await setDoc(settingsRef, newSettings, { merge: true });
+      const data = result.data as { success: boolean; message: string; settings?: AiSettings };
 
       console.log('AI settings updated successfully:');
-      console.log(JSON.stringify(newSettings, null, 2));
+      if (data.settings) {
+        console.log(JSON.stringify(data.settings, null, 2));
+      }
 
       return {
-        success: true,
-        message: 'AI settings updated with feature-specific configurations'
+        success: data.success,
+        message: data.message
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating AI settings:', error);
+
+      // Handle Firebase Functions errors
+      let errorMessage = 'Failed to update AI settings';
+      if (error?.code === 'unauthenticated') {
+        errorMessage = 'You must be signed in to run migrations';
+      } else if (error?.code === 'permission-denied') {
+        errorMessage = 'You do not have permission to run migrations';
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+
       return {
         success: false,
-        message: 'Failed to update AI settings',
+        message: errorMessage,
         error: error instanceof Error ? error.message : String(error)
       };
     }

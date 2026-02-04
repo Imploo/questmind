@@ -13,3 +13,4 @@ export { generatePodcastAudio } from './generate-podcast-audio';
 export { processAudioSession } from './process-audio-session';
 export { retranscribeAudio } from './retranscribe-audio';
 export { regenerateStory } from './regenerate-story';
+export { migrateAiSettings } from './migrations';
