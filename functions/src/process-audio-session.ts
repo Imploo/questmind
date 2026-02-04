@@ -500,18 +500,6 @@ async function processAudioInBackground(
         completeProcessingError: error?.message || 'Unknown error'
       }
     );
-  } catch (error: any) {
-    console.error('Error processing audio:', error);
-
-    await updateProgress(
-      sessionRef,
-      'failed',
-      0,
-      'Processing failed',
-      {
-        completeProcessingError: error?.message || 'Unknown error'
-      }
-    );
   }
 }
 
