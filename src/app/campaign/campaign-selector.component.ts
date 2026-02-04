@@ -41,11 +41,11 @@ import { Campaign } from './campaign.models';
           </button>
           @if (selectedCampaign()) {
             <button
-              (click)="openManageCampaign()"
+              (click)="openManageCampaign(); showDropdown.set(false)"
               class="flex-1 px-2 py-1.5 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors flex items-center justify-center gap-1"
             >
               <cog-6-tooth-outline-icon [size]="12" />
-              <span>Manage</span>
+              <span>Settings</span>
             </button>
           }
         </div>
@@ -98,7 +98,7 @@ import { Campaign } from './campaign.models';
                   class="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors flex items-center gap-2"
                 >
                   <cog-6-tooth-outline-icon [size]="16" />
-                  <span>Manage Campaign</span>
+                  <span>Campaign Settings</span>
                 </button>
               }
             </div>
@@ -149,117 +149,6 @@ import { Campaign } from './campaign.models';
         </div>
       </div>
     }
-
-    @if (showManageCampaign() && selectedCampaign()) {
-      <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div class="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto">
-          <h3 class="text-xl font-bold mb-4">Manage Campaign: {{ selectedCampaign()!.name }}</h3>
-
-          <div class="mb-6 p-4 bg-gray-50 rounded-lg">
-            <div class="text-sm text-gray-600 mb-1">Owner</div>
-            <div class="font-medium">{{ selectedCampaign()!.ownerEmail }}</div>
-          </div>
-
-          <div class="mb-6">
-            <h4 class="font-semibold mb-2">Settings</h4>
-            <div class="space-y-4">
-              <label class="flex items-center gap-2 text-sm text-gray-700">
-                <input
-                  type="checkbox"
-                  [(ngModel)]="kankaEnabled"
-                />
-                Enable Kanka Integration
-              </label>
-              @if (kankaEnabled) {
-                <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-1">Kanka Campaign ID</label>
-                  <input
-                    type="text"
-                    [(ngModel)]="kankaCampaignId"
-                    placeholder="e.g. 123456"
-                    class="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                  />
-                  <p class="text-xs text-gray-500 mt-1">
-                    Used for Kanka integration when generating stories.
-                  </p>
-                </div>
-              }
-              <label class="flex items-center gap-2 text-sm text-gray-700">
-                <input
-                  type="checkbox"
-                  [(ngModel)]="allowMembersToCreateSessions"
-                />
-                Allow members to create sessions
-              </label>
-              <button
-                (click)="saveCampaignSettings()"
-                class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                Save Settings
-              </button>
-            </div>
-          </div>
-
-          <div class="mb-6">
-            <h4 class="font-semibold mb-2">Members ({{ campaignMembers().length }})</h4>
-            <div class="space-y-2">
-              @for (member of campaignMembers(); track member.userId) {
-                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div>
-                    <div class="font-medium">{{ member.email }}</div>
-                    <div class="text-xs text-gray-500">{{ member.role }}</div>
-                  </div>
-                  @if (isCampaignOwner(selectedCampaign()!) && member.role !== 'owner') {
-                    <button
-                      (click)="removeMember(member.userId)"
-                      class="px-3 py-1 text-red-600 hover:bg-red-50 rounded"
-                    >
-                      Remove
-                    </button>
-                  }
-                </div>
-              }
-            </div>
-          </div>
-
-          @if (isCampaignOwner(selectedCampaign()!)) {
-            <div class="mb-6">
-              <h4 class="font-semibold mb-2">Invite Member</h4>
-              <div class="flex gap-2">
-                <input
-                  type="email"
-                  [(ngModel)]="inviteEmail"
-                  placeholder="user@example.com"
-                  class="flex-1 px-4 py-2 border border-gray-300 rounded-lg"
-                />
-                <button
-                  (click)="inviteMember()"
-                  [disabled]="!inviteEmail.trim().length"
-                  class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                >
-                  Invite
-                </button>
-              </div>
-              @if (inviteError()) {
-                <div class="mt-2 text-sm text-red-600">{{ inviteError() }}</div>
-              }
-              @if (inviteSuccess()) {
-                <div class="mt-2 text-sm text-green-600">{{ inviteSuccess() }}</div>
-              }
-            </div>
-          }
-
-          <div class="flex gap-2">
-            <button
-              (click)="showManageCampaign.set(false)"
-              class="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      </div>
-    }
   `
 })
 export class CampaignSelectorComponent {
@@ -275,30 +164,15 @@ export class CampaignSelectorComponent {
 
   selectedId: string | null = null;
   showCreateCampaign = signal(false);
-  showManageCampaign = signal(false);
   showDropdown = signal(false);
   errorMessage = signal('');
 
   newCampaignName = '';
   newCampaignDescription = '';
 
-  campaignMembers = signal<Array<{ userId: string; role: string; email: string }>>([]);
-  inviteEmail = '';
-  inviteError = signal('');
-  inviteSuccess = signal('');
-  kankaEnabled = false;
-  kankaCampaignId = '';
-  allowMembersToCreateSessions = true;
-
   constructor() {
     effect(() => {
       this.selectedId = this.campaignContext.selectedCampaignId();
-      const campaign = this.selectedCampaign();
-      if (campaign) {
-        this.kankaEnabled = campaign.settings?.kankaEnabled ?? false;
-        this.kankaCampaignId = campaign.settings?.kankaCampaignId || '';
-        this.allowMembersToCreateSessions = campaign.settings?.allowMembersToCreateSessions ?? true;
-      }
     });
   }
 
@@ -327,57 +201,9 @@ export class CampaignSelectorComponent {
   }
 
   async openManageCampaign(): Promise<void> {
-    this.showManageCampaign.set(true);
-    await this.loadMembers();
-  }
-
-  async inviteMember(): Promise<void> {
-    this.inviteError.set('');
-    this.inviteSuccess.set('');
-    try {
-      const campaignId = this.campaignContext.selectedCampaignId();
-      if (!campaignId) return;
-      await this.campaignService.inviteUserByEmail(campaignId, this.inviteEmail);
-      this.inviteSuccess.set('User invited successfully!');
-      this.inviteEmail = '';
-      await this.loadMembers();
-      void this.campaignContext.refreshCampaigns();
-      setTimeout(() => this.inviteSuccess.set(''), 3000);
-    } catch (error: any) {
-      this.inviteError.set(error?.message || 'Failed to invite user');
-    }
-  }
-
-  async removeMember(userId: string): Promise<void> {
-    if (!confirm('Are you sure you want to remove this member?')) {
-      return;
-    }
-    try {
-      const campaignId = this.campaignContext.selectedCampaignId();
-      if (!campaignId) return;
-      await this.campaignService.removeMember(campaignId, userId);
-      await this.loadMembers();
-      void this.campaignContext.refreshCampaigns();
-    } catch (error: any) {
-      this.inviteError.set(error?.message || 'Failed to remove member');
-    }
-  }
-
-  async saveCampaignSettings(): Promise<void> {
-    try {
-      const campaignId = this.campaignContext.selectedCampaignId();
-      if (!campaignId) return;
-      await this.campaignService.updateCampaign(campaignId, {
-        settings: {
-          ...(this.selectedCampaign()?.settings || {}),
-          allowMembersToCreateSessions: this.allowMembersToCreateSessions,
-          kankaEnabled: this.kankaEnabled,
-          kankaCampaignId: this.kankaCampaignId.trim() || undefined
-        }
-      });
-      await this.campaignContext.refreshCampaigns();
-    } catch (error: any) {
-      this.errorMessage.set(error?.message || 'Failed to save settings');
+    const campaignId = this.campaignContext.selectedCampaignId();
+    if (campaignId) {
+      await this.router.navigate(['/campaign', campaignId, 'settings']);
     }
   }
 
@@ -388,15 +214,5 @@ export class CampaignSelectorComponent {
   isCampaignOwner(campaign: Campaign): boolean {
     const userId = this.authService.currentUser()?.uid;
     return this.campaignService.isCampaignOwner(campaign, userId);
-  }
-
-  private async loadMembers(): Promise<void> {
-    const campaignId = this.campaignContext.selectedCampaignId();
-    if (!campaignId) {
-      this.campaignMembers.set([]);
-      return;
-    }
-    const members = await this.campaignService.getCampaignMembers(campaignId);
-    this.campaignMembers.set(members);
   }
 }

@@ -8,6 +8,7 @@ import { AudioSessionComponent } from './audio/audio-session.component';
 import { PodcastLibraryComponent } from './audio/podcast-library.component';
 import { AdminComponent } from './admin/admin.component';
 import { adminGuard } from './auth/admin.guard';
+import { CampaignSettingsComponent } from './campaign/campaign-settings.component';
 
 export const routes: Routes = [
   {
@@ -65,6 +66,10 @@ export const routes: Routes = [
       {
         path: 'podcasts',
         component: PodcastLibraryComponent
+      },
+      {
+        path: 'settings',
+        component: CampaignSettingsComponent
       },
       {
         path: 'admin',
