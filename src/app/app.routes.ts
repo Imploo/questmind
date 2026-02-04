@@ -3,26 +3,78 @@ import { authGuard, noAuthGuard } from './auth/auth.guard';
 import { SignInPageComponent } from './auth/sign-in-page.component';
 import { AppShellComponent } from './app-shell.component';
 import { campaignGuard } from './campaign/campaign.guard';
+import { ChatComponent } from './chat/chat.component';
+import { AudioSessionComponent } from './audio/audio-session.component';
+import { PodcastLibraryComponent } from './audio/podcast-library.component';
+import { AdminComponent } from './admin/admin.component';
+import { adminGuard } from './auth/admin.guard';
 
 export const routes: Routes = [
   {
     path: 'sign-in',
     component: SignInPageComponent,
-    canActivate: [noAuthGuard], // Prevent authenticated users from accessing sign-in
+    canActivate: [noAuthGuard],
   },
   {
     path: '',
     component: AppShellComponent,
-    pathMatch: 'full',
-    canActivate: [authGuard], // Protect all app routes with auth guard
+    canActivate: [authGuard],
+    children: [
+      {
+        path: '',
+        redirectTo: 'chat',
+        pathMatch: 'full'
+      },
+      {
+        path: 'chat',
+        component: ChatComponent
+      },
+      {
+        path: 'audio',
+        component: AudioSessionComponent
+      },
+      {
+        path: 'podcasts',
+        component: PodcastLibraryComponent
+      },
+      {
+        path: 'admin',
+        component: AdminComponent,
+        canActivate: [adminGuard]
+      }
+    ]
   },
   {
     path: 'campaign/:campaignId',
     component: AppShellComponent,
     canActivate: [authGuard, campaignGuard],
+    children: [
+      {
+        path: '',
+        redirectTo: 'chat',
+        pathMatch: 'full'
+      },
+      {
+        path: 'chat',
+        component: ChatComponent
+      },
+      {
+        path: 'audio',
+        component: AudioSessionComponent
+      },
+      {
+        path: 'podcasts',
+        component: PodcastLibraryComponent
+      },
+      {
+        path: 'admin',
+        component: AdminComponent,
+        canActivate: [adminGuard]
+      }
+    ]
   },
   {
     path: '**',
-    redirectTo: '', // Redirect any unknown routes to home (which requires auth)
+    redirectTo: ''
   }
 ];
