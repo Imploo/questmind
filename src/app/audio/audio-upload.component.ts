@@ -1,7 +1,9 @@
-import { Component, EventEmitter, Input, Output, signal } from '@angular/core';
+import { Component, EventEmitter, Input, Output, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AudioUpload } from './audio-session.models';
+
+type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' | 'failed';
 
 @Component({
   selector: 'app-audio-upload',
@@ -14,13 +16,25 @@ import { AudioUpload } from './audio-session.models';
           <h3 class="text-lg font-semibold m-0">Upload Session Audio</h3>
           <p class="text-sm text-gray-500 m-0">MP3, WAV, M4A, or OGG up to 500MB.</p>
         </div>
-        <span
-          class="text-xs px-2 py-1 rounded-full"
-          [class]="isBusy ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'"
-        >
-          {{ isBusy ? 'Processing' : 'Ready' }}
+        <span class="text-xs px-2 py-1 rounded-full" [class]="badgeClass()">
+          {{ stageLabel() }}
         </span>
       </div>
+
+      @if (stage !== 'idle') {
+        <div class="mb-4">
+          <div class="flex items-center justify-between mb-2">
+            <p class="text-sm text-gray-600 m-0">{{ statusMessage }}</p>
+            <span class="text-xs text-gray-500">{{ progress }}%</span>
+          </div>
+          <div class="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+            <div
+              class="h-full bg-primary transition-all duration-300"
+              [style.width.%]="progress"
+            ></div>
+          </div>
+        </div>
+      }
 
       <div
         class="border-2 border-dashed rounded-lg p-6 text-center transition-colors"
@@ -121,6 +135,9 @@ export class AudioUploadComponent {
   @Input() userId: string | null = null;
   @Input() campaignId: string | null = null;
   @Input() canUpload = true;
+  @Input() stage: Stage = 'idle';
+  @Input() progress = 0;
+  @Input() statusMessage = 'Waiting for upload.';
   @Output() uploadRequested = new EventEmitter<AudioUpload>();
 
   sessionName = '';
@@ -128,6 +145,38 @@ export class AudioUploadComponent {
   selectedFile = signal<File | null>(null);
   error = signal<string>('');
   dragActive = signal<boolean>(false);
+
+  stageLabel = computed(() => {
+    switch (this.stage) {
+      case 'uploading':
+        return 'Uploading';
+      case 'transcribing':
+        return 'Transcribing';
+      case 'generating':
+        return 'Writing Story';
+      case 'completed':
+        return 'Completed';
+      case 'failed':
+        return 'Failed';
+      default:
+        return this.isBusy ? 'Processing' : 'Ready';
+    }
+  });
+
+  badgeClass = computed(() => {
+    switch (this.stage) {
+      case 'completed':
+        return 'bg-emerald-100 text-emerald-700';
+      case 'failed':
+        return 'bg-red-100 text-red-700';
+      case 'uploading':
+      case 'transcribing':
+      case 'generating':
+        return 'bg-amber-100 text-amber-700';
+      default:
+        return this.isBusy ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700';
+    }
+  });
 
   onFileSelected(event: Event): void {
     const input = event.target as HTMLInputElement;

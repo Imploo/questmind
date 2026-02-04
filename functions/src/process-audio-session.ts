@@ -149,8 +149,11 @@ export const processAudioSession = onCall(
       throw new HttpsError('permission-denied', 'Only the session owner can process audio.');
     }
 
-    // Initialize progress
+    // Initialize progress and save audio storage URL for future retranscription
     await sessionRef.update({
+      audioStorageUrl,
+      audioFileName,
+      audioFileSize,
       completeProcessingStatus: 'loading_context' as CompleteProcessingStatus,
       completeProcessingProgress: 0,
       completeProcessingMessage: 'Starting audio processing...',

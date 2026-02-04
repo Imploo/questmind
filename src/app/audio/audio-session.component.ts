@@ -22,7 +22,6 @@ import {
   ProcessingProgress
 } from './audio-session.models';
 import { AudioUploadComponent } from './audio-upload.component';
-import { TranscriptionStatusComponent } from './transcription-status.component';
 import { SessionStoryComponent } from './session-story.component';
 import { KankaService } from '../kanka/kanka.service';
 import { KankaSearchResult } from '../kanka/kanka.models';
@@ -31,7 +30,7 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
 
 @Component({
   selector: 'app-audio-session',
-  imports: [CommonModule, AudioUploadComponent, TranscriptionStatusComponent, SessionStoryComponent],
+  imports: [CommonModule, AudioUploadComponent, SessionStoryComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (!authService.isAuthenticated()) {
@@ -172,23 +171,17 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
         <!-- Right panel: Session details (scrolls naturally with page) -->
         <main class="flex-1 min-w-0">
           <div class="grid gap-6">
-            <!-- Upload and status -->
-            <div class="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-              <app-audio-upload
-                [isBusy]="isBusy()"
-                [userId]="userId()"
-                [campaignId]="campaignId()"
-                [canUpload]="canUploadAudio()"
-                (uploadRequested)="startCompleteProcessing($event)"
-              ></app-audio-upload>
-              <app-transcription-status
-                [stage]="stage()"
-                [progress]="progress()"
-                [statusMessage]="statusMessage()"
-                (cancel)="cancelProcessing()"
-                (retry)="retryProcessing()"
-              ></app-transcription-status>
-            </div>
+            <!-- Upload with integrated status -->
+            <app-audio-upload
+              [isBusy]="isBusy()"
+              [userId]="userId()"
+              [campaignId]="campaignId()"
+              [canUpload]="canUploadAudio()"
+              [stage]="stage()"
+              [progress]="progress()"
+              [statusMessage]="statusMessage()"
+              (uploadRequested)="startCompleteProcessing($event)"
+            ></app-audio-upload>
 
             @if (currentSession()) {
               <!-- Session story -->
@@ -390,7 +383,7 @@ export class AudioSessionComponent implements OnDestroy {
     return !!session && this.campaignService.isSessionOwner(session, userId);
   });
   canRegenerateStory = computed(() => this.isSessionOwner());
-  canRetranscribe = computed(() => this.isSessionOwner() && !!this.currentSession()?.storageMetadata);
+  canRetranscribe = computed(() => this.isSessionOwner() && !!this.currentSession()?.audioStorageUrl);
   canGeneratePodcast = computed(() => this.isSessionOwner());
   canEditStory = computed(() => this.isSessionOwner());
   canEditCorrections = computed(() => !!this.currentSession());
@@ -707,7 +700,7 @@ export class AudioSessionComponent implements OnDestroy {
     const uid = this.userId();
     const campaignId = session?.campaignId;
 
-    if (!session?.storageMetadata) {
+    if (!session?.audioStorageUrl) {
       this.failSession('No stored audio file found for this session.');
       return;
     }
@@ -837,7 +830,7 @@ export class AudioSessionComponent implements OnDestroy {
     if (!session) {
       return '';
     }
-    return `${session.audioFileName} · ${session.sessionDate || 'No date'}`;
+    return `${session.audioFileName || 'Unknown'} · ${session.sessionDate || 'No date'}`;
   }
 
   ngOnDestroy(): void {

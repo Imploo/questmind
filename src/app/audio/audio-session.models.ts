@@ -75,7 +75,7 @@ export interface SessionStory {
   title: string;
   content: string;
   sessionDate?: string;
-  audioFileName: string;
+  audioFileName?: string;
   storageUrl: string;
   createdAt: string;
 }
@@ -159,6 +159,9 @@ export interface AudioSessionRecord extends SessionStory {
   transcription?: TranscriptionResult;
   storageMetadata?: StorageMetadata;
   storagePath?: string;
+  audioStorageUrl?: string;
+  audioFileName?: string;
+  audioFileSize?: number;
   fileSize?: number;
   contentType?: string;
   activeTranscriptionId?: string;
