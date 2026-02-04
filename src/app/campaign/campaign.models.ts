@@ -8,6 +8,7 @@ export interface CampaignMember {
 
 export interface CampaignSettings {
   allowMembersToCreateSessions: boolean;
+  kankaEnabled?: boolean;
   kankaCampaignId?: string;
 }
 

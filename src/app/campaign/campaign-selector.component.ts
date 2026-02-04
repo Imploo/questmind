@@ -163,18 +163,27 @@ import { Campaign } from './campaign.models';
           <div class="mb-6">
             <h4 class="font-semibold mb-2">Settings</h4>
             <div class="space-y-4">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Kanka Campaign ID</label>
+              <label class="flex items-center gap-2 text-sm text-gray-700">
                 <input
-                  type="text"
-                  [(ngModel)]="kankaCampaignId"
-                  placeholder="e.g. 123456"
-                  class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                  type="checkbox"
+                  [(ngModel)]="kankaEnabled"
                 />
-                <p class="text-xs text-gray-500 mt-1">
-                  Used for Kanka integration when generating stories.
-                </p>
-              </div>
+                Enable Kanka Integration
+              </label>
+              @if (kankaEnabled) {
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Kanka Campaign ID</label>
+                  <input
+                    type="text"
+                    [(ngModel)]="kankaCampaignId"
+                    placeholder="e.g. 123456"
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                  />
+                  <p class="text-xs text-gray-500 mt-1">
+                    Used for Kanka integration when generating stories.
+                  </p>
+                </div>
+              }
               <label class="flex items-center gap-2 text-sm text-gray-700">
                 <input
                   type="checkbox"
@@ -277,6 +286,7 @@ export class CampaignSelectorComponent {
   inviteEmail = '';
   inviteError = signal('');
   inviteSuccess = signal('');
+  kankaEnabled = false;
   kankaCampaignId = '';
   allowMembersToCreateSessions = true;
 
@@ -285,6 +295,7 @@ export class CampaignSelectorComponent {
       this.selectedId = this.campaignContext.selectedCampaignId();
       const campaign = this.selectedCampaign();
       if (campaign) {
+        this.kankaEnabled = campaign.settings?.kankaEnabled ?? false;
         this.kankaCampaignId = campaign.settings?.kankaCampaignId || '';
         this.allowMembersToCreateSessions = campaign.settings?.allowMembersToCreateSessions ?? true;
       }
@@ -360,6 +371,7 @@ export class CampaignSelectorComponent {
         settings: {
           ...(this.selectedCampaign()?.settings || {}),
           allowMembersToCreateSessions: this.allowMembersToCreateSessions,
+          kankaEnabled: this.kankaEnabled,
           kankaCampaignId: this.kankaCampaignId.trim() || undefined
         }
       });

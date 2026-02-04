@@ -190,32 +190,6 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
             </div>
 
             @if (currentSession()) {
-              <!-- Kanka context -->
-              <div class="border border-gray-200 rounded-xl bg-white shadow-sm p-4">
-                <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <p class="m-0 text-sm font-semibold text-gray-700">Kanka campaign context</p>
-                    <p class="m-0 text-xs text-gray-500">
-                      Use campaign data to improve name accuracy and quest references.
-                    </p>
-                    @if (!kankaAvailable()) {
-                      <p class="m-0 text-xs text-amber-600">
-                        Configure Kanka token and campaign ID in the environment to enable this.
-                      </p>
-                    }
-                  </div>
-                  <label class="inline-flex items-center gap-2 text-sm text-gray-700">
-                    <input
-                      type="checkbox"
-                      [checked]="kankaEnabled()"
-                      [disabled]="!kankaAvailable() || isBusy()"
-                      (change)="toggleKankaIntegration()"
-                    />
-                    <span>Enable</span>
-                  </label>
-                </div>
-              </div>
-
               <!-- Session story -->
               <app-session-story
                 [title]="currentSession()?.title || 'Session Story'"
@@ -400,8 +374,8 @@ export class AudioSessionComponent implements OnDestroy {
   campaignId = computed(() => this.campaignContext.selectedCampaignId());
   selectedCampaign = this.campaignContext.selectedCampaign;
   canUploadAudio = computed(() => this.campaignContext.canCreateSessions(this.userId()));
-  kankaEnabled = signal(false);
-  kankaAvailable = signal(false);
+  kankaEnabled = computed(() => this.selectedCampaign()?.settings?.kankaEnabled ?? false);
+  kankaAvailable = computed(() => this.kankaService.isConfigured());
   userCorrections = signal<string>('');
   correctionsSaveStatus = signal<'idle' | 'saving' | 'saved'>('idle');
 
@@ -465,14 +439,6 @@ export class AudioSessionComponent implements OnDestroy {
     private readonly firebase: FirebaseService,
     private readonly kankaService: KankaService
   ) {
-    effect(() => {
-      this.selectedCampaign();
-      const kankaAvailable = this.kankaService.isConfigured();
-      this.kankaAvailable.set(kankaAvailable);
-      if (!kankaAvailable) {
-        this.kankaEnabled.set(false);
-      }
-    });
     this.sessions = this.sessionStateService.sessions;
 
     effect(() => {
@@ -847,10 +813,6 @@ export class AudioSessionComponent implements OnDestroy {
       this.progressUnsubscribe();
       this.progressUnsubscribe = undefined;
     }
-  }
-
-  toggleKankaIntegration(): void {
-    this.kankaEnabled.update(value => !value);
   }
 
   private finishStage(stage: Stage, message: string): void {

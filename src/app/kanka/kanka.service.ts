@@ -28,7 +28,11 @@ export class KankaService {
   isConfigured(): boolean {
     const config = environment.kanka;
     const campaignId = this.getCampaignId();
+    const selectedCampaign = this.campaignContext.selectedCampaign();
+    const kankaEnabled = selectedCampaign?.settings?.kankaEnabled ?? false;
+    
     return (
+      kankaEnabled &&
       !!config?.enabled &&
       !!config?.token &&
       config.token !== 'YOUR_KANKA_PERSONAL_ACCESS_TOKEN' &&
