@@ -1,5 +1,6 @@
 import { Component, OnDestroy, effect, signal, computed, inject, Injector, runInInjectionContext, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Router, ActivatedRoute } from '@angular/router';
 import { timer, firstValueFrom, Subscription } from 'rxjs';
 import { httpsCallable } from 'firebase/functions';
 import { AudioStorageService } from './audio-storage.service';
@@ -369,6 +370,8 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
 export class AudioSessionComponent implements OnDestroy {
   private readonly campaignContext = inject(CampaignContextService);
   private readonly campaignService = inject(CampaignService);
+  private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
 
   userId = computed(() => this.authService.currentUser()?.uid || null);
   campaignId = computed(() => this.campaignContext.selectedCampaignId());
@@ -404,6 +407,7 @@ export class AudioSessionComponent implements OnDestroy {
   private correctionsSaveTimer?: ReturnType<typeof setTimeout>;
   private correctionsStatusTimer?: ReturnType<typeof setTimeout>;
   private activeCorrectionsSessionId: string | null = null;
+  private routeParamsSub?: Subscription;
 
   stage = signal<Stage>('idle');
   progress = signal<number>(0);
@@ -441,9 +445,24 @@ export class AudioSessionComponent implements OnDestroy {
   ) {
     this.sessions = this.sessionStateService.sessions;
 
+    // Subscribe to route params to handle session selection from URL
+    this.routeParamsSub = this.route.paramMap.subscribe(params => {
+      const sessionIdFromRoute = params.get('sessionId');
+      const sessions = this.sortedSessions();
+      
+      if (sessionIdFromRoute && sessions.length > 0) {
+        const sessionToSelect = sessions.find(s => s.id === sessionIdFromRoute);
+        if (sessionToSelect && this.currentSession()?.id !== sessionIdFromRoute) {
+          this.selectSessionWithoutNavigation(sessionToSelect);
+        }
+      }
+    });
+
     effect(() => {
       const sessions = this.sortedSessions();
       const current = this.currentSession();
+      const sessionIdFromRoute = this.route.snapshot.paramMap.get('sessionId');
+      
       if (sessions.length === 0) {
         if (current) {
           this.currentSession.set(null);
@@ -451,6 +470,17 @@ export class AudioSessionComponent implements OnDestroy {
         }
         return;
       }
+      
+      // If there's a session ID in the route, try to select it
+      if (sessionIdFromRoute) {
+        const sessionToSelect = sessions.find(s => s.id === sessionIdFromRoute);
+        if (sessionToSelect && current?.id !== sessionIdFromRoute) {
+          this.selectSessionWithoutNavigation(sessionToSelect);
+          return;
+        }
+      }
+      
+      // Otherwise, select the first session if none is selected
       if (!current || !sessions.some(session => session.id === current.id)) {
         this.selectSession(sessions[0]);
       }
@@ -772,6 +802,15 @@ export class AudioSessionComponent implements OnDestroy {
   }
 
   selectSession(session: AudioSessionRecord): void {
+    this.selectSessionWithoutNavigation(session);
+    
+    // Navigate to the session route
+    const campaignId = this.campaignId();
+    const basePath = campaignId ? `/campaign/${campaignId}/audio` : '/audio';
+    void this.router.navigate([basePath, session.id]);
+  }
+
+  private selectSessionWithoutNavigation(session: AudioSessionRecord): void {
     this.currentSession.set(session);
     this.userCorrections.set(session.userCorrections ?? '');
     this.correctionsSaveStatus.set('idle');
@@ -805,6 +844,7 @@ export class AudioSessionComponent implements OnDestroy {
     this.stopPodcast();
     this.cleanupProgressListener();
     this.stageTimerSub?.unsubscribe();
+    this.routeParamsSub?.unsubscribe();
     this.clearCorrectionsTimers();
   }
 

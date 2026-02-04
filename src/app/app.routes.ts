@@ -35,6 +35,10 @@ export const routes: Routes = [
         component: AudioSessionComponent
       },
       {
+        path: 'audio/:sessionId',
+        component: AudioSessionComponent
+      },
+      {
         path: 'podcasts',
         component: PodcastLibraryComponent
       },
@@ -61,6 +65,10 @@ export const routes: Routes = [
       },
       {
         path: 'audio',
+        component: AudioSessionComponent
+      },
+      {
+        path: 'audio/:sessionId',
         component: AudioSessionComponent
       },
       {
