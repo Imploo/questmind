@@ -7,6 +7,7 @@ import { PodcastLibraryComponent } from './audio/podcast-library.component';
 import { AuthButtonComponent } from './auth/auth-button.component';
 import { CampaignSelectorComponent } from './campaign/campaign-selector.component';
 import { CampaignContextService } from './campaign/campaign-context.service';
+import { AdminComponent } from './admin/admin.component';
 
 @Component({
   selector: 'app-shell',
@@ -17,7 +18,8 @@ import { CampaignContextService } from './campaign/campaign-context.service';
     AudioSessionComponent,
     PodcastLibraryComponent,
     AuthButtonComponent,
-    CampaignSelectorComponent
+    CampaignSelectorComponent,
+    AdminComponent
   ],
   template: `
     <main class="w-full min-h-screen bg-gradient-to-br from-primary to-secondary">
@@ -92,6 +94,19 @@ import { CampaignContextService } from './campaign/campaign-context.service';
               <span class="text-lg">📻</span>
               <span>Podcast Bibliotheek</span>
             </button>
+            <button
+              type="button"
+              class="w-full text-left px-4 py-3 rounded-xl text-sm font-semibold transition-colors flex items-center gap-3"
+              [class]="
+                activeView() === 'admin'
+                  ? 'bg-primary text-white shadow'
+                  : 'bg-white text-gray-600 hover:bg-gray-100'
+              "
+              (click)="setActiveView('admin')"
+            >
+              <span class="text-lg">⚙️</span>
+              <span>Admin</span>
+            </button>
           </nav>
         </aside>
 
@@ -105,6 +120,8 @@ import { CampaignContextService } from './campaign/campaign-context.service';
             <app-audio-session></app-audio-session>
           } @else if (activeView() === 'podcasts') {
             <app-podcast-library></app-podcast-library>
+          } @else if (activeView() === 'admin') {
+            <app-admin></app-admin>
           }
         </section>
       </div>
@@ -114,7 +131,7 @@ import { CampaignContextService } from './campaign/campaign-context.service';
 export class AppShellComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly campaignContext = inject(CampaignContextService);
-  activeView = signal<'chat' | 'audio' | 'podcasts'>('chat');
+  activeView = signal<'chat' | 'audio' | 'podcasts' | 'admin'>('chat');
   sidebarOpen = signal(true);
 
   constructor() {
@@ -126,7 +143,7 @@ export class AppShellComponent {
     });
   }
 
-  setActiveView(view: 'chat' | 'audio' | 'podcasts'): void {
+  setActiveView(view: 'chat' | 'audio' | 'podcasts' | 'admin'): void {
     this.activeView.set(view);
   }
 
