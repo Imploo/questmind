@@ -9,12 +9,11 @@ import { Readable } from 'stream';
 import { randomUUID } from 'crypto';
 import { GoogleGenAI } from '@google/genai';
 import { PODCAST_SCRIPT_GENERATOR_PROMPT } from './prompts/podcast-script-generator.prompt';
+import { AISettings } from './types/audio-session.types';
 
-// ElevenLabs voice IDs - configure via environment variables or use defaults
-// You can find voice IDs at: https://elevenlabs.io/voice-library
-const HOST_VOICES: Record<'host1' | 'host2', string> = {
-  host1: process.env.ELEVENLABS_HOST1_VOICE || 'tvFp0BgJPrEXGoDhDIA4', // Thomas  - deep, professional male voice
-  host2: process.env.ELEVENLABS_HOST2_VOICE || '7qdUFMklKPaaAVMsBTBt', // Roos - warm, engaging female voice
+const DEFAULT_HOST_VOICES: Record<'host1' | 'host2', string> = {
+  host1: process.env.ELEVENLABS_HOST1_VOICE ?? '',
+  host2: process.env.ELEVENLABS_HOST2_VOICE ?? ''
 };
 
 // Helper to update progress in Firestore
@@ -50,18 +49,6 @@ interface PodcastSegment {
 interface PodcastScript {
   segments: PodcastSegment[];
   estimatedDuration: number;
-}
-
-interface AISettings {
-  defaultModel: string;
-  modelConfig: {
-    [key: string]: {
-      maxOutputTokens: number;
-      temperature: number;
-      topP: number;
-      topK: number;
-    };
-  };
 }
 
 interface PodcastGenerationRequest {
@@ -276,21 +263,22 @@ async function generatePodcastInBackground(
   try {
     let finalScript: PodcastScript;
     let modelUsed: string | undefined;
+    const settingsSnap = await db.doc('settings/ai').get();
+    const aiSettings = settingsSnap.data() as AISettings | undefined;
+
+    if (!aiSettings) {
+      throw new Error('AI settings not configured in database');
+    }
+
+    const hostVoices = resolveHostVoices(aiSettings);
 
     // STEP 1: Generate script if not provided
     if (!script) {
       // 1.1 Load AI settings
       await updateProgress(sessionRef, existingPodcasts, version, 'loading_context', 5, 'Loading AI settings...');
 
-      const settingsSnap = await db.doc('settings/ai').get();
-      const aiSettings = settingsSnap.data() as AISettings | undefined;
-
-      if (!aiSettings) {
-        throw new Error('AI settings not configured in database');
-      }
-
       const selectedModel = aiSettings.defaultModel;
-      const modelConfig = aiSettings.modelConfig[selectedModel];
+      const modelConfig = aiSettings.modelConfig?.[selectedModel];
 
       if (!modelConfig) {
         throw new Error(`Model configuration not found for: ${selectedModel}`);
@@ -370,9 +358,9 @@ async function generatePodcastInBackground(
 
     // 1. Format script for text-to-dialogue
     // Convert segments to text-to-dialogue input format: array of { text, voiceId }
-    const dialogueInputs = finalScript.segments.map((seg: any) => ({
+    const dialogueInputs = finalScript.segments.map(seg => ({
       text: seg.text,
-      voiceId: HOST_VOICES[seg.speaker as 'host1' | 'host2'] || HOST_VOICES.host1
+      voiceId: hostVoices[seg.speaker as 'host1' | 'host2'] || hostVoices.host1
     }));
 
     console.log(`Generating podcast with text-to-dialogue (${finalScript.segments.length} segments)`);
@@ -508,4 +496,18 @@ function safeRemoveDir(dirPath: string): void {
   } catch (error) {
     console.warn('Failed to delete temp dir:', dirPath, error);
   }
+}
+
+function resolveHostVoices(settings: AISettings): Record<'host1' | 'host2', string> {
+  const configured = settings.features?.podcastVoices;
+  const host1 = configured?.host1VoiceId?.trim() || DEFAULT_HOST_VOICES.host1;
+  const host2 = configured?.host2VoiceId?.trim() || DEFAULT_HOST_VOICES.host2;
+
+  if (!host1 || !host2) {
+    throw new Error(
+      'Podcast voice settings are missing. Configure them in Admin or set ELEVENLABS_HOST1_VOICE and ELEVENLABS_HOST2_VOICE.'
+    );
+  }
+
+  return { host1, host2 };
 }

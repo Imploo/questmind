@@ -36,6 +36,12 @@ service cloud.firestore {
         get(/databases/$(database)/documents/campaigns/$(campaignId)/audioSessions/$(sessionId)).data.ownerId == getUserId();
     }
 
+    function isAdmin() {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(getUserId())) &&
+        get(/databases/$(database)/documents/users/$(getUserId())).data.admin == true;
+    }
+
     // User profiles
     match /users/{userId} {
       allow read: if isAuthenticated();
@@ -96,8 +102,8 @@ service cloud.firestore {
     // Settings collection - read-only for authenticated users
     match /settings/{document} {
       allow read: if isAuthenticated();
-      // Admin-only writes (manage via Firebase Console)
-      allow write: if false;
+      // Admin-only writes
+      allow write: if isAdmin();
     }
   }
 }

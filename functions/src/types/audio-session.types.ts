@@ -92,6 +92,11 @@ export interface AIFeatureConfig {
   maxOutputTokens: number;
 }
 
+export interface PodcastVoiceSettings {
+  host1VoiceId: string;
+  host2VoiceId: string;
+}
+
 export interface AISettings {
   defaultModel: string;
   availableModels?: string[];
@@ -100,6 +105,7 @@ export interface AISettings {
     transcription?: AIFeatureConfig;
     storyGeneration?: AIFeatureConfig;
     podcastScript?: AIFeatureConfig;
+    podcastVoices?: PodcastVoiceSettings;
   };
   // Legacy support
   modelConfig?: {

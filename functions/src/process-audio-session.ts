@@ -20,10 +20,9 @@ import {
   CompleteProcessingStatus
 } from './types/audio-session.types';
 
-// ElevenLabs voice IDs
-const HOST_VOICES: Record<'host1' | 'host2', string> = {
-  host1: process.env.ELEVENLABS_HOST1_VOICE || 'tvFp0BgJPrEXGoDhDIA4',
-  host2: process.env.ELEVENLABS_HOST2_VOICE || '7qdUFMklKPaaAVMsBTBt',
+const DEFAULT_HOST_VOICES: Record<'host1' | 'host2', string> = {
+  host1: process.env.ELEVENLABS_HOST1_VOICE ?? '',
+  host2: process.env.ELEVENLABS_HOST2_VOICE ?? ''
 };
 
 interface PodcastSegment {
@@ -256,6 +255,7 @@ async function processAudioInBackground(
       topK: 40,
       maxOutputTokens: 8192
     };
+    const hostVoices = resolveHostVoices(aiSettings);
 
     console.log(`Using models: transcription=${transcriptionConfig.model}, story=${storyConfig.model}, podcast=${podcastConfig.model}`);
 
@@ -401,7 +401,7 @@ async function processAudioInBackground(
 
     const dialogueInputs = podcastScript.segments.map(seg => ({
       text: seg.text,
-      voiceId: HOST_VOICES[seg.speaker as 'host1' | 'host2'] || HOST_VOICES.host1
+      voiceId: hostVoices[seg.speaker as 'host1' | 'host2'] || hostVoices.host1
     }));
 
     const audioStream = await elevenlabs.textToDialogue.convert({
@@ -548,6 +548,20 @@ function upsertPodcast(existing: any[], nextEntry: any): any[] {
   const updated = [...existing];
   updated[index] = { ...existing[index], ...nextEntry };
   return updated;
+}
+
+function resolveHostVoices(settings: AISettings): Record<'host1' | 'host2', string> {
+  const configured = settings.features?.podcastVoices;
+  const host1 = configured?.host1VoiceId?.trim() || DEFAULT_HOST_VOICES.host1;
+  const host2 = configured?.host2VoiceId?.trim() || DEFAULT_HOST_VOICES.host2;
+
+  if (!host1 || !host2) {
+    throw new Error(
+      'Podcast voice settings are missing. Configure them in Admin or set ELEVENLABS_HOST1_VOICE and ELEVENLABS_HOST2_VOICE.'
+    );
+  }
+
+  return { host1, host2 };
 }
 
 function safeUnlink(filePath: string): void {

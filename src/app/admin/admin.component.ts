@@ -5,6 +5,11 @@ import { FirebaseService } from '../core/firebase.service';
 import { UserService } from '../core/user.service';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 
+export interface PodcastVoiceSettings {
+  host1VoiceId: string;
+  host2VoiceId: string;
+}
+
 export interface AiSettings {
   features: {
     transcription: {
@@ -28,6 +33,7 @@ export interface AiSettings {
       topK: number;
       maxOutputTokens: number;
     };
+    podcastVoices: PodcastVoiceSettings;
   };
 }
 
@@ -276,6 +282,34 @@ export interface AiSettings {
                 </div>
               </div>
 
+              <!-- Podcast Voice Settings -->
+              <div class="mb-6 p-4 bg-gray-50 rounded-lg">
+                <h4 class="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                  <span>🗣️</span>
+                  <span>Podcast Voices (ElevenLabs)</span>
+                </h4>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Host 1 Voice ID</label>
+                    <input
+                      type="text"
+                      [(ngModel)]="aiSettings()!.features.podcastVoices.host1VoiceId"
+                      name="podcast-voice-host1"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Host 2 Voice ID</label>
+                    <input
+                      type="text"
+                      [(ngModel)]="aiSettings()!.features.podcastVoices.host2VoiceId"
+                      name="podcast-voice-host2"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                    />
+                  </div>
+                </div>
+              </div>
+
               <!-- Action Buttons -->
               <div class="flex gap-3">
                 <button
@@ -337,6 +371,31 @@ export interface AiSettings {
 export class AdminComponent implements OnInit {
   private readonly firebaseService = inject(FirebaseService);
   readonly userService = inject(UserService);
+  private readonly defaultTranscriptionConfig = {
+    model: '',
+    temperature: 0.3,
+    topP: 0.95,
+    topK: 40,
+    maxOutputTokens: 128000
+  };
+  private readonly defaultStoryConfig = {
+    model: '',
+    temperature: 0.8,
+    topP: 0.95,
+    topK: 40,
+    maxOutputTokens: 32000
+  };
+  private readonly defaultPodcastScriptConfig = {
+    model: '',
+    temperature: 0.9,
+    topP: 0.95,
+    topK: 40,
+    maxOutputTokens: 8192
+  };
+  private readonly defaultPodcastVoices: PodcastVoiceSettings = {
+    host1VoiceId: '',
+    host2VoiceId: ''
+  };
 
   // AI Settings Editor
   aiSettings = signal<AiSettings | null>(null);
@@ -363,7 +422,8 @@ export class AdminComponent implements OnInit {
       const snapshot = await getDoc(settingsDoc);
 
       if (snapshot.exists()) {
-        this.aiSettings.set(snapshot.data() as AiSettings);
+        const settings = this.normalizeSettings(snapshot.data() as AiSettings);
+        this.aiSettings.set(settings);
       } else {
         this.settingsError.set('AI settings document not found. Run migration first.');
       }
@@ -405,5 +465,36 @@ export class AdminComponent implements OnInit {
     } finally {
       this.savingSettings.set(false);
     }
+  }
+
+  private normalizeSettings(settings: AiSettings): AiSettings {
+    const features = settings.features ?? {
+      transcription: this.defaultTranscriptionConfig,
+      storyGeneration: this.defaultStoryConfig,
+      podcastScript: this.defaultPodcastScriptConfig,
+      podcastVoices: this.defaultPodcastVoices
+    };
+
+    return {
+      ...settings,
+      features: {
+        transcription: {
+          ...this.defaultTranscriptionConfig,
+          ...features.transcription
+        },
+        storyGeneration: {
+          ...this.defaultStoryConfig,
+          ...features.storyGeneration
+        },
+        podcastScript: {
+          ...this.defaultPodcastScriptConfig,
+          ...features.podcastScript
+        },
+        podcastVoices: {
+          ...this.defaultPodcastVoices,
+          ...features.podcastVoices
+        }
+      }
+    };
   }
 }
