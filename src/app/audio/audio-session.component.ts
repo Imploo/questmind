@@ -4,9 +4,13 @@ import { Subscription, timer, firstValueFrom, catchError } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
 import { httpsCallable } from 'firebase/functions';
 import { AudioStorageService } from './audio-storage.service';
+// NOTE: These frontend services are still used for "Regenerate" and "Retranscribe" features
+// Initial processing now uses backend (AudioCompleteProcessingService)
+// TODO: Migrate regenerate/retranscribe to backend for complete migration
 import { AudioTranscriptionService } from './audio-transcription.service';
 import { SessionStoryService } from './session-story.service';
 import { AudioSessionStateService } from './audio-session-state.service';
+import { AudioCompleteProcessingService } from './audio-complete-processing.service';
 import { PodcastAudioService, PodcastProgress } from './podcast-audio.service';
 import { AuthService } from '../auth/auth.service';
 import { FormattingService } from '../shared/formatting.service';
@@ -18,7 +22,8 @@ import {
   AudioUpload,
   StorageMetadata,
   TranscriptionResult,
-  PodcastVersion
+  PodcastVersion,
+  ProcessingProgress
 } from './audio-session.models';
 import { AudioUploadComponent } from './audio-upload.component';
 import { TranscriptionStatusComponent } from './transcription-status.component';
@@ -65,7 +70,7 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
               [userId]="userId()"
               [campaignId]="campaignId()"
               [canUpload]="canUploadAudio()"
-              (uploadRequested)="startProcessing($event)"
+              (uploadRequested)="startCompleteProcessing($event)"
             ></app-audio-upload>
             <app-transcription-status
               [stage]="stage()"
@@ -342,6 +347,7 @@ export class AudioSessionComponent implements OnDestroy {
     private readonly audioTranscriptionService: AudioTranscriptionService,
     private readonly sessionStoryService: SessionStoryService,
     private readonly sessionStateService: AudioSessionStateService,
+    private readonly completeProcessingService: AudioCompleteProcessingService,
     private readonly podcastAudioService: PodcastAudioService,
     public readonly authService: AuthService,
     private readonly injector: Injector,
@@ -393,7 +399,11 @@ export class AudioSessionComponent implements OnDestroy {
     });
   }
 
-  startProcessing(upload: AudioUpload): void {
+  /**
+   * NEW: Complete processing using backend Cloud Function (Ticket 35)
+   * This replaces the old multi-step process with a unified backend pipeline
+   */
+  async startCompleteProcessing(upload: AudioUpload): Promise<void> {
     if (!this.canUploadAudio()) {
       this.statusMessage.set('You do not have permission to upload in this campaign.');
       this.stage.set('failed');
@@ -409,7 +419,7 @@ export class AudioSessionComponent implements OnDestroy {
 
     this.resetProgress();
     this.stage.set('uploading');
-    this.statusMessage.set('Uploading audio file...');
+    this.statusMessage.set('Starting complete audio processing...');
 
     const session = this.sessionStateService.createSessionDraft(upload);
     this.currentSession.set(session);
@@ -417,36 +427,79 @@ export class AudioSessionComponent implements OnDestroy {
     this.correctionsSaveStatus.set('idle');
     this.refreshSessions();
 
-    this.processingSub?.unsubscribe();
-    this.processingSub = this.audioStorageService
-      .uploadAudioFile(upload.file, upload.campaignId, session.id)
-      .subscribe({
-        next: progress => {
-          this.progress.set(progress.progress);
-        },
-        error: () => this.failSession('Upload failed. Please try again.'),
-        complete: () => {
-          void this.audioStorageService
-            .buildStorageMetadata(upload.file, upload.campaignId, session.id)
-            .then(storage => {
-              this.sessionStateService.updateSession(session.id, {
-                status: 'completed',
-                storageMetadata: storage,
-                storageUrl: storage.downloadUrl,
-                storagePath: storage.storagePath,
-                fileSize: storage.fileSize,
-                contentType: storage.contentType
-              });
-              this.refreshSessions();
+    try {
+      // Start listening to progress BEFORE starting processing
+      this.cleanupProgressListener();
+      this.progressUnsubscribe = this.completeProcessingService.listenToProgress(
+        upload.campaignId,
+        session.id,
+        (progress: ProcessingProgress) => {
+          console.log('Complete processing progress:', progress);
 
-              this.runTranscription(storage, upload.file);
-            })
-            .catch(() => {
-              this.failSession('Upload completed but storage metadata is unavailable.');
-            });
+          // Update UI based on status
+          this.progress.set(progress.progress);
+          this.statusMessage.set(progress.message);
+
+          if (progress.error) {
+            this.failSession(progress.error);
+            this.cleanupProgressListener();
+            return;
+          }
+
+          // Map backend status to frontend stage
+          switch (progress.status) {
+            case 'loading_context':
+              this.stage.set('uploading');
+              break;
+            case 'transcribing':
+            case 'transcription_complete':
+              this.stage.set('transcribing');
+              break;
+            case 'generating_story':
+            case 'story_complete':
+              this.stage.set('generating');
+              break;
+            case 'generating_script':
+            case 'script_complete':
+            case 'generating_audio':
+            case 'uploading':
+              this.stage.set('generating'); // Keep as generating for podcast
+              break;
+            case 'completed':
+              this.stage.set('completed');
+              this.cleanupProgressListener();
+              this.refreshSessions();
+              break;
+            case 'failed':
+              this.failSession(progress.error || 'Processing failed');
+              this.cleanupProgressListener();
+              break;
+          }
         }
-      });
+      );
+
+      // Start processing (fire-and-forget)
+      await this.completeProcessingService.startCompleteProcessing(
+        upload.campaignId,
+        session.id,
+        upload.file,
+        {
+          sessionTitle: upload.sessionName || 'Untitled Session',
+          sessionDate: upload.sessionDate,
+          enableKankaContext: this.kankaEnabled() && this.kankaAvailable(),
+          userCorrections: this.userCorrections()
+        }
+      );
+
+      console.log('Complete processing started, listening for updates...');
+
+    } catch (error: any) {
+      console.error('Failed to start complete processing:', error);
+      this.failSession(error?.message || 'Failed to start audio processing');
+      this.cleanupProgressListener();
+    }
   }
+
 
   cancelProcessing(): void {
     this.processingSub?.unsubscribe();
@@ -461,7 +514,7 @@ export class AudioSessionComponent implements OnDestroy {
       this.statusMessage.set('No upload available to retry.');
       return;
     }
-    this.startProcessing(lastUpload);
+    void this.startCompleteProcessing(lastUpload);
   }
 
   regenerateStory(): void {

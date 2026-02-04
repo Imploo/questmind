@@ -10,3 +10,4 @@ setGlobalOptions({
 initializeApp();
 
 export { generatePodcastAudio } from './generate-podcast-audio';
+export { processAudioSession } from './process-audio-session';

@@ -16,7 +16,8 @@
       "WebFetch(domain:github.com)",
       "Bash(npm run build:*)",
       "Bash(npx tsc:*)",
-      "Bash(xargs cat:*)"
+      "Bash(xargs cat:*)",
+      "Bash(ls:*)"
     ]
   }
 }

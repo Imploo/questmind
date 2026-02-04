@@ -128,6 +128,27 @@ export interface UploadProgress {
   status: 'uploading' | 'completed' | 'failed';
 }
 
+export type CompleteProcessingStatus =
+  | 'idle'
+  | 'loading_context'
+  | 'transcribing'
+  | 'transcription_complete'
+  | 'generating_story'
+  | 'story_complete'
+  | 'generating_script'
+  | 'script_complete'
+  | 'generating_audio'
+  | 'uploading'
+  | 'completed'
+  | 'failed';
+
+export interface ProcessingProgress {
+  status: CompleteProcessingStatus;
+  progress: number;
+  message: string;
+  error?: string;
+}
+
 export interface AudioSessionRecord extends SessionStory {
   campaignId: string;
   ownerId: string;
@@ -148,4 +169,22 @@ export interface AudioSessionRecord extends SessionStory {
   storyRegenerationCount?: number;
   podcasts?: PodcastVersion[];
   latestPodcastVersion?: number;
+
+  // Complete processing status (Ticket 35)
+  completeProcessingStatus?: CompleteProcessingStatus;
+  completeProcessingProgress?: number;
+  completeProcessingMessage?: string;
+  completeProcessingError?: string;
+
+  // Model tracking
+  modelsUsed?: {
+    transcription?: string;
+    storyGeneration?: string;
+    podcastScript?: string;
+  };
+
+  // Processing metadata
+  processingStartedAt?: string;
+  processingCompletedAt?: string;
+  processingDurationMs?: number;
 }
