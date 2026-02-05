@@ -8,6 +8,7 @@ import * as path from 'path';
 import { Readable } from 'stream';
 import { randomUUID } from 'crypto';
 import { GoogleGenAI } from '@google/genai';
+import { SHARED_CORS } from './index';
 import { PODCAST_SCRIPT_GENERATOR_PROMPT } from './prompts/podcast-script-generator.prompt';
 import { AISettings } from './types/audio-session.types';
 
@@ -68,15 +69,10 @@ type CallableRequest<T> = {
 
 export const generatePodcastAudio = onCall(
   {
-    cors: [
-      'https://questmind.nl',
-      'http://localhost:4200',
-      /^https:\/\/.*\.web\.app$/,
-      /^https:\/\/.*\.firebaseapp\.com$/
-    ],
+    cors: SHARED_CORS,
     secrets: ['GOOGLE_AI_API_KEY', 'ELEVENLABS_API_KEY'],
-    timeoutSeconds: 900,    // 15 minutes
-    memory: '1GiB'         // 1GB
+    timeoutSeconds: 900, // 15 minutes
+    memory: '1GiB'
   },
   async (request: CallableRequest<PodcastGenerationRequest>) => {
     const { auth, data } = request;

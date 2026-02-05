@@ -9,6 +9,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 
+import { SHARED_CORS } from './index';
 import { PODCAST_SCRIPT_GENERATOR_PROMPT } from './prompts/podcast-script-generator.prompt';
 import { transcribeAudioFile } from './audio/transcription.service';
 import { generateStoryFromTranscription } from './story/story-generator.service';
@@ -69,14 +70,9 @@ async function updateProgress(
  */
 export const processAudioSession = onCall(
   {
-    cors: [
-      'https://questmind.nl',
-      'http://localhost:4200',
-      /^https:\/\/.*\.web\.app$/,
-      /^https:\/\/.*\.firebaseapp\.com$/
-    ],
+    cors: SHARED_CORS,
     secrets: ['GOOGLE_AI_API_KEY', 'ELEVENLABS_API_KEY'],
-    timeoutSeconds: 900, // 15 minutes
+    timeoutSeconds: 3600, // 60 minutes for large files
     memory: '2GiB'
   },
   async (request: CallableRequest<ProcessAudioSessionRequest>) => {

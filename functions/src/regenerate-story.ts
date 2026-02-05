@@ -1,5 +1,6 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
+import { SHARED_CORS } from './index';
 import { generateStoryFromTranscription } from './story/story-generator.service';
 import { AISettings, KankaSearchResult } from './types/audio-session.types';
 
@@ -50,12 +51,7 @@ async function updateProgress(
  */
 export const regenerateStory = onCall(
   {
-    cors: [
-      'https://questmind.nl',
-      'http://localhost:4200',
-      /^https:\/\/.*\.web\.app$/,
-      /^https:\/\/.*\.firebaseapp\.com$/
-    ],
+    cors: SHARED_CORS,
     secrets: ['GOOGLE_AI_API_KEY'],
     timeoutSeconds: 600, // 10 minutes
     memory: '1GiB'

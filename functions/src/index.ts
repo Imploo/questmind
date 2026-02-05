@@ -1,9 +1,19 @@
 import { setGlobalOptions } from 'firebase-functions/v2';
 import { initializeApp } from 'firebase-admin/app';
 
+/**
+ * Shared CORS configuration for all callable functions
+ */
+export const SHARED_CORS = [
+  'https://questmind.nl',
+  'http://localhost:4200',
+  /^https:\/\/.*\.web\.app$/,
+  /^https:\/\/.*\.firebaseapp\.com$/
+];
+
 setGlobalOptions({
   region: 'europe-west4',
-  timeoutSeconds: 540,
+  timeoutSeconds: 1200,
   memory: '2GiB'
 });
 

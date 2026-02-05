@@ -10,6 +10,11 @@ import * as ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import * as https from 'https';
+import * as http from 'http';
+import { getStorage } from 'firebase-admin/storage';
+import { pipeline } from 'stream/promises';
+
 
 // Set ffmpeg path
 Ffmpeg.setFfmpegPath(ffmpegInstaller.path);
@@ -111,22 +116,164 @@ export class AudioChunkingService {
   }
 
   /**
-   * Download audio from URL to temp file
+   * Extract storage path from Firebase Storage URL
    */
-  static async downloadAudioToTemp(url: string, fileName: string): Promise<string> {
-    const tempPath = path.join(os.tmpdir(), `audio-${Date.now()}-${fileName}`);
+  private static extractStoragePath(url: string): string | null {
+    // Match Firebase Storage URL pattern
+    const match = url.match(/\/o\/([^?]+)/);
+    if (!match) return null;
 
-    // Download using node fetch
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Failed to download audio: ${response.statusText}`);
+    // Decode the path
+    return decodeURIComponent(match[1]);
+  }
+
+  /**
+   * Download audio from Firebase Storage using Admin SDK (fast, direct access)
+   */
+  private static async downloadFromStorage(storagePath: string, fileName: string): Promise<string> {
+    const tempPath = path.join(os.tmpdir(), `audio-${Date.now()}-${fileName}`);
+    const bucket = getStorage().bucket();
+    const file = bucket.file(storagePath);
+
+    console.log(`Downloading from Storage: ${storagePath}`);
+
+    // Get file size for progress tracking
+    const [metadata] = await file.getMetadata();
+    const totalBytes = parseInt(String(metadata.size) || '0', 10);
+
+    if (totalBytes > 0) {
+      console.log(`File size: ${(totalBytes / 1024 / 1024).toFixed(1)} MB`);
     }
 
-    const buffer = await response.arrayBuffer();
-    fs.writeFileSync(tempPath, Buffer.from(buffer));
+    let downloadedBytes = 0;
+    let lastProgressLog = 0;
 
-    console.log(`Downloaded audio to ${tempPath} (${buffer.byteLength} bytes)`);
-    return tempPath;
+    const readStream = file.createReadStream();
+    const writeStream = fs.createWriteStream(tempPath);
+
+    // Track progress
+    readStream.on('data', (chunk: Buffer) => {
+      downloadedBytes += chunk.length;
+
+      // Log progress every 50MB
+      if (totalBytes > 50 * 1024 * 1024 && downloadedBytes - lastProgressLog > 50 * 1024 * 1024) {
+        const progress = Math.round((downloadedBytes / totalBytes) * 100);
+        console.log(`Download progress: ${progress}% (${(downloadedBytes / 1024 / 1024).toFixed(1)} MB)`);
+        lastProgressLog = downloadedBytes;
+      }
+    });
+
+    try {
+      await pipeline(readStream, writeStream);
+      console.log(`Downloaded from Storage: ${tempPath} (${(downloadedBytes / 1024 / 1024).toFixed(1)} MB)`);
+      return tempPath;
+    } catch (error) {
+      if (fs.existsSync(tempPath)) {
+        fs.unlinkSync(tempPath);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Download audio from URL to temp file using native https module for reliability
+   */
+  static async downloadAudioToTemp(url: string, fileName: string): Promise<string> {
+    // Try to use Firebase Storage SDK if this is a Firebase Storage URL
+    const storagePath = this.extractStoragePath(url);
+    if (storagePath) {
+      console.log('Using Firebase Storage SDK for download (faster)');
+      return this.downloadFromStorage(storagePath, fileName);
+    }
+
+    // Fallback to HTTP download for non-Storage URLs
+    console.log('Using HTTP download');
+    return this.downloadViaHttp(url, fileName);
+  }
+
+  /**
+   * Download via HTTP (fallback for non-Storage URLs)
+   */
+  private static async downloadViaHttp(url: string, fileName: string): Promise<string> {
+    const tempPath = path.join(os.tmpdir(), `audio-${Date.now()}-${fileName}`);
+
+    return new Promise((resolve, reject) => {
+      const writeStream = fs.createWriteStream(tempPath);
+      let downloadedBytes = 0;
+      let totalBytes = 0;
+      let lastProgressLog = 0;
+
+      // Use https or http based on URL protocol
+      const client = url.startsWith('https') ? https : http;
+
+      console.log(`Starting download from: ${url.substring(0, 100)}...`);
+
+      const request = client.get(url, (response) => {
+        // Handle redirects
+        if (response.statusCode === 301 || response.statusCode === 302) {
+          const redirectUrl = response.headers.location;
+          if (!redirectUrl) {
+            reject(new Error('Redirect without location header'));
+            return;
+          }
+          console.log(`Following redirect to: ${redirectUrl.substring(0, 100)}...`);
+          writeStream.close();
+          this.downloadAudioToTemp(redirectUrl, fileName).then(resolve).catch(reject);
+          return;
+        }
+
+        if (response.statusCode !== 200) {
+          reject(new Error(`HTTP ${response.statusCode}: ${response.statusMessage}`));
+          return;
+        }
+
+        totalBytes = parseInt(response.headers['content-length'] || '0', 10);
+        if (totalBytes > 0) {
+          console.log(`Starting download: ${(totalBytes / 1024 / 1024).toFixed(1)} MB`);
+        }
+
+        response.on('data', (chunk: Buffer) => {
+          downloadedBytes += chunk.length;
+
+          // Log progress every 50MB
+          if (totalBytes > 50 * 1024 * 1024 && downloadedBytes - lastProgressLog > 50 * 1024 * 1024) {
+            const progress = Math.round((downloadedBytes / totalBytes) * 100);
+            console.log(`Download progress: ${progress}% (${(downloadedBytes / 1024 / 1024).toFixed(1)} MB)`);
+            lastProgressLog = downloadedBytes;
+          }
+        });
+
+        response.pipe(writeStream);
+
+        writeStream.on('finish', () => {
+          writeStream.close();
+          console.log(`Downloaded audio to ${tempPath} (${(downloadedBytes / 1024 / 1024).toFixed(1)} MB)`);
+          resolve(tempPath);
+        });
+
+        writeStream.on('error', (error) => {
+          writeStream.close();
+          if (fs.existsSync(tempPath)) {
+            fs.unlinkSync(tempPath);
+          }
+          reject(error);
+        });
+      });
+
+      request.on('error', (error) => {
+        writeStream.close();
+        if (fs.existsSync(tempPath)) {
+          fs.unlinkSync(tempPath);
+        }
+        reject(error);
+      });
+
+      // Set a timeout for the request (30 minutes for large files)
+      request.setTimeout(30 * 60 * 1000, () => {
+        request.destroy();
+        reject(new Error('Download timeout after 30 minutes'));
+      });
+    });
   }
 
   /**

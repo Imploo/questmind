@@ -23,8 +23,18 @@
       "mcp__angular-cli__get_best_practices",
       "Bash(npm run build:backend:*)",
       "mcp__angular-cli__list_projects",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(cat:*)",
+      "Bash(node:*)",
+      "Bash(firebase firestore:documents:get:*)",
+      "Bash(firebase --help:*)",
+      "Bash(curl:*)",
+      "Bash(gcloud logging read:*)"
     ]
   },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "firebase"
+  ],
   "outputStyle": "default"
 }
