@@ -42,7 +42,6 @@ export interface TranscribeAudioBatchRequest {
 
 export const transcribeAudioBatch = onCall(
   {
-    region: 'europe-west4',
     timeoutSeconds: 300,
     memory: '1GiB',
     secrets: ['GOOGLE_AI_API_KEY', 'GEMINI_CALLBACK_SECRET'],
@@ -267,9 +266,5 @@ function resolveMimeType(
 }
 
 function buildCallbackUri(): string | null {
-  const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
-  if (!projectId) {
-    return null;
-  }
-  return `https://europe-west4-${projectId}.cloudfunctions.net/geminiCallback`;
+  return 'https://geminicallback-oeoug4az2a-ew.a.run.app';
 }

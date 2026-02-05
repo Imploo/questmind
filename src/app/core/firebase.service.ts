@@ -18,7 +18,7 @@ export class FirebaseService {
       this.app = getApp();
       this.auth = getAuth(this.app);
       this.firestore = getFirestore(this.app);
-      this.functions = getFunctions(this.app, 'europe-west4');
+      this.functions = getFunctions(this.app, 'europe-west1');
       this.storage = getStorage(this.app);
     } catch (error) {
       console.error('Firebase not initialized:', error);

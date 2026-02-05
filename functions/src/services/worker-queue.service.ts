@@ -54,7 +54,6 @@ export class WorkerQueueService {
     // Store the handler for internal use
     const workerFunc = onCall(
       {
-        region: 'europe-west4',
         timeoutSeconds: 1200, // 20 minutes default
         memory: '2GiB',
         secrets: ['GOOGLE_AI_API_KEY'], // Add secrets for all workers

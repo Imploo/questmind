@@ -12,7 +12,7 @@ export const SHARED_CORS = [
 ];
 
 setGlobalOptions({
-  region: 'europe-west4',
+  region: 'europe-west1',
   timeoutSeconds: 1200,
   memory: '2GiB'
 });

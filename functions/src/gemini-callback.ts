@@ -13,7 +13,6 @@ interface GeminiCallbackPayload {
 
 export const geminiCallback = onRequest(
   {
-    region: 'europe-west4',
     timeoutSeconds: 120,
     secrets: ['GEMINI_CALLBACK_SECRET'],
   },
