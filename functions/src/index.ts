@@ -19,7 +19,11 @@ setGlobalOptions({
 
 initializeApp();
 
+// Podcast generation (kept separate from transcription flow)
 export { generatePodcastAudio } from './generate-podcast-audio';
-export { processAudioSession } from './process-audio-session';
-export { retranscribeAudio } from './retranscribe-audio';
-export { regenerateStory } from './regenerate-story';
+
+// New worker chain functions
+export { downloadWorker } from './workers/download-worker';
+export { chunkingWorker } from './workers/chunking-worker';
+export { transcriptionWorker } from './workers/transcription-worker';
+export { storyGenerationWorker } from './workers/story-generation-worker';

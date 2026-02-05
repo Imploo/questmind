@@ -1,8 +1,8 @@
 import { Injectable, inject } from '@angular/core';
 import { httpsCallable, type Functions } from 'firebase/functions';
-import { ref, uploadBytes, getDownloadURL, type FirebaseStorage } from 'firebase/storage';
+import { ref, uploadBytes, type FirebaseStorage } from 'firebase/storage';
 import { doc, onSnapshot, type Firestore, type Unsubscribe } from 'firebase/firestore';
-import { ProcessingProgress } from './audio-session.models';
+import { ProcessingProgress, UnifiedProgress, CompleteProcessingStatus } from './audio-session.models';
 import { FirebaseService } from '../core/firebase.service';
 
 export interface StartProcessingOptions {
@@ -13,14 +13,14 @@ export interface StartProcessingOptions {
 }
 
 /**
- * Unified service for complete audio processing
+ * Unified service for complete audio processing (Worker Chain Architecture)
  *
- * Handles:
- * 1. Upload audio to Cloud Storage
- * 2. Call processAudioSession Cloud Function (fire-and-forget)
- * 3. Listen to progress updates via Firestore onSnapshot
+ * New Flow (Ticket #36):
+ * 1. Upload audio directly to Firebase Storage
+ * 2. Call downloadWorker Cloud Function (fire-and-forget)
+ * 3. Listen to unified progress updates via Firestore onSnapshot
  *
- * Complete pipeline: upload → transcribe → story → script → audio
+ * Worker chain: upload → download → chunk → transcribe → generate story
  */
 @Injectable({
   providedIn: 'root'
@@ -38,9 +38,9 @@ export class AudioCompleteProcessingService {
   }
 
   /**
-   * Start complete audio processing
+   * Start complete audio processing using new worker chain
    *
-   * @returns Promise that resolves when the Cloud Function is called (NOT when processing completes)
+   * @returns Promise that resolves when upload completes and worker is triggered
    */
   async startCompleteProcessing(
     campaignId: string,
@@ -48,34 +48,33 @@ export class AudioCompleteProcessingService {
     audioFile: File,
     options: StartProcessingOptions
   ): Promise<void> {
-    // 1. Upload audio to Cloud Storage
+    // 1. Upload audio directly to Cloud Storage (frontend handles upload)
     const storagePath = `campaigns/${campaignId}/audio/${sessionId}/${audioFile.name}`;
     const storageRef = ref(this.storage, storagePath);
 
     await uploadBytes(storageRef, audioFile);
 
-    const storageUrl = await getDownloadURL(storageRef);
+    // Build storage URL in the format expected by backend
+    const storageUrl = `gs://${this.storage.app.options.storageBucket}/${storagePath}`;
 
-    // 2. Call Cloud Function (fire-and-forget)
-    const processAudio = httpsCallable(this.functions, 'processAudioSession');
+    // 2. Trigger downloadWorker to start the processing chain
+    const downloadWorker = httpsCallable(this.functions, 'downloadWorker');
 
     const request = {
-      campaignId,
       sessionId,
       storageUrl,
       audioFileName: audioFile.name,
-      audioFileSize: audioFile.size,
-      sessionTitle: options.sessionTitle,
-      sessionDate: options.sessionDate,
       enableKankaContext: options.enableKankaContext ?? false,
       userCorrections: options.userCorrections
     };
 
-    await processAudio(request);
+    await downloadWorker(request);
   }
 
   /**
-   * Listen to progress updates
+   * Listen to unified progress updates (new worker chain)
+   *
+   * Maps new progress structure to legacy ProcessingProgress for UI compatibility
    *
    * @returns Unsubscribe function to stop listening
    */
@@ -96,7 +95,22 @@ export class AudioCompleteProcessingService {
       }
 
       const data = snapshot.data();
-      if (data) {
+      if (data && data['progress']) {
+        const unifiedProgress = data['progress'] as UnifiedProgress;
+
+        // Map new stage to legacy status
+        const legacyStatus = this.mapStageToLegacyStatus(unifiedProgress.stage);
+
+        const progress: ProcessingProgress = {
+          status: legacyStatus,
+          progress: unifiedProgress.progress,
+          message: unifiedProgress.currentStep || this.getDefaultMessage(unifiedProgress.stage),
+          error: unifiedProgress.failure?.error
+        };
+
+        callback(progress);
+      } else {
+        // Fallback to legacy fields if new progress not available
         const progress: ProcessingProgress = {
           status: data['completeProcessingStatus'] || 'idle',
           progress: data['completeProcessingProgress'] || 0,
@@ -115,5 +129,39 @@ export class AudioCompleteProcessingService {
         error: error.message
       });
     });
+  }
+
+  /**
+   * Map new worker stage to legacy status for UI compatibility
+   */
+  private mapStageToLegacyStatus(stage: string): CompleteProcessingStatus {
+    const stageMap: Record<string, CompleteProcessingStatus> = {
+      'uploading': 'idle',
+      'downloading': 'loading_context',
+      'chunking': 'transcribing',
+      'transcribing': 'transcribing',
+      'generating-story': 'generating_story',
+      'completed': 'completed',
+      'failed': 'failed'
+    };
+
+    return stageMap[stage] || 'idle';
+  }
+
+  /**
+   * Get default message for a stage
+   */
+  private getDefaultMessage(stage: string): string {
+    const messages: Record<string, string> = {
+      'uploading': 'Uploading audio file...',
+      'downloading': 'Downloading audio file...',
+      'chunking': 'Preparing audio for transcription...',
+      'transcribing': 'Transcribing audio...',
+      'generating-story': 'Generating story...',
+      'completed': 'Processing complete',
+      'failed': 'Processing failed'
+    };
+
+    return messages[stage] || 'Processing...';
   }
 }

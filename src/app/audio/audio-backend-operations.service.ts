@@ -1,7 +1,8 @@
 import { Injectable } from '@angular/core';
 import { httpsCallable, type Functions } from 'firebase/functions';
-import { doc, onSnapshot, type Firestore, type Unsubscribe } from 'firebase/firestore';
+import { doc, onSnapshot, getDoc, type Firestore, type Unsubscribe } from 'firebase/firestore';
 import { FirebaseService } from '../core/firebase.service';
+import { UnifiedProgress } from './audio-session.models';
 
 export interface RetranscribeOptions {
   enableKankaContext?: boolean;
@@ -58,7 +59,7 @@ export class AudioBackendOperationsService {
   }
 
   /**
-   * Retranscribe audio from existing session
+   * Retranscribe audio from existing session using new worker chain
    *
    * @param campaignId - Campaign ID
    * @param sessionId - Session ID
@@ -70,19 +71,39 @@ export class AudioBackendOperationsService {
     sessionId: string,
     options: RetranscribeOptions = {}
   ): Promise<void> {
-    const retranscribe = httpsCallable(this.functions, 'retranscribeAudio');
+    // Get existing session data to retrieve storage URL
+    const sessionRef = doc(
+      this.firestore,
+      `campaigns/${campaignId}/audioSessions/${sessionId}`
+    );
 
-    await retranscribe({
-      campaignId,
+    const sessionSnap = await getDoc(sessionRef);
+    if (!sessionSnap.exists()) {
+      throw new Error('Session not found');
+    }
+
+    const sessionData = sessionSnap.data();
+    const storageUrl = sessionData['storageUrl'];
+    const audioFileName = sessionData['audioFileName'] || 'audio.wav';
+
+    if (!storageUrl) {
+      throw new Error('No audio file found for this session');
+    }
+
+    // Trigger downloadWorker to start retranscription chain
+    const downloadWorker = httpsCallable(this.functions, 'downloadWorker');
+
+    await downloadWorker({
       sessionId,
+      storageUrl,
+      audioFileName,
       enableKankaContext: options.enableKankaContext,
-      userCorrections: options.userCorrections,
-      regenerateStoryAfterTranscription: options.regenerateStoryAfterTranscription ?? true
+      userCorrections: options.userCorrections
     });
   }
 
   /**
-   * Listen to retranscribe progress updates
+   * Listen to retranscribe progress updates (uses unified progress)
    *
    * @param campaignId - Campaign ID
    * @param sessionId - Session ID
@@ -103,18 +124,47 @@ export class AudioBackendOperationsService {
       if (snapshot.exists()) {
         const data = snapshot.data();
 
-        callback({
-          status: data['retranscribeStatus'] || 'loading_context',
-          progress: data['retranscribeProgress'] || 0,
-          message: data['retranscribeMessage'] || '',
-          error: data['retranscribeError']
-        });
+        // Use new unified progress if available
+        if (data['progress']) {
+          const unifiedProgress = data['progress'] as UnifiedProgress;
+
+          callback({
+            status: this.mapStageToRetranscribeStatus(unifiedProgress.stage),
+            progress: unifiedProgress.progress,
+            message: unifiedProgress.currentStep || this.getDefaultMessage(unifiedProgress.stage),
+            error: unifiedProgress.failure?.error
+          });
+        } else {
+          // Fallback to legacy fields
+          callback({
+            status: data['retranscribeStatus'] || 'loading_context',
+            progress: data['retranscribeProgress'] || 0,
+            message: data['retranscribeMessage'] || '',
+            error: data['retranscribeError']
+          });
+        }
       }
     });
   }
 
   /**
-   * Regenerate story from existing transcription
+   * Map unified stage to retranscribe status
+   */
+  private mapStageToRetranscribeStatus(stage: string): RetranscribeStatus {
+    const stageMap: Record<string, RetranscribeStatus> = {
+      'downloading': 'loading_context',
+      'chunking': 'transcribing',
+      'transcribing': 'transcribing',
+      'generating-story': 'generating_story',
+      'completed': 'completed',
+      'failed': 'failed'
+    };
+
+    return stageMap[stage] || 'loading_context';
+  }
+
+  /**
+   * Regenerate story from existing transcription using new worker
    *
    * @param campaignId - Campaign ID
    * @param sessionId - Session ID
@@ -126,18 +176,37 @@ export class AudioBackendOperationsService {
     sessionId: string,
     options: RegenerateStoryOptions = {}
   ): Promise<void> {
-    const regenerate = httpsCallable(this.functions, 'regenerateStory');
+    // Get existing transcription from session
+    const sessionRef = doc(
+      this.firestore,
+      `campaigns/${campaignId}/audioSessions/${sessionId}`
+    );
 
-    await regenerate({
-      campaignId,
+    const sessionSnap = await getDoc(sessionRef);
+    if (!sessionSnap.exists()) {
+      throw new Error('Session not found');
+    }
+
+    const sessionData = sessionSnap.data();
+    const transcriptionText = sessionData['transcriptionText'];
+
+    if (!transcriptionText) {
+      throw new Error('No transcription found for this session');
+    }
+
+    // Trigger storyGenerationWorker directly (skips download/chunk/transcribe)
+    const storyGenerationWorker = httpsCallable(this.functions, 'storyGenerationWorker');
+
+    await storyGenerationWorker({
       sessionId,
+      transcriptionText,
       enableKankaContext: options.enableKankaContext,
       userCorrections: options.userCorrections
     });
   }
 
   /**
-   * Listen to regenerate story progress updates
+   * Listen to regenerate story progress updates (uses unified progress)
    *
    * @param campaignId - Campaign ID
    * @param sessionId - Session ID
@@ -158,13 +227,55 @@ export class AudioBackendOperationsService {
       if (snapshot.exists()) {
         const data = snapshot.data();
 
-        callback({
-          status: data['regenerateStoryStatus'] || 'loading_context',
-          progress: data['regenerateStoryProgress'] || 0,
-          message: data['regenerateStoryMessage'] || '',
-          error: data['regenerateStoryError']
-        });
+        // Use new unified progress if available
+        if (data['progress']) {
+          const unifiedProgress = data['progress'] as UnifiedProgress;
+
+          callback({
+            status: this.mapStageToRegenerateStatus(unifiedProgress.stage),
+            progress: unifiedProgress.progress,
+            message: unifiedProgress.currentStep || this.getDefaultMessage(unifiedProgress.stage),
+            error: unifiedProgress.failure?.error
+          });
+        } else {
+          // Fallback to legacy fields
+          callback({
+            status: data['regenerateStoryStatus'] || 'loading_context',
+            progress: data['regenerateStoryProgress'] || 0,
+            message: data['regenerateStoryMessage'] || '',
+            error: data['regenerateStoryError']
+          });
+        }
       }
     });
+  }
+
+  /**
+   * Map unified stage to regenerate story status
+   */
+  private mapStageToRegenerateStatus(stage: string): RegenerateStoryStatus {
+    const stageMap: Record<string, RegenerateStoryStatus> = {
+      'generating-story': 'generating_story',
+      'completed': 'completed',
+      'failed': 'failed'
+    };
+
+    return stageMap[stage] || 'loading_context';
+  }
+
+  /**
+   * Get default message for a stage
+   */
+  private getDefaultMessage(stage: string): string {
+    const messages: Record<string, string> = {
+      'downloading': 'Downloading audio...',
+      'chunking': 'Preparing audio...',
+      'transcribing': 'Transcribing audio...',
+      'generating-story': 'Generating story...',
+      'completed': 'Complete',
+      'failed': 'Failed'
+    };
+
+    return messages[stage] || 'Processing...';
   }
 }

@@ -142,6 +142,36 @@ export type CompleteProcessingStatus =
   | 'completed'
   | 'failed';
 
+/**
+ * New unified progress structure (worker chain architecture)
+ */
+export type ProgressStage =
+  | 'uploading'
+  | 'downloading'
+  | 'chunking'
+  | 'transcribing'
+  | 'generating-story'
+  | 'completed'
+  | 'failed';
+
+export interface ProgressFailure {
+  stage: string;
+  error: string;
+  timestamp: Date;
+  details?: any;
+}
+
+export interface UnifiedProgress {
+  stage: ProgressStage;
+  progress: number; // 0-100 percentage
+  currentStep?: string;
+  failure?: ProgressFailure;
+  updatedAt: Date;
+}
+
+/**
+ * Legacy progress structure (for backward compatibility)
+ */
 export interface ProcessingProgress {
   status: CompleteProcessingStatus;
   progress: number;
@@ -172,7 +202,10 @@ export interface AudioSessionRecord extends SessionStory {
   podcasts?: PodcastVersion[];
   latestPodcastVersion?: number;
 
-  // Complete processing status (Ticket 35)
+  // New unified progress (worker chain - Ticket 36)
+  progress?: UnifiedProgress;
+
+  // Complete processing status (Ticket 35 - Legacy)
   completeProcessingStatus?: CompleteProcessingStatus;
   completeProcessingProgress?: number;
   completeProcessingMessage?: string;
