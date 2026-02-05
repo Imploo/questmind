@@ -5,6 +5,7 @@ import { AppShellComponent } from './app-shell.component';
 import { campaignGuard } from './campaign/campaign.guard';
 import { ChatComponent } from './chat/chat.component';
 import { AudioSessionComponent } from './audio/audio-session.component';
+import { AudioUploadPageComponent } from './audio/audio-upload-page.component';
 import { PodcastLibraryComponent } from './audio/podcast-library.component';
 import { AdminComponent } from './admin/admin.component';
 import { adminGuard } from './auth/admin.guard';
@@ -33,6 +34,10 @@ export const routes: Routes = [
       {
         path: 'audio',
         component: AudioSessionComponent
+      },
+      {
+        path: 'audio/new',
+        component: AudioUploadPageComponent
       },
       {
         path: 'audio/:sessionId',
@@ -66,6 +71,10 @@ export const routes: Routes = [
       {
         path: 'audio',
         component: AudioSessionComponent
+      },
+      {
+        path: 'audio/new',
+        component: AudioUploadPageComponent
       },
       {
         path: 'audio/:sessionId',

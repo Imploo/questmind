@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { httpsCallable, type Functions } from 'firebase/functions';
-import { ref, uploadBytes, type FirebaseStorage } from 'firebase/storage';
+import { ref, uploadBytesResumable, type FirebaseStorage } from 'firebase/storage';
 import { doc, onSnapshot, type Firestore, type Unsubscribe } from 'firebase/firestore';
 import { ProcessingProgress, UnifiedProgress, CompleteProcessingStatus } from './audio-session.models';
 import { FirebaseService } from '../core/firebase.service';
@@ -40,19 +40,45 @@ export class AudioCompleteProcessingService {
   /**
    * Start complete audio processing using new worker chain
    *
-   * @returns Promise that resolves when upload completes and worker is triggered
+   * @param onUploadProgress - Optional callback for upload progress (0-99)
+   * @returns Promise that resolves with session ID when upload completes and worker is triggered
    */
   async startCompleteProcessing(
     campaignId: string,
     sessionId: string,
     audioFile: File,
-    options: StartProcessingOptions
-  ): Promise<void> {
-    // 1. Upload audio directly to Cloud Storage (frontend handles upload)
+    options: StartProcessingOptions,
+    onUploadProgress?: (progress: number) => void
+  ): Promise<string> {
+    // 1. Upload audio directly to Cloud Storage with progress tracking
     const storagePath = `campaigns/${campaignId}/audio/${sessionId}/${audioFile.name}`;
     const storageRef = ref(this.storage, storagePath);
 
-    await uploadBytes(storageRef, audioFile);
+    // Use uploadBytesResumable for progress tracking
+    const uploadTask = uploadBytesResumable(storageRef, audioFile);
+
+    await new Promise<void>((resolve, reject) => {
+      uploadTask.on(
+        'state_changed',
+        (snapshot) => {
+          // Calculate progress (0-99%, save 100% for when downloadWorker returns)
+          const rawProgress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          const cappedProgress = Math.min(rawProgress, 99);
+
+          if (onUploadProgress) {
+            onUploadProgress(cappedProgress);
+          }
+        },
+        (error) => {
+          console.error('Upload error:', error);
+          reject(error);
+        },
+        () => {
+          // Upload completed successfully
+          resolve();
+        }
+      );
+    });
 
     // Build storage URL in the format expected by backend
     const storageUrl = `gs://${this.storage.app.options.storageBucket}/${storagePath}`;
@@ -69,6 +95,9 @@ export class AudioCompleteProcessingService {
     };
 
     await downloadWorker(request);
+
+    // Return session ID for navigation
+    return sessionId;
   }
 
   /**

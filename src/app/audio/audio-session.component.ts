@@ -2,9 +2,7 @@ import { Component, OnDestroy, effect, signal, computed, inject, Injector, runIn
 import { CommonModule } from '@angular/common';
 import { Router, ActivatedRoute } from '@angular/router';
 import { Subscription } from 'rxjs';
-import { AudioStorageService } from './audio-storage.service';
 import { AudioSessionStateService } from './audio-session-state.service';
-import { AudioCompleteProcessingService } from './audio-complete-processing.service';
 import { AudioBackendOperationsService, RetranscribeProgress, RegenerateStoryProgress } from './audio-backend-operations.service';
 import { PodcastAudioService, PodcastProgress } from './podcast-audio.service';
 import { AuthService } from '../auth/auth.service';
@@ -13,11 +11,8 @@ import { CampaignContextService } from '../campaign/campaign-context.service';
 import { CampaignService } from '../campaign/campaign.service';
 import {
   AudioSessionRecord,
-  AudioUpload,
-  PodcastVersion,
-  ProcessingProgress
+  PodcastVersion
 } from './audio-session.models';
-import { AudioUploadComponent } from './audio-upload.component';
 import { SessionStoryComponent } from './session-story.component';
 import { KankaService } from '../kanka/kanka.service';
 
@@ -25,7 +20,7 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
 
 @Component({
   selector: 'app-audio-session',
-  imports: [CommonModule, AudioUploadComponent, SessionStoryComponent],
+  imports: [CommonModule, SessionStoryComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (!authService.isAuthenticated()) {
@@ -105,20 +100,33 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
             [class.max-h-[85vh]]="mobileDrawerOpen()"
             [class.shadow-2xl]="mobileDrawerOpen()"
           >
-            <div class="p-4 border-b border-gray-200 flex items-center justify-between">
-              <div>
-                <h3 class="text-sm font-semibold text-gray-700 m-0">Sessions</h3>
-                <p class="text-xs text-gray-500 m-0 mt-1">{{ sortedSessions().length }} session(s)</p>
+            <div class="p-4 border-b border-gray-200">
+              <div class="flex items-center justify-between mb-3">
+                <div>
+                  <h3 class="text-sm font-semibold text-gray-700 m-0">Sessions</h3>
+                  <p class="text-xs text-gray-500 m-0 mt-1">{{ sortedSessions().length }} session(s)</p>
+                </div>
+                <!-- Close button for mobile -->
+                <button
+                  type="button"
+                  (click)="mobileDrawerOpen.set(false)"
+                  class="lg:hidden p-1 hover:bg-gray-100 rounded transition-colors"
+                >
+                  <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                  </svg>
+                </button>
               </div>
-              <!-- Close button for mobile -->
+              <!-- New button -->
               <button
                 type="button"
-                (click)="mobileDrawerOpen.set(false)"
-                class="lg:hidden p-1 hover:bg-gray-100 rounded transition-colors"
+                (click)="navigateToNew(); mobileDrawerOpen.set(false)"
+                class="w-full px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 text-sm font-medium"
               >
-                <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
                 </svg>
+                New Session
               </button>
             </div>
             <div class="flex-1 overflow-y-auto">
@@ -166,18 +174,6 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
         <!-- Right panel: Session details (scrolls naturally with page) -->
         <main class="flex-1 min-w-0">
           <div class="grid gap-6">
-            <!-- Upload with integrated status -->
-            <app-audio-upload
-              [isBusy]="isBusy()"
-              [userId]="userId()"
-              [campaignId]="campaignId()"
-              [canUpload]="canUploadAudio()"
-              [stage]="stage()"
-              [progress]="progress()"
-              [statusMessage]="statusMessage()"
-              (uploadRequested)="startCompleteProcessing($event)"
-            ></app-audio-upload>
-
             @if (currentSession()) {
               <!-- Session story with integrated podcasts tab -->
               <app-session-story
@@ -212,14 +208,29 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
             }
 
             <!-- Empty state when no session selected -->
-            @if (!currentSession() && sortedSessions().length > 0) {
+            @if (!currentSession()) {
               <div class="border border-gray-200 rounded-xl bg-white shadow-sm p-8 text-center">
                 <div class="max-w-md mx-auto">
-                  <div class="text-4xl mb-3">👈</div>
-                  <h3 class="text-lg font-semibold text-gray-800 mb-2">Select a session</h3>
-                  <p class="text-gray-600 m-0">
-                    Choose a session from the list to view its details and story.
-                  </p>
+                  @if (sortedSessions().length > 0) {
+                    <div class="text-4xl mb-3">👈</div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-2">Select a session</h3>
+                    <p class="text-gray-600 m-0">
+                      Choose a session from the list to view its details and story.
+                    </p>
+                  } @else {
+                    <div class="text-6xl mb-4">🎙️</div>
+                    <h3 class="text-xl font-semibold text-gray-800 mb-2">No sessions yet</h3>
+                    <p class="text-gray-600 mb-6">
+                      Upload your first audio session to get started with AI-powered transcriptions and session stories.
+                    </p>
+                    <button
+                      type="button"
+                      (click)="navigateToNew()"
+                      class="px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors font-medium"
+                    >
+                      Upload Audio Session
+                    </button>
+                  }
                 </div>
               </div>
             }
@@ -275,7 +286,6 @@ export class AudioSessionComponent implements OnDestroy {
   progress = signal<number>(0);
   statusMessage = signal<string>('Waiting for upload.');
   currentSession = signal<AudioSessionRecord | null>(null);
-  lastUpload = signal<AudioUpload | null>(null);
 
   sessions = signal<AudioSessionRecord[]>([]);
   
@@ -294,10 +304,8 @@ export class AudioSessionComponent implements OnDestroy {
   mobileDrawerOpen = signal(false);
 
   constructor(
-    private readonly audioStorageService: AudioStorageService,
-    private readonly sessionStateService: AudioSessionStateService,
-    private readonly completeProcessingService: AudioCompleteProcessingService,
-    private readonly backendOperations: AudioBackendOperationsService,
+        private readonly sessionStateService: AudioSessionStateService,
+        private readonly backendOperations: AudioBackendOperationsService,
     private readonly podcastAudioService: PodcastAudioService,
     public readonly authService: AuthService,
     private readonly injector: Injector,
@@ -364,121 +372,6 @@ export class AudioSessionComponent implements OnDestroy {
         }
       }
     });
-  }
-
-  /**
-   * NEW: Complete processing using backend Cloud Function (Ticket 35)
-   * This replaces the old multi-step process with a unified backend pipeline
-   */
-  async startCompleteProcessing(upload: AudioUpload): Promise<void> {
-    if (!this.canUploadAudio()) {
-      this.statusMessage.set('You do not have permission to upload in this campaign.');
-      this.stage.set('failed');
-      return;
-    }
-    this.lastUpload.set(upload);
-    const validationError = this.audioStorageService.validateFile(upload.file);
-    if (validationError) {
-      this.statusMessage.set(validationError);
-      this.stage.set('failed');
-      return;
-    }
-
-    this.resetProgress();
-    this.stage.set('uploading');
-    this.statusMessage.set('Starting complete audio processing...');
-
-    const session = this.sessionStateService.createSessionDraft(upload);
-    this.currentSession.set(session);
-    this.userCorrections.set(session.userCorrections ?? '');
-    this.correctionsSaveStatus.set('idle');
-    this.refreshSessions();
-
-    try {
-      // Start listening to progress BEFORE starting processing
-      this.cleanupProgressListener();
-      this.progressUnsubscribe = this.completeProcessingService.listenToProgress(
-        upload.campaignId,
-        session.id,
-        (progress: ProcessingProgress) => {
-
-          // Update UI based on status
-          this.progress.set(progress.progress);
-          this.statusMessage.set(progress.message);
-
-          if (progress.error) {
-            this.failSession(progress.error);
-            this.cleanupProgressListener();
-            return;
-          }
-
-          // Map backend status to frontend stage
-          switch (progress.status) {
-            case 'loading_context':
-              this.stage.set('uploading');
-              break;
-            case 'transcribing':
-            case 'transcription_complete':
-              this.stage.set('transcribing');
-              break;
-            case 'generating_story':
-            case 'story_complete':
-              this.stage.set('generating');
-              break;
-            case 'generating_script':
-            case 'script_complete':
-            case 'generating_audio':
-            case 'uploading':
-              this.stage.set('generating'); // Keep as generating for podcast
-              break;
-            case 'completed':
-              this.stage.set('completed');
-              this.cleanupProgressListener();
-              this.refreshSessions();
-              break;
-            case 'failed':
-              this.failSession(progress.error || 'Processing failed');
-              this.cleanupProgressListener();
-              break;
-          }
-        }
-      );
-
-      // Start processing (fire-and-forget)
-      await this.completeProcessingService.startCompleteProcessing(
-        upload.campaignId,
-        session.id,
-        upload.file,
-        {
-          sessionTitle: upload.sessionName || 'Untitled Session',
-          sessionDate: upload.sessionDate,
-          enableKankaContext: this.kankaEnabled() && this.kankaAvailable(),
-          userCorrections: this.userCorrections()
-        }
-      );
-
-    } catch (error: any) {
-      console.error('Failed to start complete processing:', error);
-      this.failSession(error?.message || 'Failed to start audio processing');
-      this.cleanupProgressListener();
-    }
-  }
-
-
-  cancelProcessing(): void {
-    this.cleanupProgressListener();
-    this.stageTimerSub?.unsubscribe();
-    this.statusMessage.set('Processing cancelled.');
-    this.stage.set('failed');
-  }
-
-  retryProcessing(): void {
-    const lastUpload = this.lastUpload();
-    if (!lastUpload) {
-      this.statusMessage.set('No upload available to retry.');
-      return;
-    }
-    void this.startCompleteProcessing(lastUpload);
   }
 
   async regenerateStory(): Promise<void> {
@@ -654,11 +547,17 @@ export class AudioSessionComponent implements OnDestroy {
 
   selectSession(session: AudioSessionRecord): void {
     this.selectSessionWithoutNavigation(session);
-    
+
     // Navigate to the session route
     const campaignId = this.campaignId();
     const basePath = campaignId ? `/campaign/${campaignId}/audio` : '/audio';
     void this.router.navigate([basePath, session.id]);
+  }
+
+  navigateToNew(): void {
+    const campaignId = this.campaignId();
+    const basePath = campaignId ? `/campaign/${campaignId}/audio` : '/audio';
+    void this.router.navigate([basePath, 'new']);
   }
 
   private selectSessionWithoutNavigation(session: AudioSessionRecord): void {

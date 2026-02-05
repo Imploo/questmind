@@ -119,7 +119,15 @@ export class AudioChunkingService {
    * Extract storage path from Firebase Storage URL
    */
   private static extractStoragePath(url: string): string | null {
-    // Match Firebase Storage URL pattern
+    // Handle gs:// URLs (e.g., gs://bucket-name/path/to/file)
+    if (url.startsWith('gs://')) {
+      const gsMatch = url.match(/^gs:\/\/[^/]+\/(.+)$/);
+      if (gsMatch) {
+        return gsMatch[1];
+      }
+    }
+
+    // Match Firebase Storage HTTP/HTTPS URL pattern
     const match = url.match(/\/o\/([^?]+)/);
     if (!match) return null;
 

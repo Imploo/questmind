@@ -5,6 +5,9 @@ import { AudioUpload } from './audio-session.models';
 
 type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' | 'failed';
 
+// Export for external use
+export type UploadRequestEvent = AudioUpload;
+
 @Component({
   selector: 'app-audio-upload',
   standalone: true,
@@ -87,44 +90,43 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
       </div>
 
       @if (selectedFile()) {
-        <div class="mt-4 flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-          <div>
-            <p class="m-0 text-sm font-semibold text-gray-700">{{ selectedFile()?.name }}</p>
-            <p class="m-0 text-xs text-gray-500">{{ formatFileSize(selectedFile()?.size || 0) }}</p>
-          </div>
-          <button
-            type="button"
-            class="text-xs text-gray-500 hover:text-gray-700"
-            (click)="clearFile()"
-            [disabled]="isBusy || !canUpload"
-          >
-            Remove
-          </button>
+        <div class="mt-4 p-3 bg-blue-50 border border-blue-100 rounded-lg text-sm">
+          <p class="m-0 text-blue-900">
+            <strong>{{ selectedFile()!.name }}</strong> ({{ formatFileSize(selectedFile()!.size) }})
+          </p>
         </div>
       }
 
       @if (error()) {
-        <div class="mt-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-          {{ error() }}
+        <div class="mt-4 p-3 bg-red-50 border border-red-100 rounded-lg text-sm">
+          <p class="m-0 text-red-900">{{ error() }}</p>
         </div>
       }
 
-      <div class="mt-5 flex justify-end gap-3">
+      <div class="mt-4 flex gap-2 justify-end">
+        @if (selectedFile()) {
+          <button
+            type="button"
+            class="px-4 py-2 rounded-lg font-semibold transition-colors"
+            [class]="'bg-gray-100 text-gray-900 hover:bg-gray-200'"
+            (click)="selectedFile.set(null); sessionName = ''; sessionDate = ''"
+            [disabled]="isBusy"
+          >
+            Clear
+          </button>
+        }
         <button
           type="button"
-          class="px-4 py-2 text-sm font-semibold rounded-lg border border-gray-200 text-gray-600 hover:text-gray-800"
-          (click)="clearAll()"
-            [disabled]="isBusy || !canUpload"
+          class="px-4 py-2 rounded-lg font-semibold transition-colors"
+          [class]="
+            selectedFile() && !isBusy
+              ? 'bg-primary text-white hover:opacity-90'
+              : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+          "
+          (click)="uploadFile()"
+          [disabled]="!selectedFile() || isBusy || !canUpload"
         >
-          Reset
-        </button>
-        <button
-          type="button"
-          class="px-5 py-2 text-sm font-semibold rounded-lg bg-primary text-white hover:bg-primary-dark disabled:bg-gray-300"
-          (click)="submitUpload()"
-          [disabled]="isBusy || !selectedFile() || !canUpload"
-        >
-          Upload & Transcribe
+          {{ isBusy ? 'Uploading...' : 'Upload & Process' }}
         </button>
       </div>
     </div>
@@ -134,101 +136,75 @@ export class AudioUploadComponent {
   @Input() isBusy = false;
   @Input() userId: string | null = null;
   @Input() campaignId: string | null = null;
-  @Input() canUpload = true;
+  @Input() canUpload = false;
   @Input() stage: Stage = 'idle';
   @Input() progress = 0;
-  @Input() statusMessage = 'Waiting for upload.';
+  @Input() statusMessage = '';
   @Output() uploadRequested = new EventEmitter<AudioUpload>();
 
+  selectedFile = signal<File | null>(null);
   sessionName = '';
   sessionDate = '';
-  selectedFile = signal<File | null>(null);
-  error = signal<string>('');
-  dragActive = signal<boolean>(false);
-
-  stageLabel = computed(() => {
-    switch (this.stage) {
-      case 'uploading':
-        return 'Uploading';
-      case 'transcribing':
-        return 'Transcribing';
-      case 'generating':
-        return 'Writing Story';
-      case 'completed':
-        return 'Completed';
-      case 'failed':
-        return 'Failed';
-      default:
-        return this.isBusy ? 'Processing' : 'Ready';
-    }
-  });
+  dragActive = signal(false);
+  error = signal('');
 
   badgeClass = computed(() => {
-    switch (this.stage) {
-      case 'completed':
-        return 'bg-emerald-100 text-emerald-700';
-      case 'failed':
-        return 'bg-red-100 text-red-700';
-      case 'uploading':
-      case 'transcribing':
-      case 'generating':
-        return 'bg-amber-100 text-amber-700';
-      default:
-        return this.isBusy ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700';
-    }
+    const stageMap: Record<Stage, string> = {
+      'idle': 'bg-gray-100 text-gray-700',
+      'uploading': 'bg-blue-100 text-blue-700',
+      'transcribing': 'bg-purple-100 text-purple-700',
+      'generating': 'bg-orange-100 text-orange-700',
+      'completed': 'bg-green-100 text-green-700',
+      'failed': 'bg-red-100 text-red-700'
+    };
+    return stageMap[this.stage] || stageMap['idle'];
   });
 
-  onFileSelected(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    if (file) {
-      this.setFile(file);
-    }
-    if (input) {
-      input.value = '';
-    }
-  }
+  stageLabel = computed(() => {
+    const labels: Record<Stage, string> = {
+      'idle': 'Ready',
+      'uploading': 'Uploading',
+      'transcribing': 'Transcribing',
+      'generating': 'Generating',
+      'completed': 'Complete',
+      'failed': 'Failed'
+    };
+    return labels[this.stage] || 'Processing';
+  });
 
   onDragOver(event: DragEvent): void {
     event.preventDefault();
+    event.stopPropagation();
     this.dragActive.set(true);
   }
 
   onDragLeave(event: DragEvent): void {
     event.preventDefault();
+    event.stopPropagation();
     this.dragActive.set(false);
   }
 
   onDrop(event: DragEvent): void {
     event.preventDefault();
+    event.stopPropagation();
     this.dragActive.set(false);
-    const file = event.dataTransfer?.files?.[0];
-    if (file) {
-      this.setFile(file);
+
+    const files = event.dataTransfer?.files;
+    if (files && files.length > 0) {
+      this.setFile(files[0]);
     }
   }
 
-  clearFile(): void {
-    this.selectedFile.set(null);
-    this.error.set('');
+  onFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    if (input.files && input.files.length > 0) {
+      this.setFile(input.files[0]);
+    }
   }
 
-  clearAll(): void {
-    this.sessionName = '';
-    this.sessionDate = '';
-    this.clearFile();
-  }
-
-  submitUpload(): void {
+  uploadFile(): void {
     const file = this.selectedFile();
-    if (!file || !this.userId || !this.campaignId || !this.canUpload) {
-      if (!this.userId) {
-        this.error.set('You must be signed in to upload audio files.');
-      } else if (!this.campaignId) {
-        this.error.set('Select a campaign before uploading.');
-      } else if (!this.canUpload) {
-        this.error.set('You do not have permission to upload in this campaign.');
-      }
+    if (!file || !this.userId || !this.campaignId || this.isBusy || !this.canUpload) {
       return;
     }
     this.error.set('');
