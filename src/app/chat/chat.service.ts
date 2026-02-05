@@ -3,7 +3,7 @@ import { Observable, throwError, from } from 'rxjs';
 import { catchError, map, tap } from 'rxjs/operators';
 import { GoogleGenAI } from '@google/genai';
 import { environment } from '../../environments/environment';
-import { DND_CHARACTER_ASSISTANT_PROMPT } from '../prompts';
+import {DND_CHARACTER_ASSISTANT_PROMPT} from "../prompts/dnd-character-assistant.prompt";
 
 export interface Message {
   id: string;

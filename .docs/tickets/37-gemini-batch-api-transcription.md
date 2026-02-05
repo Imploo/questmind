@@ -523,6 +523,7 @@ export const pollBatchJobs = onSchedule('every 5 minutes', async () => {
 ## Dependencies
 
 - Gemini Batch API availability and features
+- Existing `AUDIO_TRANSCRIPTION_PROMPT` from `src/app/prompts/audio-transcription.prompt.ts`
 - Existing Kanka integration for context
 - Current GCS storage structure (no changes needed)
 - Firestore `/settings/ai` document for model configuration
@@ -557,10 +558,13 @@ export const pollBatchJobs = onSchedule('every 5 minutes', async () => {
 
 ### Development Strategy
 1. **Research first**: Verify Gemini Batch API capabilities before coding
-2. **Incremental rollout**: Test with small files before large ones
-3. **Keep old code temporarily**: Don't delete until new approach validated
-4. **Monitor closely**: Track first batch jobs carefully
-5. **Use Haiku subagents**: For npm build commands to save costs
+2. **Prompt reuse**: Move existing `AUDIO_TRANSCRIPTION_PROMPT` to shared location for frontend/backend access
+3. **Incremental rollout**: Test with small files before large ones
+4. **Keep old code temporarily**: Don't delete until new approach validated
+5. **Monitor closely**: Track first batch jobs carefully
+6. **Use Haiku subagents**: For npm build commands to save costs
+7. **Test error cases**: Validate prompt's error handling (NO_AUDIO_DETECTED, AUDIO_CORRUPTED)
+8. **Parse JSON carefully**: Callback handler must correctly parse the prompt's JSON segments format
 
 ### Related Tickets
 - **#36**: Alternative worker chain architecture (superseded if this works)
