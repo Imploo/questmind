@@ -1,7 +1,6 @@
 import { inject } from '@angular/core';
 import { Router, type CanActivateFn } from '@angular/router';
 import { AuthService } from './auth.service';
-import { Observable } from 'rxjs';
 import { map, filter, take } from 'rxjs/operators';
 import { toObservable } from '@angular/core/rxjs-interop';
 
@@ -9,7 +8,7 @@ import { toObservable } from '@angular/core/rxjs-interop';
  * Auth guard that protects routes from unauthenticated access.
  * Redirects to sign-in page if user is not authenticated.
  */
-export const authGuard: CanActivateFn = (route, state) => {
+export const authGuard: CanActivateFn = (_route, state) => {
   const authService = inject(AuthService);
   const router = inject(Router);
 
@@ -39,7 +38,7 @@ export const authGuard: CanActivateFn = (route, state) => {
  * Prevents authenticated users from accessing public routes like sign-in.
  * Redirects to home/dashboard if user is already authenticated.
  */
-export const noAuthGuard: CanActivateFn = (route, state) => {
+export const noAuthGuard: CanActivateFn = (route, _state) => {
   const authService = inject(AuthService);
   const router = inject(Router);
 

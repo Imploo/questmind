@@ -71,7 +71,7 @@ export class AudioCompleteProcessingService {
       userCorrections: options.userCorrections
     };
 
-    const result = await processAudio(request);
+    await processAudio(request);
   }
 
   /**

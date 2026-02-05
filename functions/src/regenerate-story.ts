@@ -128,11 +128,7 @@ export const regenerateStory = onCall(
 
     // RETURN IMMEDIATELY - Processing continues in background
     regenerateStoryInBackground(
-      campaignId,
-      sessionId,
       sessionData.transcription,
-      sessionData.sessionTitle || 'Untitled Session',
-      sessionData.sessionDate,
       enableKankaContext,
       userCorrections,
       sessionRef
@@ -151,11 +147,7 @@ export const regenerateStory = onCall(
  * Background processing function for story regeneration
  */
 async function regenerateStoryInBackground(
-  campaignId: string,
-  sessionId: string,
   transcription: string,
-  sessionTitle: string,
-  sessionDate: string | undefined,
   enableKankaContext: boolean | undefined,
   userCorrections: string | undefined,
   sessionRef: FirebaseFirestore.DocumentReference
@@ -188,7 +180,7 @@ async function regenerateStoryInBackground(
     let kankaContext: KankaSearchResult | undefined;
     if (enableKankaContext) {
       await updateProgress(sessionRef, 'loading_context', 5, 'Loading campaign context...');
-      kankaContext = await loadKankaContext(db, campaignId);
+      kankaContext = await loadKankaContext();
     }
 
     await updateProgress(sessionRef, 'loading_context', 10, 'Context loaded');
@@ -198,8 +190,6 @@ async function regenerateStoryInBackground(
 
     const storyContent = await generateStoryFromTranscription(
       transcription,
-      sessionTitle,
-      sessionDate,
       storyConfig,
       kankaContext,
       userCorrections
@@ -240,7 +230,7 @@ async function regenerateStoryInBackground(
 }
 
 // Helper function
-async function loadKankaContext(db: FirebaseFirestore.Firestore, campaignId: string): Promise<KankaSearchResult> {
+async function loadKankaContext(): Promise<KankaSearchResult> {
   // This would load from Kanka integration - simplified for now
   // In real implementation, this would call Kanka API or load from cache
   return {};

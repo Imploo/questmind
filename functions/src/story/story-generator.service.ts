@@ -15,8 +15,6 @@ import { SESSION_STORY_GENERATOR_PROMPT } from '../prompts/session-story-generat
  */
 export async function generateStoryFromTranscription(
   transcription: string,
-  sessionTitle: string,
-  sessionDate: string | undefined,
   config: AIFeatureConfig,
   kankaContext?: KankaSearchResult,
   userCorrections?: string

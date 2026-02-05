@@ -145,12 +145,8 @@ export const retranscribeAudio = onCall(
 
     // RETURN IMMEDIATELY - Processing continues in background
     retranscribeInBackground(
-      campaignId,
-      sessionId,
       storageUrl,
       sessionData.audioFileName || 'audio.wav',
-      sessionData.sessionTitle || 'Untitled Session',
-      sessionData.sessionDate,
       enableKankaContext,
       userCorrections,
       regenerateStoryAfterTranscription,
@@ -170,12 +166,8 @@ export const retranscribeAudio = onCall(
  * Background processing function for retranscription
  */
 async function retranscribeInBackground(
-  campaignId: string,
-  sessionId: string,
   storageUrl: string,
   audioFileName: string,
-  sessionTitle: string,
-  sessionDate: string | undefined,
   enableKankaContext: boolean | undefined,
   userCorrections: string | undefined,
   regenerateStoryAfterTranscription: boolean,
@@ -217,7 +209,7 @@ async function retranscribeInBackground(
     let kankaContext: KankaSearchResult | undefined;
     if (enableKankaContext) {
       await updateProgress(sessionRef, 'loading_context', 3, 'Loading campaign context...');
-      kankaContext = await loadKankaContext(db, campaignId);
+      kankaContext = await loadKankaContext();
     }
 
     await updateProgress(sessionRef, 'loading_context', 5, 'Context loaded');
@@ -257,8 +249,6 @@ async function retranscribeInBackground(
 
       const storyContent = await generateStoryFromTranscription(
         transcriptionText,
-        sessionTitle,
-        sessionDate,
         storyConfig,
         kankaContext,
         userCorrections
@@ -313,7 +303,7 @@ async function retranscribeInBackground(
 }
 
 // Helper function
-async function loadKankaContext(db: FirebaseFirestore.Firestore, campaignId: string): Promise<KankaSearchResult> {
+async function loadKankaContext(): Promise<KankaSearchResult> {
   // This would load from Kanka integration - simplified for now
   // In real implementation, this would call Kanka API or load from cache
   return {};

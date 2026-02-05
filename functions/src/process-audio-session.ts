@@ -2,7 +2,7 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI } from '@google/genai';
 import { Readable } from 'stream';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -10,7 +10,6 @@ import * as path from 'path';
 import { randomUUID } from 'crypto';
 
 import { PODCAST_SCRIPT_GENERATOR_PROMPT } from './prompts/podcast-script-generator.prompt';
-import { AudioChunkingService } from './audio/chunking.service';
 import { transcribeAudioFile } from './audio/transcription.service';
 import { generateStoryFromTranscription } from './story/story-generator.service';
 import {
@@ -167,7 +166,6 @@ export const processAudioSession = onCall(
       sessionId,
       storageUrl,
       audioFileName,
-      audioFileSize,
       sessionTitle,
       sessionDate,
       enableKankaContext,
@@ -193,7 +191,6 @@ async function processAudioInBackground(
   sessionId: string,
   storageUrl: string,
   audioFileName: string,
-  audioFileSize: number,
   sessionTitle: string,
   sessionDate: string | undefined,
   enableKankaContext: boolean | undefined,
@@ -263,7 +260,7 @@ async function processAudioInBackground(
     let kankaContext: KankaSearchResult | undefined;
     if (enableKankaContext) {
       await updateProgress(sessionRef, 'loading_context', 3, 'Loading campaign context...');
-      kankaContext = await loadKankaContext(db, campaignId);
+      kankaContext = await loadKankaContext();
     }
 
     await updateProgress(sessionRef, 'loading_context', 5, 'Context loaded');
@@ -299,8 +296,6 @@ async function processAudioInBackground(
 
     const storyContent = await generateStoryFromTranscription(
       transcriptionText,
-      sessionTitle,
-      sessionDate,
       storyConfig,
       kankaContext,
       userCorrections
@@ -508,7 +503,7 @@ async function processAudioInBackground(
 
 // Helper functions
 
-async function loadKankaContext(db: FirebaseFirestore.Firestore, campaignId: string): Promise<KankaSearchResult> {
+async function loadKankaContext(): Promise<KankaSearchResult> {
   // This would load from Kanka integration - simplified for now
   // In real implementation, this would call Kanka API or load from cache
   return {};

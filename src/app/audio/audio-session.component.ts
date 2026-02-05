@@ -1,8 +1,7 @@
 import { Component, OnDestroy, effect, signal, computed, inject, Injector, runInInjectionContext, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, ActivatedRoute } from '@angular/router';
-import { timer, firstValueFrom, Subscription } from 'rxjs';
-import { httpsCallable } from 'firebase/functions';
+import { Subscription } from 'rxjs';
 import { AudioStorageService } from './audio-storage.service';
 import { AudioSessionStateService } from './audio-session-state.service';
 import { AudioCompleteProcessingService } from './audio-complete-processing.service';
@@ -12,19 +11,15 @@ import { AuthService } from '../auth/auth.service';
 import { FormattingService } from '../shared/formatting.service';
 import { CampaignContextService } from '../campaign/campaign-context.service';
 import { CampaignService } from '../campaign/campaign.service';
-import { FirebaseService } from '../core/firebase.service';
 import {
   AudioSessionRecord,
   AudioUpload,
-  StorageMetadata,
-  TranscriptionResult,
   PodcastVersion,
   ProcessingProgress
 } from './audio-session.models';
 import { AudioUploadComponent } from './audio-upload.component';
 import { SessionStoryComponent } from './session-story.component';
 import { KankaService } from '../kanka/kanka.service';
-import { KankaSearchResult } from '../kanka/kanka.models';
 
 type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' | 'failed';
 
@@ -307,7 +302,6 @@ export class AudioSessionComponent implements OnDestroy {
     public readonly authService: AuthService,
     private readonly injector: Injector,
     public readonly formatting: FormattingService,
-    private readonly firebase: FirebaseService,
     private readonly kankaService: KankaService
   ) {
     this.sessions = this.sessionStateService.sessions;
@@ -492,7 +486,6 @@ export class AudioSessionComponent implements OnDestroy {
       return;
     }
     const session = this.currentSession();
-    const audioStorageUrl = this.resolveAudioStorageUrl(session);
     if (!session?.transcription) {
       return;
     }
@@ -713,14 +706,6 @@ export class AudioSessionComponent implements OnDestroy {
     }
   }
 
-  private finishStage(stage: Stage, message: string): void {
-    this.stageTimerSub?.unsubscribe();
-    this.progress.set(100);
-    this.stage.set(stage);
-    this.statusMessage.set(message);
-    this.refreshSessions();
-  }
-
   private failSession(message: string): void {
     const session = this.currentSession();
     if (session) {
@@ -730,21 +715,6 @@ export class AudioSessionComponent implements OnDestroy {
     this.stage.set('failed');
     this.statusMessage.set(message);
     this.refreshSessions();
-  }
-
-  private animateStageProgress(durationMs: number, startValue: number): void {
-    this.stageTimerSub?.unsubscribe();
-    this.progress.set(startValue);
-    const step = Math.max(1, Math.floor(durationMs / 100));
-    let current = startValue;
-
-    this.stageTimerSub = timer(0, step).subscribe(() => {
-      if (current >= 95) {
-        return;
-      }
-      current += 1;
-      this.progress.set(current);
-    });
   }
 
   private resetProgress(): void {
