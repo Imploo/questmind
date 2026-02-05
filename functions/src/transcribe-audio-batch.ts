@@ -117,46 +117,37 @@ export const transcribeAudioBatch = onCall(
       );
     }
 
-    // Create JSONL request (single line JSON object per request)
-    const requestJsonl = JSON.stringify({
-      key: `transcription_${sessionId}`,
-      request: {
-        model,
-        contents: [
-          {
-            parts: [
-              {text: 'Transcribe this audio file into JSON format with segments containing timeSeconds, text, and optionally speaker fields.'},
-              {
-                file_data: {
-                  mime_type: mimeType,
-                  file_uri: storageUrl,
-                },
+    // Create inline batch request
+    // Using inline requests to avoid Gemini API bug with file-based output names
+    const inlineRequest = {
+      contents: [
+        {
+          parts: [
+            {text: 'Transcribe this audio file into JSON format with segments containing timeSeconds, text, and optionally speaker fields.'},
+            {
+              fileData: {
+                mimeType: mimeType,
+                fileUri: storageUrl,
               },
-            ],
-          },
-        ],
-        generationConfig: {
-          temperature: transcriptionConfig.temperature,
-          topK: transcriptionConfig.topK,
-          topP: transcriptionConfig.topP,
-          maxOutputTokens: transcriptionConfig.maxOutputTokens,
-          responseMimeType: 'application/json',
+            },
+          ],
         },
+      ],
+      generationConfig: {
+        temperature: transcriptionConfig.temperature,
+        topK: transcriptionConfig.topK,
+        topP: transcriptionConfig.topP,
+        maxOutputTokens: transcriptionConfig.maxOutputTokens,
+        responseMimeType: 'application/json',
       },
-      metadata: {
-        campaignId,
-        sessionId,
-      },
-    });
+    };
 
-    // Upload JSONL to Cloud Storage
+    // Save request to Cloud Storage for reference
     const bucket = storage().bucket();
-    const inputFilePath = `batch-requests/${sessionId}-input.jsonl`;
-    const outputPath = `batch-results/${sessionId}/`;
-
+    const inputFilePath = `batch-requests/${sessionId}-input.json`;
     const inputFile = bucket.file(inputFilePath);
-    await inputFile.save(requestJsonl, {
-      contentType: 'application/jsonl',
+    await inputFile.save(JSON.stringify(inlineRequest, null, 2), {
+      contentType: 'application/json',
       metadata: {
         campaignId,
         sessionId,
@@ -164,22 +155,14 @@ export const transcribeAudioBatch = onCall(
     });
 
     const inputGcsUri = `gs://${bucket.name}/${inputFilePath}`;
-    const outputGcsUri = `gs://${bucket.name}/${outputPath}`;
 
-    console.log('[transcribeAudioBatch] Created batch input file:', inputGcsUri);
-
-    // Create batch job with GCS URIs
-    // Using v2 batch API format with proper source and destination
+    // Create batch job with inline requests
+    // Responses will be returned directly in the batch job, avoiding file access issues
     const batchJob = await googleAi.batches.create({
-      src: {
-        gcsUri: [inputGcsUri],
-        format: 'jsonl',
-      },
+      model,
+      src: [inlineRequest],
       config: {
-        dest: {
-          gcsUri: outputGcsUri,
-          format: 'jsonl',
-        },
+        displayName: `transcription-${sessionId}`,
       },
     });
 
@@ -207,7 +190,6 @@ export const transcribeAudioBatch = onCall(
       enableKankaContext: Boolean(enableKankaContext),
       userCorrections,
       inputGcsUri,
-      outputGcsUri,
       submittedAt: FieldValue.serverTimestamp(),
       status: 'submitted',
     };

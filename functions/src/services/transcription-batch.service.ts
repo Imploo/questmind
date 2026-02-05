@@ -27,7 +27,7 @@ export interface BatchTranscriptionMetadata {
   enableKankaContext: boolean;
   userCorrections?: string;
   inputGcsUri?: string;
-  outputGcsUri?: string;
+  filesApiName?: string;
   submittedAt: FirebaseFirestore.FieldValue | FirebaseFirestore.Timestamp;
   status: 'submitted' | 'running' | 'completed' | 'failed';
   lastCheckedAt?: FirebaseFirestore.FieldValue | FirebaseFirestore.Timestamp;
