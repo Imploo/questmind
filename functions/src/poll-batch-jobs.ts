@@ -15,7 +15,7 @@ const ACTIVE_BATCH_STATUSES = ['submitted', 'running'] as const;
 export const pollBatchJobs = onSchedule(
   {
     schedule: 'every 5 minutes',
-    region: 'europe-west4',
+    region: 'europe-west1',
     timeoutSeconds: 300,
     memory: '1GiB',
     secrets: ['GOOGLE_AI_API_KEY'],
