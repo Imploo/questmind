@@ -22,8 +22,10 @@ initializeApp();
 // Podcast generation (kept separate from transcription flow)
 export { generatePodcastAudio } from './generate-podcast-audio';
 
-// New worker chain functions
-export { downloadWorker } from './workers/download-worker';
-export { chunkingWorker } from './workers/chunking-worker';
-export { transcriptionWorker } from './workers/transcription-worker';
+// Batch transcription flow
+export { transcribeAudioBatch } from './transcribe-audio-batch';
+export { geminiCallback } from './gemini-callback';
+export { pollBatchJobs } from './poll-batch-jobs';
+
+// Story generation (triggered after transcription)
 export { storyGenerationWorker } from './workers/story-generation-worker';

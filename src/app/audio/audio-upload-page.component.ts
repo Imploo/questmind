@@ -226,7 +226,7 @@ export class AudioUploadPageComponent {
         }
       );
 
-      // Upload complete, downloadWorker called successfully - set to 100%
+      // Upload complete, batch job submitted successfully - set to 100%
       this.progress.set(100);
       this.statusMessage.set('Upload complete! Processing audio...');
 

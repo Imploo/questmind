@@ -147,6 +147,7 @@ export type CompleteProcessingStatus =
  */
 export type ProgressStage =
   | 'uploading'
+  | 'submitted'
   | 'downloading'
   | 'chunking'
   | 'transcribing'

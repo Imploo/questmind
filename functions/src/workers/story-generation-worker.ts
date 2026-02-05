@@ -140,7 +140,7 @@ export const storyGenerationWorkerHandler = async (data: WorkerPayload) => {
  * Story Generation Worker: Cloud Function wrapper
  *
  * This is the final worker in the transcription chain.
- * Chain: download → chunk → transcribe → generate story → completed
+ * Chain: submit → transcribe → generate story → completed
  */
 export const storyGenerationWorker = WorkerQueueService.createWorker(
   'storyGenerationWorker',

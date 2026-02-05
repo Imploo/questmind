@@ -6,6 +6,7 @@ import {Timestamp} from 'firebase-admin/firestore';
  */
 export type ProgressStage =
   | 'uploading'
+  | 'submitted'
   | 'downloading'
   | 'chunking'
   | 'transcribing'

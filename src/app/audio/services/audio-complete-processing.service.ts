@@ -15,12 +15,12 @@ export interface StartProcessingOptions {
 /**
  * Unified service for complete audio processing (Worker Chain Architecture)
  *
- * New Flow (Ticket #36):
+ * New Flow (Ticket #37):
  * 1. Upload audio directly to Firebase Storage
- * 2. Call downloadWorker Cloud Function (fire-and-forget)
+ * 2. Call transcribeAudioBatch Cloud Function (fire-and-forget)
  * 3. Listen to unified progress updates via Firestore onSnapshot
  *
- * Worker chain: upload → download → chunk → transcribe → generate story
+ * Flow: upload → submit → transcribe → generate story
  */
 @Injectable({
   providedIn: 'root'
@@ -61,7 +61,7 @@ export class AudioCompleteProcessingService {
       uploadTask.on(
         'state_changed',
         (snapshot) => {
-          // Calculate progress (0-99%, save 100% for when downloadWorker returns)
+          // Calculate progress (0-99%, save 100% for when batch submission returns)
           const rawProgress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
           const cappedProgress = Math.min(rawProgress, 99);
 
@@ -83,18 +83,20 @@ export class AudioCompleteProcessingService {
     // Build storage URL in the format expected by backend
     const storageUrl = `gs://${this.storage.app.options.storageBucket}/${storagePath}`;
 
-    // 2. Trigger downloadWorker to start the processing chain
-    const downloadWorker = httpsCallable(this.functions, 'downloadWorker');
+    // 2. Trigger batch transcription to start the processing chain
+    const transcribeAudioBatch = httpsCallable(this.functions, 'transcribeAudioBatch');
 
     const request = {
+      campaignId,
       sessionId,
       storageUrl,
       audioFileName: audioFile.name,
+      audioFileSize: audioFile.size,
       enableKankaContext: options.enableKankaContext ?? false,
       userCorrections: options.userCorrections
     };
 
-    await downloadWorker(request);
+    await transcribeAudioBatch(request);
 
     // Return session ID for navigation
     return sessionId;
@@ -166,8 +168,9 @@ export class AudioCompleteProcessingService {
   private mapStageToLegacyStatus(stage: string): CompleteProcessingStatus {
     const stageMap: Record<string, CompleteProcessingStatus> = {
       'uploading': 'idle',
+      'submitted': 'loading_context',
       'downloading': 'loading_context',
-      'chunking': 'transcribing',
+      'chunking': 'loading_context',
       'transcribing': 'transcribing',
       'generating-story': 'generating_story',
       'completed': 'completed',
@@ -183,6 +186,7 @@ export class AudioCompleteProcessingService {
   private getDefaultMessage(stage: string): string {
     const messages: Record<string, string> = {
       'uploading': 'Uploading audio file...',
+      'submitted': 'Submitting transcription job...',
       'downloading': 'Downloading audio file...',
       'chunking': 'Preparing audio for transcription...',
       'transcribing': 'Transcribing audio...',

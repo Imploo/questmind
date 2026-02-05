@@ -59,7 +59,7 @@ export class AudioBackendOperationsService {
   }
 
   /**
-   * Retranscribe audio from existing session using new worker chain
+   * Retranscribe audio from existing session using batch transcription
    *
    * @param campaignId - Campaign ID
    * @param sessionId - Session ID
@@ -90,13 +90,15 @@ export class AudioBackendOperationsService {
       throw new Error('No audio file found for this session');
     }
 
-    // Trigger downloadWorker to start retranscription chain
-    const downloadWorker = httpsCallable(this.functions, 'downloadWorker');
+    // Trigger batch transcription for retranscription
+    const transcribeAudioBatch = httpsCallable(this.functions, 'transcribeAudioBatch');
 
-    await downloadWorker({
+    await transcribeAudioBatch({
+      campaignId,
       sessionId,
       storageUrl,
       audioFileName,
+      audioFileSize: sessionData['audioFileSize'] || sessionData['fileSize'],
       enableKankaContext: options.enableKankaContext,
       userCorrections: options.userCorrections
     });
@@ -152,8 +154,9 @@ export class AudioBackendOperationsService {
    */
   private mapStageToRetranscribeStatus(stage: string): RetranscribeStatus {
     const stageMap: Record<string, RetranscribeStatus> = {
+      'submitted': 'loading_context',
       'downloading': 'loading_context',
-      'chunking': 'transcribing',
+      'chunking': 'loading_context',
       'transcribing': 'transcribing',
       'generating-story': 'generating_story',
       'completed': 'completed',
@@ -269,6 +272,7 @@ export class AudioBackendOperationsService {
   private getDefaultMessage(stage: string): string {
     const messages: Record<string, string> = {
       'downloading': 'Downloading audio...',
+      'submitted': 'Submitting transcription job...',
       'chunking': 'Preparing audio...',
       'transcribing': 'Transcribing audio...',
       'generating-story': 'Generating story...',
