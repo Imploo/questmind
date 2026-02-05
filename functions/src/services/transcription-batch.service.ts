@@ -26,6 +26,8 @@ export interface BatchTranscriptionMetadata {
   mimeType: string;
   enableKankaContext: boolean;
   userCorrections?: string;
+  inputGcsUri?: string;
+  outputGcsUri?: string;
   submittedAt: FirebaseFirestore.FieldValue | FirebaseFirestore.Timestamp;
   status: 'submitted' | 'running' | 'completed' | 'failed';
   lastCheckedAt?: FirebaseFirestore.FieldValue | FirebaseFirestore.Timestamp;
@@ -78,16 +80,42 @@ export function extractInlineResponseText(batchJob: unknown): string | null {
 
   const job = batchJob as {
     dest?: {inlinedResponses?: unknown[]};
-    response?: {inlinedResponses?: unknown[]};
+    response?: {
+      inlinedResponses?: unknown[] | {inlinedResponses?: unknown[]};
+    };
   };
 
-  const responses =
-    (Array.isArray(job.dest?.inlinedResponses)
-      ? job.dest?.inlinedResponses
-      : undefined) ??
-    (Array.isArray(job.response?.inlinedResponses)
-      ? job.response?.inlinedResponses
-      : undefined);
+  // Try multiple possible response locations
+  let responses: unknown[] | undefined;
+
+  // Check dest.inlinedResponses (older format)
+  if (Array.isArray(job.dest?.inlinedResponses)) {
+    responses = job.dest.inlinedResponses;
+  }
+  // Check response.inlinedResponses.inlinedResponses (nested format)
+  else if (
+    job.response &&
+    typeof job.response.inlinedResponses === 'object' &&
+    job.response.inlinedResponses !== null &&
+    'inlinedResponses' in job.response.inlinedResponses &&
+    Array.isArray(
+      (
+        job.response.inlinedResponses as {
+          inlinedResponses?: unknown[];
+        }
+      ).inlinedResponses
+    )
+  ) {
+    responses = (
+      job.response.inlinedResponses as {
+        inlinedResponses: unknown[];
+      }
+    ).inlinedResponses;
+  }
+  // Check response.inlinedResponses (direct array)
+  else if (Array.isArray(job.response?.inlinedResponses)) {
+    responses = job.response.inlinedResponses;
+  }
 
   if (!responses || responses.length === 0) {
     return null;
@@ -247,8 +275,17 @@ function extractTextFromInlineResponse(inlineResponse: unknown): string | null {
         content?: {parts?: Array<{text?: string}>};
       }>;
     };
-    error?: unknown;
+    error?: {code?: number; message?: string};
   };
+
+  // Check for error in response
+  if (responseWrapper.error) {
+    console.error(
+      '[Batch] Response contains error:',
+      `Code ${responseWrapper.error.code}: ${responseWrapper.error.message}`
+    );
+    return null;
+  }
 
   if (responseWrapper.response?.text) {
     return responseWrapper.response.text;

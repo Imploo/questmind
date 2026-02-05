@@ -88,8 +88,12 @@ export const pollBatchJobs = onRequest(
         }
 
         if (state === 'JOB_STATE_SUCCEEDED') {
+          // Log the batch job structure for debugging
+          console.log('[DEBUG] Batch job structure:', JSON.stringify(batchJob, null, 2));
+
           const responseText = extractInlineResponseText(batchJob);
           if (!responseText) {
+            console.error('[DEBUG] Failed to extract response. Keys in batchJob:', Object.keys(batchJob as object));
             await markBatchFailed(
               campaignId,
               doc.id,

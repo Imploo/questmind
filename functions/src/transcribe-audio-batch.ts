@@ -1,34 +1,13 @@
-import {GoogleGenAI, Type} from '@google/genai';
+import {GoogleGenAI} from '@google/genai';
 import {CallableRequest, HttpsError, onCall} from 'firebase-functions/v2/https';
 import {FieldValue, getFirestore} from 'firebase-admin/firestore';
-import {buildTranscriptionPrompt} from './audio/transcription-prompt';
+import {storage} from 'firebase-admin';
 import {
   AIFeatureConfig,
   AISettings,
-  KankaSearchResult,
 } from './types/audio-session.types';
 import {ProgressTrackerService} from './services/progress-tracker.service';
 import {BatchTranscriptionMetadata} from './services/transcription-batch.service';
-
-const TRANSCRIPTION_SCHEMA = {
-  type: Type.OBJECT,
-  properties: {
-    error: {type: Type.STRING},
-    message: {type: Type.STRING},
-    segments: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          timeSeconds: {type: Type.NUMBER},
-          text: {type: Type.STRING},
-          speaker: {type: Type.STRING},
-        },
-        required: ['timeSeconds', 'text'],
-      },
-    },
-  },
-};
 
 export interface TranscribeAudioBatchRequest {
   campaignId: string;
@@ -87,11 +66,14 @@ export const transcribeAudioBatch = onCall(
       .collection('audioSessions')
       .doc(sessionId);
 
+    // Fetch session document to get storage metadata
     const sessionSnap = await sessionRef.get();
-    const sessionData = sessionSnap.data();
-    const kankaContext = enableKankaContext
-      ? (sessionData?.kankaSearchResult as KankaSearchResult | undefined)
-      : undefined;
+    if (!sessionSnap.exists) {
+      throw new HttpsError(
+        'not-found',
+        `Audio session ${sessionId} not found`
+      );
+    }
 
     await ProgressTrackerService.updateProgress(
       campaignId,
@@ -121,15 +103,13 @@ export const transcribeAudioBatch = onCall(
     };
 
     const model = resolveModel(aiSettings, transcriptionConfig.model);
-    const prompt = buildTranscriptionPrompt(kankaContext);
     const mimeType = resolveMimeType(
-      sessionData?.storageMetadata?.contentType,
+      sessionSnap.data()?.storageMetadata?.contentType,
       audioFileName
     );
 
     const googleAi = new GoogleGenAI({apiKey: googleAiKey});
     const callbackUri = buildCallbackUri();
-    const callbackSecret = process.env.GEMINI_CALLBACK_SECRET;
 
     if (!callbackUri) {
       console.warn(
@@ -137,49 +117,71 @@ export const transcribeAudioBatch = onCall(
       );
     }
 
-    const batchRequest = {
-      model,
-      src: [
-        {
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                {
-                  fileData: {
-                    fileUri: storageUrl,
-                    mimeType,
-                  },
+    // Create JSONL request (single line JSON object per request)
+    const requestJsonl = JSON.stringify({
+      key: `transcription_${sessionId}`,
+      request: {
+        model,
+        contents: [
+          {
+            parts: [
+              {text: 'Transcribe this audio file into JSON format with segments containing timeSeconds, text, and optionally speaker fields.'},
+              {
+                file_data: {
+                  mime_type: mimeType,
+                  file_uri: storageUrl,
                 },
-                {text: 'Transcribe this audio.'},
-              ],
-            },
-          ],
-          config: {
-            systemInstruction: {
-              parts: [{text: prompt}],
-            },
-            responseMimeType: 'application/json',
-            responseSchema: TRANSCRIPTION_SCHEMA,
-            temperature: transcriptionConfig.temperature,
-            topK: transcriptionConfig.topK,
-            topP: transcriptionConfig.topP,
-            maxOutputTokens: transcriptionConfig.maxOutputTokens,
+              },
+            ],
           },
-          metadata: {
-            campaignId,
-            sessionId,
-          },
+        ],
+        generationConfig: {
+          temperature: transcriptionConfig.temperature,
+          topK: transcriptionConfig.topK,
+          topP: transcriptionConfig.topP,
+          maxOutputTokens: transcriptionConfig.maxOutputTokens,
+          responseMimeType: 'application/json',
         },
-      ],
-      config: {
-        displayName: `transcription-${sessionId}`,
-        callbackUri: callbackUri || undefined,
-        callbackSecret: callbackSecret || undefined,
       },
-    } as Parameters<typeof googleAi.batches.create>[0];
+      metadata: {
+        campaignId,
+        sessionId,
+      },
+    });
 
-    const batchJob = await googleAi.batches.create(batchRequest);
+    // Upload JSONL to Cloud Storage
+    const bucket = storage().bucket();
+    const inputFilePath = `batch-requests/${sessionId}-input.jsonl`;
+    const outputPath = `batch-results/${sessionId}/`;
+
+    const inputFile = bucket.file(inputFilePath);
+    await inputFile.save(requestJsonl, {
+      contentType: 'application/jsonl',
+      metadata: {
+        campaignId,
+        sessionId,
+      },
+    });
+
+    const inputGcsUri = `gs://${bucket.name}/${inputFilePath}`;
+    const outputGcsUri = `gs://${bucket.name}/${outputPath}`;
+
+    console.log('[transcribeAudioBatch] Created batch input file:', inputGcsUri);
+
+    // Create batch job with GCS URIs
+    // Using v2 batch API format with proper source and destination
+    const batchJob = await googleAi.batches.create({
+      src: {
+        gcsUri: [inputGcsUri],
+        format: 'jsonl',
+      },
+      config: {
+        dest: {
+          gcsUri: outputGcsUri,
+          format: 'jsonl',
+        },
+      },
+    });
 
     const batchJobName =
       typeof batchJob.name === 'string' ? batchJob.name : '';
@@ -204,6 +206,8 @@ export const transcribeAudioBatch = onCall(
       mimeType,
       enableKankaContext: Boolean(enableKankaContext),
       userCorrections,
+      inputGcsUri,
+      outputGcsUri,
       submittedAt: FieldValue.serverTimestamp(),
       status: 'submitted',
     };
