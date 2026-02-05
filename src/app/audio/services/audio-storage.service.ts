@@ -8,7 +8,7 @@ import {
 } from 'firebase/storage';
 
 import { StorageMetadata, UploadProgress } from './audio-session.models';
-import { FirebaseService } from '../core/firebase.service';
+import { FirebaseService } from '../../core/firebase.service';
 
 const MAX_FILE_BYTES = 500 * 1024 * 1024;
 const SUPPORTED_TYPES = [

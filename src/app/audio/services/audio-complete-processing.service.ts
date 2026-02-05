@@ -3,7 +3,7 @@ import { httpsCallable, type Functions } from 'firebase/functions';
 import { ref, uploadBytesResumable, type FirebaseStorage } from 'firebase/storage';
 import { doc, onSnapshot, type Firestore, type Unsubscribe } from 'firebase/firestore';
 import { ProcessingProgress, UnifiedProgress, CompleteProcessingStatus } from './audio-session.models';
-import { FirebaseService } from '../core/firebase.service';
+import { FirebaseService } from '../../core/firebase.service';
 
 export interface StartProcessingOptions {
   sessionTitle: string;

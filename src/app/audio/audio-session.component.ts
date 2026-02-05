@@ -2,9 +2,9 @@ import { Component, OnDestroy, effect, signal, computed, inject, Injector, runIn
 import { CommonModule } from '@angular/common';
 import { Router, ActivatedRoute } from '@angular/router';
 import { Subscription } from 'rxjs';
-import { AudioSessionStateService } from './audio-session-state.service';
-import { AudioBackendOperationsService, RetranscribeProgress, RegenerateStoryProgress } from './audio-backend-operations.service';
-import { PodcastAudioService, PodcastProgress } from './podcast-audio.service';
+import { AudioSessionStateService } from './services/audio-session-state.service';
+import { AudioBackendOperationsService, RetranscribeProgress, RegenerateStoryProgress } from './services/audio-backend-operations.service';
+import { PodcastAudioService, PodcastProgress } from './services/podcast-audio.service';
 import { AuthService } from '../auth/auth.service';
 import { FormattingService } from '../shared/formatting.service';
 import { CampaignContextService } from '../campaign/campaign-context.service';
@@ -12,7 +12,7 @@ import { CampaignService } from '../campaign/campaign.service';
 import {
   AudioSessionRecord,
   PodcastVersion
-} from './audio-session.models';
+} from './services/audio-session.models';
 import { SessionStoryComponent } from './session-story.component';
 import { KankaService } from '../kanka/kanka.service';
 

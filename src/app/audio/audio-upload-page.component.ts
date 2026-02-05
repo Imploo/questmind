@@ -2,11 +2,11 @@ import { Component, computed, inject, signal, ChangeDetectionStrategy } from '@a
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { AudioUploadComponent, UploadRequestEvent } from './audio-upload.component';
-import { AudioSessionStateService } from './audio-session-state.service';
-import { AudioCompleteProcessingService } from './audio-complete-processing.service';
+import { AudioSessionStateService } from './services/audio-session-state.service';
+import { AudioCompleteProcessingService } from './services/audio-complete-processing.service';
 import { AuthService } from '../auth/auth.service';
 import { CampaignContextService } from '../campaign/campaign-context.service';
-import { AudioUpload, AudioSessionRecord } from './audio-session.models';
+import { AudioUpload, AudioSessionRecord } from './services/audio-session.models';
 
 @Component({
   selector: 'app-audio-upload-page',

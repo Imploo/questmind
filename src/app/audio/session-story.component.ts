@@ -2,7 +2,7 @@ import { Component, EventEmitter, Input, OnChanges, Output, SimpleChanges, injec
 import { CommonModule } from '@angular/common';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { marked } from 'marked';
-import { PodcastVersion } from './audio-session.models';
+import { PodcastVersion } from './services/audio-session.models';
 import { FormattingService } from '../shared/formatting.service';
 
 @Component({

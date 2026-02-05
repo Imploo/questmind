@@ -238,6 +238,8 @@ Start here for immediate impact with minimal risk:
 |--------|-------|----------|--------|--------------|
 | [#34](./34-backend-podcast-script-generation.md) | Backend Podcast Script Generation with Database-Driven Model Selection | High | Draft | #19, #17 |
 | [#35](./35-backend-transcription-and-story-generation.md) | Backend Audio Transcription and Story Generation with Configurable AI Parameters | High | Draft | #34, #19 |
+| [#36](./36-refactor-transcription-flow.md) | Refactor Transcription and Retranscription Flows (Worker Chain Architecture) | High | Open | - |
+| [#37](./37-gemini-batch-api-transcription.md) | Simplified Transcription Flow with Gemini Batch API | High | Open | #14 |
 
 **Key Features:**
 - **Ticket 34**: Move podcast script generation to backend with Gemini 3 Flash
@@ -251,7 +253,20 @@ Start here for immediate impact with minimal risk:
   - Feature-specific parameter tuning for quality
   - Unified fire-and-forget architecture
 
+- **Ticket 36**: Worker chain architecture for transcription
+  - Separate Cloud Functions for each stage
+  - Independent retry logic and timeout handling
+  - Cloud Tasks for worker communication
+  - Comprehensive progress tracking
+
+- **Ticket 37**: Simplified transcription using Gemini Batch API
+  - Process audio files directly from GCS (no download/chunking)
+  - Gemini handles large files natively
+  - Callback-based result handling with polling fallback
+  - Significantly reduced code complexity
+  - Alternative to #36 if Gemini Batch API supports requirements
+
 ---
 
-**Last Updated:** 2026-02-04
+**Last Updated:** 2026-02-05
 **Status:** Planning Complete, Ready to Begin

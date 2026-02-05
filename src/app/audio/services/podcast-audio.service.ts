@@ -1,7 +1,7 @@
 import { Injectable, signal, Signal } from '@angular/core';
 import { doc, onSnapshot, DocumentSnapshot, type Firestore } from 'firebase/firestore';
 import { httpsCallable, type Functions } from 'firebase/functions';
-import { FirebaseService } from '../core/firebase.service';
+import { FirebaseService } from '../../core/firebase.service';
 
 export interface PodcastProgress {
   status:

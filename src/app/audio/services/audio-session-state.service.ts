@@ -10,9 +10,9 @@ import {
   type Firestore
 } from 'firebase/firestore';
 
-import { AuthService } from '../auth/auth.service';
-import { CampaignContextService } from '../campaign/campaign-context.service';
-import { FirebaseService } from '../core/firebase.service';
+import { AuthService } from '../../auth/auth.service';
+import { CampaignContextService } from '../../campaign/campaign-context.service';
+import { FirebaseService } from '../../core/firebase.service';
 import {
   AudioSessionRecord,
   AudioUpload

@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { httpsCallable, type Functions } from 'firebase/functions';
 import { doc, onSnapshot, getDoc, type Firestore, type Unsubscribe } from 'firebase/firestore';
-import { FirebaseService } from '../core/firebase.service';
+import { FirebaseService } from '../../core/firebase.service';
 import { UnifiedProgress } from './audio-session.models';
 
 export interface RetranscribeOptions {

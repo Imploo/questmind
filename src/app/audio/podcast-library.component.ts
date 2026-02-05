@@ -3,8 +3,8 @@ import { CommonModule } from '@angular/common';
 import { getApp } from 'firebase/app';
 import { getFirestore, collection, getDocs } from 'firebase/firestore';
 import { AuthService } from '../auth/auth.service';
-import { PodcastAudioService } from './podcast-audio.service';
-import { PodcastVersion } from './audio-session.models';
+import { PodcastAudioService } from './services/podcast-audio.service';
+import { PodcastVersion } from './services/audio-session.models';
 import { CampaignContextService } from '../campaign/campaign-context.service';
 import { FormattingService } from '../shared/formatting.service';
 
