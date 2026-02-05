@@ -95,15 +95,22 @@ export class ProgressTrackerService {
     const errorMessage = error instanceof Error ? error.message : error;
     const errorStack = error instanceof Error ? error.stack : undefined;
 
+    const failureDetails = details || errorStack;
+    const failure: ProgressFailure = {
+      stage,
+      error: errorMessage,
+      timestamp: Timestamp.now(),
+    };
+
+    // Only include details if we have a value (Firestore doesn't accept undefined)
+    if (failureDetails !== undefined) {
+      failure.details = failureDetails;
+    }
+
     const progressData: AudioSessionProgress = {
       stage: 'failed',
       progress: 0,
-      failure: {
-        stage,
-        error: errorMessage,
-        timestamp: Timestamp.now(),
-        details: details || errorStack,
-      },
+      failure,
       updatedAt: Timestamp.now(),
     };
 

@@ -1,5 +1,5 @@
 import {GoogleGenAI} from '@google/genai';
-import {onSchedule} from 'firebase-functions/v2/scheduler';
+import {onRequest} from 'firebase-functions/v2/https';
 import {firestore} from 'firebase-admin';
 import {FieldValue} from 'firebase-admin/firestore';
 import {
@@ -12,18 +12,18 @@ import {ProgressTrackerService} from './services/progress-tracker.service';
 
 const ACTIVE_BATCH_STATUSES = ['submitted', 'running'] as const;
 
-export const pollBatchJobs = onSchedule(
+export const pollBatchJobs = onRequest(
   {
-    schedule: 'every 5 minutes',
     region: 'europe-west1',
     timeoutSeconds: 300,
     memory: '1GiB',
     secrets: ['GOOGLE_AI_API_KEY'],
   },
-  async () => {
+  async (_req, res) => {
     const googleAiKey = process.env.GOOGLE_AI_API_KEY;
     if (!googleAiKey) {
       console.error('GOOGLE_AI_API_KEY not configured for batch polling');
+      res.status(500).send('API key not configured');
       return;
     }
 
@@ -34,6 +34,7 @@ export const pollBatchJobs = onSchedule(
       .get();
 
     if (snapshot.empty) {
+      res.status(200).send('No active batch jobs to poll');
       return;
     }
 
@@ -130,5 +131,7 @@ export const pollBatchJobs = onSchedule(
         );
       }
     }
+
+    res.status(200).send(`Polled ${snapshot.docs.length} active batch jobs`);
   }
 );
