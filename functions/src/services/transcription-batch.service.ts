@@ -246,14 +246,40 @@ export async function markBatchFailed(
 
 function parseTranscriptionPayload(rawText: string): TranscriptionResponsePayload {
   try {
-    const parsed = JSON.parse(rawText) as TranscriptionResponsePayload;
+    // Strip markdown code blocks if present (```json ... ``` or ``` ... ```)
+    let cleanedText = rawText.trim();
+
+    // Remove ```json or ``` at the start
+    if (cleanedText.startsWith('```json')) {
+      cleanedText = cleanedText.slice(7); // Remove ```json
+    } else if (cleanedText.startsWith('```')) {
+      cleanedText = cleanedText.slice(3); // Remove ```
+    }
+
+    // Remove ``` at the end
+    if (cleanedText.endsWith('```')) {
+      cleanedText = cleanedText.slice(0, -3);
+    }
+
+    cleanedText = cleanedText.trim();
+
+    const parsed = JSON.parse(cleanedText);
+
+    // If parsed is an array, wrap it in the expected format
+    if (Array.isArray(parsed)) {
+      return { segments: parsed as TranscriptionSegment[] };
+    }
+
+    // If parsed is an object with segments, return it
     if (parsed && typeof parsed === 'object') {
-      return parsed;
+      return parsed as TranscriptionResponsePayload;
     }
   } catch (error) {
+    console.error('[parseTranscriptionPayload] JSON parse error:', error);
+    console.error('[parseTranscriptionPayload] Raw text (first 200 chars):', rawText.substring(0, 200));
     return {
       error: 'INVALID_JSON',
-      message: 'Transcription response was not valid JSON',
+      message: `Transcription response was not valid JSON: ${error instanceof Error ? error.message : 'unknown error'}`,
     };
   }
 

@@ -29,7 +29,9 @@
       "Bash(firebase firestore:documents:get:*)",
       "Bash(firebase --help:*)",
       "Bash(curl:*)",
-      "Bash(gcloud logging read:*)"
+      "Bash(gcloud logging read:*)",
+      "Bash(gcloud functions logs:*)",
+      "Bash(gcloud functions describe:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
