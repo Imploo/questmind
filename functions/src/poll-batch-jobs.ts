@@ -59,6 +59,7 @@ export const pollBatchJobs = onRequest(
 
       try {
         const batchJob = await ai.batches.get({name: batchJobName});
+        console.dir(batchJob, { depth: 9});
         const state = normalizeBatchState(
           typeof batchJob === 'object' && batchJob !== null
             ? (batchJob as {state?: unknown}).state

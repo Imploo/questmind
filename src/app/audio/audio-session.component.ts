@@ -196,6 +196,8 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
                 [isPlayingPodcast]="isPlayingPodcast()"
                 [playingPodcastVersion]="playingPodcastVersion()"
                 [canGeneratePodcast]="canGeneratePodcast()"
+                [hasActiveBackgroundJob]="hasActiveBackgroundJob()"
+                [backgroundJobMessage]="backgroundJobMessage()"
                 (storyUpdated)="saveStoryEdits($event)"
                 (regenerate)="regenerateStory()"
                 (retranscribe)="retranscribeSession()"
@@ -261,6 +263,25 @@ export class AudioSessionComponent implements OnDestroy {
     const session = this.currentSession();
     const userId = this.userId();
     return !!session && this.campaignService.isSessionOwner(session, userId);
+  });
+
+  // Background job tracking
+  hasActiveBackgroundJob = computed(() => {
+    const session = this.currentSession();
+    const batchStatus = session?.transcriptionBatch?.status;
+    return batchStatus === 'submitted' || batchStatus === 'running';
+  });
+
+  backgroundJobMessage = computed(() => {
+    const session = this.currentSession();
+    const batchStatus = session?.transcriptionBatch?.status;
+    if (batchStatus === 'submitted') {
+      return 'Batch job submitted, waiting to start...';
+    }
+    if (batchStatus === 'running') {
+      return 'Processing audio transcription in background...';
+    }
+    return '';
   });
   canRegenerateStory = computed(() => this.isSessionOwner());
   canRetranscribe = computed(() => this.isSessionOwner() && !!this.resolveAudioStorageUrl(this.currentSession()));

@@ -138,7 +138,6 @@ export const transcribeAudioBatch = onCall(
         topK: transcriptionConfig.topK,
         topP: transcriptionConfig.topP,
         maxOutputTokens: transcriptionConfig.maxOutputTokens,
-        responseMimeType: 'application/json',
       },
     };
 

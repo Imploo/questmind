@@ -180,6 +180,15 @@ export interface ProcessingProgress {
   error?: string;
 }
 
+export interface TranscriptionBatchMetadata {
+  batchJobName?: string;
+  status?: 'submitted' | 'running' | 'completed' | 'failed';
+  error?: string;
+  lastCheckedAt?: any; // Firestore timestamp
+  enableKankaContext?: boolean;
+  userCorrections?: string;
+}
+
 export interface AudioSessionRecord extends SessionStory {
   campaignId: string;
   ownerId: string;
@@ -202,6 +211,9 @@ export interface AudioSessionRecord extends SessionStory {
   storyRegenerationCount?: number;
   podcasts?: PodcastVersion[];
   latestPodcastVersion?: number;
+
+  // Batch job tracking
+  transcriptionBatch?: TranscriptionBatchMetadata;
 
   // New unified progress (worker chain - Ticket 36)
   progress?: UnifiedProgress;

@@ -4,7 +4,6 @@
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
-    "start:backend": "firebase emulators:start",
     "start:backend:functions": "firebase emulators:start --only functions",
     "build": "ng build",
     "build:backend": "cd functions && tsc",

@@ -26,6 +26,7 @@ export { generatePodcastAudio } from './generate-podcast-audio';
 export { transcribeAudioBatch } from './transcribe-audio-batch';
 export { geminiCallback } from './gemini-callback';
 export { pollBatchJobs } from './poll-batch-jobs';
+export { getBatchStatus } from './get-batch-status';
 
 // Story generation (triggered after transcription)
 export { storyGenerationWorker } from './workers/story-generation-worker';
