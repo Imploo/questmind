@@ -1,0 +1,77 @@
+meta {
+  name: Get Batch Status
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/getBatchStatus
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "data": {
+      "campaignId": "{{testCampaignId}}",
+      "sessionId": "{{testSessionId}}"
+    }
+  }
+}
+
+docs {
+  # Get Batch Status
+
+  Queries Firestore for a batch job name using campaignId and sessionId, then returns the Gemini Batch API status.
+
+  ## Configuration
+  Before running this request, update the environment variables in **Local** or **Local Emulator** environment:
+
+  ### campaignId
+  The campaign ID where the audio session is stored.
+  Example: `my-campaign-id`
+
+  ### sessionId
+  The audio session ID that contains the batch job.
+  Example: `my-session-id`
+
+  **To update:** Click on your environment → Edit the variables
+
+  ## How It Works
+  1. Takes your campaignId and sessionId as input
+  2. Queries Firestore at `campaigns/{campaignId}/audioSessions/{sessionId}`
+  3. Extracts the `transcriptionBatch.batchJobName` from the document
+  4. Queries the Gemini Batch API with that batch job name
+  5. Returns the full status including Firestore metadata
+
+  ## Response Fields
+  - `campaignId`: The campaign ID you provided
+  - `sessionId`: The session ID you provided
+  - `batchJobName`: The full batch job name found in Firestore
+  - `state`: Current normalized state (JOB_STATE_PENDING, JOB_STATE_RUNNING, etc.)
+  - `batchJob`: Full response from Gemini Batch API
+  - `firestoreMetadata`: The transcriptionBatch object from Firestore
+
+  ## Possible States
+  - `JOB_STATE_PENDING`: Job is queued
+  - `JOB_STATE_RUNNING`: Job is being processed
+  - `JOB_STATE_SUCCEEDED`: Job completed successfully
+  - `JOB_STATE_FAILED`: Job failed
+  - `JOB_STATE_CANCELLED`: Job was cancelled
+  - `JOB_STATE_EXPIRED`: Job expired before completion
+
+  ## Example Usage
+  1. Set `campaignId` to your campaign ID (e.g., "test-campaign")
+  2. Set `sessionId` to your session ID (e.g., "session-123")
+  3. Run the request
+  4. View the batch job status and full details
+
+  ## Error Responses
+  - `400`: Missing campaignId or sessionId
+  - `404`: Session not found or no batch job exists for this session
+  - `500`: API key not configured or Gemini API error
+}
