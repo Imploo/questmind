@@ -1,0 +1,56 @@
+meta {
+  name: Gemini Batch Status
+  type: http
+  seq: 6
+}
+
+get {
+  url: https://generativelanguage.googleapis.com/v1beta/{{batchJobName}}?key={{geminiApiKey}}
+  body: none
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+docs {
+  # Gemini Batch Status
+
+  Directly queries the Google Gemini Batch API to get the status of a batch job.
+
+  ## Configuration
+  Before running this request, update the environment variables in **Local** environment:
+
+  ### batchJobName
+  The full batch job name returned when you created the batch job.
+  Example: `batches/wgbfhapzfm6mbcel50u2ac2592r3ypv2jlna`
+
+  ### geminiApiKey
+  Your Google AI API key (same as GOOGLE_AI_API_KEY in .env).
+  Get from: https://makersuite.google.com/app/apikey
+
+  **To update:** Click on "Local" environment → Edit the variables
+
+  ## Response Fields
+  - `name`: Full batch job name
+  - `state`: Current state (JOB_STATE_PENDING, JOB_STATE_RUNNING, JOB_STATE_SUCCEEDED, etc.)
+  - `createTime`: When the job was created
+  - `updateTime`: Last update timestamp
+  - `response`: Response data (when state is SUCCEEDED)
+    - `inlinedResponses`: Array of responses from the batch
+
+  ## Possible States
+  - `JOB_STATE_PENDING`: Job is queued
+  - `JOB_STATE_RUNNING`: Job is being processed
+  - `JOB_STATE_SUCCEEDED`: Job completed successfully
+  - `JOB_STATE_FAILED`: Job failed
+  - `JOB_STATE_CANCELLED`: Job was cancelled
+  - `JOB_STATE_EXPIRED`: Job expired before completion
+
+  ## Notes
+  - This directly calls the Gemini API, not your Firebase function
+  - Requires a valid Google AI API key
+  - Returns full batch job details including response data
+  - No authentication header needed (uses API key in URL)
+}

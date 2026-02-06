@@ -1,0 +1,51 @@
+meta {
+  name: Transcribe Audio Batch
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/transcribeAudioBatch
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "data": {
+      "campaignId": "{{testCampaignId}}",
+      "sessionId": "{{testSessionId}}",
+      "storageUrl": "gs://questmind-nl.firebasestorage.app/campaigns/test/audio/test.mp3",
+      "audioFileName": "test.mp3",
+      "audioFileSize": 1024000,
+      "enableKankaContext": false,
+      "userCorrections": ""
+    }
+  }
+}
+
+docs {
+  # Transcribe Audio Batch
+
+  Submits an audio file for batch transcription using Google Gemini.
+
+  ## Required Fields
+  - `campaignId`: Campaign identifier
+  - `sessionId`: Session identifier
+  - `storageUrl`: gs:// URL to the audio file in Firebase Storage
+  - `audioFileName`: Original filename of the audio
+
+  ## Optional Fields
+  - `audioFileSize`: Size of the audio file in bytes
+  - `enableKankaContext`: Enable Kanka integration context
+  - `userCorrections`: User-provided corrections for transcription
+
+  ## Notes
+  - storageUrl must start with "gs://"
+  - Uses Google Gemini batch API
+  - Check Firestore for batch job progress
+}

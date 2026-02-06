@@ -1,0 +1,38 @@
+meta {
+  name: Story Generation Worker
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/storyGenerationWorker
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "campaignId": "{{testCampaignId}}",
+    "sessionId": "{{testSessionId}}"
+  }
+}
+
+docs {
+  # Story Generation Worker
+
+  Cloud Tasks worker that generates a story from transcribed audio.
+
+  ## Body Fields
+  - `campaignId`: Campaign identifier
+  - `sessionId`: Session identifier
+
+  ## Notes
+  - This is typically triggered by Cloud Tasks after transcription
+  - Uses transcription data from Firestore
+  - Generates narrative story using Google AI
+  - Updates session document with generated story
+}

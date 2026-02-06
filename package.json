@@ -4,8 +4,11 @@
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
+    "start:backend": "firebase emulators:start",
+    "start:backend:functions": "firebase emulators:start --only functions",
     "build": "ng build",
     "build:backend": "cd functions && tsc",
+    "build:backend:watch": "cd functions && tsc --watch",
     "watch": "ng build --watch --configuration development",
     "test": "ng test"
   },

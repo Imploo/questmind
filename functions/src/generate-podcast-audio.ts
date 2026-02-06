@@ -1,4 +1,4 @@
-import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { onCall, HttpsError, CallableRequest } from 'firebase-functions/v2/https';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
@@ -11,6 +11,7 @@ import { GoogleGenAI } from '@google/genai';
 import { SHARED_CORS } from './index';
 import { PODCAST_SCRIPT_GENERATOR_PROMPT } from './prompts/podcast-script-generator.prompt';
 import { AISettings } from './types/audio-session.types';
+import { ensureAuthForTesting } from './utils/emulator-helpers';
 
 const DEFAULT_HOST_VOICES: Record<'host1' | 'host2', string> = {
   host1: process.env.ELEVENLABS_HOST1_VOICE ?? '',
@@ -62,11 +63,6 @@ interface PodcastGenerationRequest {
   script?: PodcastScript;   // Optional (backward compatibility)
 }
 
-type CallableRequest<T> = {
-  auth?: { uid?: string };
-  data: T;
-};
-
 export const generatePodcastAudio = onCall(
   {
     cors: SHARED_CORS,
@@ -75,6 +71,9 @@ export const generatePodcastAudio = onCall(
     memory: '1GiB'
   },
   async (request: CallableRequest<PodcastGenerationRequest>) => {
+    // Enable testing in emulator without auth
+    ensureAuthForTesting(request);
+
     const { auth, data } = request;
 
     if (!auth?.uid) {

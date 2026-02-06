@@ -156,6 +156,8 @@ export const transcribeAudioBatch = onCall(
 
     const inputGcsUri = `gs://${bucket.name}/${inputFilePath}`;
 
+    console.dir(inlineRequest, {depth: 9});
+
     // Create batch job with inline requests
     // Responses will be returned directly in the batch job, avoiding file access issues
     const batchJob = await googleAi.batches.create({

@@ -1,0 +1,41 @@
+meta {
+  name: Gemini Callback
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/geminiCallback
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  X-Gemini-Secret: your-callback-secret-here
+}
+
+body:json {
+  {
+    "batchJobName": "projects/123456/locations/us-central1/batchPredictionJobs/12345",
+    "state": "JOB_STATE_SUCCEEDED"
+  }
+}
+
+docs {
+  # Gemini Callback
+
+  Webhook endpoint called by Google Gemini when a batch job completes.
+
+  ## Headers
+  - `X-Gemini-Secret`: Secret token for authentication
+
+  ## Body Fields
+  - `batchJobName`: Full name of the completed batch job
+  - `state`: Job state (JOB_STATE_SUCCEEDED, JOB_STATE_FAILED, etc.)
+
+  ## Notes
+  - This is typically called by Google Cloud, not manually
+  - Requires correct secret in X-Gemini-Secret header
+  - Processes transcription results and triggers story generation
+}

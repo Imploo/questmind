@@ -1,0 +1,51 @@
+meta {
+  name: Generate Podcast Audio
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/generatePodcastAudio
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "data": {
+      "campaignId": "{{testCampaignId}}",
+      "sessionId": "{{testSessionId}}",
+      "version": 1,
+      "story": "De helden stonden voor een donker bos. Ze hoorden vreemde geluiden uit het bos komen.",
+      "sessionTitle": "Het Mysterieuze Bos",
+      "sessionDate": "2025-02-06"
+    }
+  }
+}
+
+docs {
+  # Generate Podcast Audio
+
+  Generates a podcast from a D&D session story.
+
+  ## Required Fields
+  - `campaignId`: Campaign identifier
+  - `sessionId`: Session identifier
+  - `version`: Podcast version number
+  - `story`: The session story text
+  - `sessionTitle`: Title of the session
+
+  ## Optional Fields
+  - `sessionDate`: Date of the session
+  - `script`: Pre-generated podcast script (skips AI generation)
+
+  ## Notes
+  - Requires authentication in production
+  - Function returns immediately; listen to Firestore for progress updates
+  - Uses Google AI for script generation
+  - Uses ElevenLabs for audio generation
+}

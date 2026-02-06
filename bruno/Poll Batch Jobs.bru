@@ -1,0 +1,33 @@
+meta {
+  name: Poll Batch Jobs
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/pollBatchJobs
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "data": {}
+  }
+}
+
+docs {
+  # Poll Batch Jobs
+
+  Scheduled function that polls pending batch transcription jobs.
+
+  ## Notes
+  - This is typically triggered by Cloud Scheduler (every 5 minutes)
+  - No parameters required
+  - Checks all pending batch jobs and processes completed ones
+  - Fallback mechanism when callback doesn't work
+}
