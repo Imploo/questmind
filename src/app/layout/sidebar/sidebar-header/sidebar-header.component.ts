@@ -1,9 +1,10 @@
 import { Component, ChangeDetectionStrategy, input, output } from '@angular/core';
+import { LucideAngularModule } from 'lucide-angular';
 import { CampaignSelectorComponent } from '../../../campaign/campaign-selector.component';
 
 @Component({
   selector: 'app-sidebar-header',
-  imports: [CampaignSelectorComponent],
+  imports: [CampaignSelectorComponent, LucideAngularModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <!-- Expanded Layout -->
@@ -17,7 +18,7 @@ import { CampaignSelectorComponent } from '../../../campaign/campaign-selector.c
             [attr.aria-label]="'Collapse sidebar'"
             [title]="'Collapse sidebar'"
           >
-            <span class="text-gray-600">◀️</span>
+            <lucide-icon name="chevron-left" class="w-5 h-5 text-gray-600" />
           </button>
         </div>
 
@@ -36,7 +37,7 @@ import { CampaignSelectorComponent } from '../../../campaign/campaign-selector.c
           [attr.aria-label]="'Expand sidebar'"
           [title]="'Expand sidebar'"
         >
-          <span class="text-xl text-gray-600">▶️</span>
+          <lucide-icon name="chevron-right" class="w-6 h-6 text-gray-600" />
         </button>
 
         <!-- Campaign Selector -->

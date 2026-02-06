@@ -1,10 +1,11 @@
 import { Component, ChangeDetectionStrategy, input, computed } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { LucideAngularModule } from 'lucide-angular';
 import { NavItem } from '../../nav-item.model';
 
 @Component({
   selector: 'app-sidebar-nav-item',
-  imports: [RouterLink],
+  imports: [RouterLink, LucideAngularModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <a
@@ -12,7 +13,7 @@ import { NavItem } from '../../nav-item.model';
       [class]="itemClasses()"
       [title]="isCollapsed() ? item().label : ''"
     >
-      <span [class]="iconClasses()">{{ item().icon }}</span>
+      <lucide-icon [name]="item().icon" [class]="iconClasses()" />
       @if (!isCollapsed()) {
         <span>{{ item().label }}</span>
       }
@@ -35,7 +36,7 @@ export class SidebarNavItemComponent {
   });
 
   readonly iconClasses = computed(() => {
-    const size = this.isCollapsed() ? 'text-2xl' : 'text-xl';
+    const size = this.isCollapsed() ? 'w-6 h-6' : 'w-5 h-5';
     return `shrink-0 ${size}`;
   });
 }

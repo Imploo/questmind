@@ -1,7 +1,8 @@
-import { ApplicationConfig, provideBrowserGlobalErrorListeners, provideZonelessChangeDetection, APP_INITIALIZER } from '@angular/core';
+import { ApplicationConfig, provideBrowserGlobalErrorListeners, provideZonelessChangeDetection, APP_INITIALIZER, importProvidersFrom } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { provideHttpClient, withFetch } from '@angular/common/http';
 import { initializeFirebase } from './firebase.init';
+import { LucideAngularModule, MessageSquare, Mic, Music, Settings, ChevronLeft, ChevronRight, Plus, BookOpen } from 'lucide-angular';
 
 import { routes } from './app.routes';
 
@@ -11,6 +12,7 @@ export const appConfig: ApplicationConfig = {
     provideZonelessChangeDetection(),
     provideRouter(routes),
     provideHttpClient(withFetch()),
+    importProvidersFrom(LucideAngularModule.pick({ MessageSquare, Mic, Music, Settings, ChevronLeft, ChevronRight, Plus, BookOpen })),
     {
       provide: APP_INITIALIZER,
       useFactory: () => () => initializeFirebase(),

@@ -82,13 +82,13 @@ export class SidebarComponent {
 
   readonly navItems = computed((): NavItem[] => {
     const items: NavItem[] = [
-      { id: 'chat', label: 'Character Chat', route: 'chat', icon: '💬' },
-      { id: 'audio', label: 'Audio Transcription', route: 'audio', icon: '🎤' },
-      { id: 'podcasts', label: 'Podcast Bibliotheek', route: 'podcasts', icon: '🎵' },
+      { id: 'chat', label: 'Character Chat', route: 'chat', icon: 'message-square' },
+      { id: 'audio', label: 'Audio Transcription', route: 'audio', icon: 'mic' },
+      { id: 'podcasts', label: 'Podcast Bibliotheek', route: 'podcasts', icon: 'music' },
     ];
 
     if (this.userService.isAdmin()) {
-      items.push({ id: 'admin', label: 'Admin', route: 'admin', icon: '⚙️', adminOnly: true });
+      items.push({ id: 'admin', label: 'Admin', route: 'admin', icon: 'settings', adminOnly: true });
     }
 
     return items;

@@ -1,6 +1,7 @@
 import { Component, effect, inject, signal, input, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { LucideAngularModule } from 'lucide-angular';
 import { AuthService } from '../auth/auth.service';
 import { CampaignContextService } from './campaign-context.service';
 import { CampaignService } from './campaign.service';
@@ -8,7 +9,7 @@ import { Campaign } from './campaign.models';
 
 @Component({
   selector: 'app-campaign-selector',
-  imports: [FormsModule],
+  imports: [FormsModule, LucideAngularModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <!-- When expanded: Full layout -->
@@ -35,7 +36,7 @@ import { Campaign } from './campaign.models';
             (click)="showCreateCampaign.set(true)"
             class="flex-1 px-2 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center justify-center gap-1"
           >
-            <span>➕</span>
+            <lucide-icon name="plus" class="w-3 h-3" />
             <span>New</span>
           </button>
           @if (selectedCampaign()) {
@@ -43,7 +44,7 @@ import { Campaign } from './campaign.models';
               (click)="openManageCampaign(); showDropdown.set(false)"
               class="flex-1 px-2 py-1.5 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors flex items-center justify-center gap-1"
             >
-              <span>⚙️</span>
+              <lucide-icon name="settings" class="w-3 h-3" />
               <span>Settings</span>
             </button>
           }
@@ -64,7 +65,7 @@ import { Campaign } from './campaign.models';
           class="p-2 rounded-lg hover:bg-gray-100 transition-colors w-full"
           [title]="selectedCampaign()?.name || 'Select campaign'"
         >
-          <span class="text-2xl block text-center">📚</span>
+          <lucide-icon name="book-open" class="w-6 h-6 mx-auto" />
         </button>
         @if (showDropdown()) {
           <div class="absolute left-full ml-2 top-0 w-64 bg-white rounded-lg shadow-xl z-50 border border-gray-200">
@@ -88,7 +89,7 @@ import { Campaign } from './campaign.models';
                 (click)="showCreateCampaign.set(true); showDropdown.set(false)"
                 class="w-full px-3 py-2 text-left text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors flex items-center gap-2"
               >
-                <span>➕</span>
+                <lucide-icon name="plus" class="w-4 h-4" />
                 <span>New Campaign</span>
               </button>
               @if (selectedCampaign()) {
@@ -96,7 +97,7 @@ import { Campaign } from './campaign.models';
                   (click)="openManageCampaign(); showDropdown.set(false)"
                   class="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors flex items-center gap-2"
                 >
-                  <span>⚙️</span>
+                  <lucide-icon name="settings" class="w-4 h-4" />
                   <span>Campaign Settings</span>
                 </button>
               }
