@@ -117,8 +117,24 @@ export const transcribeAudioBatch = onCall(
       );
     }
 
+    // Generate signed URL for Gemini API access
+    // Batch jobs can take up to 48 hours, so make URL valid for 48 hours
+    const bucket = storage().bucket();
+    const filePath = storageUrl.replace(`gs://${bucket.name}/`, '');
+    const file = bucket.file(filePath);
+
+    console.log(`[transcribeAudioBatch] Generating signed URL for: ${filePath}`);
+
+    const [signedUrl] = await file.getSignedUrl({
+      action: 'read',
+      expires: Date.now() + 48 * 60 * 60 * 1000, // 48 hours
+    });
+
+    console.log(`[transcribeAudioBatch] Signed URL generated, valid for 48 hours`);
+
     // Create inline batch request
     // Using inline requests to avoid Gemini API bug with file-based output names
+    // Using signed URL to bypass Firebase Storage auth requirements
     const inlineRequest = {
       contents: [
         {
@@ -127,7 +143,7 @@ export const transcribeAudioBatch = onCall(
             {
               fileData: {
                 mimeType: mimeType,
-                fileUri: storageUrl,
+                fileUri: signedUrl,
               },
             },
           ],
@@ -142,7 +158,6 @@ export const transcribeAudioBatch = onCall(
     };
 
     // Save request to Cloud Storage for reference
-    const bucket = storage().bucket();
     const inputFilePath = `batch-requests/${sessionId}-input.json`;
     const inputFile = bucket.file(inputFilePath);
     await inputFile.save(JSON.stringify(inlineRequest, null, 2), {
