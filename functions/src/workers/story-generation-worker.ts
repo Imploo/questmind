@@ -113,6 +113,7 @@ export const storyGenerationWorkerHandler = async (data: WorkerPayload) => {
       await sessionRef.update({
         storyContent,
         storyGeneratedAt: new Date().toISOString(),
+        status: 'completed',
       });
 
       // Mark session as completed (100%)

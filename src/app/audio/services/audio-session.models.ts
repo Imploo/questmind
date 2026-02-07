@@ -212,6 +212,16 @@ export interface AudioSessionRecord extends SessionStory {
   podcasts?: PodcastVersion[];
   latestPodcastVersion?: number;
 
+  // Batch transcription fields
+  transcriptionText?: string;
+  timestamps?: TranscriptionTimestamp[];
+  transcriptionSegments?: TranscriptionSegment[];
+  transcriptionCompletedAt?: string;
+
+  // Story content
+  storyContent?: string;
+  storyGeneratedAt?: string;
+
   // Batch job tracking
   transcriptionBatch?: TranscriptionBatchMetadata;
 

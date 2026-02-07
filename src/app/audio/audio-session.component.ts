@@ -179,8 +179,8 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
               <app-session-story
                 [title]="currentSession()?.title || 'Session Story'"
                 [subtitle]="formatSubtitle(currentSession())"
-                [story]="currentSession()?.content || ''"
-                [transcript]="currentSession()?.transcription?.rawTranscript || ''"
+                [story]="currentSession()?.storyContent || ''"
+                [transcript]="currentSession()?.transcriptionText || ''"
                 [isBusy]="isBusy()"
                 [canRetranscribe]="canRetranscribe()"
                 [canRegenerate]="canRegenerateStory()"
@@ -562,7 +562,7 @@ export class AudioSessionComponent implements OnDestroy {
     if (!session) {
       return;
     }
-    this.sessionStateService.updateSession(session.id, { content, status: 'completed' });
+    this.sessionStateService.updateSession(session.id, { storyContent: content, status: 'completed' });
     this.refreshSessions();
   }
 
