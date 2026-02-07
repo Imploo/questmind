@@ -219,7 +219,20 @@ async function processTranscriptionAsync(
     // 4. Call Gemini API directly (not batch)
     const googleAi = new GoogleGenAI({ apiKey: process.env.GOOGLE_AI_API_KEY! });
 
-    console.log(`[Fast Transcription] Calling Gemini API...`);
+    const prompt = buildTranscriptionPrompt(kankaContext);
+
+    console.log(`[Fast Transcription] Calling Gemini API with request:`, {
+      model,
+      config: {
+        temperature: transcriptionConfig.temperature,
+        topK: transcriptionConfig.topK,
+        topP: transcriptionConfig.topP,
+        maxOutputTokens: transcriptionConfig.maxOutputTokens,
+      },
+      prompt: prompt,
+      hasKankaContext: !!kankaContext,
+      mimeType,
+    });
 
     const result = await googleAi.models.generateContent({
       model: model,
@@ -227,7 +240,7 @@ async function processTranscriptionAsync(
         {
           role: 'user',
           parts: [
-            { text: buildTranscriptionPrompt(kankaContext) },
+            { text: prompt },
             {
               fileData: {
                 mimeType: mimeType,
