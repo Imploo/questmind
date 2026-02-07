@@ -217,7 +217,8 @@ export class AudioUploadPageComponent {
         {
           sessionTitle: event.sessionName || 'Untitled Session',
           sessionDate: event.sessionDate,
-          enableKankaContext: false
+          enableKankaContext: false,
+          transcriptionMode: event.transcriptionMode || 'batch'
         },
         (uploadProgress) => {
           // Track upload progress (0-99%)

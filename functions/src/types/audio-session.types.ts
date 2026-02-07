@@ -83,12 +83,27 @@ export interface PodcastVoiceSettings {
   host2VoiceId: string;
 }
 
+export interface TranscriptionModeConfig {
+  enabled: boolean;
+  maxFileSizeMB?: number;
+  costMultiplier?: number;
+  timeoutSeconds?: number;
+  expectedProcessingMinutes?: number;
+}
+
+export interface TranscriptionFeatureConfig extends AIFeatureConfig {
+  modes?: {
+    fast?: TranscriptionModeConfig;
+    batch?: TranscriptionModeConfig;
+  };
+}
+
 export interface AISettings {
   defaultModel: string;
   availableModels?: string[];
   apiProvider?: string;
   features?: {
-    transcription?: AIFeatureConfig;
+    transcription?: TranscriptionFeatureConfig;
     storyGeneration?: AIFeatureConfig;
     podcastScript?: AIFeatureConfig;
     podcastVoices?: PodcastVoiceSettings;

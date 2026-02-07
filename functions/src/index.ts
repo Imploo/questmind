@@ -22,7 +22,8 @@ initializeApp();
 // Podcast generation (kept separate from transcription flow)
 export { generatePodcastAudio } from './generate-podcast-audio';
 
-// Batch transcription flow
+// Transcription flow (both fast and batch modes)
+export { transcribeAudioFast } from './transcribe-audio-fast';
 export { transcribeAudioBatch } from './transcribe-audio-batch';
 export { geminiCallback } from './gemini-callback';
 export { pollBatchJobs } from './poll-batch-jobs';

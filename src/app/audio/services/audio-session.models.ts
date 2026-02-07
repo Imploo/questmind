@@ -4,6 +4,7 @@ export interface AudioUpload {
   sessionDate?: string;
   userId: string;
   campaignId: string;
+  transcriptionMode?: 'fast' | 'batch';
 }
 
 export interface StorageMetadata {

@@ -10,6 +10,7 @@ export interface StartProcessingOptions {
   sessionDate?: string;
   enableKankaContext?: boolean;
   userCorrections?: string;
+  transcriptionMode?: 'fast' | 'batch';
 }
 
 /**
@@ -83,8 +84,11 @@ export class AudioCompleteProcessingService {
     // Build storage URL in the format expected by backend
     const storageUrl = `gs://${this.storage.app.options.storageBucket}/${storagePath}`;
 
-    // 2. Trigger batch transcription to start the processing chain
-    const transcribeAudioBatch = httpsCallable(this.functions, 'transcribeAudioBatch');
+    // 2. Trigger transcription (fast or batch mode) to start the processing chain
+    const transcriptionMode = options.transcriptionMode || 'batch';
+    const transcribeFunction = transcriptionMode === 'fast'
+      ? httpsCallable(this.functions, 'transcribeAudioFast')
+      : httpsCallable(this.functions, 'transcribeAudioBatch');
 
     const request = {
       campaignId,
@@ -96,7 +100,8 @@ export class AudioCompleteProcessingService {
       userCorrections: options.userCorrections
     };
 
-    await transcribeAudioBatch(request);
+    console.log(`[AudioCompleteProcessing] Starting ${transcriptionMode} transcription for session ${sessionId}`);
+    await transcribeFunction(request);
 
     // Return session ID for navigation
     return sessionId;
