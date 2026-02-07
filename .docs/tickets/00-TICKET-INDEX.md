@@ -314,6 +314,7 @@ Start here for immediate impact with minimal risk:
 | Ticket | Title | Priority | Status | Completed | Dependencies |
 |--------|-------|----------|--------|-----------|--------------|
 | [#41](./done/41-remove-enableKankaContext-from-frontend.md) | Remove enableKankaContext from Frontend Audio Upload | Medium | Done | 2026-02-07 | - |
+| [#42](./done/42-implement-kanka-transcription-integration.md) | Implement Kanka Integration for Transcription (Phase 2) | Medium | Done | 2026-02-07 | #41 |
 
 **Key Improvements:**
 - **Ticket 41**: Single source of truth for campaign settings
@@ -321,7 +322,15 @@ Start here for immediate impact with minimal risk:
   - Frontend no longer passes hardcoded `enableKankaContext: false` parameter
   - Reduced frontend/backend coupling
   - Fixed hardcoded prompt string in batch transcription
-  - Phase 1 complete - Phase 2 (actual Kanka integration) tracked in separate ticket
+  - Phase 1 complete - Phase 2 (actual Kanka integration) tracked in ticket #42
+
+- **Ticket 42**: Complete Kanka integration for transcription
+  - Created backend KankaService to fetch campaign entities from Kanka API
+  - Integrated Kanka context fetching into fast and batch transcription endpoints
+  - Transcription prompts now include campaign-specific entity names when enabled
+  - Session document stores `kankaSearchResult` for reuse by story generation
+  - Improved transcription accuracy for character names, locations, quests, and organizations
+  - Fails with clear error when Kanka is enabled but unavailable (ensures reliable integration)
 
 ---
 

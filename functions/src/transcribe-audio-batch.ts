@@ -8,7 +8,9 @@ import {
 } from './types/audio-session.types';
 import {ProgressTrackerService} from './services/progress-tracker.service';
 import {BatchTranscriptionMetadata} from './services/transcription-batch.service';
-import {AUDIO_TRANSCRIPTION_PROMPT} from './prompts/audio-transcription.prompt';
+import {buildTranscriptionPrompt} from './audio/transcription-prompt';
+import {fetchKankaContextForTranscription} from './services/kanka.service';
+
 
 export interface TranscribeAudioBatchRequest {
   campaignId: string;
@@ -23,7 +25,7 @@ export const transcribeAudioBatch = onCall(
   {
     timeoutSeconds: 300,
     memory: '1GiB',
-    secrets: ['GOOGLE_AI_API_KEY', 'GEMINI_CALLBACK_SECRET'],
+    secrets: ['GOOGLE_AI_API_KEY', 'GEMINI_CALLBACK_SECRET', 'KANKA_API_TOKEN'],
   },
   async (
     request: CallableRequest<TranscribeAudioBatchRequest>
@@ -131,6 +133,16 @@ export const transcribeAudioBatch = onCall(
 
     console.log(`[transcribeAudioBatch] Signed URL generated, valid for 48 hours`);
 
+    // Fetch Kanka enabled setting from campaign settings
+    const kankaEnabled = await getCampaignKankaEnabled(campaignId);
+
+    // Fetch Kanka context if enabled
+    const kankaContext = await fetchKankaContextForTranscription(
+      campaignId,
+      sessionId,
+      kankaEnabled
+    );
+
     // Create inline batch request
     // Using inline requests to avoid Gemini API bug with file-based output names
     // Using signed URL to bypass Firebase Storage auth requirements
@@ -138,7 +150,7 @@ export const transcribeAudioBatch = onCall(
       contents: [
         {
           parts: [
-            {text: AUDIO_TRANSCRIPTION_PROMPT},
+            {text: buildTranscriptionPrompt(kankaContext)},
             {
               fileData: {
                 mimeType: mimeType,
@@ -189,9 +201,6 @@ export const transcribeAudioBatch = onCall(
         'Batch job created without a job name'
       );
     }
-
-    // Fetch Kanka enabled setting from campaign settings
-    const kankaEnabled = await getCampaignKankaEnabled(campaignId);
 
     const batchMetadata: BatchTranscriptionMetadata = {
       batchJobName,

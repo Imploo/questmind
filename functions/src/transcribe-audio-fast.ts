@@ -5,7 +5,8 @@ import { storage } from 'firebase-admin';
 import { AIFeatureConfig, AISettings, TranscriptionSegment } from './types/audio-session.types';
 import { ProgressTrackerService } from './services/progress-tracker.service';
 import { WorkerQueueService } from './services/worker-queue.service';
-import { AUDIO_TRANSCRIPTION_PROMPT } from './prompts/audio-transcription.prompt';
+import { buildTranscriptionPrompt } from './audio/transcription-prompt';
+import { fetchKankaContextForTranscription } from './services/kanka.service';
 
 export interface TranscribeAudioFastRequest {
   campaignId: string;
@@ -36,7 +37,7 @@ export const transcribeAudioFast = onCall(
   {
     timeoutSeconds: 540, // 9 minutes - allow time for processing
     memory: '1GiB',
-    secrets: ['GOOGLE_AI_API_KEY'],
+    secrets: ['GOOGLE_AI_API_KEY', 'KANKA_API_TOKEN'],
   },
   async (
     request: CallableRequest<TranscribeAudioFastRequest>
@@ -196,7 +197,14 @@ async function processTranscriptionAsync(
 
     console.log(`[Fast Transcription] Using model: ${model}`);
 
-    // 2. Generate signed URL for Gemini API access
+    // 2. Fetch Kanka context if enabled
+    const kankaContext = await fetchKankaContextForTranscription(
+      campaignId,
+      sessionId,
+      enableKankaContext
+    );
+
+    // 3. Generate signed URL for Gemini API access
     const bucket = storage().bucket();
     const filePath = storageUrl.replace(`gs://${bucket.name}/`, '');
     const file = bucket.file(filePath);
@@ -208,7 +216,7 @@ async function processTranscriptionAsync(
       expires: Date.now() + 60 * 60 * 1000, // 1 hour (enough for fast processing)
     });
 
-    // 3. Call Gemini API directly (not batch)
+    // 4. Call Gemini API directly (not batch)
     const googleAi = new GoogleGenAI({ apiKey: process.env.GOOGLE_AI_API_KEY! });
 
     console.log(`[Fast Transcription] Calling Gemini API...`);
@@ -219,7 +227,7 @@ async function processTranscriptionAsync(
         {
           role: 'user',
           parts: [
-            { text: AUDIO_TRANSCRIPTION_PROMPT },
+            { text: buildTranscriptionPrompt(kankaContext) },
             {
               fileData: {
                 mimeType: mimeType,
