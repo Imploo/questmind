@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { httpsCallable, type Functions } from 'firebase/functions';
 import { ref, uploadBytesResumable, type FirebaseStorage } from 'firebase/storage';
 import { doc, onSnapshot, type Firestore, type Unsubscribe } from 'firebase/firestore';
-import { ProcessingProgress, UnifiedProgress, CompleteProcessingStatus } from './audio-session.models';
+import { UnifiedProgress } from './audio-session.models';
 import { FirebaseService } from '../../core/firebase.service';
 
 export interface StartProcessingOptions {
@@ -103,16 +103,17 @@ export class AudioCompleteProcessingService {
   }
 
   /**
-   * Listen to unified progress updates (new worker chain)
+   * Listen to unified progress updates
    *
-   * Maps new progress structure to legacy ProcessingProgress for UI compatibility
+   * Components can subscribe to session document changes directly via Firestore
+   * to monitor UnifiedProgress updates from the worker chain.
    *
    * @returns Unsubscribe function to stop listening
    */
   listenToProgress(
     campaignId: string,
     sessionId: string,
-    callback: (progress: ProcessingProgress) => void
+    callback: (progress: UnifiedProgress | null) => void
   ): Unsubscribe {
     const sessionRef = doc(
       this.firestore,
@@ -122,79 +123,16 @@ export class AudioCompleteProcessingService {
     return onSnapshot(sessionRef, (snapshot: any) => {
       if (!snapshot.exists()) {
         console.warn(`Session ${sessionId} does not exist`);
+        callback(null);
         return;
       }
 
       const data = snapshot.data();
-      if (data && data['progress']) {
-        const unifiedProgress = data['progress'] as UnifiedProgress;
-
-        // Map new stage to legacy status
-        const legacyStatus = this.mapStageToLegacyStatus(unifiedProgress.stage);
-
-        const progress: ProcessingProgress = {
-          status: legacyStatus,
-          progress: unifiedProgress.progress,
-          message: unifiedProgress.currentStep || this.getDefaultMessage(unifiedProgress.stage),
-          error: unifiedProgress.failure?.error
-        };
-
-        callback(progress);
-      } else {
-        // Fallback to legacy fields if new progress not available
-        const progress: ProcessingProgress = {
-          status: data['completeProcessingStatus'] || 'idle',
-          progress: data['completeProcessingProgress'] || 0,
-          message: data['completeProcessingMessage'] || '',
-          error: data['completeProcessingError']
-        };
-
-        callback(progress);
-      }
+      const progress = data?.['progress'] as UnifiedProgress | undefined;
+      callback(progress || null);
     }, (error: any) => {
       console.error('Error listening to progress:', error);
-      callback({
-        status: 'failed',
-        progress: 0,
-        message: 'Failed to listen to progress updates',
-        error: error.message
-      });
+      callback(null);
     });
-  }
-
-  /**
-   * Map new worker stage to legacy status for UI compatibility
-   */
-  private mapStageToLegacyStatus(stage: string): CompleteProcessingStatus {
-    const stageMap: Record<string, CompleteProcessingStatus> = {
-      'uploading': 'idle',
-      'submitted': 'loading_context',
-      'downloading': 'loading_context',
-      'chunking': 'loading_context',
-      'transcribing': 'transcribing',
-      'generating-story': 'generating_story',
-      'completed': 'completed',
-      'failed': 'failed'
-    };
-
-    return stageMap[stage] || 'idle';
-  }
-
-  /**
-   * Get default message for a stage
-   */
-  private getDefaultMessage(stage: string): string {
-    const messages: Record<string, string> = {
-      'uploading': 'Uploading audio file...',
-      'submitted': 'Submitting transcription job...',
-      'downloading': 'Downloading audio file...',
-      'chunking': 'Preparing audio for transcription...',
-      'transcribing': 'Transcribing audio...',
-      'generating-story': 'Generating story...',
-      'completed': 'Processing complete',
-      'failed': 'Processing failed'
-    };
-
-    return messages[stage] || 'Processing...';
   }
 }

@@ -55,20 +55,6 @@ export interface KankaSearchResult {
   organisations?: KankaOrganisation[];
 }
 
-export type CompleteProcessingStatus =
-  | 'idle'
-  | 'loading_context'
-  | 'transcribing'
-  | 'transcription_complete'
-  | 'generating_story'
-  | 'story_complete'
-  | 'generating_script'
-  | 'script_complete'
-  | 'generating_audio'
-  | 'uploading'
-  | 'completed'
-  | 'failed';
-
 export type RetranscribeStatus =
   | 'loading_context'
   | 'transcribing'

@@ -123,22 +123,8 @@ export interface UploadProgress {
   status: 'uploading' | 'completed' | 'failed';
 }
 
-export type CompleteProcessingStatus =
-  | 'idle'
-  | 'loading_context'
-  | 'transcribing'
-  | 'transcription_complete'
-  | 'generating_story'
-  | 'story_complete'
-  | 'generating_script'
-  | 'script_complete'
-  | 'generating_audio'
-  | 'uploading'
-  | 'completed'
-  | 'failed';
-
 /**
- * New unified progress structure (worker chain architecture)
+ * Unified progress structure (worker chain architecture - Ticket #36)
  */
 export type ProgressStage =
   | 'uploading'
@@ -163,16 +149,6 @@ export interface UnifiedProgress {
   currentStep?: string;
   failure?: ProgressFailure;
   updatedAt: Date;
-}
-
-/**
- * Legacy progress structure (for backward compatibility)
- */
-export interface ProcessingProgress {
-  status: CompleteProcessingStatus;
-  progress: number;
-  message: string;
-  error?: string;
 }
 
 export interface TranscriptionBatchMetadata {
@@ -211,14 +187,12 @@ export interface AudioSessionRecord extends SessionStory {
   // Batch job tracking
   transcriptionBatch?: TranscriptionBatchMetadata;
 
-  // New unified progress (worker chain - Ticket 36)
+  // Unified progress tracking (Ticket #36 worker chain)
   progress?: UnifiedProgress;
 
-  // Complete processing status (Ticket 35 - Legacy)
-  completeProcessingStatus?: CompleteProcessingStatus;
-  completeProcessingProgress?: number;
-  completeProcessingMessage?: string;
-  completeProcessingError?: string;
+  // Note: Legacy progress fields removed in Ticket #39 (2026-02-07)
+  // Old fields: completeProcessingStatus, completeProcessingProgress,
+  // completeProcessingMessage, completeProcessingError
 
   // Model tracking
   modelsUsed?: {
