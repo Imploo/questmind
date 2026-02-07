@@ -13,7 +13,6 @@ export interface TranscribeAudioFastRequest {
   storageUrl: string;
   audioFileName: string;
   audioFileSize?: number;
-  enableKankaContext?: boolean;
   userCorrections?: string;
 }
 
@@ -47,7 +46,6 @@ export const transcribeAudioFast = onCall(
       sessionId,
       storageUrl,
       audioFileName,
-      enableKankaContext,
       userCorrections,
     } = request.data;
 
@@ -99,11 +97,14 @@ export const transcribeAudioFast = onCall(
       'Fast transcription started...'
     );
 
+    // Fetch Kanka enabled setting from campaign settings
+    const kankaEnabled = await getCampaignKankaEnabled(campaignId);
+
     // Store fast transcription metadata
     await sessionRef.update({
       transcriptionFast: {
         mode: 'fast',
-        enableKankaContext: Boolean(enableKankaContext),
+        enableKankaContext: kankaEnabled,
         userCorrections,
         storageUrl,
         audioFileName,
@@ -118,7 +119,7 @@ export const transcribeAudioFast = onCall(
       sessionId,
       storageUrl,
       audioFileName,
-      enableKankaContext,
+      kankaEnabled,
       userCorrections
     ).catch((error) => {
       console.error('[transcribeAudioFast] Async processing failed:', error);
@@ -134,6 +135,23 @@ export const transcribeAudioFast = onCall(
 );
 
 /**
+ * Helper function to fetch Kanka enabled setting from campaign settings
+ */
+async function getCampaignKankaEnabled(campaignId: string): Promise<boolean> {
+  const db = getFirestore();
+  const campaignRef = db.collection('campaigns').doc(campaignId);
+  const campaignSnap = await campaignRef.get();
+
+  if (!campaignSnap.exists) {
+    console.warn(`Campaign ${campaignId} not found, defaulting kankaEnabled to false`);
+    return false;
+  }
+
+  const campaignData = campaignSnap.data();
+  return campaignData?.settings?.kankaEnabled ?? false;
+}
+
+/**
  * Process transcription asynchronously in the background
  */
 async function processTranscriptionAsync(
@@ -141,7 +159,7 @@ async function processTranscriptionAsync(
   sessionId: string,
   storageUrl: string,
   audioFileName: string,
-  enableKankaContext?: boolean,
+  enableKankaContext: boolean,
   userCorrections?: string
 ): Promise<void> {
   const db = getFirestore();
@@ -289,7 +307,7 @@ async function processTranscriptionAsync(
       campaignId,
       sessionId,
       transcriptionText,
-      enableKankaContext: Boolean(enableKankaContext),
+      enableKankaContext,
       userCorrections,
     });
 

@@ -8,7 +8,6 @@ import { FirebaseService } from '../../core/firebase.service';
 export interface StartProcessingOptions {
   sessionTitle: string;
   sessionDate?: string;
-  enableKankaContext?: boolean;
   userCorrections?: string;
   transcriptionMode?: 'fast' | 'batch';
 }
@@ -96,7 +95,6 @@ export class AudioCompleteProcessingService {
       storageUrl,
       audioFileName: audioFile.name,
       audioFileSize: audioFile.size,
-      enableKankaContext: options.enableKankaContext ?? false,
       userCorrections: options.userCorrections
     };
 

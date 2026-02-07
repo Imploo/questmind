@@ -8,6 +8,7 @@ import {
 } from './types/audio-session.types';
 import {ProgressTrackerService} from './services/progress-tracker.service';
 import {BatchTranscriptionMetadata} from './services/transcription-batch.service';
+import {AUDIO_TRANSCRIPTION_PROMPT} from './prompts/audio-transcription.prompt';
 
 export interface TranscribeAudioBatchRequest {
   campaignId: string;
@@ -15,7 +16,6 @@ export interface TranscribeAudioBatchRequest {
   storageUrl: string;
   audioFileName: string;
   audioFileSize?: number;
-  enableKankaContext?: boolean;
   userCorrections?: string;
 }
 
@@ -33,7 +33,6 @@ export const transcribeAudioBatch = onCall(
       sessionId,
       storageUrl,
       audioFileName,
-      enableKankaContext,
       userCorrections,
     } = request.data;
 
@@ -99,7 +98,7 @@ export const transcribeAudioBatch = onCall(
       temperature: 0.1,
       topP: 1,
       topK: 40,
-      maxOutputTokens: 128000,
+      maxOutputTokens: 32000,
     };
 
     const model = resolveModel(aiSettings, transcriptionConfig.model);
@@ -139,7 +138,7 @@ export const transcribeAudioBatch = onCall(
       contents: [
         {
           parts: [
-            {text: 'Transcribe this audio file into JSON format with segments containing timeSeconds, text, and optionally speaker fields.'},
+            {text: AUDIO_TRANSCRIPTION_PROMPT},
             {
               fileData: {
                 mimeType: mimeType,
@@ -191,6 +190,9 @@ export const transcribeAudioBatch = onCall(
       );
     }
 
+    // Fetch Kanka enabled setting from campaign settings
+    const kankaEnabled = await getCampaignKankaEnabled(campaignId);
+
     const batchMetadata: BatchTranscriptionMetadata = {
       batchJobName,
       modelUsed: model,
@@ -203,7 +205,7 @@ export const transcribeAudioBatch = onCall(
       storageUrl,
       audioFileName,
       mimeType,
-      enableKankaContext: Boolean(enableKankaContext),
+      enableKankaContext: kankaEnabled,
       userCorrections,
       inputGcsUri,
       submittedAt: FieldValue.serverTimestamp(),
@@ -230,6 +232,23 @@ export const transcribeAudioBatch = onCall(
     };
   }
 );
+
+/**
+ * Helper function to fetch Kanka enabled setting from campaign settings
+ */
+async function getCampaignKankaEnabled(campaignId: string): Promise<boolean> {
+  const db = getFirestore();
+  const campaignRef = db.collection('campaigns').doc(campaignId);
+  const campaignSnap = await campaignRef.get();
+
+  if (!campaignSnap.exists) {
+    console.warn(`Campaign ${campaignId} not found, defaulting kankaEnabled to false`);
+    return false;
+  }
+
+  const campaignData = campaignSnap.data();
+  return campaignData?.settings?.kankaEnabled ?? false;
+}
 
 function resolveModel(settings: AISettings, requestedModel?: string): string {
   const availableModels = settings.availableModels ?? [];

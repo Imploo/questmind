@@ -309,5 +309,21 @@ Start here for immediate impact with minimal risk:
 
 ---
 
+## 🧹 Backend Technical Debt
+
+| Ticket | Title | Priority | Status | Completed | Dependencies |
+|--------|-------|----------|--------|-----------|--------------|
+| [#41](./done/41-remove-enableKankaContext-from-frontend.md) | Remove enableKankaContext from Frontend Audio Upload | Medium | Done | 2026-02-07 | - |
+
+**Key Improvements:**
+- **Ticket 41**: Single source of truth for campaign settings
+  - Backend reads `settings.kankaEnabled` from campaign settings in Firestore
+  - Frontend no longer passes hardcoded `enableKankaContext: false` parameter
+  - Reduced frontend/backend coupling
+  - Fixed hardcoded prompt string in batch transcription
+  - Phase 1 complete - Phase 2 (actual Kanka integration) tracked in separate ticket
+
+---
+
 **Last Updated:** 2026-02-07
 **Status:** Planning Complete, Ready to Begin
