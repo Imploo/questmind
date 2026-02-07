@@ -7,6 +7,7 @@
 
 import {GoogleGenAI} from '@google/genai';
 import * as dotenv from 'dotenv';
+import * as logger from './logger';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -33,18 +34,18 @@ async function checkBatchStatus(jobName: string): Promise<void> {
   const ai = new GoogleGenAI({apiKey: GOOGLE_AI_API_KEY});
 
   try {
-    console.log(`\nFetching status for batch job: ${jobName}\n`);
+    logger.info(`\nFetching status for batch job: ${jobName}\n`);
 
     const batchJob = await ai.batches.get({name: jobName});
 
-    console.log('=== Batch Job Status ===\n');
-    console.log(JSON.stringify(batchJob, null, 2));
+    logger.info('=== Batch Job Status ===\n');
+    logger.info(JSON.stringify(batchJob, null, 2));
 
     // Extract state if available
     if (typeof batchJob === 'object' && batchJob !== null) {
       const state = (batchJob as {state?: unknown}).state;
-      console.log(`\n=== Summary ===`);
-      console.log(`State: ${state}`);
+      logger.info(`\n=== Summary ===`);
+      logger.info(`State: ${state}`);
 
       // Check for response data
       const job = batchJob as {
@@ -53,9 +54,9 @@ async function checkBatchStatus(jobName: string): Promise<void> {
       };
 
       if (job.dest?.inlinedResponses || job.response?.inlinedResponses) {
-        console.log('Response data: Available ✓');
+        logger.info('Response data: Available ✓');
       } else {
-        console.log('Response data: Not yet available');
+        logger.info('Response data: Not yet available');
       }
     }
   } catch (error) {

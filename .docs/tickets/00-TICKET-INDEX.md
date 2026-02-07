@@ -356,5 +356,26 @@ Start here for immediate impact with minimal risk:
 
 ---
 
+## 📊 Observability & Monitoring
+
+| Ticket | Title | Priority | Status | Effort | Dependencies |
+|--------|-------|----------|--------|--------|--------------|
+| [#44](./44-implement-sentry-error-logging.md) | Implement Sentry Error Logging for Frontend and Backend | High | Todo | 3-4 days | - |
+
+**Key Improvements:**
+- **Ticket 44**: Comprehensive error tracking and monitoring
+  - Centralized error logging for Angular frontend and Cloud Functions backend
+  - Real-time error alerts via email/Slack
+  - Source maps for readable production stack traces
+  - User context tracking (Firebase Auth integration)
+  - Performance monitoring for components and functions
+  - Breadcrumb tracking for user actions before errors
+  - Environment-based filtering (dev/staging/prod)
+  - Integration with Angular ErrorHandler and Cloud Functions error handling
+  - **Benefits:** Real-time visibility into production errors, faster debugging, data-driven prioritization, improved user experience
+  - **Related:** #3 (Hardcoded Error Handling), #29 (Error Handler Service)
+
+---
+
 **Last Updated:** 2026-02-07
 **Status:** Planning Complete, Ready to Begin

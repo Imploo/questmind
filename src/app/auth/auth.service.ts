@@ -13,6 +13,7 @@ import {
   type UserCredential
 } from 'firebase/auth';
 import { FirebaseService } from '../core/firebase.service';
+import * as logger from '../shared/logger';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -52,7 +53,7 @@ export class AuthService {
       const result = await getRedirectResult(this.auth);
       if (result) {
         // User successfully signed in via redirect
-        console.log('Successfully signed in via redirect:', result.user.email);
+        logger.info('Successfully signed in via redirect:', result.user.email);
       }
     } catch (err: unknown) {
       console.error('Redirect result error:', err);

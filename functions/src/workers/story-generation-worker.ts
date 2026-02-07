@@ -1,3 +1,4 @@
+import * as logger from '../utils/logger';
 import {HttpsError} from 'firebase-functions/v2/https';
 import {getFirestore} from 'firebase-admin/firestore';
 import {ProgressTrackerService} from '../services/progress-tracker.service';
@@ -95,7 +96,7 @@ export const storyGenerationWorkerHandler = async (data: WorkerPayload) => {
         'Generating story from transcription...'
       );
 
-      console.log(`[StoryGenerationWorker] Generating story for ${sessionId}...`);
+      logger.debug(`[StoryGenerationWorker] Generating story for ${sessionId}...`);
 
       // Generate story
       const storyContent = await generateStoryFromTranscription(
@@ -105,7 +106,7 @@ export const storyGenerationWorkerHandler = async (data: WorkerPayload) => {
         userCorrections
       );
 
-      console.log(
+      logger.debug(
         `[StoryGenerationWorker] Story generated: ${storyContent.length} characters`
       );
 
@@ -119,7 +120,7 @@ export const storyGenerationWorkerHandler = async (data: WorkerPayload) => {
       // Mark session as completed (100%)
       await ProgressTrackerService.markCompleted(campaignId, sessionId);
 
-      console.log(
+      logger.debug(
         `[StoryGenerationWorker] Completed processing for session ${sessionId}`
       );
     } catch (error) {

@@ -1,3 +1,4 @@
+import * as logger from '../utils/logger';
 import {firestore} from 'firebase-admin';
 import {Timestamp} from 'firebase-admin/firestore';
 import {SessionProgress, SessionProgressStage} from '../types/audio-session.types';
@@ -80,7 +81,7 @@ export class ProgressTrackerService {
       progress: progressData,
     });
 
-    console.log(
+    logger.debug(
       `[Progress] Session ${sessionId}: ${stage} (${progress}%) - ${message}`
     );
   }
@@ -161,7 +162,7 @@ export class ProgressTrackerService {
       progress: firestore.FieldValue.delete(),
     });
 
-    console.log(`[Progress] Session ${sessionId}: Progress cleared`);
+    logger.debug(`[Progress] Session ${sessionId}: Progress cleared`);
   }
 
   /**

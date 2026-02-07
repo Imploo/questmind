@@ -1,3 +1,4 @@
+import * as logger from './utils/logger';
 import {GoogleGenAI} from '@google/genai';
 import {CallableRequest, HttpsError, onCall} from 'firebase-functions/v2/https';
 import {FieldValue, getFirestore} from 'firebase-admin/firestore';
@@ -113,7 +114,7 @@ export const transcribeAudioBatch = onCall(
     const callbackUri = buildCallbackUri();
 
     if (!callbackUri) {
-      console.warn(
+      logger.warn(
         '[transcribeAudioBatch] Callback URL not configured; polling fallback only.'
       );
     }
@@ -124,14 +125,14 @@ export const transcribeAudioBatch = onCall(
     const filePath = storageUrl.replace(`gs://${bucket.name}/`, '');
     const file = bucket.file(filePath);
 
-    console.log(`[transcribeAudioBatch] Generating signed URL for: ${filePath}`);
+    logger.debug(`[transcribeAudioBatch] Generating signed URL for: ${filePath}`);
 
     const [signedUrl] = await file.getSignedUrl({
       action: 'read',
       expires: Date.now() + 48 * 60 * 60 * 1000, // 48 hours
     });
 
-    console.log(`[transcribeAudioBatch] Signed URL generated, valid for 48 hours`);
+    logger.debug(`[transcribeAudioBatch] Signed URL generated, valid for 48 hours`);
 
     // Fetch Kanka enabled setting from campaign settings
     const kankaEnabled = await getCampaignKankaEnabled(campaignId);
@@ -251,7 +252,7 @@ async function getCampaignKankaEnabled(campaignId: string): Promise<boolean> {
   const campaignSnap = await campaignRef.get();
 
   if (!campaignSnap.exists) {
-    console.warn(`Campaign ${campaignId} not found, defaulting kankaEnabled to false`);
+    logger.warn(`Campaign ${campaignId} not found, defaulting kankaEnabled to false`);
     return false;
   }
 

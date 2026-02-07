@@ -1,3 +1,4 @@
+import * as logger from '../utils/logger';
 import { GoogleGenAI } from '@google/genai';
 import { AIFeatureConfig, KankaSearchResult } from '../types/audio-session.types';
 import { SESSION_STORY_GENERATOR_PROMPT } from '../prompts/session-story-generator.prompt';
@@ -26,7 +27,7 @@ export async function generateStoryFromTranscription(
 
   const googleAi = new GoogleGenAI({ apiKey: googleAiKey });
 
-  console.log(`Generating story with ${config.model}...`);
+  logger.debug(`Generating story with ${config.model}...`);
 
   const storyPrompt = buildStoryPrompt(transcription, kankaContext, userCorrections);
 
@@ -47,7 +48,7 @@ export async function generateStoryFromTranscription(
 
   const storyContent = storyResponse.text.trim();
 
-  console.log(`Story generated: ${storyContent.length} characters`);
+  logger.debug(`Story generated: ${storyContent.length} characters`);
 
   return storyContent;
 }

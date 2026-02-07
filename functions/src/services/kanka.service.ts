@@ -5,6 +5,7 @@
  * Ported from frontend kanka.service.ts for use in Cloud Functions.
  */
 
+import * as logger from '../utils/logger';
 import { getFirestore } from 'firebase-admin/firestore';
 import { KankaSearchResult } from '../types/audio-session.types';
 
@@ -64,7 +65,7 @@ export async function fetchKankaContextForTranscription(
   const kankaCampaignId = campaignData?.settings?.kankaCampaignId;
 
   if (!kankaCampaignId) {
-    console.warn(
+    logger.warn(
       `[Kanka] Kanka is enabled for campaign ${campaignId} but kankaCampaignId is not set in settings`
     );
     return undefined;
@@ -77,7 +78,7 @@ export async function fetchKankaContextForTranscription(
   }
 
   // Fetch entities
-  console.log(`[Kanka] Fetching entities for campaign ${kankaCampaignId}...`);
+  logger.debug(`[Kanka] Fetching entities for campaign ${kankaCampaignId}...`);
   const kankaService = new KankaService(kankaToken);
   const kankaContext = await kankaService.getAllEntities(kankaCampaignId);
 
@@ -86,7 +87,7 @@ export async function fetchKankaContextForTranscription(
     kankaSearchResult: kankaContext,
   });
 
-  console.log('[Kanka] Entities fetched and stored successfully');
+  logger.debug('[Kanka] Entities fetched and stored successfully');
   return kankaContext;
 }
 

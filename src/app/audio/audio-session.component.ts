@@ -7,6 +7,7 @@ import { AudioBackendOperationsService, RetranscribeProgress, RegenerateStoryPro
 import { PodcastAudioService, PodcastProgress } from './services/podcast-audio.service';
 import { AuthService } from '../auth/auth.service';
 import { FormattingService } from '../shared/formatting.service';
+import * as logger from '../shared/logger';
 import { CampaignContextService } from '../campaign/campaign-context.service';
 import { CampaignService } from '../campaign/campaign.service';
 import {
@@ -619,7 +620,7 @@ export class AudioSessionComponent implements OnDestroy {
     const session = this.currentSession();
     const stage = session?.progress?.stage;
 
-    console.log('[Progress] Cancel requested for stage:', stage);
+    logger.debug('[Progress] Cancel requested for stage:', stage);
 
     // Most operations don't support cancellation yet
     // This is a placeholder for future implementation
@@ -637,7 +638,7 @@ export class AudioSessionComponent implements OnDestroy {
       return;
     }
 
-    console.log('[Progress] Retry requested for failed stage');
+    logger.debug('[Progress] Retry requested for failed stage');
 
     // For now, just refresh the sessions to clear the error
     // In the future, this could trigger a retry based on what failed

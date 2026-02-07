@@ -1,3 +1,4 @@
+import * as logger from '../utils/logger';
 import {CallableRequest, onCall} from 'firebase-functions/v2/https';
 
 /**
@@ -40,7 +41,7 @@ export class WorkerQueueService {
       }
     });
 
-    console.log(
+    logger.debug(
       `[WorkerQueue] Triggered worker for session ${payload.sessionId}`
     );
   }
@@ -64,7 +65,7 @@ export class WorkerQueueService {
         const data = request.data as WorkerPayload;
         const {sessionId} = data;
 
-        console.log(`[${workerName}] Started for session ${sessionId}`);
+        logger.debug(`[${workerName}] Started for session ${sessionId}`);
 
         try {
           // Execute the worker logic asynchronously
@@ -72,7 +73,7 @@ export class WorkerQueueService {
           setImmediate(async () => {
             try {
               await handler(data);
-              console.log(`[${workerName}] Completed for session ${sessionId}`);
+              logger.debug(`[${workerName}] Completed for session ${sessionId}`);
             } catch (error) {
               console.error(
                 `[${workerName}] Error for session ${sessionId}:`,

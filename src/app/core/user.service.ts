@@ -4,6 +4,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { FirebaseService } from './firebase.service';
 import { AuthService } from '../auth/auth.service';
 import type { UserProfile } from './models/user.model';
+import * as logger from '../shared/logger';
 
 @Injectable({ providedIn: 'root' })
 export class UserService {
@@ -55,7 +56,7 @@ export class UserService {
         };
         this.userProfile.set(profile);
       } else {
-        console.warn('User document does not exist in Firestore for uid:', uid);
+        logger.warn('User document does not exist in Firestore for uid:', uid);
         // User document doesn't exist yet - create basic profile
         this.userProfile.set({
           uid,

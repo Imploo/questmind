@@ -2,6 +2,7 @@
  * Utility helpers for Firebase Emulator testing
  */
 
+import * as logger from './logger';
 import { CallableRequest } from 'firebase-functions/v2/https';
 
 /**
@@ -18,7 +19,7 @@ export function isEmulator(): boolean {
  */
 export function ensureAuthForTesting<T>(request: CallableRequest<T>): void {
   if (isEmulator() && !request.auth?.uid) {
-    console.warn('⚠️  EMULATOR MODE: Using test auth context');
+    logger.warn('⚠️  EMULATOR MODE: Using test auth context');
     // Create a test auth context
     (request as any).auth = {
       uid: 'test-user-emulator',

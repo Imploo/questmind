@@ -1,3 +1,4 @@
+import * as logger from './utils/logger';
 import {GoogleGenAI} from '@google/genai';
 import {onRequest} from 'firebase-functions/v2/https';
 import {firestore} from 'firebase-admin';
@@ -51,7 +52,7 @@ export const pollBatchJobs = onRequest(
 
       const campaignId = doc.ref.parent.parent?.id;
       if (!campaignId) {
-        console.warn(
+        logger.warn(
           `Could not resolve campaignId for session ${doc.ref.id}`
         );
         continue;
@@ -90,7 +91,7 @@ export const pollBatchJobs = onRequest(
 
         if (state === 'JOB_STATE_SUCCEEDED') {
           // Log the batch job structure for debugging
-          console.log('[DEBUG] Batch job structure:', JSON.stringify(batchJob, null, 2));
+          logger.debug('[DEBUG] Batch job structure:', JSON.stringify(batchJob, null, 2));
 
           const responseText = extractInlineResponseText(batchJob);
           if (!responseText) {

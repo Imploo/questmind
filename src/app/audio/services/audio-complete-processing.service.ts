@@ -4,6 +4,7 @@ import { ref, uploadBytesResumable, type FirebaseStorage } from 'firebase/storag
 import { doc, onSnapshot, type Firestore, type Unsubscribe } from 'firebase/firestore';
 import { UnifiedProgress } from './audio-session.models';
 import { FirebaseService } from '../../core/firebase.service';
+import * as logger from '../../shared/logger';
 
 export interface StartProcessingOptions {
   sessionTitle: string;
@@ -98,7 +99,7 @@ export class AudioCompleteProcessingService {
       userCorrections: options.userCorrections
     };
 
-    console.log(`[AudioCompleteProcessing] Starting ${transcriptionMode} transcription for session ${sessionId}`);
+    logger.info(`[AudioCompleteProcessing] Starting ${transcriptionMode} transcription for session ${sessionId}`);
     await transcribeFunction(request);
 
     // Return session ID for navigation
@@ -125,7 +126,7 @@ export class AudioCompleteProcessingService {
 
     return onSnapshot(sessionRef, (snapshot: any) => {
       if (!snapshot.exists()) {
-        console.warn(`Session ${sessionId} does not exist`);
+        logger.warn(`Session ${sessionId} does not exist`);
         callback(null);
         return;
       }

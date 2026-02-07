@@ -1,3 +1,4 @@
+import * as logger from './utils/logger';
 import { onCall, HttpsError, CallableRequest } from 'firebase-functions/v2/https';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
@@ -323,7 +324,7 @@ async function generatePodcastInBackground(
 
       // Validate character limit
       const totalCharacters = finalScript.segments.reduce((sum, seg) => sum + seg.text.length, 0);
-      console.log(`Generated script: ${totalCharacters} characters (limit: 5000)`);
+      logger.debug(`Generated script: ${totalCharacters} characters (limit: 5000)`);
 
       if (totalCharacters > 5000) {
         throw new Error(
@@ -341,7 +342,7 @@ async function generatePodcastInBackground(
         }
       );
 
-      console.log(`Script: ${finalScript.segments.length} segments, ~${finalScript.estimatedDuration}s`);
+      logger.debug(`Script: ${finalScript.segments.length} segments, ~${finalScript.estimatedDuration}s`);
     } else {
       // Script provided, skip generation
       finalScript = script;
@@ -353,7 +354,7 @@ async function generatePodcastInBackground(
           duration: finalScript.estimatedDuration
         }
       );
-      console.log(`Using provided script: ${finalScript.segments.length} segments`);
+      logger.debug(`Using provided script: ${finalScript.segments.length} segments`);
     }
 
     // STEP 2: Generate audio (existing code continues)
@@ -382,7 +383,7 @@ async function generatePodcastInBackground(
       voiceId: hostVoices[seg.speaker as 'host1' | 'host2'] || hostVoices.host1
     }));
 
-    console.log(`Generating podcast with text-to-dialogue (${finalScript.segments.length} segments)`);
+    logger.debug(`Generating podcast with text-to-dialogue (${finalScript.segments.length} segments)`);
 
     // 2. Call ElevenLabs text-to-dialogue API (SINGLE CALL)
     await updatePodcastProgress(
@@ -422,7 +423,7 @@ async function generatePodcastInBackground(
       throw new Error('Empty audio buffer from text-to-dialogue');
     }
 
-    console.log(`Generated podcast: ${audioBuffer.length} bytes`);
+    logger.debug(`Generated podcast: ${audioBuffer.length} bytes`);
     fs.writeFileSync(outputPath, audioBuffer);
 
     // Update: Uploading to storage
@@ -481,7 +482,7 @@ async function generatePodcastInBackground(
       'Podcast generation complete'
     );
 
-    console.log(`Podcast generation completed: ${fileUrl}`);
+    logger.debug(`Podcast generation completed: ${fileUrl}`);
 
   } catch (error: any) {
     console.error('Error generating podcast:', error);
@@ -518,7 +519,7 @@ function safeUnlink(filePath: string): void {
       fs.unlinkSync(filePath);
     }
   } catch (error) {
-    console.warn('Failed to delete temp file:', filePath, error);
+    logger.warn(`Failed to delete temp file: ${filePath}`, error);
   }
 }
 
@@ -528,7 +529,7 @@ function safeRemoveDir(dirPath: string): void {
       fs.rmSync(dirPath, { recursive: true, force: true });
     }
   } catch (error) {
-    console.warn('Failed to delete temp dir:', dirPath, error);
+    logger.warn(`Failed to delete temp dir: ${dirPath}`, error);
   }
 }
 

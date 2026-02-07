@@ -1,3 +1,4 @@
+import * as logger from './utils/logger';
 import { GoogleGenAI } from '@google/genai';
 import { CallableRequest, HttpsError, onCall } from 'firebase-functions/v2/https';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
@@ -144,7 +145,7 @@ async function getCampaignKankaEnabled(campaignId: string): Promise<boolean> {
   const campaignSnap = await campaignRef.get();
 
   if (!campaignSnap.exists) {
-    console.warn(`Campaign ${campaignId} not found, defaulting kankaEnabled to false`);
+    logger.warn(`Campaign ${campaignId} not found, defaulting kankaEnabled to false`);
     return false;
   }
 
@@ -173,7 +174,7 @@ async function processTranscriptionAsync(
   const startTime = Date.now();
 
   try {
-    console.log(`[Fast Transcription] Starting for session ${sessionId}`);
+    logger.debug(`[Fast Transcription] Starting for session ${sessionId}`);
 
     // 1. Get AI settings
     const settingsSnap = await db.doc('settings/ai').get();
@@ -195,7 +196,7 @@ async function processTranscriptionAsync(
     const model = resolveModel(aiSettings, transcriptionConfig.model);
     const mimeType = resolveMimeType(audioFileName);
 
-    console.log(`[Fast Transcription] Using model: ${model}`);
+    logger.debug(`[Fast Transcription] Using model: ${model}`);
 
     // 2. Fetch Kanka context if enabled
     const kankaContext = await fetchKankaContextForTranscription(
@@ -209,7 +210,7 @@ async function processTranscriptionAsync(
     const filePath = storageUrl.replace(`gs://${bucket.name}/`, '');
     const file = bucket.file(filePath);
 
-    console.log(`[Fast Transcription] Generating signed URL for: ${filePath}`);
+    logger.debug(`[Fast Transcription] Generating signed URL for: ${filePath}`);
 
     const [signedUrl] = await file.getSignedUrl({
       action: 'read',
@@ -221,7 +222,7 @@ async function processTranscriptionAsync(
 
     const prompt = buildTranscriptionPrompt(kankaContext);
 
-    console.log(`[Fast Transcription] Calling Gemini API with request:`, {
+    logger.debug(`[Fast Transcription] Calling Gemini API with request:`, {
       model,
       config: {
         temperature: transcriptionConfig.temperature,
@@ -264,7 +265,7 @@ async function processTranscriptionAsync(
 
     const text = result.text;
 
-    console.log(`[Fast Transcription] Received response, parsing...`);
+    logger.debug(`[Fast Transcription] Received response, parsing...`);
 
     // 5. Parse JSON response
     const transcriptionPayload = parseTranscriptionPayload(text);
@@ -281,7 +282,7 @@ async function processTranscriptionAsync(
 
     const processingTimeMs = Date.now() - startTime;
 
-    console.log(
+    logger.debug(
       `[Fast Transcription] Found ${transcriptionPayload.segments.length} segments in ${processingTimeMs}ms`
     );
 
@@ -318,7 +319,7 @@ async function processTranscriptionAsync(
       'Transcription complete, preparing story generation...'
     );
 
-    console.log(`[Fast Transcription] Triggering story generation worker...`);
+    logger.debug(`[Fast Transcription] Triggering story generation worker...`);
 
     // 8. Trigger story generation worker
     const { storyGenerationWorkerHandler } = await import(
@@ -332,7 +333,7 @@ async function processTranscriptionAsync(
       userCorrections,
     });
 
-    console.log(`[Fast Transcription] Complete for session ${sessionId}`);
+    logger.debug(`[Fast Transcription] Complete for session ${sessionId}`);
   } catch (error: any) {
     console.error('[Fast Transcription] Processing error:', error);
 

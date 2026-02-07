@@ -14,6 +14,7 @@ import { AuthService } from '../auth/auth.service';
 import { Campaign, CampaignMember, CampaignRole, CampaignSettings } from './campaign.models';
 import { UserProfileService } from './user-profile.service';
 import { FirebaseService } from '../core/firebase.service';
+import * as logger from '../shared/logger';
 
 @Injectable({ providedIn: 'root' })
 export class CampaignService {
@@ -221,7 +222,7 @@ export class CampaignService {
       const snapshot = await getDocs(q);
 
       if (snapshot.empty) {
-        console.warn('No user found with email:', normalizedEmail);
+        logger.warn('No user found with email:', normalizedEmail);
         return null;
       }
 

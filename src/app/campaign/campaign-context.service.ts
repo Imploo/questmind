@@ -6,6 +6,7 @@ import { Campaign, UserProfile } from './campaign.models';
 import { CampaignService } from './campaign.service';
 import { UserProfileService } from './user-profile.service';
 import { FirebaseService } from '../core/firebase.service';
+import * as logger from '../shared/logger';
 
 @Injectable({ providedIn: 'root' })
 export class CampaignContextService {
@@ -144,8 +145,8 @@ export class CampaignContextService {
       }
 
       if (campaigns.length < campaignIds.length) {
-        console.warn('[CampaignContext] Some campaigns could not be loaded. Expected:', campaignIds.length, 'Got:', campaigns.length);
-        console.warn('[CampaignContext] Missing campaign IDs:',
+        logger.warn(`[CampaignContext] Some campaigns could not be loaded. Expected: ${campaignIds.length}, Got: ${campaigns.length}`);
+        logger.warn('[CampaignContext] Missing campaign IDs:',
           campaignIds.filter(id => !campaigns.some(c => c.id === id))
         );
       }
