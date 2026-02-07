@@ -14,7 +14,6 @@ import {
   PodcastVersion
 } from './services/audio-session.models';
 import { SessionStoryComponent } from './session-story.component';
-import { KankaService } from '../kanka/kanka.service';
 
 type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' | 'failed';
 
@@ -250,10 +249,6 @@ export class AudioSessionComponent implements OnDestroy {
 
   userId = computed(() => this.authService.currentUser()?.uid || null);
   campaignId = computed(() => this.campaignContext.selectedCampaignId());
-  selectedCampaign = this.campaignContext.selectedCampaign;
-  canUploadAudio = computed(() => this.campaignContext.canCreateSessions(this.userId()));
-  kankaEnabled = computed(() => this.selectedCampaign()?.settings?.kankaEnabled ?? false);
-  kankaAvailable = computed(() => this.kankaService.isConfigured());
   userCorrections = signal<string>('');
   correctionsSaveStatus = signal<'idle' | 'saving' | 'saved'>('idle');
 
@@ -331,7 +326,6 @@ export class AudioSessionComponent implements OnDestroy {
     public readonly authService: AuthService,
     private readonly injector: Injector,
     public readonly formatting: FormattingService,
-    private readonly kankaService: KankaService
   ) {
     this.sessions = this.sessionStateService.sessions;
 
@@ -455,7 +449,6 @@ export class AudioSessionComponent implements OnDestroy {
         campaignId,
         session.id,
         {
-          enableKankaContext: this.kankaEnabled() && this.kankaAvailable(),
           userCorrections: this.userCorrections()
         }
       );
@@ -541,7 +534,6 @@ export class AudioSessionComponent implements OnDestroy {
         campaignId,
         session.id,
         {
-          enableKankaContext: this.kankaEnabled() && this.kankaAvailable(),
           userCorrections: this.userCorrections(),
           regenerateStoryAfterTranscription: true
         }
