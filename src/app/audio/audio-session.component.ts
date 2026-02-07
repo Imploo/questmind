@@ -14,12 +14,13 @@ import {
   PodcastVersion
 } from './services/audio-session.models';
 import { SessionStoryComponent } from './session-story.component';
+import { SessionProgressCardComponent } from './session-progress-card.component';
 
 type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' | 'failed';
 
 @Component({
   selector: 'app-audio-session',
-  imports: [CommonModule, SessionStoryComponent],
+  imports: [CommonModule, SessionStoryComponent, SessionProgressCardComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (!authService.isAuthenticated()) {
@@ -174,6 +175,13 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
         <main class="flex-1 min-w-0">
           <div class="grid gap-6">
             @if (currentSession()) {
+              <!-- Progress card (only shown when session is processing) -->
+              <app-session-progress-card
+                [progress]="currentSession()?.progress"
+                (cancel)="cancelCurrentOperation()"
+                (retry)="retryFailedOperation()"
+              />
+
               <!-- Session story with integrated podcasts tab -->
               <app-session-story
                 [title]="currentSession()?.title || 'Session Story'"
@@ -601,6 +609,41 @@ export class AudioSessionComponent implements OnDestroy {
       return '';
     }
     return `${session.audioFileName || 'Unknown'} · ${session.sessionDate || 'No date'}`;
+  }
+
+  /**
+   * Cancel the current operation (if supported)
+   * Note: Most operations are fire-and-forget, so cancellation may not be possible
+   */
+  cancelCurrentOperation(): void {
+    const session = this.currentSession();
+    const stage = session?.progress?.stage;
+
+    console.log('[Progress] Cancel requested for stage:', stage);
+
+    // Most operations don't support cancellation yet
+    // This is a placeholder for future implementation
+    alert('Operation cancellation is not yet implemented. The operation will complete in the background.');
+  }
+
+  /**
+   * Retry a failed operation based on the stage
+   */
+  retryFailedOperation(): void {
+    const session = this.currentSession();
+    const stage = session?.progress?.stage;
+
+    if (stage !== 'failed') {
+      return;
+    }
+
+    console.log('[Progress] Retry requested for failed stage');
+
+    // For now, just refresh the sessions to clear the error
+    // In the future, this could trigger a retry based on what failed
+    this.refreshSessions();
+
+    alert('Please manually retry the operation. Automatic retry is not yet implemented.');
   }
 
   ngOnDestroy(): void {

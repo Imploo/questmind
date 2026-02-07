@@ -1,8 +1,9 @@
 import {firestore} from 'firebase-admin';
 import {Timestamp} from 'firebase-admin/firestore';
+import {SessionProgress, SessionProgressStage} from '../types/audio-session.types';
 
 /**
- * Progress stage for audio processing
+ * @deprecated Use SessionProgress from audio-session.types instead
  */
 export type ProgressStage =
   | 'uploading'
@@ -15,7 +16,7 @@ export type ProgressStage =
   | 'failed';
 
 /**
- * Failure information
+ * @deprecated Use SessionProgress from audio-session.types instead
  */
 export interface ProgressFailure {
   stage: string;
@@ -25,7 +26,7 @@ export interface ProgressFailure {
 }
 
 /**
- * Audio session progress tracking
+ * @deprecated Use SessionProgress from audio-session.types instead
  */
 export interface AudioSessionProgress {
   stage: ProgressStage;
@@ -36,18 +37,19 @@ export interface AudioSessionProgress {
 }
 
 /**
- * Service for tracking progress of audio session processing
+ * Service for tracking progress of audio session processing (Ticket #43)
  */
 export class ProgressTrackerService {
   /**
-   * Update progress for an audio session
+   * Update progress for an audio session using new unified SessionProgress
    */
   static async updateProgress(
     campaignId: string,
     sessionId: string,
-    stage: ProgressStage,
+    stage: SessionProgressStage,
     progress: number,
-    currentStep?: string
+    message: string,
+    estimatedCompletionAt?: Date
   ): Promise<void> {
     const db = firestore();
     const sessionRef = db
@@ -56,14 +58,22 @@ export class ProgressTrackerService {
       .collection('audioSessions')
       .doc(sessionId);
 
-    const progressData: AudioSessionProgress = {
+    // Get existing progress to preserve startedAt if stage hasn't changed
+    const sessionDoc = await sessionRef.get();
+    const existingProgress = sessionDoc.data()?.progress as SessionProgress | undefined;
+    const stageChanged = !existingProgress || existingProgress.stage !== stage;
+
+    const now = new Date();
+    const progressData: SessionProgress = {
       stage,
       progress: Math.min(100, Math.max(0, progress)), // Clamp between 0-100
-      updatedAt: Timestamp.now(),
+      message,
+      startedAt: stageChanged ? now : (existingProgress?.startedAt || now),
+      updatedAt: now,
     };
 
-    if (currentStep) {
-      progressData.currentStep = currentStep;
+    if (estimatedCompletionAt) {
+      progressData.estimatedCompletionAt = estimatedCompletionAt;
     }
 
     await sessionRef.update({
@@ -71,7 +81,7 @@ export class ProgressTrackerService {
     });
 
     console.log(
-      `[Progress] Session ${sessionId}: ${stage} (${progress}%)${currentStep ? ` - ${currentStep}` : ''}`
+      `[Progress] Session ${sessionId}: ${stage} (${progress}%) - ${message}`
     );
   }
 
@@ -81,7 +91,7 @@ export class ProgressTrackerService {
   static async markFailed(
     campaignId: string,
     sessionId: string,
-    stage: string,
+    stage: SessionProgressStage,
     error: Error | string,
     details?: unknown
   ): Promise<void> {
@@ -93,25 +103,16 @@ export class ProgressTrackerService {
       .doc(sessionId);
 
     const errorMessage = error instanceof Error ? error.message : error;
-    const errorStack = error instanceof Error ? error.stack : undefined;
+    const errorDetails = details || (error instanceof Error ? error.stack : undefined);
 
-    const failureDetails = details || errorStack;
-    const failure: ProgressFailure = {
-      stage,
-      error: errorMessage,
-      timestamp: Timestamp.now(),
-    };
-
-    // Only include details if we have a value (Firestore doesn't accept undefined)
-    if (failureDetails !== undefined) {
-      failure.details = failureDetails;
-    }
-
-    const progressData: AudioSessionProgress = {
+    const now = new Date();
+    const progressData: SessionProgress = {
       stage: 'failed',
       progress: 0,
-      failure,
-      updatedAt: Timestamp.now(),
+      message: `Failed: ${errorMessage}`,
+      startedAt: now,
+      error: errorMessage + (errorDetails ? `\n\nDetails: ${JSON.stringify(errorDetails, null, 2)}` : ''),
+      updatedAt: now,
     };
 
     await sessionRef.update({
@@ -130,15 +131,37 @@ export class ProgressTrackerService {
    */
   static async markCompleted(
     campaignId: string,
-    sessionId: string
+    sessionId: string,
+    message = 'Processing complete'
   ): Promise<void> {
     await this.updateProgress(
       campaignId,
       sessionId,
       'completed',
       100,
-      'Processing complete'
+      message
     );
+  }
+
+  /**
+   * Clear progress (set to idle)
+   */
+  static async clearProgress(
+    campaignId: string,
+    sessionId: string
+  ): Promise<void> {
+    const db = firestore();
+    const sessionRef = db
+      .collection('campaigns')
+      .doc(campaignId)
+      .collection('audioSessions')
+      .doc(sessionId);
+
+    await sessionRef.update({
+      progress: firestore.FieldValue.delete(),
+    });
+
+    console.log(`[Progress] Session ${sessionId}: Progress cleared`);
   }
 
   /**
@@ -147,7 +170,7 @@ export class ProgressTrackerService {
   static async getProgress(
     campaignId: string,
     sessionId: string
-  ): Promise<AudioSessionProgress | null> {
+  ): Promise<SessionProgress | null> {
     const db = firestore();
     const sessionRef = db
       .collection('campaigns')

@@ -15,6 +15,9 @@ export interface RegenerateStoryOptions {
   userCorrections?: string;
 }
 
+/**
+ * @deprecated Use SessionProgress instead (Ticket #43)
+ */
 export type RetranscribeStatus =
   | 'loading_context'
   | 'transcribing'
@@ -24,12 +27,19 @@ export type RetranscribeStatus =
   | 'completed'
   | 'failed';
 
+/**
+ * @deprecated Use SessionProgress instead (Ticket #43)
+ */
 export type RegenerateStoryStatus =
   | 'loading_context'
   | 'generating_story'
   | 'completed'
   | 'failed';
 
+/**
+ * @deprecated Use SessionProgress instead (Ticket #43)
+ * Use SessionProgressCardComponent for displaying progress
+ */
 export interface RetranscribeProgress {
   status: RetranscribeStatus;
   progress: number;
@@ -37,6 +47,10 @@ export interface RetranscribeProgress {
   error?: string;
 }
 
+/**
+ * @deprecated Use SessionProgress instead (Ticket #43)
+ * Use SessionProgressCardComponent for displaying progress
+ */
 export interface RegenerateStoryProgress {
   status: RegenerateStoryStatus;
   progress: number;
@@ -105,6 +119,7 @@ export class AudioBackendOperationsService {
   }
 
   /**
+   * @deprecated Use SessionProgressCardComponent instead (Ticket #43)
    * Listen to retranscribe progress updates (uses unified progress)
    *
    * @param campaignId - Campaign ID
@@ -201,6 +216,7 @@ export class AudioBackendOperationsService {
     const storyGenerationWorker = httpsCallable(this.functions, 'storyGenerationWorker');
 
     await storyGenerationWorker({
+      campaignId,
       sessionId,
       transcriptionText,
       enableKankaContext: options.enableKankaContext,
@@ -209,6 +225,7 @@ export class AudioBackendOperationsService {
   }
 
   /**
+   * @deprecated Use SessionProgressCardComponent instead (Ticket #43)
    * Listen to regenerate story progress updates (uses unified progress)
    *
    * @param campaignId - Campaign ID

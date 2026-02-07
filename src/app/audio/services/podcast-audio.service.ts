@@ -3,6 +3,10 @@ import { doc, onSnapshot, DocumentSnapshot, type Firestore } from 'firebase/fire
 import { httpsCallable, type Functions } from 'firebase/functions';
 import { FirebaseService } from '../../core/firebase.service';
 
+/**
+ * @deprecated Use SessionProgress instead (Ticket #43)
+ * Use SessionProgressCardComponent for displaying progress
+ */
 export interface PodcastProgress {
   status:
     | 'pending'
@@ -79,6 +83,7 @@ export class PodcastAudioService {
   }
 
   /**
+   * @deprecated Use SessionProgressCardComponent instead (Ticket #43)
    * Listen to podcast generation progress in real-time.
    * Returns a signal that updates with progress and an unsubscribe function.
    */

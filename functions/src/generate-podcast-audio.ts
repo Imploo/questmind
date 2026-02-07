@@ -12,14 +12,20 @@ import { SHARED_CORS } from './index';
 import { PODCAST_SCRIPT_GENERATOR_PROMPT } from './prompts/podcast-script-generator.prompt';
 import { AISettings } from './types/audio-session.types';
 import { ensureAuthForTesting } from './utils/emulator-helpers';
+import { ProgressTrackerService } from './services/progress-tracker.service';
 
 const DEFAULT_HOST_VOICES: Record<'host1' | 'host2', string> = {
   host1: process.env.ELEVENLABS_HOST1_VOICE ?? '',
   host2: process.env.ELEVENLABS_HOST2_VOICE ?? ''
 };
 
-// Helper to update progress in Firestore
-async function updateProgress(
+/**
+ * @deprecated Use ProgressTrackerService instead (Ticket #43)
+ * Helper to update podcast-specific progress in Firestore
+ * Still needed for updating individual podcast records, but unified session progress
+ * should be tracked via ProgressTrackerService
+ */
+async function updatePodcastProgress(
   sessionRef: FirebaseFirestore.DocumentReference,
   existingPodcasts: any[],
   version: number,
@@ -242,7 +248,7 @@ async function generatePodcastInBackground(
   const elevenlabsKey = process.env.ELEVENLABS_API_KEY;
 
   if (!googleAiKey || !elevenlabsKey) {
-    await updateProgress(sessionRef, existingPodcasts, version, 'failed', 0, 'API keys not configured', {
+    await updatePodcastProgress(sessionRef, existingPodcasts, version, 'failed', 0, 'API keys not configured', {
       error: 'Required API keys are not configured'
     });
     return;
@@ -269,8 +275,17 @@ async function generatePodcastInBackground(
 
     // STEP 1: Generate script if not provided
     if (!script) {
+      // Update unified session progress - script generation stage
+      await ProgressTrackerService.updateProgress(
+        campaignId,
+        sessionId,
+        'generating-podcast-script',
+        10,
+        'Generating podcast script...'
+      );
+
       // 1.1 Load AI settings
-      await updateProgress(sessionRef, existingPodcasts, version, 'loading_context', 5, 'Loading AI settings...');
+      await updatePodcastProgress(sessionRef, existingPodcasts, version, 'loading_context', 5, 'Loading AI settings...');
 
       const selectedModel = aiSettings.defaultModel;
       const modelConfig = aiSettings.modelConfig?.[selectedModel];
@@ -282,7 +297,7 @@ async function generatePodcastInBackground(
       modelUsed = selectedModel;
 
       // 1.2 Generate script
-      await updateProgress(sessionRef, existingPodcasts, version, 'generating_script', 15,
+      await updatePodcastProgress(sessionRef, existingPodcasts, version, 'generating_script', 15,
         `Generating script with ${selectedModel}...`);
 
       const promptText = `${PODCAST_SCRIPT_GENERATOR_PROMPT}\n\nSESSION TITLE: ${sessionTitle}\nSESSION DATE: ${
@@ -316,7 +331,7 @@ async function generatePodcastInBackground(
         );
       }
 
-      await updateProgress(sessionRef, existingPodcasts, version, 'script_complete', 50,
+      await updatePodcastProgress(sessionRef, existingPodcasts, version, 'script_complete', 50,
         `Script generated with ${finalScript.segments.length} segments`,
         {
           script: finalScript,
@@ -330,7 +345,7 @@ async function generatePodcastInBackground(
     } else {
       // Script provided, skip generation
       finalScript = script;
-      await updateProgress(sessionRef, existingPodcasts, version, 'script_complete', 50,
+      await updatePodcastProgress(sessionRef, existingPodcasts, version, 'script_complete', 50,
         'Using provided script',
         {
           script: finalScript,
@@ -342,7 +357,16 @@ async function generatePodcastInBackground(
     }
 
     // STEP 2: Generate audio (existing code continues)
-    await updateProgress(
+    // Update unified session progress - audio generation stage
+    await ProgressTrackerService.updateProgress(
+      campaignId,
+      sessionId,
+      'generating-podcast-audio',
+      55,
+      'Generating conversational podcast audio...'
+    );
+
+    await updatePodcastProgress(
       sessionRef,
       existingPodcasts,
       version,
@@ -361,7 +385,7 @@ async function generatePodcastInBackground(
     console.log(`Generating podcast with text-to-dialogue (${finalScript.segments.length} segments)`);
 
     // 2. Call ElevenLabs text-to-dialogue API (SINGLE CALL)
-    await updateProgress(
+    await updatePodcastProgress(
       sessionRef,
       existingPodcasts,
       version,
@@ -375,7 +399,7 @@ async function generatePodcastInBackground(
     });
 
     // Update: Receiving audio
-    await updateProgress(
+    await updatePodcastProgress(
       sessionRef,
       existingPodcasts,
       version,
@@ -402,7 +426,7 @@ async function generatePodcastInBackground(
     fs.writeFileSync(outputPath, audioBuffer);
 
     // Update: Uploading to storage
-    await updateProgress(
+    await updatePodcastProgress(
       sessionRef,
       existingPodcasts,
       version,
@@ -434,7 +458,7 @@ async function generatePodcastInBackground(
     const fileSize = fs.statSync(outputPath).size;
 
     // Update: Completed!
-    await updateProgress(
+    await updatePodcastProgress(
       sessionRef,
       existingPodcasts,
       version,
@@ -450,12 +474,19 @@ async function generatePodcastInBackground(
       }
     );
 
+    // Update unified session progress - completed
+    await ProgressTrackerService.markCompleted(
+      campaignId,
+      sessionId,
+      'Podcast generation complete'
+    );
+
     console.log(`Podcast generation completed: ${fileUrl}`);
 
   } catch (error: any) {
     console.error('Error generating podcast:', error);
 
-    await updateProgress(
+    await updatePodcastProgress(
       sessionRef,
       existingPodcasts,
       version,
@@ -465,6 +496,14 @@ async function generatePodcastInBackground(
       {
         error: error?.message || 'Unknown error'
       }
+    );
+
+    // Update unified session progress - failed
+    await ProgressTrackerService.markFailed(
+      campaignId,
+      sessionId,
+      'generating-podcast-audio',
+      error
     );
   } finally {
     // Cleanup

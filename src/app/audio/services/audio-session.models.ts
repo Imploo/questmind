@@ -98,7 +98,8 @@ export interface PodcastVersion {
   storyVersion?: number;
   script?: PodcastScript;
 
-  // Enhanced progress tracking
+  // @deprecated Progress fields (Ticket #43) - Use session.progress instead
+  // These fields are still used for completed/failed podcasts but should not be used for in-progress tracking
   status:
     | 'pending'
     | 'loading_context'      // NEW: 0-10%
@@ -108,14 +109,21 @@ export interface PodcastVersion {
     | 'uploading'            // 80-95%
     | 'completed'            // 100%
     | 'failed';
+  /** @deprecated Use session.progress instead (Ticket #43) */
   progress: number; // 0-100
+  /** @deprecated Use session.progress.message instead (Ticket #43) */
   progressMessage: string; // e.g., "Generating audio with text-to-dialogue..."
+  /** @deprecated Use session.progress.error instead (Ticket #43) */
   error?: string;
 
-  // NEW: Track model used
+  // Track model used
   modelUsed?: string;
 }
 
+/**
+ * @deprecated Use SessionProgress instead (Ticket #43)
+ * Upload progress should be tracked via session.progress field
+ */
 export interface UploadProgress {
   sessionId: string;
   progress: number;
@@ -125,7 +133,7 @@ export interface UploadProgress {
 }
 
 /**
- * Unified progress structure (worker chain architecture - Ticket #36)
+ * @deprecated Use SessionProgress instead (Ticket #43)
  */
 export type ProgressStage =
   | 'uploading'
@@ -137,6 +145,9 @@ export type ProgressStage =
   | 'completed'
   | 'failed';
 
+/**
+ * @deprecated Use SessionProgress instead (Ticket #43)
+ */
 export interface ProgressFailure {
   stage: string;
   error: string;
@@ -144,12 +155,46 @@ export interface ProgressFailure {
   details?: any;
 }
 
+/**
+ * @deprecated Use SessionProgress instead (Ticket #43)
+ */
 export interface UnifiedProgress {
   stage: ProgressStage;
   progress: number; // 0-100 percentage
   currentStep?: string;
   failure?: ProgressFailure;
   updatedAt: Date;
+}
+
+/**
+ * Unified session progress stage (Ticket #43)
+ */
+export type SessionProgressStage =
+  | 'idle'
+  | 'uploading'
+  | 'transcribing'          // Fast transcription
+  | 'batch-submitted'       // Batch transcription submitted
+  | 'batch-processing'      // Batch transcription running
+  | 'retranscribing'
+  | 'generating-story'
+  | 'regenerating-story'
+  | 'generating-podcast-script'
+  | 'generating-podcast-audio'
+  | 'completed'
+  | 'failed';
+
+/**
+ * Unified session progress tracking (Ticket #43)
+ * Single progress object per session for ALL operations
+ */
+export interface SessionProgress {
+  stage: SessionProgressStage;
+  progress: number;                    // 0-100 percentage
+  message: string;                     // User-friendly status message
+  startedAt: Date;                     // When current operation started
+  estimatedCompletionAt?: Date;        // Estimated completion time
+  error?: string;                      // Error message if failed
+  updatedAt: Date;                     // Last update timestamp
 }
 
 export interface TranscriptionBatchMetadata {
@@ -188,8 +233,8 @@ export interface AudioSessionRecord extends SessionStory {
   // Batch job tracking
   transcriptionBatch?: TranscriptionBatchMetadata;
 
-  // Unified progress tracking (Ticket #36 worker chain)
-  progress?: UnifiedProgress;
+  // Unified progress tracking (Ticket #43)
+  progress?: SessionProgress;
 
   // Note: Legacy progress fields removed in Ticket #39 (2026-02-07)
   // Old fields: completeProcessingStatus, completeProcessingProgress,

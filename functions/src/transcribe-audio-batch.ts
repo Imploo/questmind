@@ -79,7 +79,7 @@ export const transcribeAudioBatch = onCall(
     await ProgressTrackerService.updateProgress(
       campaignId,
       sessionId,
-      'submitted',
+      'batch-submitted',
       30,
       'Submitting transcription batch job...'
     );
@@ -229,7 +229,7 @@ export const transcribeAudioBatch = onCall(
     await ProgressTrackerService.updateProgress(
       campaignId,
       sessionId,
-      'submitted',
+      'batch-submitted',
       40,
       'Batch job submitted. Waiting for transcription to complete...'
     );

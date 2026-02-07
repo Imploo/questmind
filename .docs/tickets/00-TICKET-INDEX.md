@@ -334,5 +334,27 @@ Start here for immediate impact with minimal risk:
 
 ---
 
+## 🎨 UX & Progress Tracking
+
+| Ticket | Title | Priority | Status | Completed | Effort | Dependencies |
+|--------|-------|----------|--------|-----------|--------|--------------|
+| [#43](./done/43-consolidate-session-progress-tracking.md) | Consolidate and Simplify Session Progress Tracking | High | Done | 2026-02-07 | 1 week | #36, #39 |
+
+**Key Improvements:**
+- **Ticket 43**: Unified progress tracking system
+  - Single `SessionProgress` object per session for ALL operations
+  - New progress card component displayed at top of session details page
+  - Tracks: upload, transcription (fast/batch), retranscription, story generation/regeneration, podcast generation
+  - Removes scattered inline progress indicators from UI
+  - Consolidates 4+ progress interfaces into 1 unified interface
+  - Removes `TranscriptionStatusComponent` and inline progress in `SessionStoryComponent`, `PodcastLibraryComponent`
+  - Backend writes to single `progress` field for all operations
+  - Auto-hides progress card when idle or completed
+  - Clear error states with retry functionality
+  - **Lines reduced:** ~50-100 lines net, **Files deleted:** 1-2
+  - **Benefits:** Single source of truth, consistent UX, simplified codebase, easier maintenance
+
+---
+
 **Last Updated:** 2026-02-07
 **Status:** Planning Complete, Ready to Begin

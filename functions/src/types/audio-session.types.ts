@@ -119,6 +119,37 @@ export interface AISettings {
   };
 }
 
+/**
+ * Unified session progress stage (Ticket #43)
+ */
+export type SessionProgressStage =
+  | 'idle'
+  | 'uploading'
+  | 'transcribing'          // Fast transcription
+  | 'batch-submitted'       // Batch transcription submitted
+  | 'batch-processing'      // Batch transcription running
+  | 'retranscribing'
+  | 'generating-story'
+  | 'regenerating-story'
+  | 'generating-podcast-script'
+  | 'generating-podcast-audio'
+  | 'completed'
+  | 'failed';
+
+/**
+ * Unified session progress tracking (Ticket #43)
+ * Single progress object per session for ALL operations
+ */
+export interface SessionProgress {
+  stage: SessionProgressStage;
+  progress: number;                    // 0-100 percentage
+  message: string;                     // User-friendly status message
+  startedAt: Date;                     // When current operation started
+  estimatedCompletionAt?: Date;        // Estimated completion time
+  error?: string;                      // Error message if failed
+  updatedAt: Date;                     // Last update timestamp
+}
+
 export interface ProcessAudioSessionRequest {
   campaignId: string;
   sessionId: string;
