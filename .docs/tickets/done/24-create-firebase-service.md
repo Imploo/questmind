@@ -1,5 +1,6 @@
 # Create Centralized Firebase Service
 
+**Status:** Done
 **Priority:** CRITICAL
 **Estimated Effort:** 3 hours
 **Code Review Issue:** #5, #10

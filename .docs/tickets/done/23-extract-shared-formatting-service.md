@@ -1,5 +1,6 @@
 # Extract Shared Formatting Service
 
+**Status:** Done
 **Priority:** CRITICAL
 **Estimated Effort:** 2 hours
 **Code Review Issue:** #6, #7, #8

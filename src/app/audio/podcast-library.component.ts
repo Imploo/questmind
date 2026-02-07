@@ -1,12 +1,12 @@
 import { Component, signal, inject, OnInit, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { getApp } from 'firebase/app';
-import { getFirestore, collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs } from 'firebase/firestore';
 import { AuthService } from '../auth/auth.service';
 import { PodcastAudioService } from './services/podcast-audio.service';
 import { PodcastVersion } from './services/audio-session.models';
 import { CampaignContextService } from '../campaign/campaign-context.service';
 import { FormattingService } from '../shared/formatting.service';
+import { FirebaseService } from '../core/firebase.service';
 
 interface SessionWithPodcasts {
   sessionId: string;
@@ -156,10 +156,10 @@ interface SessionWithPodcasts {
   `
 })
 export class PodcastLibraryComponent implements OnInit {
-  private readonly firestore;
   private readonly authService = inject(AuthService);
   private readonly podcastAudioService = inject(PodcastAudioService);
   private readonly campaignContext = inject(CampaignContextService);
+  private readonly firebase = inject(FirebaseService);
   public readonly formatting = inject(FormattingService);
 
   loading = signal(true);
@@ -171,9 +171,6 @@ export class PodcastLibraryComponent implements OnInit {
   private currentPodcastAudio: HTMLAudioElement | null = null;
 
   constructor() {
-    const app = getApp();
-    this.firestore = getFirestore(app);
-
     // Set up effect to reload podcasts when campaign changes
     effect(() => {
       this.campaignContext.selectedCampaignId();
@@ -200,7 +197,8 @@ export class PodcastLibraryComponent implements OnInit {
     }
 
     try {
-      const sessionsRef = collection(this.firestore, 'campaigns', campaignId, 'audioSessions');
+      const firestore = this.firebase.requireFirestore();
+      const sessionsRef = collection(firestore, 'campaigns', campaignId, 'audioSessions');
       const snapshot = await getDocs(sessionsRef);
       const sessions: SessionWithPodcasts[] = [];
 
