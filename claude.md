@@ -23,6 +23,22 @@ This ensures both the frontend and backend builds are validated before consideri
 - Haiku is faster and more cost-effective for straightforward command execution
 - Reserve Sonnet for complex code analysis and generation tasks
 
+## Tickets
+
+When the user asks to create a ticket, create an .md file in the '.docs/tickets' directory with the following format:
+- Title
+- Created (date)
+- Description
+- Expected result
+- Status (Todo, Done, Won't Fix)
+- Technical details
+- Other fields you find useful
+
+After the fields, add all details you think are relevant. You can be thorough and include all the information you have.
+Keep a ticket to around 300-600 lines.
+
+Ask the user when you don't know certain details. It's better to verify than to guess.
+
 ## Angular Best Practices
 
 **Always search for Angular best practices using the MCP server** when working on Angular-related code changes. This ensures adherence to current Angular conventions and recommended patterns.

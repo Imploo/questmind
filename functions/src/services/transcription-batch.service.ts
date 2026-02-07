@@ -183,9 +183,9 @@ export async function processBatchTranscriptionResult(
     .join('\n\n');
 
   await sessionRef.update({
-    transcriptionText,
-    timestamps,
-    transcriptionSegments: transcriptionPayload.segments,
+    'transcription.rawTranscript': transcriptionText,
+    'transcription.timestamps': timestamps,
+    'transcription.segments': transcriptionPayload.segments,
     transcriptionCompletedAt: FieldValue.serverTimestamp(),
     'transcriptionBatch.status': 'completed',
     'transcriptionBatch.lastCheckedAt': FieldValue.serverTimestamp(),

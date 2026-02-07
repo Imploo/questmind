@@ -47,14 +47,14 @@ export class UserProfileService {
       if (Object.keys(updates).length > 0) {
         await updateDoc(userRef, {
           ...updates,
-          updatedAt: new Date().toISOString()
+          updatedAt: new Date()
         });
         return { ...existing, ...updates };
       }
       return existing;
     }
 
-    const now = new Date().toISOString();
+    const now = new Date();
     const email = (user.email || '').toLowerCase();
     const profile: UserProfile = {
       uid: user.uid,
@@ -78,7 +78,7 @@ export class UserProfileService {
       await setDoc(userRef, {
         uid: userId,
         campaigns: [campaignId],
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date()
       }, { merge: true });
       return;
     }
@@ -89,7 +89,7 @@ export class UserProfileService {
     }
     await updateDoc(userRef, {
       campaigns: [...campaigns, campaignId],
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date()
     });
   }
 
@@ -102,7 +102,7 @@ export class UserProfileService {
     const campaigns = (data.campaigns ?? []).filter(id => id !== campaignId);
     await updateDoc(userRef, {
       campaigns,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date()
     });
   }
 
@@ -111,7 +111,7 @@ export class UserProfileService {
     const userRef = doc(this.db, 'users', userId);
     await updateDoc(userRef, {
       defaultCampaignId: campaignId,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date()
     });
   }
 }

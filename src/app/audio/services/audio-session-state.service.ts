@@ -81,7 +81,6 @@ export class AudioSessionStateService {
       content: '',
       sessionDate: upload.sessionDate,
       audioFileName: upload.file.name,
-      storageUrl: '',
       createdAt: now,
       updatedAt: now,
       status: 'uploading'

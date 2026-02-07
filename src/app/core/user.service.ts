@@ -3,16 +3,7 @@ import { inject } from '@angular/core';
 import { doc, getDoc } from 'firebase/firestore';
 import { FirebaseService } from './firebase.service';
 import { AuthService } from '../auth/auth.service';
-
-export interface UserProfile {
-  uid: string;
-  email: string | null;
-  displayName: string | null;
-  admin?: boolean;
-  campaigns?: string[];
-  createdAt?: Date;
-  updatedAt?: Date;
-}
+import type { UserProfile } from './models/user.model';
 
 @Injectable({ providedIn: 'root' })
 export class UserService {

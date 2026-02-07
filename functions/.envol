@@ -1,0 +1,19 @@
+# Firebase Functions Environment Variables
+# Retrieved from Firebase Secret Manager
+
+# Google AI (Gemini) API Key
+GOOGLE_AI_API_KEY=AIzaSyBM5BOpujjazVPWE_Pzy-EQcZKao6uoEww
+
+# ElevenLabs API Key
+ELEVENLABS_API_KEY=sk_a0eac7d45242cc424adbb4df9a37954495cf16e7b1a6dec1
+
+# Gemini Callback Secret (for webhook authentication)
+GEMINI_CALLBACK_SECRET=a8f202b87ae121db580321bf355cd73f28679116de62ac4afd591490366c5866
+
+# ElevenLabs Voice IDs (optional - configured in Firestore AI settings)
+# These are fallback values if not configured in database
+ELEVENLABS_HOST1_VOICE=
+ELEVENLABS_HOST2_VOICE=
+
+# Note: Voice IDs are primarily managed in Firestore at settings/ai
+# You can set them here as fallback, but database settings take precedence

@@ -111,7 +111,7 @@ export const storyGenerationWorkerHandler = async (data: WorkerPayload) => {
 
       // Save story to Firestore
       await sessionRef.update({
-        storyContent,
+        content: storyContent,
         storyGeneratedAt: new Date().toISOString(),
         status: 'completed',
       });

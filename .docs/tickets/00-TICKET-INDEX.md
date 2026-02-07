@@ -268,5 +268,46 @@ Start here for immediate impact with minimal risk:
 
 ---
 
-**Last Updated:** 2026-02-05
+## 🗄️ Data Layer Cleanup Tickets
+
+| Ticket | Title | Priority | Effort | Dependencies |
+|--------|-------|----------|--------|--------------|
+| [#38](./38-data-layer-critical-duplicates-cleanup.md) | Data Layer Critical Duplicates Cleanup (Phase 1) | Critical | 1 week | - |
+| [#39](./39-data-layer-legacy-fields-removal.md) | Data Layer Legacy Fields Removal (Phase 2) | High | 2-3 days | #38 |
+| [#40](./40-data-layer-optimization.md) | Data Layer Optimization (Phase 3) | Medium | 1 week | #38, #39 |
+
+**Key Improvements:**
+- **Ticket 38** (Phase 1): Remove critical duplicate fields
+  - Merge duplicate `UserProfile` interfaces (2 versions exist!)
+  - Remove file size duplicates (4 fields storing same data)
+  - Remove transcription duplicates (flat vs nested)
+  - Remove storage duplicates (flat vs nested)
+  - **No migration needed** - alpha app, fresh start with new sessions
+  - **Impact:** 18+ duplicate fields removed, data consistency improved
+
+- **Ticket 39** (Phase 2): Remove legacy progress tracking fields
+  - Remove `completeProcessingStatus`, `completeProcessingProgress`, etc.
+  - Delete legacy `ProcessingProgress` interface
+  - Keep only new `UnifiedProgress` from worker chain architecture
+  - Run after #36 worker chain is stable in production
+  - **No migration needed** - old sessions can be deleted
+  - **Impact:** 4 legacy fields removed, cleaner progress tracking
+
+- **Ticket 40** (Phase 3): Optional optimizations
+  - Add Zod runtime validation schemas
+  - Standardize timestamp handling (Date vs string)
+  - Separate DTOs from domain models
+  - Add Firestore indexes for performance
+  - Improve TypeScript utility types
+  - Document data access patterns
+  - **Impact:** Better type safety, runtime validation, improved DX
+
+**References:**
+- See [DATA_LAYER_ANALYSIS.md](../DATA_LAYER_ANALYSIS.md) for complete analysis
+- Includes Mermaid diagrams visualizing data relationships
+- Documents all 18 duplicate/redundant fields found
+
+---
+
+**Last Updated:** 2026-02-07
 **Status:** Planning Complete, Ready to Begin

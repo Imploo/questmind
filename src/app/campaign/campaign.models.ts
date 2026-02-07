@@ -1,3 +1,5 @@
+import type { UserProfile } from '../core/models/user.model';
+
 export type CampaignRole = 'owner' | 'member';
 
 export interface CampaignMember {
@@ -24,13 +26,5 @@ export interface Campaign {
   settings?: CampaignSettings;
 }
 
-export interface UserProfile {
-  uid: string;
-  email: string;
-  displayName?: string;
-  photoURL?: string;
-  campaigns: string[];
-  defaultCampaignId?: string;
-  updatedAt?: string;
-  createdAt?: string;
-}
+// Re-export UserProfile from core models for backwards compatibility
+export type { UserProfile };

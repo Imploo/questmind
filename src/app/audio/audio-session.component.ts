@@ -179,8 +179,8 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
               <app-session-story
                 [title]="currentSession()?.title || 'Session Story'"
                 [subtitle]="formatSubtitle(currentSession())"
-                [story]="currentSession()?.storyContent || ''"
-                [transcript]="currentSession()?.transcriptionText || ''"
+                [story]="currentSession()?.content || ''"
+                [transcript]="currentSession()?.transcription?.rawTranscript || ''"
                 [isBusy]="isBusy()"
                 [canRetranscribe]="canRetranscribe()"
                 [canRegenerate]="canRegenerateStory()"
@@ -562,7 +562,7 @@ export class AudioSessionComponent implements OnDestroy {
     if (!session) {
       return;
     }
-    this.sessionStateService.updateSession(session.id, { storyContent: content, status: 'completed' });
+    this.sessionStateService.updateSession(session.id, { content: content, status: 'completed' });
     this.refreshSessions();
   }
 
@@ -706,11 +706,7 @@ export class AudioSessionComponent implements OnDestroy {
   }
 
   private resolveAudioStorageUrl(session: AudioSessionRecord | null): string | null {
-    return (
-      session?.storageUrl ||
-      session?.storageMetadata?.downloadUrl ||
-      null
-    );
+    return session?.storageMetadata?.downloadUrl || null;
   }
 
   async generatePodcast(): Promise<void> {

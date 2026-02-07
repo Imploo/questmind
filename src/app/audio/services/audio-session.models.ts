@@ -7,15 +7,12 @@ export interface AudioUpload {
 }
 
 export interface StorageMetadata {
-  sessionId: string;
-  campaignId: string;
   storagePath: string;
   downloadUrl: string;
   fileSize: number;
   contentType: string;
   uploadedAt: string;
   durationSeconds?: number;
-  sizeBytes?: number;
 }
 
 export interface TranscriptionTimestamp {
@@ -52,7 +49,6 @@ export interface TranscriptionResult {
   status: 'processing' | 'completed' | 'failed';
   storageMetadata: StorageMetadata;
   segments?: TranscriptionSegment[];
-  durationSeconds?: number;
 }
 
 export interface TranscriptionRecord {
@@ -76,7 +72,6 @@ export interface SessionStory {
   content: string;
   sessionDate?: string;
   audioFileName?: string;
-  storageUrl: string;
   createdAt: string;
 }
 
@@ -198,11 +193,6 @@ export interface AudioSessionRecord extends SessionStory {
   updatedAt: string;
   transcription?: TranscriptionResult;
   storageMetadata?: StorageMetadata;
-  storagePath?: string;
-  audioFileName?: string;
-  audioFileSize?: number;
-  fileSize?: number;
-  contentType?: string;
   activeTranscriptionId?: string;
   transcriptions?: TranscriptionRecord[];
   userCorrections?: string;
@@ -212,14 +202,10 @@ export interface AudioSessionRecord extends SessionStory {
   podcasts?: PodcastVersion[];
   latestPodcastVersion?: number;
 
-  // Batch transcription fields
-  transcriptionText?: string;
-  timestamps?: TranscriptionTimestamp[];
-  transcriptionSegments?: TranscriptionSegment[];
+  // Batch transcription tracking
   transcriptionCompletedAt?: string;
 
-  // Story content
-  storyContent?: string;
+  // Story generation tracking
   storyGeneratedAt?: string;
 
   // Batch job tracking

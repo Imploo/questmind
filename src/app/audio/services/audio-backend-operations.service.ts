@@ -83,7 +83,7 @@ export class AudioBackendOperationsService {
     }
 
     const sessionData = sessionSnap.data();
-    const storageUrl = sessionData['storageUrl'];
+    const storageUrl = sessionData['storageMetadata']?.['downloadUrl'];
     const audioFileName = sessionData['audioFileName'] || 'audio.wav';
 
     if (!storageUrl) {
@@ -98,7 +98,7 @@ export class AudioBackendOperationsService {
       sessionId,
       storageUrl,
       audioFileName,
-      audioFileSize: sessionData['audioFileSize'] || sessionData['fileSize'],
+      audioFileSize: sessionData['storageMetadata']?.['fileSize'],
       enableKankaContext: options.enableKankaContext,
       userCorrections: options.userCorrections
     });
@@ -191,7 +191,7 @@ export class AudioBackendOperationsService {
     }
 
     const sessionData = sessionSnap.data();
-    const transcriptionText = sessionData['transcriptionText'];
+    const transcriptionText = sessionData['transcription']?.['rawTranscript'];
 
     if (!transcriptionText) {
       throw new Error('No transcription found for this session');

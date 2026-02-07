@@ -84,8 +84,6 @@ export class AudioStorageService {
     const downloadUrl = await getDownloadURL(storageRef);
 
     return {
-      sessionId,
-      campaignId,
       storagePath,
       downloadUrl,
       fileSize: file.size,
