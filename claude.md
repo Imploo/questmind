@@ -25,6 +25,7 @@ This ensures both the frontend and backend builds are validated before consideri
 
 ## Tickets
 
+### Creating a ticket
 When the user asks to create a ticket, create an .md file in the '.docs/tickets' directory with the following format:
 - Title
 - Created (date)
@@ -38,6 +39,9 @@ After the fields, add all details you think are relevant. You can be thorough an
 Keep a ticket to around 300-600 lines.
 
 Ask the user when you don't know certain details. It's better to verify than to guess.
+
+### Working on a ticket
+When you finished working on a ticket, move it to the subfolder 'done' and mark the status as Done.
 
 ## Angular Best Practices
 
