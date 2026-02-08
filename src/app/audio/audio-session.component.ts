@@ -205,8 +205,6 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
                 [podcastGenerationProgress]="podcastGenerationProgress()"
                 [podcastGenerationProgressPercent]="podcastGenerationProgressPercent()"
                 [podcastError]="podcastError()"
-                [isPlayingPodcast]="isPlayingPodcast()"
-                [playingPodcastVersion]="playingPodcastVersion()"
                 [canGeneratePodcast]="canGeneratePodcast()"
                 [hasActiveBackgroundJob]="hasActiveBackgroundJob()"
                 [backgroundJobMessage]="backgroundJobMessage()"
@@ -215,8 +213,6 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
                 (retranscribe)="retranscribeSessionFast()"
                 (correctionsChanged)="onCorrectionsInput($event)"
                 (generatePodcast)="generatePodcast()"
-                (playPodcast)="playPodcast($event)"
-                (stopPodcast)="stopPodcast()"
                 (downloadPodcast)="downloadPodcast($event)"
               ></app-session-story>
             }
@@ -315,9 +311,6 @@ export class AudioSessionComponent implements OnDestroy {
   podcastGenerationProgress = signal<string>('');
   podcastGenerationProgressPercent = signal<number>(0);
   podcastError = signal<string>('');
-  isPlayingPodcast = signal(false);
-  playingPodcastVersion = signal<number | null>(null);
-  private currentPodcastAudio: HTMLAudioElement | null = null;
   private progressUnsubscribe?: () => void;
   private stageTimerSub?: Subscription;
   private correctionsSaveTimer?: ReturnType<typeof setTimeout>;
@@ -892,7 +885,6 @@ export class AudioSessionComponent implements OnDestroy {
   }
 
   ngOnDestroy(): void {
-    this.stopPodcast();
     this.cleanupProgressListener();
     this.stageTimerSub?.unsubscribe();
     this.routeParamsSub?.unsubscribe();
@@ -1072,42 +1064,6 @@ export class AudioSessionComponent implements OnDestroy {
       this.isGeneratingPodcast.set(false);
       this.cleanupProgressListener();
     }
-  }
-
-  async playPodcast(podcast: PodcastVersion): Promise<void> {
-    if (!podcast.audioUrl || this.isPlayingPodcast()) {
-      return;
-    }
-
-    this.isPlayingPodcast.set(true);
-    this.playingPodcastVersion.set(podcast.version);
-    this.podcastError.set('');
-
-    try {
-      this.currentPodcastAudio = this.podcastAudioService.playPodcastMP3(podcast.audioUrl);
-      this.currentPodcastAudio.onended = () => {
-        this.isPlayingPodcast.set(false);
-        this.playingPodcastVersion.set(null);
-        this.currentPodcastAudio = null;
-      };
-      this.currentPodcastAudio.onerror = () => {
-        this.podcastError.set('Afspelen mislukt');
-        this.stopPodcast();
-      };
-    } catch (error: any) {
-      console.error('Failed to play podcast:', error);
-      this.podcastError.set(error?.message || 'Afspelen mislukt');
-    } finally {
-      this.podcastGenerationProgress.set('');
-    }
-  }
-
-  stopPodcast(): void {
-    this.podcastAudioService.stopPlayback();
-    this.currentPodcastAudio = null;
-    this.isPlayingPodcast.set(false);
-    this.playingPodcastVersion.set(null);
-    this.podcastGenerationProgress.set('');
   }
 
   downloadPodcast(podcast: PodcastVersion): void {

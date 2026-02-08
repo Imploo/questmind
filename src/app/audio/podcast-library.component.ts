@@ -7,7 +7,6 @@ import { PodcastVersion } from './services/audio-session.models';
 import { CampaignContextService } from '../campaign/campaign-context.service';
 import { FormattingService } from '../shared/formatting.service';
 import { FirebaseService } from '../core/firebase.service';
-import { AudioPlayerComponent } from '../shared/components/audio-player.component';
 
 interface SessionWithPodcasts {
   sessionId: string;
@@ -19,7 +18,7 @@ interface SessionWithPodcasts {
 @Component({
   selector: 'app-podcast-library',
   standalone: true,
-  imports: [CommonModule, AudioPlayerComponent],
+  imports: [CommonModule],
   template: `
     <div class="max-w-7xl mx-auto px-4 py-8">
       <div class="mb-8">
@@ -104,16 +103,6 @@ interface SessionWithPodcasts {
                     </div>
 
                     <div class="flex items-center gap-2">
-                      @if (!isPlayingPodcast() || playingPodcastId() !== session.sessionId + '-v' + podcast.version) {
-                        <button
-                          (click)="selectPodcast(podcast, session.sessionId)"
-                          [disabled]="isPlayingPodcast() || !podcast.audioUrl"
-                          class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium shadow-sm"
-                          title="Open audio player"
-                        >
-                          🎵 Afspelen
-                        </button>
-                      }
                       <button
                         (click)="downloadPodcast(podcast, session.sessionTitle)"
                         [disabled]="!podcast.audioUrl"
@@ -125,14 +114,17 @@ interface SessionWithPodcasts {
                     </div>
                   </div>
 
-                  <!-- Audio Player -->
-                  @if (playingPodcastId() === session.sessionId + '-v' + podcast.version && podcast.audioUrl) {
-                    <div class="mt-4">
-                      <app-audio-player
-                        [audioUrl]="podcast.audioUrl"
-                        [autoPlay]="true"
-                        (ended)="onPodcastEnded()"
-                      />
+                  <!-- Native HTML5 Audio Player -->
+                  @if (podcast.audioUrl) {
+                    <div class="mt-4 bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-4 border border-purple-200">
+                      <audio
+                        controls
+                        [src]="podcast.audioUrl"
+                        class="w-full"
+                        preload="metadata"
+                      >
+                        Je browser ondersteunt het audio element niet.
+                      </audio>
                     </div>
                   }
                 }
@@ -168,8 +160,6 @@ export class PodcastLibraryComponent implements OnInit {
 
   loading = signal(true);
   sessions = signal<SessionWithPodcasts[]>([]);
-  isPlayingPodcast = signal(false);
-  playingPodcastId = signal<string | null>(null);
   errorMessage = signal<string>('');
   campaignId = this.campaignContext.selectedCampaignId;
 
@@ -238,22 +228,6 @@ export class PodcastLibraryComponent implements OnInit {
     } finally {
       this.loading.set(false);
     }
-  }
-
-  selectPodcast(podcast: PodcastVersion, sessionId: string): void {
-    if (!podcast.audioUrl) {
-      return;
-    }
-
-    const podcastId = `${sessionId}-v${podcast.version}`;
-    this.playingPodcastId.set(podcastId);
-    this.isPlayingPodcast.set(true);
-    this.errorMessage.set('');
-  }
-
-  onPodcastEnded(): void {
-    this.isPlayingPodcast.set(false);
-    this.playingPodcastId.set(null);
   }
 
   downloadPodcast(podcast: PodcastVersion, sessionTitle: string): void {

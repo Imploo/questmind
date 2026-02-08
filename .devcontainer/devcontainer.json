@@ -1,7 +1,7 @@
 {
   "name": "Angular & Firebase (Node 22)",
   "image": "mcr.microsoft.com/devcontainers/typescript-node:22",
-  "postCreateCommand": "sudo npm install -g @angular/cli firebase-tools && sudo apt-get update && sudo apt-get install -y apt-transport-https ca-certificates gnupg curl && curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg && echo \"deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main\" | sudo tee /etc/apt/sources.list.d/google-cloud-sdk.list > /dev/null && sudo apt-get update && sudo apt-get install -y google-cloud-cli && curl -fsSL https://claude.ai/install.sh | bash && echo \"export PATH=$HOME/.local/bin:$PATH\" >> ~/.zshrc && echo \"export PATH=$HOME/.local/bin:$PATH\" >> ~/.bashrc && npm install",
+  "postCreateCommand": "sudo npm install -g @angular/cli firebase-tools && sudo apt-get update && sudo apt-get install -y apt-transport-https ca-certificates gnupg curl && curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg && echo \"deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main\" | sudo tee /etc/apt/sources.list.d/google-cloud-sdk.list > /dev/null && sudo apt-get update && sudo apt-get install -y google-cloud-cli && curl -fsSL https://claude.ai/install.sh | bash && echo \"export PATH=$HOME/.local/bin:$PATH\" >> ~/.zshrc && echo \"export PATH=$HOME/.local/bin:$PATH\" >> ~/.bashrc && echo \"alias claude-yolo='claude --dangerously-skip-permissions'\" >> ~/.zshrc && echo \"alias claude-yolo='claude --dangerously-skip-permissions'\" >> ~/.bashrc && npm install",
   "forwardPorts": [
     4200,
     9005,
@@ -10,8 +10,15 @@
     5001,
     4000,
     8085,
-    9005,
-    44265
+    9005
+  ],
+  "containerEnv": {
+    "FIREBASE_TOKEN": "${localEnv:FIREBASE_TOKEN_IMPLOO}",
+    "GOOGLE_APPLICATION_CREDENTIALS": "/workspace/.devcontainer/service-account.json",
+    "CONTEXT7_API_KEY": "${localEnv:CONTEXT7_API_KEY}"
+  },
+  "mounts": [
+    "source=${localEnv:HOME}/.claude,target=/home/node/.claude,type=bind,consistency=cached"
   ],
   "customizations": {
     "vscode": {

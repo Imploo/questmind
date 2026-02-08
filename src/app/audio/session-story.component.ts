@@ -311,34 +311,30 @@ import { FormattingService } from '../shared/formatting.service';
                     </div>
 
                     <div class="flex items-center gap-2">
-                      @if (isPlayingPodcast && playingPodcastVersion === podcast.version) {
-                        <button
-                          (click)="stopPodcast.emit()"
-                          class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors text-sm font-medium"
-                          title="Stop afspelen"
-                        >
-                          ⏹️ Stop
-                        </button>
-                      } @else {
-                        <button
-                          (click)="playPodcast.emit(podcast)"
-                          [disabled]="isPlayingPodcast || !podcast.audioUrl"
-                          class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-                          title="Podcast afspelen"
-                        >
-                          ▶️ Afspelen
-                        </button>
-                      }
                       <button
                         (click)="downloadPodcast.emit(podcast)"
                         [disabled]="!podcast.audioUrl"
-                        class="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                        class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
                         title="Podcast downloaden"
                       >
                         ⬇️ Download
                       </button>
                     </div>
                   </div>
+
+                  <!-- Native HTML5 Audio Player -->
+                  @if (podcast.audioUrl) {
+                    <div class="mt-3 bg-white rounded-lg p-3 border border-purple-200">
+                      <audio
+                        controls
+                        [src]="podcast.audioUrl"
+                        class="w-full"
+                        preload="metadata"
+                      >
+                        Je browser ondersteunt het audio element niet.
+                      </audio>
+                    </div>
+                  }
                 }
               </div>
             }
@@ -381,8 +377,6 @@ export class SessionStoryComponent implements OnChanges {
   @Input() podcastGenerationProgress = '';
   @Input() podcastGenerationProgressPercent = 0;
   @Input() podcastError = '';
-  @Input() isPlayingPodcast = false;
-  @Input() playingPodcastVersion: number | null = null;
   @Input() canGeneratePodcast = false;
 
   // Background job tracking
@@ -394,8 +388,6 @@ export class SessionStoryComponent implements OnChanges {
   @Output() retranscribe = new EventEmitter<void>();
   @Output() correctionsChanged = new EventEmitter<string>();
   @Output() generatePodcast = new EventEmitter<void>();
-  @Output() playPodcast = new EventEmitter<PodcastVersion>();
-  @Output() stopPodcast = new EventEmitter<void>();
   @Output() downloadPodcast = new EventEmitter<PodcastVersion>();
 
   activeTab = signal<'story' | 'podcasts'>('story');
