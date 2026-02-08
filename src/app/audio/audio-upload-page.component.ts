@@ -1,9 +1,10 @@
-import { Component, computed, inject, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, computed, inject, signal, ChangeDetectionStrategy, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { AudioUploadComponent, UploadRequestEvent } from './audio-upload.component';
 import { AudioSessionStateService } from './services/audio-session-state.service';
 import { AudioCompleteProcessingService } from './services/audio-complete-processing.service';
+import { BackgroundUploadService } from './services/background-upload.service';
 import { AuthService } from '../auth/auth.service';
 import { CampaignContextService } from '../campaign/campaign-context.service';
 import { AudioUpload, AudioSessionRecord } from './services/audio-session.models';
@@ -141,6 +142,8 @@ import { AudioUpload, AudioSessionRecord } from './services/audio-session.models
           [stage]="stage()"
           [progress]="progress()"
           [statusMessage]="statusMessage()"
+          [backgroundUploadSupported]="backgroundUploadSupported()"
+          [wakeLockSupported]="wakeLockSupported()"
           (uploadRequested)="startCompleteProcessing($event)"
         />
       </main>
@@ -148,12 +151,20 @@ import { AudioUpload, AudioSessionRecord } from './services/audio-session.models
   `,
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class AudioUploadPageComponent {
+export class AudioUploadPageComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private sessionStateService = inject(AudioSessionStateService);
   private completeProcessingService = inject(AudioCompleteProcessingService);
+  private backgroundUpload = inject(BackgroundUploadService);
   private authService = inject(AuthService);
   private campaignContextService = inject(CampaignContextService);
+  private wakeLockSentinel: WakeLockSentinel | null = null;
+  private keepAwakeDuringUpload = false;
+  private readonly visibilityHandler = () => {
+    if (document.visibilityState === 'visible' && this.keepAwakeDuringUpload) {
+      void this.requestWakeLock();
+    }
+  };
 
   userId = computed(() => this.authService.currentUser()?.uid ?? null);
   campaignId = computed(() => this.campaignContextService.selectedCampaignId());
@@ -162,6 +173,8 @@ export class AudioUploadPageComponent {
   progress = signal(0);
   statusMessage = signal('');
   isBusy = computed(() => this.stage() !== 'idle' && this.stage() !== 'completed' && this.stage() !== 'failed');
+  backgroundUploadSupported = computed(() => this.backgroundUpload.isSupported());
+  wakeLockSupported = computed(() => typeof navigator !== 'undefined' && 'wakeLock' in navigator);
 
   canUploadAudio = computed(() => {
     const userId = this.userId();
@@ -185,6 +198,19 @@ export class AudioUploadPageComponent {
   // Mobile drawer state
   mobileDrawerOpen = signal(false);
 
+  ngOnInit(): void {
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', this.visibilityHandler);
+    }
+  }
+
+  ngOnDestroy(): void {
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.visibilityHandler);
+    }
+    void this.releaseWakeLock();
+  }
+
   async startCompleteProcessing(event: UploadRequestEvent): Promise<void> {
     const userId = this.userId();
     const campaignId = this.campaignId();
@@ -192,6 +218,11 @@ export class AudioUploadPageComponent {
     if (!userId || !campaignId) {
       console.error('Missing userId or campaignId');
       return;
+    }
+
+    this.keepAwakeDuringUpload = event.keepAwake ?? true;
+    if (this.keepAwakeDuringUpload) {
+      void this.requestWakeLock();
     }
 
     try {
@@ -249,6 +280,40 @@ export class AudioUploadPageComponent {
       console.error('Error starting complete processing:', error);
       this.stage.set('failed');
       this.statusMessage.set('Upload failed. Please try again.');
+    } finally {
+      if (this.keepAwakeDuringUpload) {
+        await this.releaseWakeLock();
+      }
+      this.keepAwakeDuringUpload = false;
+    }
+  }
+
+  private async requestWakeLock(): Promise<void> {
+    if (!this.wakeLockSupported()) {
+      return;
+    }
+    try {
+      this.wakeLockSentinel = await navigator.wakeLock.request('screen');
+      this.wakeLockSentinel.addEventListener('release', () => {
+        this.wakeLockSentinel = null;
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('Failed to acquire wake lock:', message);
+    }
+  }
+
+  private async releaseWakeLock(): Promise<void> {
+    if (!this.wakeLockSentinel) {
+      return;
+    }
+    try {
+      await this.wakeLockSentinel.release();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('Failed to release wake lock:', message);
+    } finally {
+      this.wakeLockSentinel = null;
     }
   }
 

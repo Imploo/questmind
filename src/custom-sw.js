@@ -91,8 +91,8 @@ async function handleBackgroundFetchSuccess(event) {
       return;
     }
 
-    // Show success notification
-    await self.registration.showNotification('QuestMind', {
+    // Show success notification (if permitted)
+    await showNotificationIfPermitted('QuestMind', {
       body: 'Audio upload complete! Transcription has started.',
       icon: '/icons/icon-192x192.png',
       tag: `upload-${fetchId}`,
@@ -117,7 +117,7 @@ async function handleBackgroundFetchFail(event) {
   const fetchId = event.registration.id;
   const metadata = await getMetadata(fetchId);
 
-  await self.registration.showNotification('QuestMind', {
+  await showNotificationIfPermitted('QuestMind', {
     body: 'Audio upload failed. Please try again.',
     icon: '/icons/icon-192x192.png',
     tag: `upload-${fetchId}`,
@@ -186,6 +186,14 @@ async function getMetadata(fetchId) {
 async function clearMetadata(fetchId) {
   const cache = await caches.open(METADATA_CACHE);
   await cache.delete(`/_bg-upload/${fetchId}`);
+}
+
+async function showNotificationIfPermitted(title, options) {
+  if (!('Notification' in self) || Notification.permission !== 'granted') {
+    return false;
+  }
+  await self.registration.showNotification(title, options);
+  return true;
 }
 
 // ─── Client Notification ────────────────────────────────────────────────────────

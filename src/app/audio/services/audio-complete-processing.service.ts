@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { httpsCallable, type Functions } from 'firebase/functions';
 import { ref, uploadBytesResumable, type FirebaseStorage } from 'firebase/storage';
 import { doc, onSnapshot, updateDoc, type Firestore, type Unsubscribe } from 'firebase/firestore';
-import { UnifiedProgress } from './audio-session.models';
+import { SessionProgress, UnifiedProgress } from './audio-session.models';
 import { FirebaseService } from '../../core/firebase.service';
 import { BackgroundUploadService } from './background-upload.service';
 import * as logger from '../../shared/logger';
@@ -67,7 +67,7 @@ export class AudioCompleteProcessingService {
     if (this.backgroundUpload.isSupported()) {
       logger.info('[AudioCompleteProcessing] Background Fetch supported, attempting background upload');
 
-      const registration = await this.backgroundUpload.startBackgroundUpload(
+      const registration = await this.startBackgroundUploadWithTimeout(
         audioFile,
         campaignId,
         sessionId,
@@ -77,67 +77,26 @@ export class AudioCompleteProcessingService {
 
       if (registration) {
         logger.info(`[AudioCompleteProcessing] Background upload started for session ${sessionId}`);
+        this.attachBackgroundFallback(
+          campaignId,
+          sessionId,
+          audioFile,
+          { ...options, transcriptionMode },
+          onUploadProgress
+        );
         return { sessionId, isBackground: true };
       }
 
       logger.warn('[AudioCompleteProcessing] Background upload failed, falling back to foreground');
     }
 
-    // Foreground upload fallback
-    const storagePath = `campaigns/${campaignId}/audio/${sessionId}/${audioFile.name}`;
-    const storageRef = ref(this.storage, storagePath);
-
-    const uploadTask = uploadBytesResumable(storageRef, audioFile);
-
-    await new Promise<void>((resolve, reject) => {
-      uploadTask.on(
-        'state_changed',
-        (snapshot) => {
-          const rawProgress = (snapshot.bytesTransferred / snapshot.totalBytes) * 90;
-          if (onUploadProgress) {
-            onUploadProgress(rawProgress);
-          }
-        },
-        (error) => {
-          console.error('Upload error:', error);
-          reject(error);
-        },
-        () => {
-          resolve();
-        }
-      );
-    });
-
-    // Build storage URL in the format expected by backend
-    const storageUrl = `gs://${this.storage.app.options.storageBucket}/${storagePath}`;
-
-    // Save storage URL to Firestore before triggering transcription
-    const sessionRef = doc(
-      this.firestore,
-      `campaigns/${campaignId}/audioSessions/${sessionId}`
-    );
-    await updateDoc(sessionRef, {
-      storageUrl,
-      updatedAt: new Date()
-    });
-    logger.info(`[AudioCompleteProcessing] Saved storage URL for session ${sessionId}: ${storageUrl}`);
-
-    // Trigger transcription (fast or batch mode) to start the processing chain
-    const transcribeFunction = transcriptionMode === 'fast'
-      ? httpsCallable(this.functions, 'transcribeAudioFast')
-      : httpsCallable(this.functions, 'transcribeAudioBatch');
-
-    const request = {
+    await this.startForegroundUpload(
       campaignId,
       sessionId,
-      storageUrl,
-      audioFileName: audioFile.name,
-      audioFileSize: audioFile.size,
-      userCorrections: options.userCorrections
-    };
-
-    logger.info(`[AudioCompleteProcessing] Starting ${transcriptionMode} transcription for session ${sessionId}`);
-    await transcribeFunction(request);
+      audioFile,
+      { ...options, transcriptionMode },
+      onUploadProgress
+    );
 
     return { sessionId, isBackground: false };
   }
@@ -174,5 +133,187 @@ export class AudioCompleteProcessingService {
       console.error('Error listening to progress:', error);
       callback(null);
     });
+  }
+
+  private attachBackgroundFallback(
+    campaignId: string,
+    sessionId: string,
+    audioFile: File,
+    options: StartProcessingOptions,
+    onUploadProgress?: (progress: number) => void
+  ): void {
+    let handled = false;
+
+    this.backgroundUpload.listenForMessages({
+      onComplete: (data) => {
+        if (data.sessionId !== sessionId || handled) {
+          return;
+        }
+        handled = true;
+        this.backgroundUpload.stopListening();
+      },
+      onFailed: async (data) => {
+        if (data.sessionId !== sessionId || handled) {
+          return;
+        }
+        handled = true;
+        this.backgroundUpload.stopListening();
+        logger.warn(
+          `[AudioCompleteProcessing] Background upload failed for session ${sessionId}, retrying foreground`
+        );
+        await this.startForegroundUpload(
+          campaignId,
+          sessionId,
+          audioFile,
+          options,
+          onUploadProgress
+        );
+      },
+      onAborted: async (data) => {
+        if (data.sessionId !== sessionId || handled) {
+          return;
+        }
+        handled = true;
+        this.backgroundUpload.stopListening();
+        logger.warn(
+          `[AudioCompleteProcessing] Background upload aborted for session ${sessionId}, retrying foreground`
+        );
+        await this.startForegroundUpload(
+          campaignId,
+          sessionId,
+          audioFile,
+          options,
+          onUploadProgress
+        );
+      }
+    });
+  }
+
+  private async startBackgroundUploadWithTimeout(
+    file: File,
+    campaignId: string,
+    sessionId: string,
+    transcriptionMode: 'fast' | 'batch',
+    userCorrections?: string
+  ): Promise<BackgroundFetchRegistration | null> {
+    const timeoutMs = 8000;
+    const timeoutPromise = new Promise<BackgroundFetchRegistration | null>((resolve) => {
+      setTimeout(() => resolve(null), timeoutMs);
+    });
+    const startPromise = this.backgroundUpload.startBackgroundUpload(
+      file,
+      campaignId,
+      sessionId,
+      transcriptionMode,
+      userCorrections
+    );
+    const result = await Promise.race([startPromise, timeoutPromise]);
+    if (!result) {
+      logger.warn(
+        `[AudioCompleteProcessing] Background upload did not start within ${timeoutMs}ms, falling back to foreground`
+      );
+    }
+    return result;
+  }
+
+  private async startForegroundUpload(
+    campaignId: string,
+    sessionId: string,
+    audioFile: File,
+    options: StartProcessingOptions,
+    onUploadProgress?: (progress: number) => void
+  ): Promise<void> {
+    const storagePath = `campaigns/${campaignId}/audio/${sessionId}/${audioFile.name}`;
+    const storageRef = ref(this.storage, storagePath);
+    const sessionRef = doc(
+      this.firestore,
+      `campaigns/${campaignId}/audioSessions/${sessionId}`
+    );
+
+    const startedAt = new Date();
+    let lastProgress = -1;
+    let lastUpdateTime = 0;
+
+    const updateProgress = async (progress: number, message: string): Promise<void> => {
+      const now = new Date();
+      const progressPayload: SessionProgress = {
+        stage: 'uploading',
+        progress,
+        message,
+        startedAt,
+        updatedAt: now,
+      };
+      try {
+        await updateDoc(sessionRef, {
+          progress: progressPayload,
+          updatedAt: now,
+        });
+      } catch (error) {
+        console.error('Failed to update upload progress:', error);
+      }
+    };
+
+    await updateProgress(0, 'Uploading audio...');
+
+    const uploadTask = uploadBytesResumable(storageRef, audioFile);
+
+    await new Promise<void>((resolve, reject) => {
+      uploadTask.on(
+        'state_changed',
+        (snapshot) => {
+          const rawProgress = (snapshot.bytesTransferred / snapshot.totalBytes) * 90;
+          if (onUploadProgress) {
+            onUploadProgress(rawProgress);
+          }
+
+          const progressPercent = Math.round(
+            (snapshot.bytesTransferred / snapshot.totalBytes) * 100
+          );
+          const now = Date.now();
+          const timeElapsed = now - lastUpdateTime;
+          const progressDelta = progressPercent - lastProgress;
+
+          if (progressPercent === 100 || progressDelta >= 5 || timeElapsed >= 1500) {
+            lastProgress = progressPercent;
+            lastUpdateTime = now;
+            void updateProgress(progressPercent, `Uploading audio... ${progressPercent}%`);
+          }
+        },
+        (error) => {
+          console.error('Upload error:', error);
+          reject(error);
+        },
+        () => {
+          resolve();
+        }
+      );
+    });
+
+    const storageUrl = `gs://${this.storage.app.options.storageBucket}/${storagePath}`;
+
+    await updateDoc(sessionRef, {
+      storageUrl,
+      updatedAt: new Date()
+    });
+    logger.info(`[AudioCompleteProcessing] Saved storage URL for session ${sessionId}: ${storageUrl}`);
+
+    await updateProgress(100, 'Upload complete, starting transcription...');
+
+    const transcriptionMode = options.transcriptionMode || 'batch';
+    const transcribeFunction = transcriptionMode === 'fast'
+      ? httpsCallable(this.functions, 'transcribeAudioFast')
+      : httpsCallable(this.functions, 'transcribeAudioBatch');
+
+    const request = {
+      campaignId,
+      sessionId,
+      storageUrl,
+      audioFileName: audioFile.name,
+      audioFileSize: audioFile.size,
+      userCorrections: options.userCorrections
+    };
+
+    logger.info(`[AudioCompleteProcessing] Starting ${transcriptionMode} transcription for session ${sessionId}`);
+    await transcribeFunction(request);
   }
 }

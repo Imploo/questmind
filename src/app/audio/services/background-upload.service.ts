@@ -109,7 +109,7 @@ export class BackgroundUploadService {
         {
           title: `Uploading ${file.name}`,
           icons: [{ src: '/icons/icon-192x192.png', sizes: '192x192', type: 'image/png' }],
-          downloadTotal: 0, // Upload only, no download expected
+          downloadTotal: file.size
         }
       );
 

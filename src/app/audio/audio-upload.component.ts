@@ -9,6 +9,7 @@ export type TranscriptionMode = 'fast' | 'batch';
 // Export for external use
 export interface UploadRequestEvent extends AudioUpload {
   transcriptionMode?: TranscriptionMode;
+  keepAwake?: boolean;
 }
 
 @Component({
@@ -71,6 +72,26 @@ export interface UploadRequestEvent extends AudioUpload {
       </div>
 
       <div class="mt-4 space-y-4">
+        @if (!backgroundUploadSupported) {
+          <div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+            Background uploads are not supported in this browser. Keep your screen awake while uploading.
+          </div>
+        }
+
+        <label class="flex items-center gap-2 text-sm text-gray-600">
+          <input
+            type="checkbox"
+            class="rounded border-gray-300 text-primary focus:ring-primary/30"
+            [checked]="keepAwake()"
+            (change)="keepAwake.set(!keepAwake())"
+            [disabled]="isBusy || !wakeLockSupported"
+          />
+          Keep screen awake during upload
+          @if (!wakeLockSupported) {
+            <span class="text-xs text-gray-400">(Not supported on this device)</span>
+          }
+        </label>
+
         <!-- Transcription Mode Selector -->
         <div class="border border-gray-200 rounded-lg p-4 bg-gray-50">
           <h4 class="text-sm font-semibold text-gray-700 mb-3">Transcription Speed</h4>
@@ -205,7 +226,9 @@ export class AudioUploadComponent {
   @Input() stage: Stage = 'idle';
   @Input() progress = 0;
   @Input() statusMessage = '';
-  @Output() uploadRequested = new EventEmitter<AudioUpload>();
+  @Input() backgroundUploadSupported = true;
+  @Input() wakeLockSupported = true;
+  @Output() uploadRequested = new EventEmitter<UploadRequestEvent>();
 
   selectedFile = signal<File | null>(null);
   sessionName = '';
@@ -213,6 +236,7 @@ export class AudioUploadComponent {
   dragActive = signal(false);
   error = signal('');
   transcriptionMode = signal<TranscriptionMode>('batch');
+  keepAwake = signal(true);
 
   badgeClass = computed(() => {
     const stageMap: Record<Stage, string> = {
@@ -280,7 +304,8 @@ export class AudioUploadComponent {
       sessionDate: this.sessionDate,
       userId: this.userId,
       campaignId: this.campaignId,
-      transcriptionMode: this.transcriptionMode()
+      transcriptionMode: this.transcriptionMode(),
+      keepAwake: this.keepAwake()
     });
   }
 

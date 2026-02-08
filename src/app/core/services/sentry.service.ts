@@ -14,18 +14,21 @@ export class SentryService {
       dsn: environment.sentry.dsn,
       environment: environment.sentry.environment,
 
-      // Performance Monitoring
-      tracePropagationTargets: [
-        'localhost',
-        /^https:\/\/europe-west1-questmind-dnd\.cloudfunctions\.net/,
-        /^https:\/\/questmind\.nl/,
-      ],
+      // // Performance Monitoring
+      // tracePropagationTargets: [
+      //   'localhost',
+      //   /^https:\/\/europe-west1-questmind-dnd\.cloudfunctions\.net/,
+      //   /^https:\/\/questmind\.nl/,
+      // ],
 
       integrations: [
         Sentry.browserTracingIntegration(),
         Sentry.replayIntegration({
           maskAllText: true,
           blockAllMedia: true,
+        }),
+        Sentry.captureConsoleIntegration({
+          levels: ['error', 'warn'],
         }),
       ],
 

@@ -983,11 +983,6 @@ export class AudioSessionComponent implements OnDestroy {
     // Priority: root-level storageUrl (new), then storageMetadata.downloadUrl (legacy)
     const url = session.storageUrl || null;
 
-    console.log('[resolveAudioStorageUrl]', {
-      storageUrl: session.storageUrl,
-      resolvedUrl: url
-    });
-
     return url;
   }
 

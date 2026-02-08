@@ -18,7 +18,6 @@ export function initSentry(): void {
     dsn: sentryDsn,
     environment,
     release: process.env.SENTRY_RELEASE || 'unknown',
-    tracesSampleRate: parseFloat(process.env.SENTRY_TRACES_SAMPLE_RATE || '0.1'),
     beforeSend(event) {
       // Strip sensitive headers
       if (event.request?.headers) {
