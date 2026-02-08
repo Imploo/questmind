@@ -7,6 +7,7 @@ import { PodcastVersion } from './services/audio-session.models';
 import { CampaignContextService } from '../campaign/campaign-context.service';
 import { FormattingService } from '../shared/formatting.service';
 import { FirebaseService } from '../core/firebase.service';
+import { AudioPlayerComponent } from '../shared/components/audio-player.component';
 
 interface SessionWithPodcasts {
   sessionId: string;
@@ -18,7 +19,7 @@ interface SessionWithPodcasts {
 @Component({
   selector: 'app-podcast-library',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, AudioPlayerComponent],
   template: `
     <div class="max-w-7xl mx-auto px-4 py-8">
       <div class="mb-8">
@@ -103,34 +104,37 @@ interface SessionWithPodcasts {
                     </div>
 
                     <div class="flex items-center gap-2">
-                      @if (isPlayingPodcast() && playingPodcastId() === session.sessionId + '-v' + podcast.version) {
+                      @if (!isPlayingPodcast() || playingPodcastId() !== session.sessionId + '-v' + podcast.version) {
                         <button
-                          (click)="stopPodcast()"
-                          class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors text-sm font-medium"
-                          title="Stop afspelen"
-                        >
-                          ⏹️ Stop
-                        </button>
-                      } @else {
-                        <button
-                          (click)="playPodcast(podcast, session.sessionId)"
+                          (click)="selectPodcast(podcast, session.sessionId)"
                           [disabled]="isPlayingPodcast() || !podcast.audioUrl"
-                          class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-                          title="Podcast afspelen"
+                          class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium shadow-sm"
+                          title="Open audio player"
                         >
-                          ▶️ Afspelen
+                          🎵 Afspelen
                         </button>
                       }
                       <button
                         (click)="downloadPodcast(podcast, session.sessionTitle)"
                         [disabled]="!podcast.audioUrl"
-                        class="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                        class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
                         title="Podcast downloaden"
                       >
                         ⬇️ Download
                       </button>
                     </div>
                   </div>
+
+                  <!-- Audio Player -->
+                  @if (playingPodcastId() === session.sessionId + '-v' + podcast.version && podcast.audioUrl) {
+                    <div class="mt-4">
+                      <app-audio-player
+                        [audioUrl]="podcast.audioUrl"
+                        [autoPlay]="true"
+                        (ended)="onPodcastEnded()"
+                      />
+                    </div>
+                  }
                 }
               </div>
             </div>
@@ -168,7 +172,6 @@ export class PodcastLibraryComponent implements OnInit {
   playingPodcastId = signal<string | null>(null);
   errorMessage = signal<string>('');
   campaignId = this.campaignContext.selectedCampaignId;
-  private currentPodcastAudio: HTMLAudioElement | null = null;
 
   constructor() {
     // Set up effect to reload podcasts when campaign changes
@@ -237,37 +240,18 @@ export class PodcastLibraryComponent implements OnInit {
     }
   }
 
-  async playPodcast(podcast: PodcastVersion, sessionId: string): Promise<void> {
-    if (!podcast.audioUrl || this.isPlayingPodcast()) {
+  selectPodcast(podcast: PodcastVersion, sessionId: string): void {
+    if (!podcast.audioUrl) {
       return;
     }
 
     const podcastId = `${sessionId}-v${podcast.version}`;
-    this.isPlayingPodcast.set(true);
     this.playingPodcastId.set(podcastId);
+    this.isPlayingPodcast.set(true);
     this.errorMessage.set('');
-
-    try {
-      this.currentPodcastAudio = this.podcastAudioService.playPodcastMP3(podcast.audioUrl);
-      this.currentPodcastAudio.onended = () => {
-        this.isPlayingPodcast.set(false);
-        this.playingPodcastId.set(null);
-        this.currentPodcastAudio = null;
-      };
-      this.currentPodcastAudio.onerror = () => {
-        this.errorMessage.set('Afspelen mislukt');
-        this.stopPodcast();
-      };
-    } catch (error: any) {
-      console.error('Failed to play podcast:', error);
-      this.errorMessage.set(error?.message || 'Afspelen mislukt');
-    } finally {
-    }
   }
 
-  stopPodcast(): void {
-    this.podcastAudioService.stopPlayback();
-    this.currentPodcastAudio = null;
+  onPodcastEnded(): void {
     this.isPlayingPodcast.set(false);
     this.playingPodcastId.set(null);
   }
