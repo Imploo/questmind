@@ -103,13 +103,19 @@ export class BackgroundUploadService {
         fetchId,
         new Request(signedUrl, {
           method: 'PUT',
-          headers: { 'Content-Type': file.type },
+          headers: {
+            'Content-Type': file.type,
+            'Content-Length': String(file.size),
+          },
           body: file,
         }),
         {
           title: `Uploading ${file.name}`,
           icons: [{ src: '/icons/icon-192x192.png', sizes: '192x192', type: 'image/png' }],
-          downloadTotal: file.size
+          // Note: downloadTotal is intentionally omitted. It represents expected
+          // *response* (download) size, not upload size. For a PUT upload the
+          // response is tiny, so setting it to file.size causes Chrome/Android
+          // to misreport progress and potentially abort the fetch.
         }
       );
 

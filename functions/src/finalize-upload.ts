@@ -13,6 +13,14 @@ interface FinalizeUploadBody {
   transcriptionMode: 'fast' | 'batch';
   audioFileName: string;
   userCorrections?: string;
+  /** When true, marks the upload as failed instead of finalizing it */
+  failed?: boolean;
+  /** Human-readable failure reason from the Background Fetch API */
+  failureReason?: string;
+  /** HTTP status from the failed upload response (if available) */
+  failureStatus?: number | null;
+  /** Response body excerpt from the failed upload (if available) */
+  failureResponseText?: string | null;
 }
 
 /**
@@ -46,7 +54,38 @@ export const finalizeUpload = onRequest(
       userCorrections,
     } = body;
 
-    // Validate required fields
+    // Handle failure reports from the service worker.
+    // When a Background Fetch fails, the SW calls this endpoint with failed=true
+    // so Firestore progress is updated even when the app is closed.
+    if (body.failed) {
+      if (!campaignId || !sessionId) {
+        res.status(400).json({ error: 'Missing required fields: campaignId, sessionId' });
+        return;
+      }
+
+      const errorDetail = [
+        `Background upload failed`,
+        body.failureReason ? `Reason: ${body.failureReason}` : null,
+        body.failureStatus ? `HTTP ${body.failureStatus}` : null,
+        body.failureResponseText ? `Response: ${body.failureResponseText}` : null,
+      ].filter(Boolean).join('\n');
+
+      logger.warn(
+        `[finalizeUpload] Background upload failure reported for session ${sessionId}: ${errorDetail}`
+      );
+
+      await ProgressTrackerService.markFailed(
+        campaignId,
+        sessionId,
+        'uploading',
+        errorDetail
+      );
+
+      res.status(200).json({ success: true, recorded: 'failure' });
+      return;
+    }
+
+    // Validate required fields for success finalization
     if (!campaignId || !sessionId || !storagePath || !transcriptionMode || !audioFileName) {
       res.status(400).json({
         error: 'Missing required fields: campaignId, sessionId, storagePath, transcriptionMode, audioFileName',

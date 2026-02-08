@@ -64,6 +64,11 @@ async function handleBackgroundFetchSuccess(event) {
     const metadata = await getMetadata(fetchId);
     if (!metadata) {
       console.error('[SW] No metadata found for fetch:', fetchId);
+      await showNotificationIfPermitted('QuestMind', {
+        body: 'Upload completed but metadata was lost. Please check your session.',
+        icon: '/icons/icon-192x192.png',
+        tag: `upload-${fetchId}`,
+      });
       return;
     }
 
@@ -119,10 +124,39 @@ async function handleBackgroundFetchFail(event) {
   const failureReason = event.registration.failureReason || 'unknown';
   const { status, statusText, responseText } = await getFailureResponseDetails(event.registration);
 
+  console.error(
+    `[SW] Background fetch failed: ${fetchId}`,
+    `reason=${failureReason}`,
+    `status=${status}`,
+    `statusText=${statusText}`,
+    `responseText=${responseText?.slice(0, 200)}`
+  );
+
+  // Report failure to the backend so Firestore progress is updated,
+  // even if the app is closed/backgrounded and can't receive messages.
+  if (metadata?.finalizeUrl && metadata?.campaignId && metadata?.sessionId) {
+    try {
+      await fetch(metadata.finalizeUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          campaignId: metadata.campaignId,
+          sessionId: metadata.sessionId,
+          failed: true,
+          failureReason,
+          failureStatus: status,
+          failureResponseText: responseText,
+        }),
+      });
+    } catch (reportError) {
+      console.error('[SW] Failed to report upload failure to backend:', reportError);
+    }
+  }
+
   const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
   if (clients.length === 0) {
     await showNotificationIfPermitted('QuestMind', {
-      body: 'Audio upload failed. Please try again.',
+      body: 'Audio upload failed. Open the app to retry.',
       icon: '/icons/icon-192x192.png',
       tag: `upload-${fetchId}`,
       data: metadata
@@ -147,6 +181,26 @@ async function handleBackgroundFetchFail(event) {
 async function handleBackgroundFetchAbort(event) {
   const fetchId = event.registration.id;
   const metadata = await getMetadata(fetchId);
+
+  console.warn('[SW] Background fetch aborted:', fetchId);
+
+  // Report abort to backend so Firestore progress is updated
+  if (metadata?.finalizeUrl && metadata?.campaignId && metadata?.sessionId) {
+    try {
+      await fetch(metadata.finalizeUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          campaignId: metadata.campaignId,
+          sessionId: metadata.sessionId,
+          failed: true,
+          failureReason: 'aborted',
+        }),
+      });
+    } catch (reportError) {
+      console.error('[SW] Failed to report upload abort to backend:', reportError);
+    }
+  }
 
   notifyClients(fetchId, 'UPLOAD_ABORTED', {
     sessionId: metadata?.sessionId,
@@ -218,16 +272,21 @@ async function getFailureResponseDetails(registration) {
   try {
     const records = await registration.matchAll();
     if (!records.length) {
+      console.warn('[SW] No records found in failed background fetch registration');
       return { status: null, statusText: null, responseText: null };
     }
-    const response = await records[0].responseReady;
+    const record = records[0];
+    console.log('[SW] Failed fetch record - URL:', record.request?.url?.slice(0, 100), 'method:', record.request?.method);
+    const response = await record.responseReady;
     const responseText = await response.clone().text();
+    console.error('[SW] Failed fetch response:', response.status, response.statusText, responseText?.slice(0, 200));
     return {
       status: response.status,
       statusText: response.statusText,
       responseText: responseText?.slice(0, 500) || null,
     };
   } catch (error) {
-    return { status: null, statusText: null, responseText: null };
+    console.error('[SW] Could not extract failure response details:', error?.message || error);
+    return { status: null, statusText: null, responseText: `Error reading response: ${error?.message || error}` };
   }
 }
