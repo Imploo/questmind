@@ -60,3 +60,7 @@ firestore-debug.log
 # Bruno
 # Exclude local environment overrides but keep the collection
 bruno/.env
+
+# Dev Container - Service Account Credentials
+.devcontainer/service-account.json
+.devcontainer/*.key.json

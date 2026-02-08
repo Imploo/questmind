@@ -46,24 +46,8 @@ export class AudioSessionStateService {
     });
   }
 
-  getSessions(): AudioSessionRecord[] {
-    return this.sessions();
-  }
-
   getSession(id: string): AudioSessionRecord | undefined {
     return this.sessions().find(session => session.id === id);
-  }
-
-  getActiveUserId(): string | null {
-    return this.activeUserId;
-  }
-
-  getActiveCampaignId(): string | null {
-    return this.activeCampaignId;
-  }
-
-  isAuthenticated(): boolean {
-    return this.activeUserId !== null;
   }
 
   createSessionDraft(upload: AudioUpload): AudioSessionRecord {

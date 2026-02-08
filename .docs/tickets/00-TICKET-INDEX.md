@@ -377,5 +377,25 @@ Start here for immediate impact with minimal risk:
 
 ---
 
+## 🔄 Transcription Features
+
+| Ticket | Title | Priority | Status | Completed | Effort | Dependencies |
+|--------|-------|----------|--------|-----------|--------|--------------|
+| [#45](./done/45-transcription-retry-and-retranscribe-buttons.md) | Enable Retry and Re-Transcribe Buttons for Failed/Completed Transcriptions | High | Done | 2026-02-07 | 2-3 days | #43 |
+
+**Key Improvements:**
+- **Ticket 45**: Retry and re-transcribe functionality
+  - Retry button for failed transcriptions using `transcribeAudioFast`
+  - Re-transcribe button for completed transcriptions using fast mode
+  - User corrections dialog for improved accuracy (implemented as browser prompt)
+  - Reuses existing `transcribeAudioFast` Cloud Function
+  - Integrates with unified progress tracking system via Firestore subscriptions
+  - Fire-and-forget pattern with real-time Firestore monitoring
+  - Proper error handling and validation for all edge cases
+  - **Benefits:** Recovery from failures without re-upload, iterative transcription improvement, reduced user frustration
+  - **Related:** #43 (Consolidated Progress Tracking), #36 (Worker Chain Architecture)
+
+---
+
 **Last Updated:** 2026-02-07
 **Status:** Planning Complete, Ready to Begin

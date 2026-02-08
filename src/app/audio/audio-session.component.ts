@@ -12,10 +12,14 @@ import { CampaignContextService } from '../campaign/campaign-context.service';
 import { CampaignService } from '../campaign/campaign.service';
 import {
   AudioSessionRecord,
-  PodcastVersion
+  PodcastVersion,
+  SessionProgress
 } from './services/audio-session.models';
 import { SessionStoryComponent } from './session-story.component';
 import { SessionProgressCardComponent } from './session-progress-card.component';
+import { httpsCallable, Functions } from 'firebase/functions';
+import { doc, onSnapshot, Unsubscribe, Firestore } from 'firebase/firestore';
+import { FirebaseService } from '../core/firebase.service';
 
 type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' | 'failed';
 
@@ -178,7 +182,7 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
             @if (currentSession()) {
               <!-- Progress card (only shown when session is processing) -->
               <app-session-progress-card
-                [progress]="currentSession()?.progress"
+                [progress]="displayProgress()"
                 (cancel)="cancelCurrentOperation()"
                 (retry)="retryFailedOperation()"
               />
@@ -208,7 +212,7 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
                 [backgroundJobMessage]="backgroundJobMessage()"
                 (storyUpdated)="saveStoryEdits($event)"
                 (regenerate)="regenerateStory()"
-                (retranscribe)="retranscribeSession()"
+                (retranscribe)="retranscribeSessionFast()"
                 (correctionsChanged)="onCorrectionsInput($event)"
                 (generatePodcast)="generatePodcast()"
                 (playPodcast)="playPodcast($event)"
@@ -288,7 +292,21 @@ export class AudioSessionComponent implements OnDestroy {
     return '';
   });
   canRegenerateStory = computed(() => this.isSessionOwner());
-  canRetranscribe = computed(() => this.isSessionOwner() && !!this.resolveAudioStorageUrl(this.currentSession()));
+  canRetranscribe = computed(() => {
+    const session = this.currentSession();
+    const isOwner = this.isSessionOwner();
+    const hasAudio = !!this.resolveAudioStorageUrl(session);
+
+    // Allow re-transcribe if:
+    // 1. User owns the session
+    // 2. There's an audio file available
+    // 3. Session is not currently processing
+    const isProcessing = session?.progress?.stage === 'transcribing' ||
+                        session?.progress?.stage === 'retranscribing' ||
+                        session?.status === 'processing';
+
+    return isOwner && hasAudio && !isProcessing;
+  });
   canGeneratePodcast = computed(() => this.isSessionOwner());
   canEditStory = computed(() => this.isSessionOwner());
   canEditCorrections = computed(() => !!this.currentSession());
@@ -328,6 +346,45 @@ export class AudioSessionComponent implements OnDestroy {
   // Mobile drawer state
   mobileDrawerOpen = signal(false);
 
+  // Computed progress for display (handles both new and legacy sessions)
+  displayProgress = computed(() => {
+    const session = this.currentSession();
+    if (!session) return null;
+
+    // If session has new unified progress, use it
+    if (session.progress) {
+      return session.progress;
+    }
+
+    // Otherwise, create synthetic progress from legacy status field
+    if (session.status === 'failed') {
+      return {
+        stage: 'failed' as const,
+        progress: 0,
+        message: 'Transcription failed. Click retry to try again.',
+        error: undefined,
+        startedAt: new Date(session.createdAt),
+        updatedAt: new Date(session.updatedAt || session.createdAt)
+      };
+    }
+
+    if (session.status === 'processing') {
+      return {
+        stage: 'transcribing' as const,
+        progress: 50,
+        message: 'Processing...',
+        startedAt: new Date(session.createdAt),
+        updatedAt: new Date(session.updatedAt || session.createdAt)
+      };
+    }
+
+    // Don't show progress card for completed or idle sessions
+    return null;
+  });
+
+  private functions: Functions;
+  private firestore: Firestore;
+
   constructor(
         private readonly sessionStateService: AudioSessionStateService,
         private readonly backendOperations: AudioBackendOperationsService,
@@ -335,7 +392,10 @@ export class AudioSessionComponent implements OnDestroy {
     public readonly authService: AuthService,
     private readonly injector: Injector,
     public readonly formatting: FormattingService,
+    private readonly firebaseService: FirebaseService,
   ) {
+    this.functions = this.firebaseService.requireFunctions();
+    this.firestore = this.firebaseService.requireFirestore();
     this.sessions = this.sessionStateService.sessions;
 
     // Subscribe to route params to handle session selection from URL
@@ -628,23 +688,207 @@ export class AudioSessionComponent implements OnDestroy {
   }
 
   /**
-   * Retry a failed operation based on the stage
+   * Retry a failed transcription using fast transcription
    */
-  retryFailedOperation(): void {
+  async retryFailedOperation(): Promise<void> {
     const session = this.currentSession();
-    const stage = session?.progress?.stage;
-
-    if (stage !== 'failed') {
+    if (!session?.progress || session.progress.stage !== 'failed') {
+      logger.warn('[Retry] Cannot retry - session is not in failed state');
       return;
     }
 
-    logger.debug('[Progress] Retry requested for failed stage');
+    logger.debug('[Retry] Retrying failed transcription for session:', session.id);
 
-    // For now, just refresh the sessions to clear the error
-    // In the future, this could trigger a retry based on what failed
-    this.refreshSessions();
+    // Check if we have the required data
+    const storageUrl = this.resolveAudioStorageUrl(session);
+    if (!storageUrl) {
+      alert('Cannot retry: No audio file found for this session.');
+      return;
+    }
 
-    alert('Please manually retry the operation. Automatic retry is not yet implemented.');
+    if (!session.campaignId) {
+      alert('Cannot retry: No campaign selected.');
+      return;
+    }
+
+    // Call transcribeAudioFast with session parameters
+    await this.callTranscribeAudioFast(
+      session.campaignId,
+      session.id,
+      storageUrl,
+      session.audioFileName || 'audio.wav',
+      this.userCorrections() || undefined
+    );
+  }
+
+  /**
+   * Re-transcribe completed session using fast transcription
+   * This allows users to improve transcription accuracy with corrections
+   */
+  async retranscribeSessionFast(): Promise<void> {
+    if (!this.canRetranscribe()) {
+      logger.warn('[Retranscribe] Cannot retranscribe - permission denied');
+      return;
+    }
+
+    const session = this.currentSession();
+    const storageUrl = this.resolveAudioStorageUrl(session);
+
+    if (!storageUrl) {
+      alert('Cannot re-transcribe: No audio file found for this session.');
+      return;
+    }
+
+    if (!session?.campaignId) {
+      alert('Cannot re-transcribe: No campaign selected.');
+      return;
+    }
+
+    logger.debug('[Retranscribe] Re-transcribing session with fast mode:', session.id);
+
+    // Optionally prompt for user corrections
+    const shouldPrompt = confirm('Would you like to add corrections or context to improve transcription accuracy?');
+    let userCorrections = this.userCorrections() || undefined;
+
+    if (shouldPrompt) {
+      const input = prompt('Enter corrections or context (optional):', userCorrections || '');
+      if (input !== null) {
+        userCorrections = input || undefined;
+        if (userCorrections) {
+          this.userCorrections.set(userCorrections);
+        }
+      }
+    }
+
+    // Call transcribeAudioFast with session parameters
+    await this.callTranscribeAudioFast(
+      session.campaignId,
+      session.id,
+      storageUrl,
+      session.audioFileName || 'audio.wav',
+      userCorrections
+    );
+  }
+
+  /**
+   * Call the transcribeAudioFast Cloud Function
+   * Handles progress tracking via Firestore subscription
+   */
+  private async callTranscribeAudioFast(
+    campaignId: string,
+    sessionId: string,
+    storageUrl: string,
+    audioFileName: string,
+    userCorrections?: string
+  ): Promise<void> {
+    try {
+      logger.debug('[TranscribeFast] Starting fast transcription', {
+        campaignId,
+        sessionId,
+        audioFileName
+      });
+
+      // Start listening to progress BEFORE calling the function
+      this.cleanupProgressListener();
+      this.progressUnsubscribe = this.listenToSessionProgress(campaignId, sessionId);
+
+      // Reset local progress state
+      this.resetProgress();
+      this.stage.set('transcribing');
+      this.statusMessage.set('Starting fast transcription...');
+
+      // Call the Cloud Function
+      const transcribeAudioFast = httpsCallable<
+        {
+          campaignId: string;
+          sessionId: string;
+          storageUrl: string;
+          audioFileName: string;
+          audioFileSize?: number;
+          userCorrections?: string;
+        },
+        { success: boolean; message: string }
+      >(this.functions, 'transcribeAudioFast');
+
+      const result = await transcribeAudioFast({
+        campaignId,
+        sessionId,
+        storageUrl,
+        audioFileName,
+        userCorrections
+      });
+
+      if (result.data.success) {
+        logger.info('[TranscribeFast] Function call successful:', result.data.message);
+        // Progress updates will come via Firestore subscription
+      } else {
+        logger.error('[TranscribeFast] Function returned error:', result.data.message);
+        this.failSession(result.data.message);
+        this.cleanupProgressListener();
+      }
+    } catch (error: any) {
+      logger.error('[TranscribeFast] Failed to call transcribeAudioFast:', error);
+      this.failSession(error?.message || 'Failed to start transcription');
+      this.cleanupProgressListener();
+    }
+  }
+
+  /**
+   * Listen to session progress updates from Firestore
+   */
+  private listenToSessionProgress(campaignId: string, sessionId: string): Unsubscribe {
+    const sessionRef = doc(
+      this.firestore,
+      `campaigns/${campaignId}/audioSessions/${sessionId}`
+    );
+
+    return onSnapshot(sessionRef, (snapshot) => {
+      if (!snapshot.exists()) {
+        logger.warn('[Progress] Session document not found');
+        return;
+      }
+
+      const data = snapshot.data();
+      const progress = data['progress'] as SessionProgress | undefined;
+
+      if (!progress) {
+        return;
+      }
+
+      logger.debug('[Progress] Received update:', progress);
+
+      // Update local progress state
+      this.progress.set(progress.progress);
+      this.statusMessage.set(progress.message);
+
+      // Handle errors
+      if (progress.error) {
+        this.failSession(progress.error);
+        this.cleanupProgressListener();
+        return;
+      }
+
+      // Map progress stage to local stage
+      switch (progress.stage) {
+        case 'transcribing':
+        case 'retranscribing':
+          this.stage.set('transcribing');
+          break;
+        case 'generating-story':
+        case 'regenerating-story':
+          this.stage.set('generating');
+          break;
+        case 'completed':
+          this.stage.set('completed');
+          this.cleanupProgressListener();
+          this.refreshSessions();
+          break;
+        case 'failed':
+          this.failSession(progress.error || 'Transcription failed');
+          this.cleanupProgressListener();
+          break;
+      }
+    });
   }
 
   ngOnDestroy(): void {
@@ -742,7 +986,17 @@ export class AudioSessionComponent implements OnDestroy {
   }
 
   private resolveAudioStorageUrl(session: AudioSessionRecord | null): string | null {
-    return session?.storageMetadata?.downloadUrl || null;
+    if (!session) return null;
+
+    // Priority: root-level storageUrl (new), then storageMetadata.downloadUrl (legacy)
+    const url = session.storageUrl || null;
+
+    console.log('[resolveAudioStorageUrl]', {
+      storageUrl: session.storageUrl,
+      resolvedUrl: url
+    });
+
+    return url;
   }
 
   async generatePodcast(): Promise<void> {

@@ -223,6 +223,7 @@ export const transcribeAudioBatch = onCall(
     };
 
     await sessionRef.update({
+      storageUrl, // Store at root level for easy access
       transcriptionBatch: batchMetadata,
       'modelsUsed.transcription': model,
     });

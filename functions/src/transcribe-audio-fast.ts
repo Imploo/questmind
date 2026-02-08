@@ -102,8 +102,9 @@ export const transcribeAudioFast = onCall(
     // Fetch Kanka enabled setting from campaign settings
     const kankaEnabled = await getCampaignKankaEnabled(campaignId);
 
-    // Store fast transcription metadata
+    // Store fast transcription metadata and storage URL at root
     await sessionRef.update({
+      storageUrl, // Store at root level for easy access
       transcriptionFast: {
         mode: 'fast',
         enableKankaContext: kankaEnabled,

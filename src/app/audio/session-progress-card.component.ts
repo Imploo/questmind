@@ -112,7 +112,10 @@ export class SessionProgressCardComponent {
     return true;
   });
 
-  isFailed = computed(() => this.progress()?.stage === 'failed');
+  isFailed = computed(() => {
+    const p = this.progress();
+    return p?.stage === 'failed';
+  });
 
   canCancel = computed(() => {
     const stage = this.progress()?.stage;

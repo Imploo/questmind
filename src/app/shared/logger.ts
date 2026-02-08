@@ -29,3 +29,11 @@ export function debug(message: string, context?: any): void {
     console.log(`[DEBUG] ${message}`);
   }
 }
+
+export function error(message: string, context?: any): void {
+  if (context !== undefined) {
+    console.error(`[ERROR] ${message}`, context);
+  } else {
+    console.error(`[ERROR] ${message}`);
+  }
+}

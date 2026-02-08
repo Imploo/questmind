@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { httpsCallable, type Functions } from 'firebase/functions';
 import { ref, uploadBytesResumable, type FirebaseStorage } from 'firebase/storage';
-import { doc, onSnapshot, type Firestore, type Unsubscribe } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, type Firestore, type Unsubscribe } from 'firebase/firestore';
 import { UnifiedProgress } from './audio-session.models';
 import { FirebaseService } from '../../core/firebase.service';
 import * as logger from '../../shared/logger';
@@ -63,11 +63,10 @@ export class AudioCompleteProcessingService {
         'state_changed',
         (snapshot) => {
           // Calculate progress (0-99%, save 100% for when batch submission returns)
-          const rawProgress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          const cappedProgress = Math.min(rawProgress, 99);
+          const rawProgress = (snapshot.bytesTransferred / snapshot.totalBytes) * 90;
 
           if (onUploadProgress) {
-            onUploadProgress(cappedProgress);
+            onUploadProgress(rawProgress);
           }
         },
         (error) => {
@@ -83,6 +82,17 @@ export class AudioCompleteProcessingService {
 
     // Build storage URL in the format expected by backend
     const storageUrl = `gs://${this.storage.app.options.storageBucket}/${storagePath}`;
+
+    // Save storage URL to Firestore before triggering transcription
+    const sessionRef = doc(
+      this.firestore,
+      `campaigns/${campaignId}/audioSessions/${sessionId}`
+    );
+    await updateDoc(sessionRef, {
+      storageUrl,
+      updatedAt: new Date()
+    });
+    logger.info(`[AudioCompleteProcessing] Saved storage URL for session ${sessionId}: ${storageUrl}`);
 
     // 2. Trigger transcription (fast or batch mode) to start the processing chain
     const transcriptionMode = options.transcriptionMode || 'batch';

@@ -121,52 +121,6 @@ export interface PodcastVersion {
 }
 
 /**
- * @deprecated Use SessionProgress instead (Ticket #43)
- * Upload progress should be tracked via session.progress field
- */
-export interface UploadProgress {
-  sessionId: string;
-  progress: number;
-  bytesTransferred: number;
-  totalBytes: number;
-  status: 'uploading' | 'completed' | 'failed';
-}
-
-/**
- * @deprecated Use SessionProgress instead (Ticket #43)
- */
-export type ProgressStage =
-  | 'uploading'
-  | 'submitted'
-  | 'downloading'
-  | 'chunking'
-  | 'transcribing'
-  | 'generating-story'
-  | 'completed'
-  | 'failed';
-
-/**
- * @deprecated Use SessionProgress instead (Ticket #43)
- */
-export interface ProgressFailure {
-  stage: string;
-  error: string;
-  timestamp: Date;
-  details?: any;
-}
-
-/**
- * @deprecated Use SessionProgress instead (Ticket #43)
- */
-export interface UnifiedProgress {
-  stage: ProgressStage;
-  progress: number; // 0-100 percentage
-  currentStep?: string;
-  failure?: ProgressFailure;
-  updatedAt: Date;
-}
-
-/**
  * Unified session progress stage (Ticket #43)
  */
 export type SessionProgressStage =
@@ -213,8 +167,11 @@ export interface AudioSessionRecord extends SessionStory {
   createdBy: string;
   status: 'uploading' | 'processing' | 'completed' | 'failed';
   updatedAt: string;
+
+  // Storage - storageUrl is the primary field, storageMetadata for additional details
+  storageUrl?: string; // gs:// URL for Cloud Functions
+
   transcription?: TranscriptionResult;
-  storageMetadata?: StorageMetadata;
   activeTranscriptionId?: string;
   transcriptions?: TranscriptionRecord[];
   userCorrections?: string;
@@ -251,4 +208,8 @@ export interface AudioSessionRecord extends SessionStory {
   processingStartedAt?: string;
   processingCompletedAt?: string;
   processingDurationMs?: number;
+
 }
+
+// Re-export types from schema for backward compatibility
+export type { UploadProgress, UnifiedProgress } from '../../core/models/schemas/audio-session.schema';
