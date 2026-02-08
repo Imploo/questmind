@@ -7,6 +7,7 @@ export class SentryService {
 
   static init(): void {
     if (!environment.production || !environment.sentry?.dsn) {
+      console.log('Sentry disabled in development mode');
       return;
     }
 

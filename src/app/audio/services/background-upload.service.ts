@@ -131,7 +131,14 @@ export class BackgroundUploadService {
   listenForMessages(
     callbacks: {
       onComplete?: (data: { sessionId: string; campaignId: string }) => void;
-      onFailed?: (data: { sessionId: string; error: string }) => void;
+      onFailed?: (data: {
+        sessionId: string;
+        error: string;
+        failureReason?: string;
+        status?: number | null;
+        statusText?: string | null;
+        responseText?: string | null;
+      }) => void;
       onAborted?: (data: { sessionId: string }) => void;
     }
   ): void {

@@ -116,19 +116,28 @@ async function handleBackgroundFetchSuccess(event) {
 async function handleBackgroundFetchFail(event) {
   const fetchId = event.registration.id;
   const metadata = await getMetadata(fetchId);
+  const failureReason = event.registration.failureReason || 'unknown';
+  const { status, statusText, responseText } = await getFailureResponseDetails(event.registration);
 
-  await showNotificationIfPermitted('QuestMind', {
-    body: 'Audio upload failed. Please try again.',
-    icon: '/icons/icon-192x192.png',
-    tag: `upload-${fetchId}`,
-    data: metadata
-      ? { campaignId: metadata.campaignId, sessionId: metadata.sessionId }
-      : {},
-  });
+  const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  if (clients.length === 0) {
+    await showNotificationIfPermitted('QuestMind', {
+      body: 'Audio upload failed. Please try again.',
+      icon: '/icons/icon-192x192.png',
+      tag: `upload-${fetchId}`,
+      data: metadata
+        ? { campaignId: metadata.campaignId, sessionId: metadata.sessionId }
+        : {},
+    });
+  }
 
   notifyClients(fetchId, 'UPLOAD_FAILED', {
     sessionId: metadata?.sessionId,
     error: 'Background upload failed',
+    failureReason,
+    status,
+    statusText,
+    responseText
   });
 
   await clearMetadata(fetchId);
@@ -199,8 +208,26 @@ async function showNotificationIfPermitted(title, options) {
 // ─── Client Notification ────────────────────────────────────────────────────────
 
 async function notifyClients(fetchId, type, data) {
-  const clients = await self.clients.matchAll({ type: 'window' });
+  const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
   for (const client of clients) {
     client.postMessage({ type, fetchId, ...data });
+  }
+}
+
+async function getFailureResponseDetails(registration) {
+  try {
+    const records = await registration.matchAll();
+    if (!records.length) {
+      return { status: null, statusText: null, responseText: null };
+    }
+    const response = await records[0].responseReady;
+    const responseText = await response.clone().text();
+    return {
+      status: response.status,
+      statusText: response.statusText,
+      responseText: responseText?.slice(0, 500) || null,
+    };
+  } catch (error) {
+    return { status: null, statusText: null, responseText: null };
   }
 }

@@ -158,8 +158,15 @@ export class AudioCompleteProcessingService {
         }
         handled = true;
         this.backgroundUpload.stopListening();
-        logger.warn(
-          `[AudioCompleteProcessing] Background upload failed for session ${sessionId}, retrying foreground`
+        logger.error(
+          `[AudioCompleteProcessing] Background upload failed for session ${sessionId}, retrying foreground`,
+          {
+            sessionId,
+            failureReason: data.failureReason,
+            status: data.status,
+            statusText: data.statusText,
+            responseText: data.responseText,
+          }
         );
         await this.startForegroundUpload(
           campaignId,
