@@ -1,8 +1,9 @@
+import * as Sentry from '@sentry/angular';
 import { environment } from '../../environments/environment';
 
 const isProduction = environment.production;
 
-export function warn(message: string, context?: any): void {
+export function warn(message: string, context?: unknown): void {
   if (context !== undefined) {
     console.warn(`[WARN] ${message}`, context);
   } else {
@@ -10,7 +11,7 @@ export function warn(message: string, context?: any): void {
   }
 }
 
-export function info(message: string, context?: any): void {
+export function info(message: string, context?: unknown): void {
   if (isProduction) return;
 
   if (context !== undefined) {
@@ -20,7 +21,7 @@ export function info(message: string, context?: any): void {
   }
 }
 
-export function debug(message: string, context?: any): void {
+export function debug(message: string, context?: unknown): void {
   if (isProduction) return;
 
   if (context !== undefined) {
@@ -30,10 +31,24 @@ export function debug(message: string, context?: any): void {
   }
 }
 
-export function error(message: string, context?: any): void {
+export function error(message: string, context?: unknown): void {
   if (context !== undefined) {
     console.error(`[ERROR] ${message}`, context);
   } else {
     console.error(`[ERROR] ${message}`);
+  }
+
+  // Send errors to Sentry in production
+  if (isProduction) {
+    if (context instanceof Error) {
+      Sentry.captureException(context, {
+        extra: { message },
+      });
+    } else {
+      Sentry.captureMessage(message, {
+        level: 'error',
+        extra: context !== undefined ? { context } : undefined,
+      });
+    }
   }
 }

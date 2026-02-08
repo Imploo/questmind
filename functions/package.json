@@ -18,6 +18,7 @@
     "@google-cloud/storage": "^7.17.1",
     "@google/genai": "^1.39.0",
     "@google/generative-ai": "^0.24.1",
+    "@sentry/node": "^10.38.0",
     "dotenv": "^16.4.7",
     "firebase-admin": "^12.7.0",
     "firebase-functions": "^7.0.5",

@@ -1,6 +1,8 @@
-const isProduction = process.env.FUNCTIONS_EMULATOR !== 'true';
+import * as Sentry from '@sentry/node';
 
-export function warn(message: string, context?: any): void {
+const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true';
+
+export function warn(message: string, context?: unknown): void {
   if (context !== undefined) {
     console.warn(`[WARN] ${message}`, context);
   } else {
@@ -8,7 +10,7 @@ export function warn(message: string, context?: any): void {
   }
 }
 
-export function info(message: string, context?: any): void {
+export function info(message: string, context?: unknown): void {
   if (context !== undefined) {
     console.info(`[INFO] ${message}`, context);
   } else {
@@ -16,12 +18,34 @@ export function info(message: string, context?: any): void {
   }
 }
 
-export function debug(message: string, context?: any): void {
-  if (isProduction) return;
+export function debug(message: string, context?: unknown): void {
+  if (!isEmulator) return;
 
   if (context !== undefined) {
     console.log(`[DEBUG] ${message}`, context);
   } else {
     console.log(`[DEBUG] ${message}`);
+  }
+}
+
+export function error(message: string, context?: unknown): void {
+  if (context !== undefined) {
+    console.error(`[ERROR] ${message}`, context);
+  } else {
+    console.error(`[ERROR] ${message}`);
+  }
+
+  // Send errors to Sentry in production
+  if (!isEmulator) {
+    if (context instanceof Error) {
+      Sentry.captureException(context, {
+        extra: { message },
+      });
+    } else {
+      Sentry.captureMessage(message, {
+        level: 'error',
+        extra: context !== undefined ? { context } : undefined,
+      });
+    }
   }
 }

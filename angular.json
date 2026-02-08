@@ -32,6 +32,11 @@
           },
           "configurations": {
             "production": {
+              "sourceMap": {
+                "scripts": true,
+                "styles": false,
+                "hidden": true
+              },
               "serviceWorker": "ngsw-config.json",
               "budgets": [
                 {

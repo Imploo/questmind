@@ -1,4 +1,4 @@
-import { Injectable, signal, computed } from '@angular/core';
+import { Injectable, inject, signal, computed } from '@angular/core';
 import {
   signInWithRedirect,
   getRedirectResult,
@@ -13,10 +13,12 @@ import {
   type UserCredential
 } from 'firebase/auth';
 import { FirebaseService } from '../core/firebase.service';
+import { SentryService } from '../core/services/sentry.service';
 import * as logger from '../shared/logger';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
+  private readonly sentryService = inject(SentryService);
   private auth: Auth;
   private user = signal<User | null>(null);
   private loading = signal<boolean>(true);
@@ -40,6 +42,13 @@ export class AuthService {
       this.loading.set(false);
       if (user) {
         this.error.set(null);
+        this.sentryService.setUser(
+          user.uid,
+          user.email ?? undefined,
+          user.displayName ?? undefined,
+        );
+      } else {
+        this.sentryService.clearUser();
       }
     }, (err) => {
       console.error('Auth state change error:', err);
@@ -53,6 +62,7 @@ export class AuthService {
       const result = await getRedirectResult(this.auth);
       if (result) {
         // User successfully signed in via redirect
+        this.sentryService.addBreadcrumb('Sign-in redirect completed', 'auth', 'info');
         logger.info('Successfully signed in via redirect:', result.user.email);
       }
     } catch (err: unknown) {
@@ -64,6 +74,7 @@ export class AuthService {
   async signInWithGoogle(): Promise<void> {
     this.loading.set(true);
     this.error.set(null);
+    this.sentryService.addBreadcrumb('Sign-in with Google started', 'auth', 'info');
     
     try {
       const provider = new GoogleAuthProvider();
@@ -81,6 +92,7 @@ export class AuthService {
   async signInWithEmail(email: string, password: string): Promise<UserCredential> {
     this.loading.set(true);
     this.error.set(null);
+    this.sentryService.addBreadcrumb('Sign-in with email started', 'auth', 'info');
     
     try {
       const result = await signInWithEmailAndPassword(this.auth, email, password);
@@ -97,6 +109,7 @@ export class AuthService {
   async signUpWithEmail(email: string, password: string): Promise<UserCredential> {
     this.loading.set(true);
     this.error.set(null);
+    this.sentryService.addBreadcrumb('Sign-up with email started', 'auth', 'info');
     
     try {
       const result = await createUserWithEmailAndPassword(this.auth, email, password);
@@ -113,6 +126,7 @@ export class AuthService {
   async sendPasswordReset(email: string): Promise<void> {
     this.loading.set(true);
     this.error.set(null);
+    this.sentryService.addBreadcrumb('Password reset requested', 'auth', 'info');
     
     try {
       await sendPasswordResetEmail(this.auth, email);
@@ -128,6 +142,7 @@ export class AuthService {
   async signOut(): Promise<void> {
     this.loading.set(true);
     this.error.set(null);
+    this.sentryService.addBreadcrumb('Sign-out started', 'auth', 'info');
     
     try {
       await firebaseSignOut(this.auth);

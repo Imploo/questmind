@@ -1,5 +1,5 @@
 import * as logger from './utils/logger';
-import { onCall, HttpsError, CallableRequest } from 'firebase-functions/v2/https';
+import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
@@ -14,6 +14,7 @@ import { PODCAST_SCRIPT_GENERATOR_PROMPT } from './prompts/podcast-script-genera
 import { AISettings } from './types/audio-session.types';
 import { ensureAuthForTesting } from './utils/emulator-helpers';
 import { ProgressTrackerService } from './services/progress-tracker.service';
+import { wrapCallable } from './utils/sentry-error-handler';
 
 const DEFAULT_HOST_VOICES: Record<'host1' | 'host2', string> = {
   host1: process.env.ELEVENLABS_HOST1_VOICE ?? '',
@@ -77,7 +78,7 @@ export const generatePodcastAudio = onCall(
     timeoutSeconds: 900, // 15 minutes
     memory: '1GiB'
   },
-  async (request: CallableRequest<PodcastGenerationRequest>) => {
+  wrapCallable<PodcastGenerationRequest, unknown>('generatePodcastAudio', async (request) => {
     // Enable testing in emulator without auth
     ensureAuthForTesting(request);
 
@@ -193,7 +194,7 @@ export const generatePodcastAudio = onCall(
       success: true,
       message: 'Podcast generation started'
     };
-  }
+  })
 );
 
 function upsertPodcast(existing: any[], nextEntry: any): any[] {

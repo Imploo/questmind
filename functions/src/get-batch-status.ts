@@ -2,6 +2,7 @@ import {GoogleGenAI} from '@google/genai';
 import {onRequest} from 'firebase-functions/v2/https';
 import {firestore} from 'firebase-admin';
 import {normalizeBatchState} from './services/transcription-batch.service';
+import {wrapHttp} from './utils/sentry-error-handler';
 
 interface GetBatchStatusRequest {
   campaignId: string;
@@ -15,7 +16,7 @@ export const getBatchStatus = onRequest(
     memory: '512MiB',
     secrets: ['GOOGLE_AI_API_KEY'],
   },
-  async (req, res) => {
+  wrapHttp('getBatchStatus', async (req, res) => {
     const googleAiKey = process.env.GOOGLE_AI_API_KEY;
     if (!googleAiKey) {
       console.error('GOOGLE_AI_API_KEY not configured');
@@ -88,5 +89,5 @@ export const getBatchStatus = onRequest(
         sessionId,
       });
     }
-  }
+  })
 );

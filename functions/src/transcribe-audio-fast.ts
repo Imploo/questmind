@@ -1,6 +1,6 @@
 import * as logger from './utils/logger';
 import { GoogleGenAI } from '@google/genai';
-import { CallableRequest, HttpsError, onCall } from 'firebase-functions/v2/https';
+import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { storage } from 'firebase-admin';
 import { AIFeatureConfig, AISettings, TranscriptionSegment } from './types/audio-session.types';
@@ -8,6 +8,7 @@ import { ProgressTrackerService } from './services/progress-tracker.service';
 import { WorkerQueueService } from './services/worker-queue.service';
 import { buildTranscriptionPrompt } from './audio/transcription-prompt';
 import { fetchKankaContextForTranscription } from './services/kanka.service';
+import { wrapCallable } from './utils/sentry-error-handler';
 
 export interface TranscribeAudioFastRequest {
   campaignId: string;
@@ -40,9 +41,9 @@ export const transcribeAudioFast = onCall(
     memory: '1GiB',
     secrets: ['GOOGLE_AI_API_KEY', 'KANKA_API_TOKEN'],
   },
-  async (
-    request: CallableRequest<TranscribeAudioFastRequest>
-  ): Promise<{ success: boolean; message: string }> => {
+  wrapCallable<TranscribeAudioFastRequest, { success: boolean; message: string }>(
+    'transcribeAudioFast',
+    async (request): Promise<{ success: boolean; message: string }> => {
     const {
       campaignId,
       sessionId,
@@ -130,11 +131,12 @@ export const transcribeAudioFast = onCall(
     });
 
     // Return immediately - frontend will monitor Firestore for updates
-    return {
-      success: true,
-      message: 'Fast transcription started',
-    };
-  }
+      return {
+        success: true,
+        message: 'Fast transcription started',
+      };
+    }
+  ),
 );
 
 /**

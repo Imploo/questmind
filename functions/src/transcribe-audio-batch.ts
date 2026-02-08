@@ -1,6 +1,6 @@
 import * as logger from './utils/logger';
 import {GoogleGenAI} from '@google/genai';
-import {CallableRequest, HttpsError, onCall} from 'firebase-functions/v2/https';
+import {HttpsError, onCall} from 'firebase-functions/v2/https';
 import {FieldValue, getFirestore} from 'firebase-admin/firestore';
 import {storage} from 'firebase-admin';
 import {
@@ -11,6 +11,7 @@ import {ProgressTrackerService} from './services/progress-tracker.service';
 import {BatchTranscriptionMetadata} from './services/transcription-batch.service';
 import {buildTranscriptionPrompt} from './audio/transcription-prompt';
 import {fetchKankaContextForTranscription} from './services/kanka.service';
+import {wrapCallable} from './utils/sentry-error-handler';
 
 
 export interface TranscribeAudioBatchRequest {
@@ -28,9 +29,9 @@ export const transcribeAudioBatch = onCall(
     memory: '1GiB',
     secrets: ['GOOGLE_AI_API_KEY', 'GEMINI_CALLBACK_SECRET', 'KANKA_API_TOKEN'],
   },
-  async (
-    request: CallableRequest<TranscribeAudioBatchRequest>
-  ): Promise<{success: boolean; batchJobName: string; modelUsed: string}> => {
+  wrapCallable<TranscribeAudioBatchRequest, {success: boolean; batchJobName: string; modelUsed: string}>(
+    'transcribeAudioBatch',
+    async (request): Promise<{success: boolean; batchJobName: string; modelUsed: string}> => {
     const {
       campaignId,
       sessionId,
@@ -236,12 +237,13 @@ export const transcribeAudioBatch = onCall(
       'Batch job submitted. Waiting for transcription to complete...'
     );
 
-    return {
-      success: true,
-      batchJobName,
-      modelUsed: model,
-    };
-  }
+      return {
+        success: true,
+        batchJobName,
+        modelUsed: model,
+      };
+    }
+  ),
 );
 
 /**

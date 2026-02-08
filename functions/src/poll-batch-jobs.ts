@@ -10,6 +10,7 @@ import {
   processBatchTranscriptionResult,
 } from './services/transcription-batch.service';
 import {ProgressTrackerService} from './services/progress-tracker.service';
+import {wrapHttp} from './utils/sentry-error-handler';
 
 const ACTIVE_BATCH_STATUSES = ['submitted', 'running'] as const;
 
@@ -20,7 +21,7 @@ export const pollBatchJobs = onRequest(
     memory: '1GiB',
     secrets: ['GOOGLE_AI_API_KEY'],
   },
-  async (_req, res) => {
+  wrapHttp('pollBatchJobs', async (_req, res) => {
     const googleAiKey = process.env.GOOGLE_AI_API_KEY;
     if (!googleAiKey) {
       console.error('GOOGLE_AI_API_KEY not configured for batch polling');
@@ -139,5 +140,5 @@ export const pollBatchJobs = onRequest(
     }
 
     res.status(200).send(`Polled ${snapshot.docs.length} active batch jobs`);
-  }
+  })
 );

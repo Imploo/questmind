@@ -4,6 +4,7 @@ import { getFirestore } from 'firebase-admin/firestore';
 import { ProgressTrackerService } from './services/progress-tracker.service';
 import { SHARED_CORS } from './index';
 import * as logger from './utils/logger';
+import { wrapHttp } from './utils/sentry-error-handler';
 
 interface FinalizeUploadBody {
   campaignId: string;
@@ -29,7 +30,7 @@ export const finalizeUpload = onRequest(
     memory: '256MiB',
     cors: SHARED_CORS,
   },
-  async (req, res) => {
+  wrapHttp('finalizeUpload', async (req, res) => {
     if (req.method !== 'POST') {
       res.status(405).json({ error: 'Method not allowed' });
       return;
@@ -139,5 +140,5 @@ export const finalizeUpload = onRequest(
 
       res.status(500).json({ error: message });
     }
-  }
+  })
 );

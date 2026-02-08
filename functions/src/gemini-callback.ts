@@ -1,5 +1,6 @@
 import {onRequest} from 'firebase-functions/v2/https';
 import {markBatchFailed, processBatchTranscriptionResult} from './services/transcription-batch.service';
+import {wrapHttp} from './utils/sentry-error-handler';
 
 interface GeminiCallbackPayload {
   status?: 'completed' | 'failed';
@@ -16,7 +17,7 @@ export const geminiCallback = onRequest(
     timeoutSeconds: 120,
     secrets: ['GEMINI_CALLBACK_SECRET'],
   },
-  async (req, res) => {
+  wrapHttp('geminiCallback', async (req, res) => {
     const callbackSecret = process.env.GEMINI_CALLBACK_SECRET;
     if (callbackSecret) {
       const authHeader = req.headers['x-gemini-callback-secret'];
@@ -63,5 +64,5 @@ export const geminiCallback = onRequest(
       await markBatchFailed(campaignId, sessionId, message);
       res.status(500).send({error: message});
     }
-  }
+  })
 );

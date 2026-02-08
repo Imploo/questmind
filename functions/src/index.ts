@@ -1,5 +1,9 @@
+import { initSentry } from './config/sentry.config';
 import { setGlobalOptions } from 'firebase-functions/v2';
 import { initializeApp } from 'firebase-admin/app';
+
+// Initialize Sentry before everything else
+initSentry();
 
 /**
  * Shared CORS configuration for all callable functions

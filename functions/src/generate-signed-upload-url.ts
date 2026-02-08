@@ -1,7 +1,8 @@
-import { CallableRequest, HttpsError, onCall } from 'firebase-functions/v2/https';
+import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { storage } from 'firebase-admin';
 import { getFirestore } from 'firebase-admin/firestore';
 import { ProgressTrackerService } from './services/progress-tracker.service';
+import { wrapCallable } from './utils/sentry-error-handler';
 
 interface GenerateSignedUploadUrlRequest {
   campaignId: string;
@@ -35,9 +36,9 @@ export const generateSignedUploadUrl = onCall(
     timeoutSeconds: 30,
     memory: '256MiB',
   },
-  async (
-    request: CallableRequest<GenerateSignedUploadUrlRequest>
-  ): Promise<GenerateSignedUploadUrlResponse> => {
+  wrapCallable<GenerateSignedUploadUrlRequest, GenerateSignedUploadUrlResponse>(
+    'generateSignedUploadUrl',
+    async (request): Promise<GenerateSignedUploadUrlResponse> => {
     // Validate auth
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'Authentication required');
@@ -113,6 +114,7 @@ export const generateSignedUploadUrl = onCall(
       'Upload starting...'
     );
 
-    return { signedUrl, storagePath, storageUrl };
-  }
+      return { signedUrl, storagePath, storageUrl };
+    }
+  ),
 );
