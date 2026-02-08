@@ -59,7 +59,11 @@ import { SessionProgress, SessionProgressStage } from './services/audio-session.
           <div class="px-6 py-4">
             <div class="flex items-center justify-between mb-2">
               <span class="text-sm font-medium text-gray-700">
-                {{ progress()?.progress }}% complete
+                @if (isBackgroundUpload()) {
+                  Uploading in the background...
+                } @else {
+                  {{ progress()?.progress }}% complete
+                }
               </span>
               @if (estimatedTimeRemaining()) {
                 <span class="text-sm text-gray-500">
@@ -70,11 +74,21 @@ import { SessionProgress, SessionProgressStage } from './services/audio-session.
 
             <!-- Progress bar -->
             <div class="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
-              <div
-                class="h-full bg-blue-600 rounded-full transition-all duration-300 ease-out"
-                [style.width.%]="progress()?.progress || 0">
-              </div>
+              @if (isBackgroundUpload()) {
+                <div class="h-full bg-blue-600 rounded-full animate-pulse w-full opacity-60"></div>
+              } @else {
+                <div
+                  class="h-full bg-blue-600 rounded-full transition-all duration-300 ease-out"
+                  [style.width.%]="progress()?.progress || 0">
+                </div>
+              }
             </div>
+
+            @if (isBackgroundUpload()) {
+              <p class="text-xs text-gray-500 mt-2 m-0">
+                Upload continues in the background. You can close the app.
+              </p>
+            }
           </div>
         }
 
@@ -126,6 +140,12 @@ export class SessionProgressCardComponent {
   canRetry = computed(() => {
     // Can retry when failed
     return this.isFailed();
+  });
+
+  isBackgroundUpload = computed(() => {
+    const p = this.progress();
+    // Background upload: stage is uploading but progress is 0 or stale
+    return p?.stage === 'uploading' && (p.progress === 0 || p.progress === undefined);
   });
 
   stageIcon = computed(() => {

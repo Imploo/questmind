@@ -4,6 +4,7 @@ import { ref, uploadBytesResumable, type FirebaseStorage } from 'firebase/storag
 import { doc, onSnapshot, updateDoc, type Firestore, type Unsubscribe } from 'firebase/firestore';
 import { UnifiedProgress } from './audio-session.models';
 import { FirebaseService } from '../../core/firebase.service';
+import { BackgroundUploadService } from './background-upload.service';
 import * as logger from '../../shared/logger';
 
 export interface StartProcessingOptions {
@@ -11,6 +12,11 @@ export interface StartProcessingOptions {
   sessionDate?: string;
   userCorrections?: string;
   transcriptionMode?: 'fast' | 'batch';
+}
+
+export interface ProcessingResult {
+  sessionId: string;
+  isBackground: boolean;
 }
 
 /**
@@ -28,6 +34,7 @@ export interface StartProcessingOptions {
 })
 export class AudioCompleteProcessingService {
   private firebase = inject(FirebaseService);
+  private backgroundUpload = inject(BackgroundUploadService);
   private functions: Functions;
   private storage: FirebaseStorage;
   private firestore: Firestore;
@@ -41,8 +48,11 @@ export class AudioCompleteProcessingService {
   /**
    * Start complete audio processing using new worker chain
    *
+   * Attempts Background Fetch API first (for mobile resilience), then falls
+   * back to foreground uploadBytesResumable.
+   *
    * @param onUploadProgress - Optional callback for upload progress (0-99)
-   * @returns Promise that resolves with session ID when upload completes and worker is triggered
+   * @returns Promise that resolves with session ID and whether upload is background
    */
   async startCompleteProcessing(
     campaignId: string,
@@ -50,21 +60,40 @@ export class AudioCompleteProcessingService {
     audioFile: File,
     options: StartProcessingOptions,
     onUploadProgress?: (progress: number) => void
-  ): Promise<string> {
-    // 1. Upload audio directly to Cloud Storage with progress tracking
+  ): Promise<ProcessingResult> {
+    const transcriptionMode = options.transcriptionMode || 'batch';
+
+    // Try background upload first
+    if (this.backgroundUpload.isSupported()) {
+      logger.info('[AudioCompleteProcessing] Background Fetch supported, attempting background upload');
+
+      const registration = await this.backgroundUpload.startBackgroundUpload(
+        audioFile,
+        campaignId,
+        sessionId,
+        transcriptionMode,
+        options.userCorrections
+      );
+
+      if (registration) {
+        logger.info(`[AudioCompleteProcessing] Background upload started for session ${sessionId}`);
+        return { sessionId, isBackground: true };
+      }
+
+      logger.warn('[AudioCompleteProcessing] Background upload failed, falling back to foreground');
+    }
+
+    // Foreground upload fallback
     const storagePath = `campaigns/${campaignId}/audio/${sessionId}/${audioFile.name}`;
     const storageRef = ref(this.storage, storagePath);
 
-    // Use uploadBytesResumable for progress tracking
     const uploadTask = uploadBytesResumable(storageRef, audioFile);
 
     await new Promise<void>((resolve, reject) => {
       uploadTask.on(
         'state_changed',
         (snapshot) => {
-          // Calculate progress (0-99%, save 100% for when batch submission returns)
           const rawProgress = (snapshot.bytesTransferred / snapshot.totalBytes) * 90;
-
           if (onUploadProgress) {
             onUploadProgress(rawProgress);
           }
@@ -74,7 +103,6 @@ export class AudioCompleteProcessingService {
           reject(error);
         },
         () => {
-          // Upload completed successfully
           resolve();
         }
       );
@@ -94,8 +122,7 @@ export class AudioCompleteProcessingService {
     });
     logger.info(`[AudioCompleteProcessing] Saved storage URL for session ${sessionId}: ${storageUrl}`);
 
-    // 2. Trigger transcription (fast or batch mode) to start the processing chain
-    const transcriptionMode = options.transcriptionMode || 'batch';
+    // Trigger transcription (fast or batch mode) to start the processing chain
     const transcribeFunction = transcriptionMode === 'fast'
       ? httpsCallable(this.functions, 'transcribeAudioFast')
       : httpsCallable(this.functions, 'transcribeAudioBatch');
@@ -112,8 +139,7 @@ export class AudioCompleteProcessingService {
     logger.info(`[AudioCompleteProcessing] Starting ${transcriptionMode} transcription for session ${sessionId}`);
     await transcribeFunction(request);
 
-    // Return session ID for navigation
-    return sessionId;
+    return { sessionId, isBackground: false };
   }
 
   /**

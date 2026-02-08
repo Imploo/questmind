@@ -31,3 +31,7 @@ export { getBatchStatus } from './get-batch-status';
 
 // Story generation (triggered after transcription)
 export { storyGenerationWorker } from './workers/story-generation-worker';
+
+// Background upload support
+export { generateSignedUploadUrl } from './generate-signed-upload-url';
+export { finalizeUpload } from './finalize-upload';

@@ -1,13 +1,8 @@
 [
   {
-    "origin": [
-      "http://localhost:4200",
-      "https://questmind.nl",
-      "https://questmind-dnd.web.app",
-      "https://questmind-dnd.firebaseapp.com"
-    ],
-    "method": ["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"],
-    "responseHeader": ["Content-Type", "Authorization", "x-goog-resumable"],
+    "origin": ["https://questmind.nl", "http://localhost:4200"],
+    "method": ["PUT", "OPTIONS"],
+    "responseHeader": ["Content-Type"],
     "maxAgeSeconds": 3600
   }
 ]

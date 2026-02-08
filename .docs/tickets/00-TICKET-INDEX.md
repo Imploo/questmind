@@ -397,5 +397,24 @@ Start here for immediate impact with minimal risk:
 
 ---
 
-**Last Updated:** 2026-02-07
+## 📲 PWA & Background Processing
+
+| Ticket | Title | Priority | Status | Effort | Dependencies |
+|--------|-------|----------|--------|--------|--------------|
+| [#46](./done/46-background-fetch-api-for-uploads.md) | Background Fetch API for Persistent File Uploads (PWA) | High | Done | 1-2 weeks | - |
+
+**Key Improvements:**
+- **Ticket 46**: Background Fetch API for persistent uploads
+  - Full PWA setup (service worker, manifest, ngsw-config)
+  - Audio uploads continue when screen locks, user switches apps, or closes tab
+  - Signed URL approach: backend generates upload URLs, service worker handles upload via Background Fetch
+  - New Cloud Functions: `generateSignedUploadUrl` and `finalizeUpload`
+  - Native browser progress notification for ongoing uploads
+  - Graceful fallback to `uploadBytesResumable` on unsupported browsers (Safari, Firefox)
+  - Integrates with existing Firestore-based progress tracking
+  - **Benefits:** Reliable uploads on mobile, app installable as PWA, no lost uploads from screen lock or app switch
+
+---
+
+**Last Updated:** 2026-02-08
 **Status:** Planning Complete, Ready to Begin

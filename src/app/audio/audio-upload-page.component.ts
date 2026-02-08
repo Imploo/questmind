@@ -210,7 +210,7 @@ export class AudioUploadPageComponent {
       const sessionDraft = this.sessionStateService.createSessionDraft(upload);
 
       // Start upload with progress tracking
-      const sessionId = await this.completeProcessingService.startCompleteProcessing(
+      const result = await this.completeProcessingService.startCompleteProcessing(
         campaignId,
         sessionDraft.id,
         event.file,
@@ -226,7 +226,17 @@ export class AudioUploadPageComponent {
         }
       );
 
-      // Upload complete, batch job submitted successfully - set to 100%
+      if (result.isBackground) {
+        // Background upload started — show brief message, then navigate
+        this.progress.set(0);
+        this.statusMessage.set('Upload continues in the background. You can close the app.');
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        this.stage.set('idle');
+        this.selectSession({ id: result.sessionId } as any);
+        return;
+      }
+
+      // Foreground upload complete, batch job submitted successfully - set to 100%
       this.progress.set(100);
       this.statusMessage.set('Upload complete! Processing audio...');
 
@@ -234,7 +244,7 @@ export class AudioUploadPageComponent {
       await new Promise(resolve => setTimeout(resolve, 800));
 
       // Navigate to the new session
-      this.selectSession({ id: sessionId } as any);
+      this.selectSession({ id: result.sessionId } as any);
     } catch (error) {
       console.error('Error starting complete processing:', error);
       this.stage.set('failed');

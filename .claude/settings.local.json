@@ -52,7 +52,12 @@
       "Bash(/tmp/fix.ts << 'EOF'\n    if \\(session.progress\\) {\n      return session.progress;\n    }\n\n    // Otherwise, create synthetic progress from legacy status field\n    if \\(session.status === 'failed'\\) {\n      return {\n        stage: 'failed' as const,\n        progress: 0,\n        message: 'Transcription failed. Click retry to try again.',\n        error: undefined,\n        startedAt: new Date\\(session.createdAt\\),\n        updatedAt: new Date\\(session.updatedAt || session.createdAt\\)\n      };\n    }\nEOF)",
       "Bash(python3:*)",
       "Bash(/tmp/update_models.ts << 'EOF'\n// Add these exports at the end of audio-session.models.ts\n\nexport type { UploadProgress, UnifiedProgress } from '../core/models/schemas/audio-session.schema';\nEOF)",
-      "Bash(echo:*)"
+      "Bash(echo:*)",
+      "mcp__angular-cli__search_documentation",
+      "WebFetch(domain:angular.dev)",
+      "WebFetch(domain:developer.chrome.com)",
+      "WebFetch(domain:chromestatus.com)",
+      "Bash(/Users/mattcady/git/questmind/cors.json << 'CORSEOF'\n[\n  {\n    \"origin\": [\"https://questmind.nl\", \"http://localhost:4200\"],\n    \"method\": [\"PUT\", \"OPTIONS\"],\n    \"responseHeader\": [\"Content-Type\"],\n    \"maxAgeSeconds\": 3600\n  }\n]\nCORSEOF)"
     ]
   },
   "enableAllProjectMcpServers": true,
