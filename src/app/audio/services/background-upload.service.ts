@@ -103,7 +103,6 @@ export class BackgroundUploadService {
           method: 'PUT',
           headers: {
             'Content-Type': file.type,
-            'Content-Length': String(file.size),
           },
           body: file,
         }),
