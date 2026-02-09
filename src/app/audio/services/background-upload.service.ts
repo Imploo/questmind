@@ -39,6 +39,93 @@ export class BackgroundUploadService {
   }
 
   /**
+   * Get a signed upload URL from the backend.
+   */
+  async getSignedUploadUrl(
+    file: File,
+    campaignId: string,
+    sessionId: string
+  ): Promise<SignedUploadUrlResponse> {
+    const functions = this.firebase.requireFunctions();
+    const generateUrl = httpsCallable<
+      { campaignId: string; sessionId: string; fileName: string; fileSize: number; contentType: string },
+      SignedUploadUrlResponse
+    >(functions, 'generateSignedUploadUrl');
+
+    const result = await generateUrl({
+      campaignId,
+      sessionId,
+      fileName: file.name,
+      fileSize: file.size,
+      contentType: file.type,
+    });
+
+    return result.data;
+  }
+
+  /**
+   * Register a background fetch with the given signed URL.
+   */
+  async registerBackgroundFetch(
+    file: File,
+    signedUrl: string,
+    storagePath: string,
+    campaignId: string,
+    sessionId: string,
+    transcriptionMode: 'fast' | 'batch',
+    userCorrections?: string
+  ): Promise<BackgroundFetchRegistration | null> {
+    try {
+      logger.info(
+        `[BackgroundUpload] Registering background fetch for ${file.name}`
+      );
+
+      // Send metadata to service worker
+      const swRegistration = await navigator.serviceWorker.ready;
+      const fetchId = `upload-${sessionId}-${Date.now()}`;
+
+      const metadata: UploadMetadata = {
+        campaignId,
+        sessionId,
+        storagePath,
+        transcriptionMode,
+        audioFileName: file.name,
+        userCorrections,
+        finalizeUrl: FINALIZE_URL,
+      };
+
+      await this.sendMetadataToServiceWorker(swRegistration, fetchId, metadata);
+
+      // Register Background Fetch
+      const bgFetchRegistration = await swRegistration.backgroundFetch.fetch(
+        fetchId,
+        new Request(signedUrl, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': file.type,
+            'Content-Length': String(file.size),
+          },
+          body: file,
+        }),
+        {
+          title: `Uploading ${file.name}`,
+          icons: [{ src: '/icons/icon-192x192.png', sizes: '192x192', type: 'image/png' }],
+        }
+      );
+
+      logger.info(`[BackgroundUpload] Background fetch registered: ${fetchId}`);
+
+      return bgFetchRegistration;
+    } catch (error) {
+      logger.warn(
+        `[BackgroundUpload] Failed to register background fetch`,
+        error
+      );
+      return null;
+    }
+  }
+
+  /**
    * Attempt a background upload via the Background Fetch API.
    *
    * Steps:
@@ -60,68 +147,23 @@ export class BackgroundUploadService {
     }
 
     try {
-      const functions = this.firebase.requireFunctions();
-
       // 1. Get signed upload URL
-      const generateUrl = httpsCallable<
-        { campaignId: string; sessionId: string; fileName: string; fileSize: number; contentType: string },
-        SignedUploadUrlResponse
-      >(functions, 'generateSignedUploadUrl');
-
-      const result = await generateUrl({
-        campaignId,
-        sessionId,
-        fileName: file.name,
-        fileSize: file.size,
-        contentType: file.type,
-      });
-
-      const { signedUrl, storagePath } = result.data;
+      const { signedUrl, storagePath } = await this.getSignedUploadUrl(file, campaignId, sessionId);
 
       logger.info(
         `[BackgroundUpload] Got signed URL for ${file.name}, registering background fetch`
       );
 
-      // 2. Send metadata to service worker
-      const swRegistration = await navigator.serviceWorker.ready;
-      const fetchId = `upload-${sessionId}-${Date.now()}`;
-
-      const metadata: UploadMetadata = {
+      // 2 & 3. Register Background Fetch
+      return await this.registerBackgroundFetch(
+        file,
+        signedUrl,
+        storagePath,
         campaignId,
         sessionId,
-        storagePath,
         transcriptionMode,
-        audioFileName: file.name,
-        userCorrections,
-        finalizeUrl: FINALIZE_URL,
-      };
-
-      await this.sendMetadataToServiceWorker(swRegistration, fetchId, metadata);
-
-      // 3. Register Background Fetch
-      const bgFetchRegistration = await swRegistration.backgroundFetch.fetch(
-        fetchId,
-        new Request(signedUrl, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': file.type,
-            'Content-Length': String(file.size),
-          },
-          body: file,
-        }),
-        {
-          title: `Uploading ${file.name}`,
-          icons: [{ src: '/icons/icon-192x192.png', sizes: '192x192', type: 'image/png' }],
-          // Note: downloadTotal is intentionally omitted. It represents expected
-          // *response* (download) size, not upload size. For a PUT upload the
-          // response is tiny, so setting it to file.size causes Chrome/Android
-          // to misreport progress and potentially abort the fetch.
-        }
+        userCorrections
       );
-
-      logger.info(`[BackgroundUpload] Background fetch registered: ${fetchId}`);
-
-      return bgFetchRegistration;
     } catch (error) {
       logger.warn(
         `[BackgroundUpload] Failed to start background upload, falling back to foreground`,
@@ -206,8 +248,8 @@ export class BackgroundUploadService {
         [channel.port2]
       );
 
-      // Timeout after 5 seconds
-      setTimeout(() => reject(new Error('Metadata storage timed out')), 5000);
+      // Timeout after 10 seconds
+      setTimeout(() => reject(new Error('Metadata storage timed out')), 10000);
     });
   }
 }

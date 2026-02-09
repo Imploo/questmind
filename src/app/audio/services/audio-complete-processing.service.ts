@@ -203,24 +203,45 @@ export class AudioCompleteProcessingService {
     transcriptionMode: 'fast' | 'batch',
     userCorrections?: string
   ): Promise<BackgroundFetchRegistration | null> {
-    const timeoutMs = 8000;
-    const timeoutPromise = new Promise<BackgroundFetchRegistration | null>((resolve) => {
-      setTimeout(() => resolve(null), timeoutMs);
-    });
-    const startPromise = this.backgroundUpload.startBackgroundUpload(
-      file,
-      campaignId,
-      sessionId,
-      transcriptionMode,
-      userCorrections
-    );
-    const result = await Promise.race([startPromise, timeoutPromise]);
-    if (!result) {
-      logger.warn(
-        `[AudioCompleteProcessing] Background upload did not start within ${timeoutMs}ms, falling back to foreground`
+    try {
+      // 1. Get signed URL (no strict timeout, standard network timeout applies)
+      logger.info('[AudioCompleteProcessing] Fetching signed URL for background upload...');
+      const { signedUrl, storagePath } = await this.backgroundUpload.getSignedUploadUrl(
+        file,
+        campaignId,
+        sessionId
       );
+
+      // 2. Register Background Fetch (with strict timeout)
+      const timeoutMs = 10000;
+      const timeoutPromise = new Promise<BackgroundFetchRegistration | null>((resolve) => {
+        setTimeout(() => resolve(null), timeoutMs);
+      });
+
+      const startPromise = this.backgroundUpload.registerBackgroundFetch(
+        file,
+        signedUrl,
+        storagePath,
+        campaignId,
+        sessionId,
+        transcriptionMode,
+        userCorrections
+      );
+
+      const result = await Promise.race([startPromise, timeoutPromise]);
+      if (!result) {
+        logger.warn(
+          `[AudioCompleteProcessing] Background fetch registration timed out after ${timeoutMs}ms or failed`
+        );
+      }
+      return result;
+    } catch (error) {
+      logger.warn(
+        `[AudioCompleteProcessing] Failed to prepare background upload (signed URL fetch failed)`,
+        error
+      );
+      return null;
     }
-    return result;
   }
 
   private async startForegroundUpload(
