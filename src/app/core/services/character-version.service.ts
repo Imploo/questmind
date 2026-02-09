@@ -14,7 +14,7 @@ import {
 import { AuthService } from '../../auth/auth.service';
 import { FirebaseService } from '../firebase.service';
 import { CharacterVersion } from '../models/schemas/character.schema';
-import { DndCharacter } from '../../shared/schemas/dnd-character.schema';
+import { DndCharacter, DndCharacterSchema } from '../../shared/schemas/dnd-character.schema';
 
 @Injectable({ providedIn: 'root' })
 export class CharacterVersionService {
@@ -30,13 +30,16 @@ export class CharacterVersionService {
   async createInitialVersion(userId: string, characterId: string, characterData: DndCharacter): Promise<string> {
     if (!this.db) throw new Error('Firestore is not configured');
 
+    // Validate character data with Zod
+    const validatedData = DndCharacterSchema.parse(characterData);
+
     const versionId = doc(collection(this.db, 'users', userId, 'characters', characterId, 'versions')).id;
     const now = Timestamp.now();
 
     const version: CharacterVersion = {
       id: versionId,
       versionNumber: 1,
-      character: characterData,
+      character: validatedData,
       commitMessage: 'Initial character creation',
       source: 'manual',
       createdAt: now,
@@ -59,11 +62,14 @@ export class CharacterVersionService {
     if (!user) throw new Error('User not authenticated');
     if (!this.db) throw new Error('Firestore is not configured');
 
+    // Validate character data with Zod
+    const validatedData = DndCharacterSchema.parse(characterData);
+
     // Get the latest version number
     const versionsRef = collection(this.db, 'users', user.uid, 'characters', characterId, 'versions');
     const q = query(versionsRef, orderBy('versionNumber', 'desc')); // Limit 1 would be better if supported easily, but this is fine for now
     const snapshot = await getDocs(q);
-    
+
     let nextVersionNumber = 1;
     if (!snapshot.empty) {
       const latestVersion = snapshot.docs[0].data() as CharacterVersion;
@@ -76,7 +82,7 @@ export class CharacterVersionService {
     const version: any = {
       id: versionId,
       versionNumber: nextVersionNumber,
-      character: characterData,
+      character: validatedData,
       commitMessage,
       source,
       createdAt: now,
@@ -118,7 +124,20 @@ export class CharacterVersionService {
     const versionRef = doc(this.db, 'users', user.uid, 'characters', characterId, 'versions', versionId);
     const snapshot = await getDoc(versionRef);
 
-    return snapshot.exists() ? (snapshot.data() as CharacterVersion) : null;
+    if (!snapshot.exists()) return null;
+
+    const data = snapshot.data() as CharacterVersion;
+
+    // Validate character data with Zod (now more lenient with defaults)
+    try {
+      data.character = DndCharacterSchema.parse(data.character);
+    } catch (error) {
+      console.error('Invalid character data detected:', error);
+      // If validation still fails, return null or throw
+      throw error;
+    }
+
+    return data;
   }
 
   async restoreVersion(characterId: string, versionToRestore: CharacterVersion): Promise<string> {

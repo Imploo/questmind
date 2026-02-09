@@ -21,9 +21,9 @@ export const CoinSchema = z.object({
 
 export const WeaponAttackSchema = z.object({
   name: z.string(),
-  bonus: z.number(),
-  damage: z.string(), // e.g., "1d8 + 3"
-  type: z.string(), // e.g., "Slashing"
+  bonus: z.number().optional().default(0),
+  damage: z.string().optional().default(''), // e.g., "1d8 + 3"
+  type: z.string().optional().default(''), // e.g., "Slashing"
 });
 
 export const SpellSlotSchema = z.object({
@@ -92,24 +92,26 @@ export const DndCharacterSchema = z.object({
   }),
 
   // Actions
-  attacks: z.array(WeaponAttackSchema),
+  attacks: z.array(WeaponAttackSchema).default([]),
   spellcasting: z.object({
     spellSaveDc: z.number().optional(),
     spellAttackBonus: z.number().optional(),
-    slots: z.array(SpellSlotSchema).optional(),
+    slots: z.union([z.array(SpellSlotSchema), z.record(z.string(), z.any())]).optional(),
     spells: z.array(z.string()).optional(), // List of known/prepared spells
   }).optional(),
 
   // Inventory
-  equipment: z.array(z.string()), // Simplified list of items
-  coins: CoinSchema,
+  equipment: z.array(z.string()).default([]),
+  coins: CoinSchema.default({ cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 }),
 
   // Features & Traits
-  featuresAndTraits: z.array(z.object({
-    name: z.string(),
-    description: z.string(),
-    source: z.string().optional(), // e.g., "Racial", "Class", "Feat"
-  })),
+  featuresAndTraits: z.array(
+    z.object({
+      name: z.string(),
+      description: z.string(),
+      source: z.string().optional(),
+    })
+  ).default([]),
 
   // Flavor
   personalityTraits: z.string().optional(),

@@ -131,12 +131,18 @@ import { DndCharacter } from '../../../../shared/schemas/dnd-character.schema';
             <div class="card-body p-4">
               <h3 class="card-title text-sm uppercase tracking-wider border-b pb-2 mb-2">Features & Traits</h3>
               <div class="space-y-3">
-                @for (feature of character().featuresAndTraits; track feature.name) {
+                @for (feature of character().featuresAndTraits; track $index) {
                   <div>
-                    <div class="font-bold text-sm">{{ feature.name }}</div>
-                    <p class="text-xs opacity-70">{{ feature.description }}</p>
-                    @if (feature.source) {
-                      <span class="badge badge-xs badge-ghost mt-1">{{ feature.source }}</span>
+                    @if (isString(feature)) {
+                      <div class="font-bold text-sm">{{ feature }}</div>
+                    } @else {
+                      <div class="font-bold text-sm">{{ feature.name }}</div>
+                      @if (feature.description) {
+                        <p class="text-xs opacity-70">{{ feature.description }}</p>
+                      }
+                      @if (feature.source) {
+                        <span class="badge badge-xs badge-ghost mt-1">{{ feature.source }}</span>
+                      }
                     }
                   </div>
                 } @empty {
@@ -183,6 +189,10 @@ export class CharacterSheetComponent {
       { key: 'wisdom', label: 'WIS', value: c.abilities.wisdom },
       { key: 'charisma', label: 'CHA', value: c.abilities.charisma },
     ];
+  }
+
+  isString(value: any): value is string {
+    return typeof value === 'string';
   }
 
   get allSkills() {
