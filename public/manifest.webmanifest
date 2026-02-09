@@ -3,7 +3,7 @@
   "short_name": "QuestMind",
   "description": "Transform your voice into meaningful insights with AI-powered audio journaling and transcription",
   "theme_color": "#6366f1",
-  "background_color": "#ffffff",
+  "background_color": "#000000",
   "display": "standalone",
   "orientation": "portrait",
   "scope": "/",

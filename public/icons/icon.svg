@@ -11,7 +11,7 @@
   </defs>
 
   <!-- Background -->
-  <rect width="512" height="512" fill="black" />
+<!--  <rect width="512" height="512" fill="black" />-->
 
   <!-- Content Group -->
   <g transform="translate(256, 256)">
