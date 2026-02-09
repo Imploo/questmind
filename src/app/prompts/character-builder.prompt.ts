@@ -12,7 +12,7 @@ Je moet een strikt JSON-object teruggeven met de volgende structuur:
 }
 
 REGELS:
-1. Geef altijd geldige JSON terug. Wikkel het niet in markdown codeblokken.
+1. Geef altijd geldige JSON terug. Wrap het niet in markdown codeblokken.
 2. Zorg dat het "character" object strikt voldoet aan de DndCharacterSchema.
 3. Wijzig alleen velden die de gebruiker vraagt of die strikt volgen uit hun verzoek (bijv. class veranderen wijzigt hit dice).
 4. Handhaaf de 5e regels (ability scores, skills, enz.).

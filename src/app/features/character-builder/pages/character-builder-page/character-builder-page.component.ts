@@ -1,7 +1,8 @@
-import { Component, inject, signal, computed, effect, viewChild } from '@angular/core';
+import { Component, inject, signal, computed, effect, viewChild, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
+import { MatTabsModule } from '@angular/material/tabs';
 import { CharacterService } from '../../../../core/services/character.service';
 import { CharacterVersionService } from '../../../../core/services/character-version.service';
 import { ChatService } from '../../../../chat/chat.service';
@@ -15,76 +16,150 @@ import { CharacterVersionHistoryComponent } from '../../components/character-ver
   selector: 'app-character-builder-page',
   standalone: true,
   host: {
-    '(window:keydown)': 'onWindowKeydown($event)'
+    '(window:keydown)': 'onWindowKeydown($event)',
+    '(window:resize)': 'onWindowResize()'
   },
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     CommonModule,
     RouterModule,
     MatCardModule,
+    MatTabsModule,
     CharacterSheetComponent,
     ChatComponent,
     CharacterDraftPreviewComponent,
     CharacterVersionHistoryComponent
   ],
   template: `
-    <div class="flex h-screen bg-base-200 overflow-hidden">
-      <!-- Center Character Sheet -->
-      <div class="flex-1 overflow-y-auto p-4">
-        <div class="flex min-h-full flex-col gap-4">
-          <div class="flex-1">
-            @if (selectedCharacterId()) {
-              @if (activeVersion()) {
-                <mat-card class="bg-base-100 shadow-xl border border-base-300">
-                  <mat-card-content class="p-6">
-                    <app-character-sheet
-                      [character]="displayCharacter() || activeVersion()!.character"
-                      [characterName]="selectedCharacter()?.name || 'Unknown'"
-                      (viewHistory)="showHistory.set(true)"
-                    ></app-character-sheet>
-                  </mat-card-content>
-                </mat-card>
-              } @else {
-                <mat-card class="bg-base-100 shadow-lg border border-base-300">
-                  <mat-card-content class="flex items-center justify-center min-h-[320px]">
-                    <span class="loading loading-spinner loading-lg"></span>
-                  </mat-card-content>
-                </mat-card>
-              }
-            } @else {
-              <mat-card class="bg-base-100 shadow-lg border border-base-300">
-                <mat-card-content class="flex flex-col items-center justify-center min-h-[320px] text-base-content/60">
-                  <h2 class="text-2xl font-bold mb-2">Select a Character</h2>
-                  <p>Choose a character from the list or create a new one.</p>
+    <div class="flex min-h-screen bg-base-200">
+      @if (isNarrow()) {
+        <div class="h-screen w-full overflow-hidden">
+        <mat-tab-group
+          class="flex h-full w-full flex-col overflow-hidden"
+          [selectedIndex]="activeTab() === 'sheet' ? 0 : 1"
+          (selectedIndexChange)="onTabChange($event)"
+        >
+          <mat-tab label="Sheet">
+            <div class="h-full overflow-y-auto p-4">
+              <div class="flex min-h-full flex-col gap-4">
+                <div class="flex-1">
+                  @if (selectedCharacterId()) {
+                    @if (activeVersion()) {
+                      <mat-card class="bg-base-100 shadow-xl border border-base-300">
+                        <mat-card-content class="p-6">
+                          <app-character-sheet
+                            [character]="displayCharacter() || activeVersion()!.character"
+                            [characterName]="selectedCharacter()?.name || 'Unknown'"
+                            (viewHistory)="showHistory.set(true)"
+                          ></app-character-sheet>
+                        </mat-card-content>
+                      </mat-card>
+                    } @else {
+                      <mat-card class="bg-base-100 shadow-lg border border-base-300">
+                        <mat-card-content class="flex items-center justify-center min-h-[320px]">
+                          <span class="loading loading-spinner loading-lg"></span>
+                        </mat-card-content>
+                      </mat-card>
+                    }
+                  } @else {
+                    <mat-card class="bg-base-100 shadow-lg border border-base-300">
+                      <mat-card-content class="flex flex-col items-center justify-center min-h-[320px] text-base-content/60">
+                        <h2 class="text-2xl font-bold mb-2">Select a Character</h2>
+                        <p>Choose a character from the list or create a new one.</p>
+                      </mat-card-content>
+                    </mat-card>
+                  }
+                </div>
+
+                @if (draftCharacter()) {
+                  <div class="sticky z-10">
+                    <app-character-draft-preview
+                      (commit)="commitDraft()"
+                      (dismiss)="dismissDraft()"
+                    ></app-character-draft-preview>
+                  </div>
+                }
+              </div>
+            </div>
+          </mat-tab>
+          <mat-tab label="Chat">
+            <div class="h-full p-4">
+              <mat-card class="h-full bg-base-100 shadow-xl border border-base-300">
+                <mat-card-content class="p-4 h-full">
+                  @if (activeVersion()) {
+                    <app-chat #chat [character]="activeVersion()!.character"></app-chat>
+                  } @else {
+                    <div class="flex h-full items-center justify-center opacity-60 text-sm">
+                      Select a character to chat
+                    </div>
+                  }
                 </mat-card-content>
               </mat-card>
-            }
+            </div>
+          </mat-tab>
+        </mat-tab-group>
+        </div>
+      } @else {
+        <div class="flex w-full items-start">
+          <!-- Center Character Sheet -->
+          <div class="w-2/3 p-4">
+            <div class="flex flex-col gap-4">
+              <div class="flex-1">
+                @if (selectedCharacterId()) {
+                  @if (activeVersion()) {
+                    <mat-card class="bg-base-100 shadow-xl border border-base-300">
+                      <mat-card-content class="p-6">
+                        <app-character-sheet
+                          [character]="displayCharacter() || activeVersion()!.character"
+                          [characterName]="selectedCharacter()?.name || 'Unknown'"
+                          (viewHistory)="showHistory.set(true)"
+                        ></app-character-sheet>
+                      </mat-card-content>
+                    </mat-card>
+                  } @else {
+                    <mat-card class="bg-base-100 shadow-lg border border-base-300">
+                      <mat-card-content class="flex items-center justify-center min-h-[320px]">
+                        <span class="loading loading-spinner loading-lg"></span>
+                      </mat-card-content>
+                    </mat-card>
+                  }
+                } @else {
+                  <mat-card class="bg-base-100 shadow-lg border border-base-300">
+                    <mat-card-content class="flex flex-col items-center justify-center min-h-[320px] text-base-content/60">
+                      <h2 class="text-2xl font-bold mb-2">Select a Character</h2>
+                      <p>Choose a character from the list or create a new one.</p>
+                    </mat-card-content>
+                  </mat-card>
+                }
+              </div>
+
+              @if (draftCharacter()) {
+                <div class="sticky bottom-4 z-10">
+                  <app-character-draft-preview
+                    (commit)="commitDraft()"
+                    (dismiss)="dismissDraft()"
+                  ></app-character-draft-preview>
+                </div>
+              }
+            </div>
           </div>
 
-          @if (draftCharacter()) {
-            <div class="sticky bottom-4 z-10">
-              <app-character-draft-preview
-                (commit)="commitDraft()"
-                (dismiss)="dismissDraft()"
-              ></app-character-draft-preview>
-            </div>
-          }
+          <!-- Right Chat Panel -->
+          <div class="w-1/3 bg-base-200 p-4 sticky top-4 h-[calc(100vh-2rem)]">
+            <mat-card class="h-full bg-base-100 shadow-xl border border-base-300">
+              <mat-card-content class="p-4 h-full">
+                @if (activeVersion()) {
+                  <app-chat #chat [character]="activeVersion()!.character"></app-chat>
+                } @else {
+                  <div class="flex h-full items-center justify-center opacity-60 text-sm">
+                    Select a character to chat
+                  </div>
+                }
+              </mat-card-content>
+            </mat-card>
+          </div>
         </div>
-      </div>
-
-      <!-- Right Chat Panel -->
-      <div class="w-96 flex-shrink-0 bg-base-200 p-4">
-        <mat-card class="h-full bg-base-100 shadow-xl border border-base-300">
-          <mat-card-content class="p-4 h-full">
-            @if (activeVersion()) {
-              <app-chat #chat [character]="activeVersion()!.character"></app-chat>
-            } @else {
-              <div class="flex h-full items-center justify-center opacity-60 text-sm">
-                Select a character to chat
-              </div>
-            }
-          </mat-card-content>
-        </mat-card>
-      </div>
+      }
     </div>
 
     @if (showHistory() && selectedCharacterId()) {
@@ -118,6 +193,8 @@ export class CharacterBuilderPageComponent {
   showHistory = signal(false);
   versions = signal<CharacterVersion[]>([]);
   chat = viewChild(ChatComponent);
+  isNarrow = signal<boolean>(false);
+  activeTab = signal<'sheet' | 'chat'>('sheet');
 
   // Computed character to display (draft or active)
   displayCharacter = computed(() => {
@@ -127,6 +204,7 @@ export class CharacterBuilderPageComponent {
   });
 
   constructor() {
+    this.updateLayoutWidth();
     // Load characters
     this.loadCharacters();
 
@@ -149,6 +227,10 @@ export class CharacterBuilderPageComponent {
             this.versions.set(history);
         }
     });
+  }
+
+  onWindowResize(): void {
+    this.updateLayoutWidth();
   }
 
   async loadCharacters() {
@@ -282,6 +364,18 @@ export class CharacterBuilderPageComponent {
     event.preventDefault();
     chat.focusInput();
     chat.appendToMessage(key);
+  }
+
+  private updateLayoutWidth(): void {
+    if (typeof window === 'undefined') {
+      this.isNarrow.set(false);
+      return;
+    }
+    this.isNarrow.set(window.innerWidth < 1024);
+  }
+
+  onTabChange(index: number): void {
+    this.activeTab.set(index === 0 ? 'sheet' : 'chat');
   }
 
   private isEditableTarget(target: HTMLElement | null): boolean {

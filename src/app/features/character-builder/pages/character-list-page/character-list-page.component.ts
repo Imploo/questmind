@@ -1,5 +1,7 @@
 import { Component, inject, signal, ChangeDetectionStrategy } from '@angular/core';
 import { Router } from '@angular/router';
+import { MatCardModule } from '@angular/material/card';
+import { MatButtonModule } from '@angular/material/button';
 import { CharacterService } from '../../../../core/services/character.service';
 import { CharacterVersionService } from '../../../../core/services/character-version.service';
 import { Character } from '../../../../core/models/schemas/character.schema';
@@ -17,6 +19,7 @@ interface CharacterSummary {
 @Component({
   selector: 'app-character-list-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [MatCardModule, MatButtonModule],
   template: `
     <div class="min-h-full bg-base-200 p-8">
       <div class="max-w-6xl mx-auto">
@@ -27,7 +30,8 @@ interface CharacterSummary {
             <p class="text-base-content/60 mt-1">Select a character to view or edit</p>
           </div>
           <button
-            class="btn btn-primary"
+            mat-raised-button
+            color="primary"
             (click)="onCreateCharacter()"
             [disabled]="creating()"
           >
@@ -52,16 +56,16 @@ interface CharacterSummary {
           @if (characterSummaries().length > 0) {
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               @for (char of characterSummaries(); track char.id) {
-                <div
-                  class="card bg-base-100 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer border border-base-300 hover:border-primary/40 hover:-translate-y-1"
+                <mat-card
+                  class="cursor-pointer hover:shadow-xl transition-all duration-200 hover:-translate-y-1"
                   (click)="onSelectCharacter(char.id)"
                 >
-                  <div class="card-body p-5">
+                  <mat-card-content class="p-5">
                     <!-- Name -->
-                    <h2 class="card-title text-lg font-serif">{{ char.name }}</h2>
+                    <h2 class="text-lg font-serif font-bold mb-1">{{ char.name }}</h2>
 
                     <!-- Class & Race -->
-                    <p class="text-base-content/70 text-sm -mt-1">
+                    <p class="text-base-content/70 text-sm">
                       {{ char.race }} {{ char.class }}
                     </p>
 
@@ -82,8 +86,8 @@ interface CharacterSummary {
                         </div>
                       }
                     </div>
-                  </div>
-                </div>
+                  </mat-card-content>
+                </mat-card>
               }
             </div>
           } @else {
@@ -94,7 +98,7 @@ interface CharacterSummary {
               </svg>
               <h2 class="text-xl font-bold mb-2">No characters yet</h2>
               <p class="mb-6">Create your first character to get started!</p>
-              <button class="btn btn-primary" (click)="onCreateCharacter()">
+              <button mat-raised-button color="primary" (click)="onCreateCharacter()">
                 Create Character
               </button>
             </div>
