@@ -1,10 +1,11 @@
 import { Component, ChangeDetectionStrategy, input, output } from '@angular/core';
+import { MatButtonModule } from '@angular/material/button';
 import { LucideAngularModule } from 'lucide-angular';
 import { CampaignSelectorComponent } from '../../../campaign/campaign-selector.component';
 
 @Component({
   selector: 'app-sidebar-header',
-  imports: [CampaignSelectorComponent, LucideAngularModule],
+  imports: [CampaignSelectorComponent, LucideAngularModule, MatButtonModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <!-- Expanded Layout -->
@@ -13,6 +14,7 @@ import { CampaignSelectorComponent } from '../../../campaign/campaign-selector.c
         <!-- Toggle Button -->
         <div class="flex justify-end mb-3">
           <button
+            mat-icon-button
             (click)="toggleCollapse.emit()"
             class="p-1.5 rounded hover:bg-gray-100 transition-colors"
             [attr.aria-label]="'Collapse sidebar'"
@@ -32,6 +34,7 @@ import { CampaignSelectorComponent } from '../../../campaign/campaign-selector.c
       <div class="flex flex-col items-center py-3 gap-2">
         <!-- Toggle Button -->
         <button
+          mat-icon-button
           (click)="toggleCollapse.emit()"
           class="p-2 rounded-lg hover:bg-gray-100 transition-colors"
           [attr.aria-label]="'Expand sidebar'"

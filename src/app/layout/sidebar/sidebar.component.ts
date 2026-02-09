@@ -75,14 +75,18 @@ export class SidebarComponent {
 
   readonly activeRoute = computed(() => {
     const url = this.routerEvents() || '';
-    // Extract the first segment after campaign ID
-    const match = url.match(/\/campaign\/[^/]+\/([^/?]+)/);
-    return match ? match[1] : '';
+    // Extract the first segment after campaign ID or root
+    const campaignMatch = url.match(/\/campaign\/[^/]+\/([^/?]+)/);
+    if (campaignMatch) return campaignMatch[1];
+    
+    // Handle root-level routes
+    const rootMatch = url.match(/^\/([^/?]+)/);
+    return rootMatch ? rootMatch[1] : '';
   });
 
   readonly navItems = computed((): NavItem[] => {
     const items: NavItem[] = [
-      { id: 'chat', label: 'Character Chat', route: 'chat', icon: 'message-square' },
+      { id: 'characters', label: 'Characters', route: 'characters', icon: 'users' },
       { id: 'audio', label: 'Audio Transcription', route: 'audio', icon: 'mic' },
       { id: 'podcasts', label: 'Podcast Bibliotheek', route: 'podcasts', icon: 'music' },
     ];

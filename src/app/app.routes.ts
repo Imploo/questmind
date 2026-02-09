@@ -3,7 +3,6 @@ import { authGuard, noAuthGuard } from './auth/auth.guard';
 import { SignInPageComponent } from './auth/sign-in-page.component';
 import { AppShellComponent } from './app-shell.component';
 import { campaignGuard } from './campaign/campaign.guard';
-import { ChatComponent } from './chat/chat.component';
 import { AudioSessionComponent } from './audio/audio-session.component';
 import { AudioUploadPageComponent } from './audio/audio-upload-page.component';
 import { PodcastLibraryComponent } from './audio/podcast-library.component';
@@ -24,12 +23,8 @@ export const routes: Routes = [
     children: [
       {
         path: '',
-        redirectTo: 'chat',
+        redirectTo: 'characters',
         pathMatch: 'full'
-      },
-      {
-        path: 'chat',
-        component: ChatComponent
       },
       {
         path: 'audio',
@@ -46,6 +41,14 @@ export const routes: Routes = [
       {
         path: 'podcasts',
         component: PodcastLibraryComponent
+      },
+      {
+        path: 'characters',
+        loadComponent: () => import('./features/character-builder/pages/character-list-page/character-list-page.component').then(m => m.CharacterListPageComponent)
+      },
+      {
+        path: 'characters/:characterId',
+        loadComponent: () => import('./features/character-builder/pages/character-builder-page/character-builder-page.component').then(m => m.CharacterBuilderPageComponent)
       },
       {
         path: 'admin',
@@ -61,12 +64,8 @@ export const routes: Routes = [
     children: [
       {
         path: '',
-        redirectTo: 'chat',
+        redirectTo: 'characters',
         pathMatch: 'full'
-      },
-      {
-        path: 'chat',
-        component: ChatComponent
       },
       {
         path: 'audio',
@@ -83,6 +82,14 @@ export const routes: Routes = [
       {
         path: 'podcasts',
         component: PodcastLibraryComponent
+      },
+      {
+        path: 'characters',
+        loadComponent: () => import('./features/character-builder/pages/character-list-page/character-list-page.component').then(m => m.CharacterListPageComponent)
+      },
+      {
+        path: 'characters/:characterId',
+        loadComponent: () => import('./features/character-builder/pages/character-builder-page/character-builder-page.component').then(m => m.CharacterBuilderPageComponent)
       },
       {
         path: 'settings',

@@ -1,15 +1,25 @@
 import { Injectable, signal } from '@angular/core';
-import { Observable, throwError, from } from 'rxjs';
-import { catchError, map, tap } from 'rxjs/operators';
+import { Observable, throwError } from 'rxjs';
 import { GoogleGenAI } from '@google/genai';
 import { environment } from '../../environments/environment';
-import {DND_CHARACTER_ASSISTANT_PROMPT} from "../prompts/dnd-character-assistant.prompt";
+import { CHARACTER_BUILDER_PROMPT } from "../prompts/character-builder.prompt";
+import { DndCharacter } from '../shared/schemas/dnd-character.schema';
+import { extractStreamingResponseText } from '../core/utils/streaming-response.utils';
+
+type StreamingChunk = { text?: string };
+type StreamingHandle = AsyncIterable<StreamingChunk> & { cancel?: () => void };
 
 export interface Message {
   id: string;
   sender: 'user' | 'ai' | 'error';
   text: string;
   timestamp: Date;
+}
+
+export interface CharacterUpdateResponse {
+  thought: string;
+  character: DndCharacter;
+  response: string;
 }
 
 @Injectable({
@@ -22,9 +32,8 @@ export class ChatService {
   // Use signals for reactive state management
   private messages = signal<Message[]>([]);
   private conversationHistory: Array<{ role: string; parts: Array<{ text: string }> }> = [];
-
-  // D&D 5e system prompt (imported from prompts folder)
-  private readonly SYSTEM_CONTEXT = DND_CHARACTER_ASSISTANT_PROMPT;
+  private draftCharacter = signal<DndCharacter | null>(null);
+  private currentCharacter: DndCharacter | null = null;
 
   constructor() {
     // Initialize Google AI SDK
@@ -38,16 +47,33 @@ export class ChatService {
 
   private initializeConversation(): void {
     // Add system context as first message in history
+    const prompt = CHARACTER_BUILDER_PROMPT;
+    const response = 'Ready to help evolve your character.';
+    
     this.conversationHistory = [
       {
         role: 'user',
-        parts: [{ text: this.SYSTEM_CONTEXT }]
+        parts: [{ text: prompt }]
       },
       {
         role: 'model',
-        parts: [{ text: 'Understood! I\'m ready to help you create amazing D&D 5e characters following the official rules. What would you like to create today?' }]
+        parts: [{ text: response }]
       }
     ];
+  }
+
+  setCurrentCharacter(character: DndCharacter | null): void {
+    this.currentCharacter = character;
+    this.draftCharacter.set(null);
+    this.initializeConversation();
+  }
+
+  getDraftCharacter() {
+    return this.draftCharacter.asReadonly();
+  }
+
+  clearDraft(): void {
+    this.draftCharacter.set(null);
   }
 
   sendMessage(userMessage: string): Observable<string> {
@@ -59,6 +85,15 @@ export class ChatService {
       }));
     }
 
+    if (!this.currentCharacter) {
+      return throwError(() => ({
+        status: 400,
+        message: 'No character selected. Please open a character to chat.'
+      }));
+    }
+
+    const messageText = `Current Character JSON:\n${JSON.stringify(this.currentCharacter, null, 2)}\n\nUser Message: ${userMessage}`;
+
     // Build the contents array with conversation history
     const contents = [
       ...this.conversationHistory.map(msg => ({
@@ -67,59 +102,96 @@ export class ChatService {
       })),
       {
         role: 'user',
-        parts: [{ text: userMessage }]
+        parts: [{ text: messageText }]
       }
     ];
 
-    // Convert Promise to Observable
-    return from(
-      this.ai.models.generateContent({
-        model: environment.aiModel,
-        contents: contents
-      })
-    ).pipe(
-      tap(response => {
-        // Add to conversation history for context
-        this.conversationHistory.push(
-          {
-            role: 'user',
-            parts: [{ text: userMessage }]
-          },
-          {
-            role: 'model',
-            parts: [{ text: response.text || '' }]
-          }
-        );
+    const config = { responseMimeType: 'application/json' };
 
-        // Keep history manageable (last 10 exchanges + system context)
-        if (this.conversationHistory.length > 22) {
-          // Keep first 2 (system context) and last 20 messages
-          this.conversationHistory = [
-            ...this.conversationHistory.slice(0, 2),
-            ...this.conversationHistory.slice(-20)
-          ];
+    return new Observable<string>(observer => {
+      let stream: StreamingHandle | null = null;
+      let lastEmitted = '';
+
+      const run = async () => {
+        try {
+          const activeStream = await this.ai.models.generateContentStream({
+            model: environment.aiModel,
+            contents,
+            config
+          }) as StreamingHandle;
+          stream = activeStream;
+
+          let fullText = '';
+
+          for await (const chunk of activeStream) {
+            const chunkText = chunk.text || '';
+            if (!chunkText) {
+              continue;
+            }
+            fullText += chunkText;
+
+            const extracted = extractStreamingResponseText(fullText);
+            if (extracted && extracted.text !== lastEmitted) {
+              lastEmitted = extracted.text;
+              observer.next(extracted.text);
+            }
+          }
+
+          const parsed = this.parseCharacterUpdateResponse(fullText);
+          const responseText = parsed?.response || lastEmitted || fullText;
+
+          if (parsed && this.currentCharacter) {
+            if (JSON.stringify(parsed.character) !== JSON.stringify(this.currentCharacter)) {
+              this.draftCharacter.set(parsed.character);
+            }
+          }
+
+          this.conversationHistory.push(
+            {
+              role: 'user',
+              parts: [{ text: userMessage }]
+            },
+            {
+              role: 'model',
+              parts: [{ text: parsed ? JSON.stringify(parsed) : fullText }]
+            }
+          );
+
+          if (this.conversationHistory.length > 22) {
+            this.conversationHistory = [
+              ...this.conversationHistory.slice(0, 2),
+              ...this.conversationHistory.slice(-20)
+            ];
+          }
+
+          if (responseText !== lastEmitted) {
+            observer.next(responseText);
+          }
+          observer.complete();
+        } catch (error) {
+          observer.error(this.formatError(error));
         }
-      }),
-      map(response => {
-        if (!response.text) {
-          throw new Error('No response generated');
-        }
-        return response.text;
-      }),
-      catchError(error => this.handleError(error))
-    );
+      };
+
+      run();
+
+      return () => {
+        stream?.cancel?.();
+      };
+    });
   }
 
-  private handleError(error: any): Observable<never> {
+  private formatError(error: unknown): { status: number; message: string; error?: unknown } {
+    const err = error as { message?: string; status?: number };
     let errorMessage = 'An error occurred while communicating with the AI service.';
 
-    if (error?.message) {
-      errorMessage = error.message;
+    if (err?.message) {
+      errorMessage = err.message;
     }
 
     // Handle common Google AI API errors
-    if (error?.status) {
-      switch (error.status) {
+    if (typeof err?.status === 'number') {
+      switch (err.status) {
         case 400:
           errorMessage = 'Invalid request. Please try rephrasing your message.';
           break;
@@ -140,14 +212,27 @@ export class ChatService {
 
     console.error('ChatService Error:', {
       message: errorMessage,
-      error: error
+      error: err
     });
 
-    return throwError(() => ({
-      status: error?.status || 500,
+    return {
+      status: err?.status || 500,
       message: errorMessage,
-      error: error
-    }));
+      error: err
+    };
+  }
+
+  private parseCharacterUpdateResponse(text: string): CharacterUpdateResponse | null {
+    if (!text) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(text) as CharacterUpdateResponse;
+    } catch (error) {
+      console.error('Failed to parse character update response', error);
+      return null;
+    }
   }
 
   getMessages(): Message[] {

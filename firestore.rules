@@ -57,6 +57,18 @@ service cloud.firestore {
         request.resource.data.campaigns.hasAll(resource.data.get('campaigns', []));
     }
 
+    // Characters (Top-level match for clarity, though nested works too)
+    match /users/{userId}/characters/{characterId} {
+      allow read, write: if isAuthenticated() && getUserId() == userId;
+      
+      // Character Versions
+      match /versions/{versionId} {
+        allow read: if isAuthenticated() && getUserId() == userId;
+        allow create: if isAuthenticated() && getUserId() == userId;
+        allow update, delete: if false; // Immutable
+      }
+    }
+
     // Campaigns
     match /campaigns/{campaignId} {
       allow read: if isCampaignMember(campaignId) ||
