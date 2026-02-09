@@ -10,6 +10,7 @@
     "build:backend:watch": "cd functions && tsc --watch",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
+    "generate:icons": "node scripts/generate-icons.js",
     "sentry:sourcemaps": "sentry-cli releases files $npm_package_version upload-sourcemaps ./dist/questmind/browser --rewrite",
     "deploy:prod": "npm run build && npm run sentry:sourcemaps"
   },
@@ -58,6 +59,7 @@
     "karma-jasmine": "~5.1.0",
     "karma-jasmine-html-reporter": "~2.1.0",
     "postcss": "^8.5.6",
+    "sharp": "^0.34.5",
     "tailwindcss": "^3.4.19",
     "typescript": "~5.9.2"
   }
