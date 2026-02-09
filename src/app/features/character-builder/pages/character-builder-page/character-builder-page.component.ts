@@ -74,6 +74,7 @@ import { CharacterVersionHistoryComponent } from '../../components/character-ver
                 @if (draftCharacter()) {
                   <div class="sticky z-10">
                     <app-character-draft-preview
+                      [loading]="isCommitting()"
                       (commit)="commitDraft()"
                       (dismiss)="dismissDraft()"
                     ></app-character-draft-preview>
@@ -136,6 +137,7 @@ import { CharacterVersionHistoryComponent } from '../../components/character-ver
               @if (draftCharacter()) {
                 <div class="sticky bottom-4 z-10">
                   <app-character-draft-preview
+                    [loading]="isCommitting()"
                     (commit)="commitDraft()"
                     (dismiss)="dismissDraft()"
                   ></app-character-draft-preview>
@@ -195,6 +197,7 @@ export class CharacterBuilderPageComponent {
   chat = viewChild(ChatComponent);
   isNarrow = signal<boolean>(false);
   activeTab = signal<'sheet' | 'chat'>('sheet');
+  isCommitting = signal<boolean>(false);
 
   // Computed character to display (draft or active)
   displayCharacter = computed(() => {
@@ -239,7 +242,6 @@ export class CharacterBuilderPageComponent {
   }
 
   async loadActiveVersion(characterId: string) {
-    this.activeVersion.set(null);
     const character = this.characters().find(c => c.id === characterId);
     if (character) {
       const version = await this.characterVersionService.getVersion(characterId, character.activeVersionId);
@@ -306,20 +308,26 @@ export class CharacterBuilderPageComponent {
     const charId = this.selectedCharacterId();
     if (!draft || !charId) return;
 
-    // Create new version
-    await this.characterVersionService.createVersion(
-      charId,
-      draft,
-      'Updated via Sidekick',
-      'ai'
-    );
+    this.isCommitting.set(true);
 
-    // Reload to get new active version
-    await this.loadCharacters();
-    await this.loadActiveVersion(charId);
-    
-    // Clear draft
-    this.chatService.clearDraft();
+    try {
+      // Create new version
+      await this.characterVersionService.createVersion(
+        charId,
+        draft,
+        'Updated via Sidekick',
+        'ai'
+      );
+
+      // Reload to get new active version
+      await this.loadCharacters();
+      await this.loadActiveVersion(charId);
+
+      // Clear draft
+      this.chatService.clearDraft();
+    } finally {
+      this.isCommitting.set(false);
+    }
   }
 
   dismissDraft() {

@@ -81,9 +81,9 @@ import { DndCharacter } from '../../../../shared/schemas/dnd-character.schema';
           <div class="card bg-base-100 shadow-sm border border-base-200">
             <div class="card-body p-4">
               <h3 class="card-title text-sm uppercase tracking-wider border-b pb-2 mb-2">Proficiencies & Languages</h3>
-              <div class="flex flex-wrap gap-1 mb-2">
+              <div class="space-y-1 mb-3">
                 @for (prof of character().proficiencies; track prof) {
-                  <span class="badge badge-outline">{{ prof }}</span>
+                  <div class="text-sm">• {{ prof }}</div>
                 }
               </div>
               <div class="flex flex-wrap gap-1">
