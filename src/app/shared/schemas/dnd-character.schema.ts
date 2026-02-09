@@ -32,6 +32,13 @@ export const SpellSlotSchema = z.object({
   expended: z.number().min(0),
 });
 
+export const SpellSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+  level: z.number().min(0).max(9).optional(), // 0 for cantrips
+  school: z.string().optional(), // e.g., "Evocation", "Abjuration"
+});
+
 export const DndCharacterSchema = z.object({
   // Basic Info
   name: z.string(),
@@ -97,7 +104,7 @@ export const DndCharacterSchema = z.object({
     spellSaveDc: z.number().optional(),
     spellAttackBonus: z.number().optional(),
     slots: z.union([z.array(SpellSlotSchema), z.record(z.string(), z.any())]).optional(),
-    spells: z.array(z.string()).optional(), // List of known/prepared spells
+    spells: z.array(z.union([z.string(), SpellSchema])).optional(), // Support both old format (strings) and new format (objects)
   }).optional(),
 
   // Inventory

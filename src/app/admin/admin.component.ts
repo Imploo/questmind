@@ -33,6 +33,13 @@ export interface AiSettings {
       topK: number;
       maxOutputTokens: number;
     };
+    characterChat: {
+      model: string;
+      temperature: number;
+      topP: number;
+      topK: number;
+      maxOutputTokens: number;
+    };
     podcastVoices: PodcastVoiceSettings;
   };
 }
@@ -282,6 +289,71 @@ export interface AiSettings {
                 </div>
               </div>
 
+              <!-- Character Chat Settings -->
+              <div class="mb-6 p-4 bg-gray-50 rounded-lg">
+                <h4 class="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                  <span>🎲</span>
+                  <span>Character Chat (D&D Sidekick)</span>
+                </h4>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Model</label>
+                    <input
+                      type="text"
+                      [(ngModel)]="aiSettings()!.features.characterChat.model"
+                      name="character-model"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Temperature</label>
+                    <input
+                      type="number"
+                      [(ngModel)]="aiSettings()!.features.characterChat.temperature"
+                      name="character-temperature"
+                      step="0.1"
+                      min="0"
+                      max="2"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Top P</label>
+                    <input
+                      type="number"
+                      [(ngModel)]="aiSettings()!.features.characterChat.topP"
+                      name="character-topP"
+                      step="0.05"
+                      min="0"
+                      max="1"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Top K</label>
+                    <input
+                      type="number"
+                      [(ngModel)]="aiSettings()!.features.characterChat.topK"
+                      name="character-topK"
+                      step="1"
+                      min="1"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                    />
+                  </div>
+                  <div class="md:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Max Output Tokens</label>
+                    <input
+                      type="number"
+                      [(ngModel)]="aiSettings()!.features.characterChat.maxOutputTokens"
+                      name="character-maxTokens"
+                      step="1000"
+                      min="1000"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                    />
+                  </div>
+                </div>
+              </div>
+
               <!-- Podcast Voice Settings -->
               <div class="mb-6 p-4 bg-gray-50 rounded-lg">
                 <h4 class="font-semibold text-gray-800 mb-3 flex items-center gap-2">
@@ -392,6 +464,13 @@ export class AdminComponent implements OnInit {
     topK: 40,
     maxOutputTokens: 8192
   };
+  private readonly defaultCharacterChatConfig = {
+    model: '',
+    temperature: 0.4,
+    topP: 0.95,
+    topK: 40,
+    maxOutputTokens: 8192
+  };
   private readonly defaultPodcastVoices: PodcastVoiceSettings = {
     host1VoiceId: '',
     host2VoiceId: ''
@@ -472,6 +551,7 @@ export class AdminComponent implements OnInit {
       transcription: this.defaultTranscriptionConfig,
       storyGeneration: this.defaultStoryConfig,
       podcastScript: this.defaultPodcastScriptConfig,
+      characterChat: this.defaultCharacterChatConfig,
       podcastVoices: this.defaultPodcastVoices
     };
 
@@ -489,6 +569,10 @@ export class AdminComponent implements OnInit {
         podcastScript: {
           ...this.defaultPodcastScriptConfig,
           ...features.podcastScript
+        },
+        characterChat: {
+          ...this.defaultCharacterChatConfig,
+          ...features.characterChat
         },
         podcastVoices: {
           ...this.defaultPodcastVoices,

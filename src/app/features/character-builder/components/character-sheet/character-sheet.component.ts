@@ -1,4 +1,4 @@
-import { Component, input, output } from '@angular/core';
+import { Component, input, output, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DndCharacter } from '../../../../shared/schemas/dnd-character.schema';
 
@@ -93,10 +93,109 @@ import { DndCharacter } from '../../../../shared/schemas/dnd-character.schema';
               </div>
             </div>
           </div>
+
+          <!-- Spells -->
+          @if (character().spellcasting?.spells && character().spellcasting!.spells!.length > 0) {
+            <div class="card bg-base-100 shadow-sm border border-base-200">
+              <div class="card-body p-4">
+                <h3 class="card-title text-sm uppercase tracking-wider border-b pb-2 mb-2">Spells</h3>
+                <div class="space-y-2">
+                  @for (spell of character().spellcasting!.spells; track $index) {
+                    <div class="pb-2 last:pb-0">
+                      @if (isString(spell)) {
+                        <div class="font-bold text-sm">{{ spell }}</div>
+                      } @else {
+                        <div>
+                          <div
+                            class="flex items-center justify-between cursor-pointer hover:bg-base-200 -mx-2 px-2 py-1 rounded transition-colors"
+                            (click)="toggleSpell($index)"
+                          >
+                            <div class="flex items-center gap-2 flex-1">
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                class="h-3 w-3 transition-transform"
+                                [class.rotate-90]="expandedSpells().has($index)"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                              </svg>
+                              <span class="font-bold text-sm">{{ spell.name }}</span>
+                            </div>
+                            <div class="flex gap-1">
+                              @if (spell.level !== undefined) {
+                                <span class="badge badge-xs badge-ghost shrink-0">
+                                  {{ spell.level === 0 ? 'Cantrip' : 'Level ' + spell.level }}
+                                </span>
+                              }
+                              @if (spell.school) {
+                                <span class="badge badge-xs badge-ghost">{{ spell.school }}</span>
+                              }
+                            </div>
+                          </div>
+                          @if (expandedSpells().has($index) && spell.description) {
+                            <div class="ml-5 mt-2 text-xs opacity-70 animate-fade-in">
+                              {{ spell.description }}
+                            </div>
+                          }
+                        </div>
+                      }
+                    </div>
+                  }
+                </div>
+              </div>
+            </div>
+          }
         </div>
 
         <!-- Right Column -->
         <div class="space-y-6">
+          <!-- Spellcasting -->
+          @let spellcasting = character().spellcasting;
+          @if (spellcasting) {
+            <div class="card bg-base-100 shadow-sm border border-base-200">
+              <div class="card-body p-4">
+                <h3 class="card-title text-sm uppercase tracking-wider border-b pb-2 mb-2">Spellcasting</h3>
+                <div class="flex gap-4 mb-3 text-sm">
+                  @if (spellcasting.spellSaveDc) {
+                    <div>
+                      <span class="opacity-60">Spell Save DC:</span>
+                      <span class="font-bold ml-1">{{ spellcasting.spellSaveDc }}</span>
+                    </div>
+                  }
+                  @if (spellcasting.spellAttackBonus !== undefined) {
+                    <div>
+                      <span class="opacity-60">Spell Attack:</span>
+                      <span class="font-bold ml-1">{{ spellcasting.spellAttackBonus >= 0 ? '+' : '' }}{{ spellcasting.spellAttackBonus }}</span>
+                    </div>
+                  }
+                </div>
+                @if (spellSlots.length > 0) {
+                  <div class="space-y-2">
+                    <div class="text-xs font-bold uppercase opacity-60 mb-1">Spell Slots</div>
+                    @for (slot of spellSlots; track slot.level) {
+                      <div class="flex items-center justify-between text-sm">
+                        <span class="font-semibold">Level {{ slot.level }}</span>
+                        <div class="flex gap-1">
+                          @for (i of getSlotArray(slot.total); track i) {
+                            <div
+                              class="w-4 h-4 rounded-sm border-2 transition-colors"
+                              [class.bg-primary]="i >= slot.expended"
+                              [class.border-primary]="i >= slot.expended"
+                              [class.bg-base-200]="i < slot.expended"
+                              [class.border-base-300]="i < slot.expended"
+                            ></div>
+                          }
+                        </div>
+                      </div>
+                    }
+                  </div>
+                }
+              </div>
+            </div>
+          }
+
            <!-- Attacks -->
            <div class="card bg-base-100 shadow-sm border border-base-200">
             <div class="card-body p-4">
@@ -179,6 +278,20 @@ export class CharacterSheetComponent {
   characterName = input.required<string>();
   viewHistory = output<void>();
 
+  expandedSpells = signal<Set<number>>(new Set());
+
+  toggleSpell(index: number): void {
+    this.expandedSpells.update(set => {
+      const newSet = new Set(set);
+      if (newSet.has(index)) {
+        newSet.delete(index);
+      } else {
+        newSet.add(index);
+      }
+      return newSet;
+    });
+  }
+
   get abilities() {
     const c = this.character();
     return [
@@ -193,6 +306,29 @@ export class CharacterSheetComponent {
 
   isString(value: any): value is string {
     return typeof value === 'string';
+  }
+
+  get spellSlots() {
+    const spellcasting = this.character().spellcasting;
+    if (!spellcasting?.slots) return [];
+
+    // Handle both array and record format
+    if (Array.isArray(spellcasting.slots)) {
+      return spellcasting.slots.sort((a, b) => a.level - b.level);
+    }
+
+    // If it's a record, convert to array
+    return Object.entries(spellcasting.slots)
+      .map(([level, data]: [string, any]) => ({
+        level: parseInt(level),
+        total: data.total || 0,
+        expended: data.expended || 0,
+      }))
+      .sort((a, b) => a.level - b.level);
+  }
+
+  getSlotArray(total: number): number[] {
+    return Array.from({ length: total }, (_, i) => i);
   }
 
   get allSkills() {

@@ -1,10 +1,11 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, signal, inject } from '@angular/core';
 import { Observable, throwError } from 'rxjs';
 import { GoogleGenAI } from '@google/genai';
 import { environment } from '../../environments/environment';
 import { CHARACTER_BUILDER_PROMPT } from "../prompts/character-builder.prompt";
 import { DndCharacter } from '../shared/schemas/dnd-character.schema';
 import { extractStreamingResponseText } from '../core/utils/streaming-response.utils';
+import { AiSettingsService } from '../core/services/ai-settings.service';
 
 type StreamingChunk = { text?: string };
 type StreamingHandle = AsyncIterable<StreamingChunk> & { cancel?: () => void };
@@ -28,7 +29,8 @@ export interface CharacterUpdateResponse {
 export class ChatService {
   private readonly apiKey = environment.googleAiApiKey;
   private ai: GoogleGenAI;
-  
+  private aiSettingsService = inject(AiSettingsService);
+
   // Use signals for reactive state management
   private messages = signal<Message[]>([]);
   private conversationHistory: Array<{ role: string; parts: Array<{ text: string }> }> = [];
@@ -106,7 +108,15 @@ export class ChatService {
       }
     ];
 
-    const config = { responseMimeType: 'application/json' };
+    // Get AI settings
+    const aiConfig = this.aiSettingsService.getCharacterChatConfig();
+    const config = {
+      responseMimeType: 'application/json',
+      temperature: aiConfig.temperature,
+      topP: aiConfig.topP,
+      topK: aiConfig.topK,
+      maxOutputTokens: aiConfig.maxOutputTokens
+    };
 
     return new Observable<string>(observer => {
       let stream: StreamingHandle | null = null;
@@ -115,7 +125,7 @@ export class ChatService {
       const run = async () => {
         try {
           const activeStream = await this.ai.models.generateContentStream({
-            model: environment.aiModel,
+            model: aiConfig.model || environment.aiModel,
             contents,
             config
           }) as StreamingHandle;

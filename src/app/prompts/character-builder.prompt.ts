@@ -35,6 +35,17 @@ BELANGRIJKE SCHEMA-PUNTEN:
     - "Other" - andere bronnen (magic items, blessings, etc.)
   - Source is NIET het boek waar de regel vandaan komt (geen "PHB" of "Tasha's")
   - Voorbeeld: {"name": "Darkvision", "description": "You can see in dim light within 60 feet as if it were bright light", "source": "Race"}
+- **spellcasting.spells**: Array van spell objecten met {name: string, description: string, level?: number, school?: string}
+  - VERPLICHT: Elke spell MOET een object zijn met name en description
+  - **KRITIEK: Description moet de OFFICIËLE tekst uit de D&D 5e boeken zijn**
+    - Gebruik de volledige spell description uit Player's Handbook, Xanathar's Guide, of Tasha's Cauldron
+    - Inclusief: Casting Time, Range, Components (V, S, M), Duration, en complete effect beschrijving
+    - GEEN verkorte of samengevatte versies - gebruik de volledige officiële tekst
+    - Als je de exacte tekst niet precies weet, geef dan aan dat je de basis informatie geeft
+  - Level: 0 voor cantrips, 1-9 voor spell levels
+  - School: "Abjuration", "Conjuration", "Divination", "Enchantment", "Evocation", "Illusion", "Necromancy", "Transmutation"
+  - Voorbeeld: {"name": "Fire Bolt", "description": "Casting Time: 1 action\nRange: 120 feet\nComponents: V, S\nDuration: Instantaneous\n\nYou hurl a mote of fire at a creature or object within range. Make a ranged spell attack against the target. On a hit, the target takes 1d10 fire damage. A flammable object hit by this spell ignites if it isn't being worn or carried.\n\nThis spell's damage increases by 1d10 when you reach 5th level (2d10), 11th level (3d10), and 17th level (4d10).", "level": 0, "school": "Evocation"}
+  - Backwards compatibility: Oude characters kunnen strings hebben, maar nieuwe/bijgewerkte characters moeten objecten gebruiken
 - **spellcasting.slots**: Kan een array van SpellSlot objecten zijn, of een record/map
 - **abilities**: Object met strength, dexterity, constitution, intelligence, wisdom, charisma - elk met score en modifier
 - **alignment**: Moet een van de voorgedefinieerde waarden zijn (zie schema enum)
