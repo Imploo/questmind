@@ -1,6 +1,6 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import {
-  signInWithRedirect,
+  signInWithPopup,
   getRedirectResult,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -30,6 +30,9 @@ export class AuthService {
   readonly isLoading = this.loading.asReadonly();
   readonly authError = this.error.asReadonly();
 
+  private authStateInitialized = false;
+  private redirectCheckComplete = false;
+
   constructor(private readonly firebase: FirebaseService) {
     this.auth = this.firebase.requireAuth();
     this.initAuthStateListener();
@@ -39,8 +42,10 @@ export class AuthService {
   private initAuthStateListener(): void {
     onAuthStateChanged(this.auth, (user) => {
       this.user.set(user);
-      this.loading.set(false);
+      this.authStateInitialized = true;
+      
       if (user) {
+        this.loading.set(false);
         this.error.set(null);
         this.sentryService.setUser(
           user.uid,
@@ -49,6 +54,10 @@ export class AuthService {
         );
       } else {
         this.sentryService.clearUser();
+        // Only set loading to false if we've also checked for redirect results
+        if (this.redirectCheckComplete) {
+          this.loading.set(false);
+        }
       }
     }, (err) => {
       console.error('Auth state change error:', err);
@@ -68,6 +77,12 @@ export class AuthService {
     } catch (err: unknown) {
       console.error('Redirect result error:', err);
       this.error.set(this.getErrorMessage(err));
+    } finally {
+      this.redirectCheckComplete = true;
+      // If auth state is initialized and we still don't have a user, we're done loading
+      if (this.authStateInitialized && !this.user()) {
+        this.loading.set(false);
+      }
     }
   }
 
@@ -78,9 +93,9 @@ export class AuthService {
     
     try {
       const provider = new GoogleAuthProvider();
-      // Use redirect instead of popup for better compatibility with embedded browsers
-      await signInWithRedirect(this.auth, provider);
-      // Note: The page will redirect, so code after this won't execute
+      // Use popup instead of redirect to avoid third-party cookie issues (Brave, etc.)
+      await signInWithPopup(this.auth, provider);
+      // Auth state listener will update the user
     } catch (err: unknown) {
       this.loading.set(false);
       const errorMessage = this.getErrorMessage(err);

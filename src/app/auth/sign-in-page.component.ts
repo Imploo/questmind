@@ -67,7 +67,7 @@ export class SignInPageComponent {
     try {
       this.error.set(null);
       await this.authService.signInWithGoogle();
-      // Navigation will be handled by the auth guard after successful login
+      // Navigate to home after successful popup sign-in
       this.router.navigate(['/']);
     } catch (err: any) {
       this.error.set(err.message || 'Failed to sign in. Please try again.');
