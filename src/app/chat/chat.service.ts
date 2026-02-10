@@ -25,7 +25,6 @@ interface CharacterChatRequest {
   contents: ChatContent[];
   config: ChatGenerationConfig;
   model: string;
-  campaignId?: string;
   characterId?: string;
 }
 
@@ -60,7 +59,6 @@ export class ChatService {
   private draftCharacter = signal<DndCharacter | null>(null);
   private currentCharacter: DndCharacter | null = null;
   private characterId: string | null = null;
-  private campaignId: string | null = null;
 
   constructor() {
     this.initializeConversation();
@@ -85,9 +83,8 @@ export class ChatService {
     this.initializeConversation();
   }
 
-  setCharacterMetadata(characterId: string | null, campaignId: string | null): void {
+  setCharacterId(characterId: string | null): void {
     this.characterId = characterId;
-    this.campaignId = campaignId;
   }
 
   getDraftCharacter() {
@@ -140,8 +137,7 @@ export class ChatService {
       contents,
       config,
       model,
-      ...(this.characterId && { characterId: this.characterId }),
-      ...(this.campaignId && { campaignId: this.campaignId })
+      ...(this.characterId && { characterId: this.characterId })
     };
 
     return from(characterChat(payload)).pipe(

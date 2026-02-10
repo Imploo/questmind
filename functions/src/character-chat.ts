@@ -9,7 +9,6 @@ export interface CharacterChatRequest {
   contents: ContentListUnion;
   config: GenerateContentConfig;
   model: string;
-  campaignId?: string;
   characterId?: string;
 }
 
@@ -33,7 +32,7 @@ export const characterChat = onCall(
   wrapCallable<CharacterChatRequest, CharacterChatResponse>(
     'characterChat',
     async (request): Promise<CharacterChatResponse> => {
-      const { contents, config, model, campaignId, characterId } = request.data;
+      const { contents, config, model, characterId } = request.data;
 
       if (!contents || !model) {
         throw new HttpsError('invalid-argument', 'Missing required fields: contents, model');
@@ -76,8 +75,8 @@ export const characterChat = onCall(
             const filename = `${randomUUID()}.${extension}`;
             
             // Create storage path
-            const storagePath = campaignId && characterId
-              ? `campaigns/${campaignId}/chat/${characterId}/${filename}`
+            const storagePath = characterId
+              ? `chat/${characterId}/${filename}`
               : `chat-images/${filename}`;
             
             const file = storage.file(storagePath);

@@ -28,13 +28,13 @@ service firebase.storage {
                        || request.resource.contentType == 'audio/m4a');
     }
 
-    // Chat images (campaigns)
-    match /campaigns/{campaignId}/chat/{characterId}/{filename} {
-      allow read: if isCampaignMember(campaignId);
+    // Chat images per character
+    match /chat/{characterId}/{filename} {
+      allow read: if request.auth != null;
       // Write handled by backend only
     }
 
-    // Chat images (no campaign)
+    // Chat images (fallback for characters without ID)
     match /chat-images/{filename} {
       allow read: if request.auth != null;
       // Write handled by backend only

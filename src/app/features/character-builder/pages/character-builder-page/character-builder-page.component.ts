@@ -209,13 +209,13 @@ export class CharacterBuilderPageComponent {
         }
     });
 
-    // Update chat service with character metadata
+    // Update chat service with character ID
     effect(() => {
       const character = this.selectedCharacter();
       if (character) {
-        this.chatService.setCharacterMetadata(character.id, character.campaignId);
+        this.chatService.setCharacterId(character.id);
       } else {
-        this.chatService.setCharacterMetadata(null, null);
+        this.chatService.setCharacterId(null);
       }
     });
   }
