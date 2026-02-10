@@ -25,11 +25,13 @@ interface CharacterChatRequest {
   contents: ChatContent[];
   config: ChatGenerationConfig;
   model: string;
+  campaignId?: string;
+  characterId?: string;
 }
 
 export interface MessageImage {
+  url: string;
   mimeType: string;
-  data: string; // base64 encoded
 }
 
 export interface Message {
@@ -57,6 +59,8 @@ export class ChatService {
   private conversationHistory: { role: string; parts: { text: string }[] }[] = [];
   private draftCharacter = signal<DndCharacter | null>(null);
   private currentCharacter: DndCharacter | null = null;
+  private characterId: string | null = null;
+  private campaignId: string | null = null;
 
   constructor() {
     this.initializeConversation();
@@ -79,6 +83,11 @@ export class ChatService {
     this.currentCharacter = character;
     this.draftCharacter.set(null);
     this.initializeConversation();
+  }
+
+  setCharacterMetadata(characterId: string | null, campaignId: string | null): void {
+    this.characterId = characterId;
+    this.campaignId = campaignId;
   }
 
   getDraftCharacter() {
@@ -127,7 +136,15 @@ export class ChatService {
       functions, 'characterChat'
     );
 
-    return from(characterChat({ contents, config, model })).pipe(
+    const payload: CharacterChatRequest = {
+      contents,
+      config,
+      model,
+      ...(this.characterId && { characterId: this.characterId }),
+      ...(this.campaignId && { campaignId: this.campaignId })
+    };
+
+    return from(characterChat(payload)).pipe(
       map(result => {
         const fullText = result.data.text;
         const images = result.data.images;

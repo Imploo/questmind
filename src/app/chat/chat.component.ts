@@ -55,7 +55,7 @@ import { DndCharacter } from '../shared/schemas/dnd-character.schema';
                   <div class="mt-3 flex flex-col gap-2">
                     @for (image of message.images; track $index) {
                       <img 
-                        [src]="'data:' + image.mimeType + ';base64,' + image.data"
+                        [src]="image.url"
                         [alt]="'Generated image ' + ($index + 1)"
                         class="max-w-full rounded-lg border border-gray-200"
                         loading="lazy"

@@ -208,6 +208,16 @@ export class CharacterBuilderPageComponent {
             this.versions.set(history);
         }
     });
+
+    // Update chat service with character metadata
+    effect(() => {
+      const character = this.selectedCharacter();
+      if (character) {
+        this.chatService.setCharacterMetadata(character.id, character.campaignId);
+      } else {
+        this.chatService.setCharacterMetadata(null, null);
+      }
+    });
   }
 
   onWindowResize(): void {

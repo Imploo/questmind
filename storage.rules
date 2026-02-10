@@ -27,5 +27,17 @@ service firebase.storage {
                        || request.resource.contentType == 'audio/mp3'
                        || request.resource.contentType == 'audio/m4a');
     }
+
+    // Chat images (campaigns)
+    match /campaigns/{campaignId}/chat/{characterId}/{filename} {
+      allow read: if isCampaignMember(campaignId);
+      // Write handled by backend only
+    }
+
+    // Chat images (no campaign)
+    match /chat-images/{filename} {
+      allow read: if request.auth != null;
+      // Write handled by backend only
+    }
   }
 }
