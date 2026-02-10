@@ -34,11 +34,20 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
     <div class="flex min-h-screen bg-base-200">
       @if (isNarrow()) {
         <div class="relative w-full">
-          <div class="flex flex-col gap-4 p-4" style="padding-bottom: calc(10vh + 1rem)">
+          @if (draftCharacter()) {
+            <div class="sticky -top-2 z-20 bg-base-200 pb-4">
+              <app-character-draft-preview
+                [loading]="isCommitting()"
+                (commit)="commitDraft()"
+                (dismiss)="dismissDraft()"
+              ></app-character-draft-preview>
+            </div>
+          }
+          <div class="flex flex-col gap-4" style="padding-bottom: calc(10vh + 1rem)">
             @if (selectedCharacterId()) {
               @if (activeVersion()) {
                 <mat-card class="bg-base-100 shadow-xl border border-base-300">
-                  <mat-card-content class="p-6">
+                  <mat-card-content>
                     <app-character-sheet
                       [character]="displayCharacter() || activeVersion()!.character"
                       [characterName]="selectedCharacter()?.name || 'Unknown'"
@@ -62,13 +71,6 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
               </mat-card>
             }
 
-            @if (draftCharacter()) {
-              <app-character-draft-preview
-                [loading]="isCommitting()"
-                (commit)="commitDraft()"
-                (dismiss)="dismissDraft()"
-              ></app-character-draft-preview>
-            }
           </div>
 
           <app-chat-drawer
@@ -81,6 +83,15 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
           <!-- Center Character Sheet -->
           <div class="w-2/3 p-4">
             <div class="flex flex-col gap-4">
+              @if (draftCharacter()) {
+                <div class="sticky top-8 z-10">
+                  <app-character-draft-preview
+                      [loading]="isCommitting()"
+                      (commit)="commitDraft()"
+                      (dismiss)="dismissDraft()"
+                  ></app-character-draft-preview>
+                </div>
+              }
               <div class="flex-1">
                 @if (selectedCharacterId()) {
                   @if (activeVersion()) {
@@ -109,16 +120,6 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
                   </mat-card>
                 }
               </div>
-
-              @if (draftCharacter()) {
-                <div class="sticky bottom-4 z-10">
-                  <app-character-draft-preview
-                    [loading]="isCommitting()"
-                    (commit)="commitDraft()"
-                    (dismiss)="dismissDraft()"
-                  ></app-character-draft-preview>
-                </div>
-              }
             </div>
           </div>
 

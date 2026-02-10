@@ -7,7 +7,7 @@ import { DndCharacter } from '../../../../shared/schemas/dnd-character.schema';
   standalone: true,
   imports: [CommonModule],
   template: `
-    <div class="p-8 max-w-4xl mx-auto space-y-8">
+    <div class="p-2 max-w-4xl mx-auto space-y-8">
       <!-- Header -->
       <div class="flex justify-between items-start border-b border-base-300 pb-6">
         <div>

@@ -20,7 +20,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
               <h3 class="font-bold">Changes Proposed</h3>
               <div class="text-xs">The Sidekick has suggested updates to your character.</div>
             </div>
-            <div class="flex gap-2">
+            <div class="flex flex-col-reverse gap-2">
               <button mat-button (click)="dismiss.emit()" [disabled]="loading()">Dismiss</button>
               <button mat-raised-button color="primary" (click)="commit.emit()" [disabled]="loading()">
                 @if (loading()) {
