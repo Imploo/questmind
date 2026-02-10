@@ -31,33 +31,32 @@ import { DndCharacter } from '../shared/schemas/dnd-character.schema';
         }
         
         @for (message of messages(); track message.id) {
-          <div 
-            class="max-w-[85%] p-3 rounded-lg animate-slide-in text-sm"
-            [class]="message.sender === 'user' 
-              ? 'self-end bg-primary text-white rounded-br-sm' 
-              : message.sender === 'error'
-              ? 'self-start bg-red-50 border border-red-200 text-red-700 rounded-bl-sm'
-              : 'self-start bg-white border border-gray-200 rounded-bl-sm'"
-          >
-            <div class="flex justify-between mb-2 text-xs opacity-80">
-              <span class="font-semibold">{{ message.sender === 'user' ? 'You' : 'The Sidekick' }}</span>
-              <span class="text-[0.7rem]">{{ formatTime(message.timestamp) }}</span>
+          @if (message.text) {
+            <div 
+              class="max-w-[85%] p-3 rounded-lg animate-slide-in text-sm"
+              [class]="message.sender === 'user' 
+                ? 'self-end bg-primary text-white rounded-br-sm' 
+                : message.sender === 'error'
+                ? 'self-start bg-red-50 border border-red-200 text-red-700 rounded-bl-sm'
+                : 'self-start bg-white border border-gray-200 rounded-bl-sm'"
+            >
+              <div class="flex justify-between mb-2 text-xs opacity-80">
+                <span class="font-semibold">{{ message.sender === 'user' ? 'You' : 'The Sidekick' }}</span>
+                <span class="pl-2 text-[0.7rem]">{{ formatTime(message.timestamp) }}</span>
+              </div>
+              <div class="leading-relaxed">
+                @if (message.sender === 'user') {
+                  <p class="m-0 whitespace-pre-wrap break-words">{{ message.text }}</p>
+                } @else {
+                  <div class="prose prose-sm prose-gray max-w-none" [innerHTML]="parseMarkdown(message.text)"></div>
+                }
+              </div>
             </div>
-            <div class="leading-relaxed">
-              @if (message.sender === 'user') {
-                <p class="m-0 whitespace-pre-wrap break-words">{{ message.text }}</p>
-              } @else {
-                <div class="prose prose-sm prose-gray max-w-none" [innerHTML]="parseMarkdown(message.text)"></div>
-              }
-            </div>
-          </div>
+          }
         }
 
-        @if (isLoading() && !isStreaming()) {
+        @if (isLoading()) {
           <div class="max-w-[85%] p-3 rounded-lg self-start bg-white border border-gray-200 animate-slide-in text-sm">
-            <div class="flex justify-between mb-1 text-xs opacity-80">
-              <span class="font-semibold">Sidekick</span>
-            </div>
             <div class="leading-relaxed">
               <div class="flex gap-1 py-1">
                 <span class="w-1.5 h-1.5 rounded-full bg-primary animate-bounce-dot"></span>
@@ -104,7 +103,6 @@ export class ChatComponent {
   messages = signal<Message[]>([]);
   newMessage = signal<string>('');
   isLoading = signal<boolean>(false);
-  isStreaming = signal<boolean>(false);
   error = signal<string>('');
   messagesContainer = viewChild<ElementRef<HTMLDivElement>>('messagesContainer');
   messageInput = viewChild<ElementRef<HTMLInputElement>>('messageInput');
@@ -165,7 +163,6 @@ export class ChatComponent {
     this.messages.update(msgs => [...msgs, userMessage]);
     this.newMessage.set('');
     this.isLoading.set(true);
-    this.isStreaming.set(false);
 
     const aiMessageId = this.generateId();
     const aiMessage: Message = {
@@ -179,14 +176,10 @@ export class ChatComponent {
     // Get AI response
     this.chatService.sendMessage(messageText).subscribe({
       next: (response) => {
-        if (!this.isStreaming()) {
-          this.isStreaming.set(true);
-        }
         this.updateMessageText(aiMessageId, response);
       },
       complete: () => {
         this.isLoading.set(false);
-        this.isStreaming.set(false);
       },
       error: (err) => {
         console.error('AI Service Error:', err);
@@ -201,7 +194,6 @@ export class ChatComponent {
         };
         this.messages.update(msgs => [...msgs, errorMsg]);
         this.isLoading.set(false);
-        this.isStreaming.set(false);
       }
     });
   }
