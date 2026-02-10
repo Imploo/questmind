@@ -24,6 +24,7 @@ export interface CharacterChatResponse {
 
 export const characterChat = onCall(
   {
+      region: 'us-central1',
     timeoutSeconds: 300,
     memory: '512MiB',
     cors: SHARED_CORS,

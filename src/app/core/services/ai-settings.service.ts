@@ -38,8 +38,8 @@ export class AiSettingsService implements OnDestroy {
 
   // Default fallback values
   private readonly defaultCharacterChatConfig: AiModelConfig = {
-    model: 'gemini-2.0-flash-exp',
-    temperature: 0.4,
+    model: 'gemini-3-flash-preview',
+    temperature: 0.7,
     topP: 0.95,
     topK: 40,
     maxOutputTokens: 8192

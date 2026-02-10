@@ -2,7 +2,6 @@ import { Injectable, signal, inject } from '@angular/core';
 import { Observable, from, throwError } from 'rxjs';
 import { map, catchError } from 'rxjs/operators';
 import { httpsCallable } from 'firebase/functions';
-import { environment } from '../../environments/environment';
 import { CHARACTER_BUILDER_PROMPT } from "../prompts/character-builder.prompt";
 import { DndCharacter } from '../shared/schemas/dnd-character.schema';
 import { AiSettingsService } from '../core/services/ai-settings.service';
@@ -122,14 +121,13 @@ export class ChatService {
     const aiConfig = this.aiSettingsService.getCharacterChatConfig();
     const config = {
       responseMimeType: 'application/json',
-      responseModalities: ['TEXT', 'IMAGE'],
       temperature: aiConfig.temperature,
       topP: aiConfig.topP,
       topK: aiConfig.topK,
       maxOutputTokens: aiConfig.maxOutputTokens
     };
 
-    const model = aiConfig.model || environment.aiModel;
+    const model = aiConfig.model;
 
     const characterChat = httpsCallable<CharacterChatRequest, { text: string; images?: MessageImage[] }>(
       functions, 'characterChat'
