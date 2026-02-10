@@ -27,10 +27,16 @@ interface CharacterChatRequest {
   model: string;
 }
 
+export interface MessageImage {
+  mimeType: string;
+  data: string; // base64 encoded
+}
+
 export interface Message {
   id: string;
   sender: 'user' | 'ai' | 'error';
   text: string;
+  images?: MessageImage[];
   timestamp: Date;
 }
 
@@ -83,7 +89,7 @@ export class ChatService {
     this.draftCharacter.set(null);
   }
 
-  sendMessage(userMessage: string): Observable<string> {
+  sendMessage(userMessage: string): Observable<{ text: string; images?: MessageImage[] }> {
     if (!this.currentCharacter) {
       return throwError(() => ({
         status: 400,
@@ -117,13 +123,14 @@ export class ChatService {
 
     const model = aiConfig.model || environment.aiModel;
 
-    const characterChat = httpsCallable<CharacterChatRequest, { text: string }>(
+    const characterChat = httpsCallable<CharacterChatRequest, { text: string; images?: MessageImage[] }>(
       functions, 'characterChat'
     );
 
     return from(characterChat({ contents, config, model })).pipe(
       map(result => {
         const fullText = result.data.text;
+        const images = result.data.images;
         const parsed = this.parseCharacterUpdateResponse(fullText);
         const responseText = parsed?.response ?? fullText;
 
@@ -145,7 +152,7 @@ export class ChatService {
           ];
         }
 
-        return responseText;
+        return { text: responseText, images };
       }),
       catchError(error => throwError(() => this.formatError(error)))
     );

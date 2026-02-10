@@ -9,8 +9,14 @@ export interface CharacterChatRequest {
   model: string;
 }
 
+export interface MessageImage {
+  mimeType: string;
+  data: string; // base64 encoded
+}
+
 export interface CharacterChatResponse {
   text: string;
+  images?: MessageImage[];
 }
 
 export const characterChat = onCall(
@@ -42,11 +48,30 @@ export const characterChat = onCall(
         config,
       });
 
-      if (!result.text) {
+      if (!result.text && !result.candidates?.[0]?.content?.parts?.length) {
         throw new HttpsError('internal', 'No response from AI model');
       }
 
-      return { text: result.text };
+      // Extract text and images from response
+      const text = result.text || '';
+      const images: MessageImage[] = [];
+
+      // Check if the response contains inline images
+      if (result.candidates?.[0]?.content?.parts) {
+        for (const part of result.candidates[0].content.parts) {
+          if ('inlineData' in part && part.inlineData) {
+            images.push({
+              mimeType: part.inlineData.mimeType,
+              data: part.inlineData.data,
+            });
+          }
+        }
+      }
+
+      return { 
+        text,
+        ...(images.length > 0 && { images })
+      };
     }
   )
 );
