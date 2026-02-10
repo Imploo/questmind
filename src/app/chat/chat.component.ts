@@ -50,6 +50,19 @@ import { DndCharacter } from '../shared/schemas/dnd-character.schema';
                 } @else {
                   <div class="prose prose-sm prose-gray max-w-none" [innerHTML]="parseMarkdown(message.text)"></div>
                 }
+                
+                @if (message.images && message.images.length > 0) {
+                  <div class="mt-3 flex flex-col gap-2">
+                    @for (image of message.images; track $index) {
+                      <img 
+                        [src]="image.url"
+                        [alt]="'Generated image ' + ($index + 1)"
+                        class="max-w-full rounded-lg border border-gray-200"
+                        loading="lazy"
+                      />
+                    }
+                  </div>
+                }
               </div>
             </div>
           }
@@ -176,7 +189,7 @@ export class ChatComponent {
     // Get AI response
     this.chatService.sendMessage(messageText).subscribe({
       next: (response) => {
-        this.updateMessageText(aiMessageId, response);
+        this.updateMessage(aiMessageId, response.text, response.images);
       },
       complete: () => {
         this.isLoading.set(false);
@@ -237,10 +250,10 @@ export class ChatComponent {
     return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
 
-  private updateMessageText(messageId: string, text: string): void {
+  private updateMessage(messageId: string, text: string, images?: { url: string; mimeType: string }[]): void {
     this.messages.update(messages =>
       messages.map(message =>
-        message.id === messageId ? { ...message, text } : message
+        message.id === messageId ? { ...message, text, images } : message
       )
     );
   }

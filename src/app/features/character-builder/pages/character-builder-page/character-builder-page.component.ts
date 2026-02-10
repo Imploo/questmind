@@ -208,6 +208,16 @@ export class CharacterBuilderPageComponent {
             this.versions.set(history);
         }
     });
+
+    // Update chat service with character ID
+    effect(() => {
+      const character = this.selectedCharacter();
+      if (character) {
+        this.chatService.setCharacterId(character.id);
+      } else {
+        this.chatService.setCharacterId(null);
+      }
+    });
   }
 
   onWindowResize(): void {

@@ -25,12 +25,19 @@ interface CharacterChatRequest {
   contents: ChatContent[];
   config: ChatGenerationConfig;
   model: string;
+  characterId?: string;
+}
+
+export interface MessageImage {
+  url: string;
+  mimeType: string;
 }
 
 export interface Message {
   id: string;
   sender: 'user' | 'ai' | 'error';
   text: string;
+  images?: MessageImage[];
   timestamp: Date;
 }
 
@@ -51,6 +58,7 @@ export class ChatService {
   private conversationHistory: { role: string; parts: { text: string }[] }[] = [];
   private draftCharacter = signal<DndCharacter | null>(null);
   private currentCharacter: DndCharacter | null = null;
+  private characterId: string | null = null;
 
   constructor() {
     this.initializeConversation();
@@ -75,6 +83,10 @@ export class ChatService {
     this.initializeConversation();
   }
 
+  setCharacterId(characterId: string | null): void {
+    this.characterId = characterId;
+  }
+
   getDraftCharacter() {
     return this.draftCharacter.asReadonly();
   }
@@ -83,7 +95,7 @@ export class ChatService {
     this.draftCharacter.set(null);
   }
 
-  sendMessage(userMessage: string): Observable<string> {
+  sendMessage(userMessage: string): Observable<{ text: string; images?: MessageImage[] }> {
     if (!this.currentCharacter) {
       return throwError(() => ({
         status: 400,
@@ -117,13 +129,21 @@ export class ChatService {
 
     const model = aiConfig.model || environment.aiModel;
 
-    const characterChat = httpsCallable<CharacterChatRequest, { text: string }>(
+    const characterChat = httpsCallable<CharacterChatRequest, { text: string; images?: MessageImage[] }>(
       functions, 'characterChat'
     );
 
-    return from(characterChat({ contents, config, model })).pipe(
+    const payload: CharacterChatRequest = {
+      contents,
+      config,
+      model,
+      ...(this.characterId && { characterId: this.characterId })
+    };
+
+    return from(characterChat(payload)).pipe(
       map(result => {
         const fullText = result.data.text;
+        const images = result.data.images;
         const parsed = this.parseCharacterUpdateResponse(fullText);
         const responseText = parsed?.response ?? fullText;
 
@@ -145,7 +165,7 @@ export class ChatService {
           ];
         }
 
-        return responseText;
+        return { text: responseText, images };
       }),
       catchError(error => throwError(() => this.formatError(error)))
     );
