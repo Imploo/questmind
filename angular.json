@@ -21,7 +21,7 @@
                 "input": "public"
               },
               {
-                "glob": "custom-sw.js",
+                "glob": "version.json",
                 "input": "src",
                 "output": "/"
               }
@@ -37,7 +37,6 @@
                 "styles": false,
                 "hidden": true
               },
-              "serviceWorker": "ngsw-config.json",
               "budgets": [
                 {
                   "type": "initial",

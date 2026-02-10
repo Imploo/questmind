@@ -72,12 +72,6 @@ export interface UploadRequestEvent extends AudioUpload {
       </div>
 
       <div class="mt-4 space-y-4">
-        @if (!backgroundUploadSupported) {
-          <div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
-            Background uploads are not supported in this browser. Keep your screen awake while uploading.
-          </div>
-        }
-
         <label class="flex items-center gap-2 text-sm text-gray-600">
           <input
             type="checkbox"
@@ -226,7 +220,6 @@ export class AudioUploadComponent {
   @Input() stage: Stage = 'idle';
   @Input() progress = 0;
   @Input() statusMessage = '';
-  @Input() backgroundUploadSupported = true;
   @Input() wakeLockSupported = true;
   @Output() uploadRequested = new EventEmitter<UploadRequestEvent>();
 

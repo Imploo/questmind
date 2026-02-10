@@ -4,7 +4,6 @@ import { ref, uploadBytesResumable, type FirebaseStorage } from 'firebase/storag
 import { doc, onSnapshot, updateDoc, type Firestore, type Unsubscribe } from 'firebase/firestore';
 import { SessionProgress, UnifiedProgress } from './audio-session.models';
 import { FirebaseService } from '../../core/firebase.service';
-import { BackgroundUploadService } from './background-upload.service';
 import * as logger from '../../shared/logger';
 
 export interface StartProcessingOptions {
@@ -16,7 +15,6 @@ export interface StartProcessingOptions {
 
 export interface ProcessingResult {
   sessionId: string;
-  isBackground: boolean;
 }
 
 /**
@@ -34,7 +32,6 @@ export interface ProcessingResult {
 })
 export class AudioCompleteProcessingService {
   private firebase = inject(FirebaseService);
-  private backgroundUpload = inject(BackgroundUploadService);
   private functions: Functions;
   private storage: FirebaseStorage;
   private firestore: Firestore;
@@ -46,13 +43,10 @@ export class AudioCompleteProcessingService {
   }
 
   /**
-   * Start complete audio processing using new worker chain
-   *
-   * Attempts Background Fetch API first (for mobile resilience), then falls
-   * back to foreground uploadBytesResumable.
+   * Start complete audio processing using foreground upload.
    *
    * @param onUploadProgress - Optional callback for upload progress (0-99)
-   * @returns Promise that resolves with session ID and whether upload is background
+   * @returns Promise that resolves with session ID
    */
   async startCompleteProcessing(
     campaignId: string,
@@ -63,33 +57,6 @@ export class AudioCompleteProcessingService {
   ): Promise<ProcessingResult> {
     const transcriptionMode = options.transcriptionMode || 'batch';
 
-    // Try background upload first
-    if (this.backgroundUpload.isSupported()) {
-      logger.info('[AudioCompleteProcessing] Background Fetch supported, attempting background upload');
-
-      const registration = await this.startBackgroundUploadWithTimeout(
-        audioFile,
-        campaignId,
-        sessionId,
-        transcriptionMode,
-        options.userCorrections
-      );
-
-      if (registration) {
-        logger.info(`[AudioCompleteProcessing] Background upload started for session ${sessionId}`);
-        this.attachBackgroundFallback(
-          campaignId,
-          sessionId,
-          audioFile,
-          { ...options, transcriptionMode },
-          onUploadProgress
-        );
-        return { sessionId, isBackground: true };
-      }
-
-      logger.warn('[AudioCompleteProcessing] Background upload failed, falling back to foreground');
-    }
-
     await this.startForegroundUpload(
       campaignId,
       sessionId,
@@ -98,7 +65,7 @@ export class AudioCompleteProcessingService {
       onUploadProgress
     );
 
-    return { sessionId, isBackground: false };
+    return { sessionId };
   }
 
   /**
@@ -133,115 +100,6 @@ export class AudioCompleteProcessingService {
       console.error('Error listening to progress:', error);
       callback(null);
     });
-  }
-
-  private attachBackgroundFallback(
-    campaignId: string,
-    sessionId: string,
-    audioFile: File,
-    options: StartProcessingOptions,
-    onUploadProgress?: (progress: number) => void
-  ): void {
-    let handled = false;
-
-    this.backgroundUpload.listenForMessages({
-      onComplete: (data) => {
-        if (data.sessionId !== sessionId || handled) {
-          return;
-        }
-        handled = true;
-        this.backgroundUpload.stopListening();
-      },
-      onFailed: async (data) => {
-        if (data.sessionId !== sessionId || handled) {
-          return;
-        }
-        handled = true;
-        this.backgroundUpload.stopListening();
-        logger.error(
-          `[AudioCompleteProcessing] Background upload failed for session ${sessionId}, retrying foreground`,
-          {
-            sessionId,
-            failureReason: data.failureReason,
-            status: data.status,
-            statusText: data.statusText,
-            responseText: data.responseText,
-          }
-        );
-        await this.startForegroundUpload(
-          campaignId,
-          sessionId,
-          audioFile,
-          options,
-          onUploadProgress
-        );
-      },
-      onAborted: async (data) => {
-        if (data.sessionId !== sessionId || handled) {
-          return;
-        }
-        handled = true;
-        this.backgroundUpload.stopListening();
-        logger.warn(
-          `[AudioCompleteProcessing] Background upload aborted for session ${sessionId}, retrying foreground`
-        );
-        await this.startForegroundUpload(
-          campaignId,
-          sessionId,
-          audioFile,
-          options,
-          onUploadProgress
-        );
-      }
-    });
-  }
-
-  private async startBackgroundUploadWithTimeout(
-    file: File,
-    campaignId: string,
-    sessionId: string,
-    transcriptionMode: 'fast' | 'batch',
-    userCorrections?: string
-  ): Promise<BackgroundFetchRegistration | null> {
-    try {
-      // 1. Get signed URL (no strict timeout, standard network timeout applies)
-      logger.info('[AudioCompleteProcessing] Fetching signed URL for background upload...');
-      const { signedUrl, storagePath } = await this.backgroundUpload.getSignedUploadUrl(
-        file,
-        campaignId,
-        sessionId
-      );
-
-      // 2. Register Background Fetch (with strict timeout)
-      const timeoutMs = 10000;
-      const timeoutPromise = new Promise<BackgroundFetchRegistration | null>((resolve) => {
-        setTimeout(() => resolve(null), timeoutMs);
-      });
-
-      const startPromise = this.backgroundUpload.registerBackgroundFetch(
-        file,
-        signedUrl,
-        storagePath,
-        campaignId,
-        sessionId,
-        transcriptionMode,
-        userCorrections
-      );
-
-      const result = await Promise.race([startPromise, timeoutPromise]);
-      if (!result) {
-        logger.warn(
-          `[AudioCompleteProcessing] Background fetch registration timed out after ${timeoutMs}ms or failed`
-        );
-      }
-      return result;
-    } catch (error) {
-      logger.warn(
-        `[AudioCompleteProcessing] Failed to prepare background upload (signed URL fetch failed)`,
-        error
-      );
-      return null;
-    }
   }
 
   private async startForegroundUpload(

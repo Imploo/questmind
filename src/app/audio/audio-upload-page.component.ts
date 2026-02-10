@@ -4,7 +4,6 @@ import { Router } from '@angular/router';
 import { AudioUploadComponent, UploadRequestEvent } from './audio-upload.component';
 import { AudioSessionStateService } from './services/audio-session-state.service';
 import { AudioCompleteProcessingService } from './services/audio-complete-processing.service';
-import { BackgroundUploadService } from './services/background-upload.service';
 import { AuthService } from '../auth/auth.service';
 import { CampaignContextService } from '../campaign/campaign-context.service';
 import { AudioUpload, AudioSessionRecord } from './services/audio-session.models';
@@ -142,7 +141,6 @@ import { AudioUpload, AudioSessionRecord } from './services/audio-session.models
           [stage]="stage()"
           [progress]="progress()"
           [statusMessage]="statusMessage()"
-          [backgroundUploadSupported]="backgroundUploadSupported()"
           [wakeLockSupported]="wakeLockSupported()"
           (uploadRequested)="startCompleteProcessing($event)"
         />
@@ -155,7 +153,6 @@ export class AudioUploadPageComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private sessionStateService = inject(AudioSessionStateService);
   private completeProcessingService = inject(AudioCompleteProcessingService);
-  private backgroundUpload = inject(BackgroundUploadService);
   private authService = inject(AuthService);
   private campaignContextService = inject(CampaignContextService);
   private wakeLockSentinel: WakeLockSentinel | null = null;
@@ -173,7 +170,6 @@ export class AudioUploadPageComponent implements OnInit, OnDestroy {
   progress = signal(0);
   statusMessage = signal('');
   isBusy = computed(() => this.stage() !== 'idle' && this.stage() !== 'completed' && this.stage() !== 'failed');
-  backgroundUploadSupported = computed(() => this.backgroundUpload.isSupported());
   wakeLockSupported = computed(() => typeof navigator !== 'undefined' && 'wakeLock' in navigator);
 
   canUploadAudio = computed(() => {
@@ -257,17 +253,7 @@ export class AudioUploadPageComponent implements OnInit, OnDestroy {
         }
       );
 
-      if (result.isBackground) {
-        // Background upload started — show brief message, then navigate
-        this.progress.set(0);
-        this.statusMessage.set('Upload continues in the background. You can close the app.');
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        this.stage.set('idle');
-        this.selectSession({ id: result.sessionId } as any);
-        return;
-      }
-
-      // Foreground upload complete, batch job submitted successfully - set to 100%
+      // Upload complete, batch job submitted successfully - set to 100%
       this.progress.set(100);
       this.statusMessage.set('Upload complete! Processing audio...');
 

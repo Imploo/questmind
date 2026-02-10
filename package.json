@@ -5,6 +5,7 @@
     "ng": "ng",
     "start": "ng serve",
     "start:backend:functions": "firebase emulators:start --only functions",
+    "prebuild": "node scripts/set-version.js",
     "build": "ng build",
     "build:backend": "cd functions && tsc",
     "build:backend:watch": "cd functions && tsc --watch",

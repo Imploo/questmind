@@ -1,7 +1,6 @@
-import { ApplicationConfig, ErrorHandler, provideBrowserGlobalErrorListeners, provideZonelessChangeDetection, APP_INITIALIZER, importProvidersFrom, isDevMode, inject, provideAppInitializer } from '@angular/core';
+import { ApplicationConfig, ErrorHandler, provideBrowserGlobalErrorListeners, provideZonelessChangeDetection, APP_INITIALIZER, importProvidersFrom, inject, provideAppInitializer } from '@angular/core';
 import { provideRouter, Router } from '@angular/router';
 import { provideHttpClient, withFetch } from '@angular/common/http';
-import { provideServiceWorker } from '@angular/service-worker';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { initializeFirebase } from './firebase.init';
 import { LucideAngularModule, MessageSquare, Mic, Music, Settings, ChevronLeft, ChevronRight, Plus, BookOpen, Users } from 'lucide-angular';
@@ -22,9 +21,13 @@ export const appConfig: ApplicationConfig = {
       useFactory: () => () => initializeFirebase(),
       multi: true
     },
-    provideServiceWorker('custom-sw.js', {
-      enabled: !isDevMode(),
-      registrationStrategy: 'registerWhenStable:30000'
+    provideAppInitializer(async () => {
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const reg of registrations) {
+          await reg.unregister();
+        }
+      }
     }),
     {
       provide: ErrorHandler,

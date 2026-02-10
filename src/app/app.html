@@ -1,4 +1,12 @@
 <div class="mat-typography">
+  @if (updateAvailable()) {
+    <div class="fixed top-0 left-0 right-0 z-[9999] bg-indigo-600 text-white px-4 py-2 flex items-center justify-between shadow-lg">
+      <span class="text-sm font-medium">A new version of the app is available.</span>
+      <button type="button" class="text-sm font-semibold underline ml-4 hover:no-underline" (click)="reload()">
+        Refresh
+      </button>
+    </div>
+  }
   @if (isLoading()) {
     <app-loading />
   } @else {

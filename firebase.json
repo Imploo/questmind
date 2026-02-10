@@ -48,7 +48,7 @@
         ]
       },
       {
-        "source": "ngsw-worker.js",
+        "source": "/version.json",
         "headers": [
           {
             "key": "Cache-Control",
