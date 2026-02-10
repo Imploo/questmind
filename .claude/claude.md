@@ -1,5 +1,9 @@
 # Claude Code Rules
 
+## Strict rules
+ALWAYS FOLLOW THESE RULES
+- Never commit without explicit command from user
+
 ## Build Process
 
 **Every code change must be completed by running:**
