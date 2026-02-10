@@ -5,17 +5,22 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { ChatService, Message } from './chat.service';
 import { marked } from 'marked';
 import { DndCharacter } from '../shared/schemas/dnd-character.schema';
+import { ImageLightboxComponent } from './image-lightbox.component';
 
 @Component({
   selector: 'app-chat',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, ImageLightboxComponent],
   host: {
     '[class.flex]': 'true',
     '[class.flex-col]': 'true',
     '[class.h-full]': 'true'
   },
   template: `
+    @if (lightboxUrl()) {
+      <app-image-lightbox [url]="lightboxUrl()!" (close)="closeLightbox()" />
+    }
+
     <div class="flex flex-col h-full bg-white">
       <div class="p-4 border-b border-gray-200 bg-gradient-to-br from-primary to-secondary text-white">
         <h2 class="m-0 mb-1 text-lg font-bold">Sidekick</h2>
@@ -54,11 +59,12 @@ import { DndCharacter } from '../shared/schemas/dnd-character.schema';
                 @if (message.images && message.images.length > 0) {
                   <div class="mt-3 flex flex-col gap-2">
                     @for (image of message.images; track $index) {
-                      <img 
+                      <img
                         [src]="image.url"
                         [alt]="'Generated image ' + ($index + 1)"
-                        class="max-w-full rounded-lg border border-gray-200"
+                        class="max-w-full rounded-lg border border-gray-200 cursor-zoom-in hover:opacity-90 transition-opacity"
                         loading="lazy"
+                        (click)="openLightbox(image.url)"
                       />
                     }
                   </div>
@@ -137,6 +143,8 @@ export class ChatComponent {
   messagesContainer = viewChild<ElementRef<HTMLDivElement>>('messagesContainer');
   messageInput = viewChild<ElementRef<HTMLInputElement>>('messageInput');
   isImageMode = computed(() => this.chatService.isImageGenerationRequest(this.newMessage()));
+
+  lightboxUrl = signal<string | null>(null);
 
   private chatService = inject(ChatService);
   private sanitizer = inject(DomSanitizer);
@@ -291,6 +299,14 @@ export class ChatComponent {
       return e.error.error.message;
     }
     return e.message || 'An unexpected error occurred.';
+  }
+
+  openLightbox(url: string): void {
+    this.lightboxUrl.set(url);
+  }
+
+  closeLightbox(): void {
+    this.lightboxUrl.set(null);
   }
 
   private scrollToBottom(container: HTMLElement): void {
