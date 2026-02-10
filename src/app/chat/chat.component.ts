@@ -250,7 +250,7 @@ export class ChatComponent {
     return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
 
-  private updateMessage(messageId: string, text: string, images?: { mimeType: string; data: string }[]): void {
+  private updateMessage(messageId: string, text: string, images?: { url: string; mimeType: string }[]): void {
     this.messages.update(messages =>
       messages.map(message =>
         message.id === messageId ? { ...message, text, images } : message
