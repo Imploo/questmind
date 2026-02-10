@@ -30,10 +30,26 @@ interface CharacterChatRequest {
   characterId?: string;
 }
 
+interface CharacterVisuals {
+  name: string;
+  race: string;
+  characterClass: string;
+  appearance?: {
+    age?: string;
+    height?: string;
+    weight?: string;
+    eyes?: string;
+    skin?: string;
+    hair?: string;
+    description?: string;
+  };
+}
+
 interface GenerateImageRequest {
   prompt: string;
   model: string;
   characterId?: string;
+  characterVisuals?: CharacterVisuals;
 }
 
 interface GenerateImageResponse {
@@ -205,10 +221,20 @@ export class ChatService {
       functions, 'generateImage'
     );
 
+    const characterVisuals: CharacterVisuals | undefined = this.currentCharacter
+      ? {
+          name: this.currentCharacter.name,
+          race: this.currentCharacter.race,
+          characterClass: this.currentCharacter.class,
+          ...(this.currentCharacter.appearance && { appearance: this.currentCharacter.appearance })
+        }
+      : undefined;
+
     const payload: GenerateImageRequest = {
       prompt,
       model: imageConfig.model,
-      ...(this.characterId && { characterId: this.characterId })
+      ...(this.characterId && { characterId: this.characterId }),
+      ...(characterVisuals && { characterVisuals })
     };
 
     return from(generateImage(payload)).pipe(

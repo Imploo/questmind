@@ -31,7 +31,7 @@ import { DndCharacter } from '../shared/schemas/dnd-character.schema';
         }
         
         @for (message of messages(); track message.id) {
-          @if (message.text) {
+          @if (message.text || message.images?.length) {
             <div 
               class="max-w-[85%] p-3 rounded-lg animate-slide-in text-sm"
               [class]="message.sender === 'user' 

@@ -5,15 +5,64 @@ import { getStorage } from 'firebase-admin/storage';
 import { randomUUID } from 'crypto';
 import { fal } from '@fal-ai/client';
 
+export interface CharacterVisuals {
+  name: string;
+  race: string;
+  characterClass: string;
+  appearance?: {
+    age?: string;
+    height?: string;
+    weight?: string;
+    eyes?: string;
+    skin?: string;
+    hair?: string;
+    description?: string;
+  };
+}
+
 export interface GenerateImageRequest {
   prompt: string;
   model: string;
   characterId?: string;
+  characterVisuals?: CharacterVisuals;
 }
 
 export interface GenerateImageResponse {
   imageUrl: string;
   mimeType: string;
+}
+
+function buildImagePrompt(userPrompt: string, visuals?: CharacterVisuals): string {
+  if (!visuals) {
+    return userPrompt;
+  }
+
+  const parts: string[] = [];
+
+  // Character identity
+  parts.push(`${visuals.name}, a ${visuals.race} ${visuals.characterClass}`);
+
+  // Physical appearance details
+  const app = visuals.appearance;
+  if (app) {
+    if (app.description) {
+      parts.push(app.description);
+    }
+    const details: string[] = [];
+    if (app.hair) details.push(`${app.hair} hair`);
+    if (app.eyes) details.push(`${app.eyes} eyes`);
+    if (app.skin) details.push(`${app.skin} skin`);
+    if (app.height) details.push(`height: ${app.height}`);
+    if (app.age) details.push(`age: ${app.age}`);
+    if (details.length > 0) {
+      parts.push(details.join(', '));
+    }
+  }
+
+  // User scene/action request
+  parts.push(userPrompt);
+
+  return parts.join('. ');
 }
 
 export const generateImage = onCall(
@@ -24,7 +73,7 @@ export const generateImage = onCall(
   wrapCallable<GenerateImageRequest, GenerateImageResponse>(
     'generateImage',
     async (request): Promise<GenerateImageResponse> => {
-      const { prompt, model, characterId } = request.data;
+      const { prompt, model, characterId, characterVisuals } = request.data;
 
       if (!prompt || !model) {
         throw new HttpsError('invalid-argument', 'Missing required fields: prompt, model');
@@ -37,9 +86,11 @@ export const generateImage = onCall(
 
       fal.config({ credentials: apiKey });
 
+      const enrichedPrompt = buildImagePrompt(prompt, characterVisuals);
+
       const result = await fal.subscribe(model, {
         input: {
-          prompt,
+          prompt: enrichedPrompt,
           image_size: 'landscape_4_3',
         },
       });
