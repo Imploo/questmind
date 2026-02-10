@@ -2,7 +2,6 @@ import { Component, inject, signal, computed, effect, viewChild, ChangeDetection
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
-import { MatTabsModule } from '@angular/material/tabs';
 import { CharacterService } from '../../../../core/services/character.service';
 import { CharacterVersionService } from '../../../../core/services/character-version.service';
 import { ChatService } from '../../../../chat/chat.service';
@@ -11,6 +10,7 @@ import { CharacterSheetComponent } from '../../components/character-sheet/charac
 import { ChatComponent } from '../../../../chat/chat.component';
 import { CharacterDraftPreviewComponent } from '../../components/character-draft-preview/character-draft-preview.component';
 import { CharacterVersionHistoryComponent } from '../../components/character-version-history/character-version-history.component';
+import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.component';
 
 @Component({
   selector: 'app-character-builder-page',
@@ -24,81 +24,57 @@ import { CharacterVersionHistoryComponent } from '../../components/character-ver
     CommonModule,
     RouterModule,
     MatCardModule,
-    MatTabsModule,
     CharacterSheetComponent,
     ChatComponent,
     CharacterDraftPreviewComponent,
-    CharacterVersionHistoryComponent
+    CharacterVersionHistoryComponent,
+    ChatDrawerComponent,
   ],
   template: `
     <div class="flex min-h-screen bg-base-200">
       @if (isNarrow()) {
-        <div class="h-screen w-full overflow-hidden">
-        <mat-tab-group
-          class="flex h-full w-full flex-col overflow-hidden"
-          [selectedIndex]="activeTab() === 'sheet' ? 0 : 1"
-          (selectedIndexChange)="onTabChange($event)"
-        >
-          <mat-tab label="Sheet">
-            <div class="h-full overflow-y-auto p-4">
-              <div class="flex min-h-full flex-col gap-4">
-                <div class="flex-1">
-                  @if (selectedCharacterId()) {
-                    @if (activeVersion()) {
-                      <mat-card class="bg-base-100 shadow-xl border border-base-300">
-                        <mat-card-content class="p-6">
-                          <app-character-sheet
-                            [character]="displayCharacter() || activeVersion()!.character"
-                            [characterName]="selectedCharacter()?.name || 'Unknown'"
-                            (viewHistory)="showHistory.set(true)"
-                          ></app-character-sheet>
-                        </mat-card-content>
-                      </mat-card>
-                    } @else {
-                      <mat-card class="bg-base-100 shadow-lg border border-base-300">
-                        <mat-card-content class="flex items-center justify-center min-h-[320px]">
-                          <span class="loading loading-spinner loading-lg"></span>
-                        </mat-card-content>
-                      </mat-card>
-                    }
-                  } @else {
-                    <mat-card class="bg-base-100 shadow-lg border border-base-300">
-                      <mat-card-content class="flex flex-col items-center justify-center min-h-[320px] text-base-content/60">
-                        <h2 class="text-2xl font-bold mb-2">Select a Character</h2>
-                        <p>Choose a character from the list or create a new one.</p>
-                      </mat-card-content>
-                    </mat-card>
-                  }
-                </div>
-
-                @if (draftCharacter()) {
-                  <div class="sticky z-10">
-                    <app-character-draft-preview
-                      [loading]="isCommitting()"
-                      (commit)="commitDraft()"
-                      (dismiss)="dismissDraft()"
-                    ></app-character-draft-preview>
-                  </div>
-                }
-              </div>
-            </div>
-          </mat-tab>
-          <mat-tab label="Chat">
-            <div class="h-full p-4">
-              <mat-card class="h-full bg-base-100 shadow-xl border border-base-300">
-                <mat-card-content class="p-4 h-full">
-                  @if (activeVersion()) {
-                    <app-chat #chat [character]="activeVersion()!.character"></app-chat>
-                  } @else {
-                    <div class="flex h-full items-center justify-center opacity-60 text-sm">
-                      Select a character to chat
-                    </div>
-                  }
+        <div class="relative w-full">
+          <div class="flex flex-col gap-4 p-4" style="padding-bottom: calc(10vh + 1rem)">
+            @if (selectedCharacterId()) {
+              @if (activeVersion()) {
+                <mat-card class="bg-base-100 shadow-xl border border-base-300">
+                  <mat-card-content class="p-6">
+                    <app-character-sheet
+                      [character]="displayCharacter() || activeVersion()!.character"
+                      [characterName]="selectedCharacter()?.name || 'Unknown'"
+                      (viewHistory)="showHistory.set(true)"
+                    ></app-character-sheet>
+                  </mat-card-content>
+                </mat-card>
+              } @else {
+                <mat-card class="bg-base-100 shadow-lg border border-base-300">
+                  <mat-card-content class="flex items-center justify-center min-h-[320px]">
+                    <span class="loading loading-spinner loading-lg"></span>
+                  </mat-card-content>
+                </mat-card>
+              }
+            } @else {
+              <mat-card class="bg-base-100 shadow-lg border border-base-300">
+                <mat-card-content class="flex flex-col items-center justify-center min-h-[320px] text-base-content/60">
+                  <h2 class="text-2xl font-bold mb-2">Select a Character</h2>
+                  <p>Choose a character from the list or create a new one.</p>
                 </mat-card-content>
               </mat-card>
-            </div>
-          </mat-tab>
-        </mat-tab-group>
+            }
+
+            @if (draftCharacter()) {
+              <app-character-draft-preview
+                [loading]="isCommitting()"
+                (commit)="commitDraft()"
+                (dismiss)="dismissDraft()"
+              ></app-character-draft-preview>
+            }
+          </div>
+
+          <app-chat-drawer
+            #chatDrawer
+            [character]="activeVersion()?.character ?? null"
+          ></app-chat-drawer>
         </div>
       } @else {
         <div class="flex w-full items-start">
@@ -184,19 +160,19 @@ export class CharacterBuilderPageComponent {
   // State
   characters = signal<Character[]>([]);
   selectedCharacterId = signal<string | null>(null);
-  
-  selectedCharacter = computed(() => 
+
+  selectedCharacter = computed(() =>
     this.characters().find(c => c.id === this.selectedCharacterId())
   );
 
   activeVersion = signal<CharacterVersion | null>(null);
   draftCharacter = this.chatService.getDraftCharacter();
-  
+
   showHistory = signal(false);
   versions = signal<CharacterVersion[]>([]);
   chat = viewChild(ChatComponent);
+  chatDrawer = viewChild<ChatDrawerComponent>('chatDrawer');
   isNarrow = signal<boolean>(false);
-  activeTab = signal<'sheet' | 'chat'>('sheet');
   isCommitting = signal<boolean>(false);
 
   // Computed character to display (draft or active)
@@ -364,6 +340,15 @@ export class CharacterBuilderPageComponent {
       return;
     }
 
+    if (this.isNarrow()) {
+      const drawer = this.chatDrawer();
+      if (drawer) {
+        drawer.expand();
+        drawer.focusChat();
+      }
+      return;
+    }
+
     const chat = this.chat();
     if (!chat) {
       return;
@@ -380,10 +365,6 @@ export class CharacterBuilderPageComponent {
       return;
     }
     this.isNarrow.set(window.innerWidth < 1024);
-  }
-
-  onTabChange(index: number): void {
-    this.activeTab.set(index === 0 ? 'sheet' : 'chat');
   }
 
   private isEditableTarget(target: HTMLElement | null): boolean {
