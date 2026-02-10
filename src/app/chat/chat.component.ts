@@ -18,7 +18,7 @@ import { ImageLightboxComponent } from './image-lightbox.component';
   },
   template: `
     @if (lightboxUrl()) {
-      <app-image-lightbox [url]="lightboxUrl()!" (close)="closeLightbox()" />
+      <app-image-lightbox [url]="lightboxUrl()!" (closed)="closeLightbox()" />
     }
 
     <div class="flex flex-col h-full bg-white">

@@ -7,7 +7,7 @@ import { Component, input, output, ChangeDetectionStrategy } from '@angular/core
   template: `
     <div
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 cursor-zoom-out"
-      (click)="close.emit()"
+      (click)="closed.emit()"
     >
       <img
         [src]="url()"
@@ -17,12 +17,12 @@ import { Component, input, output, ChangeDetectionStrategy } from '@angular/core
       />
       <button
         class="absolute top-4 right-4 w-10 h-10 rounded-full bg-black/50 text-white flex items-center justify-center text-2xl leading-none hover:bg-black/80 transition-colors"
-        (click)="close.emit()"
+        (click)="closed.emit()"
       >&times;</button>
     </div>
   `,
 })
 export class ImageLightboxComponent {
   url = input.required<string>();
-  close = output<void>();
+  closed = output<void>();
 }
