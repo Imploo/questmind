@@ -5,9 +5,6 @@ export const environment = {
     voice2: 'Ruth',
     apiKey: 'private'
   },
-  // Get your free Google AI API key from: https://aistudio.google.com/app/apikey
-  // Then replace the value below with your actual API key
-  googleAiApiKey: 'placeholder',
   // Google Cloud API key for Text-to-Speech
   // Get from: https://console.cloud.google.com/apis/credentials
   // Enable Cloud Text-to-Speech API first

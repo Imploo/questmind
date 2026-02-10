@@ -39,3 +39,6 @@ export { storyGenerationWorker } from './workers/story-generation-worker';
 // Background upload support
 export { generateSignedUploadUrl } from './generate-signed-upload-url';
 export { finalizeUpload } from './finalize-upload';
+
+// Character chat proxy
+export { characterChat } from './character-chat';
