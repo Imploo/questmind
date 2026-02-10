@@ -59,7 +59,8 @@ export const characterChat = onCall(
       // Check if the response contains inline images
       if (result.candidates?.[0]?.content?.parts) {
         for (const part of result.candidates[0].content.parts) {
-          if ('inlineData' in part && part.inlineData) {
+          if ('inlineData' in part && part.inlineData && 
+              part.inlineData.mimeType && part.inlineData.data) {
             images.push({
               mimeType: part.inlineData.mimeType,
               data: part.inlineData.data,
