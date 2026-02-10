@@ -16,6 +16,21 @@ type RequestInitWithDuplex = RequestInit & {
   duplex: 'half';
 };
 
+const MIME_TYPE_MAP: Record<string, string> = {
+  'audio/x-wav': 'audio/wav',
+  'audio/x-m4a': 'audio/mp4',
+  'audio/m4a': 'audio/mp4',
+};
+
+const SUPPORTED_AUDIO_MIME_TYPES = new Set<string>([
+  'audio/mpeg',
+  'audio/wav',
+  'audio/mp4',
+  'audio/ogg',
+  'audio/webm',
+  'audio/flac',
+]);
+
 function getSingleHeaderValue(value: string | string[] | undefined): string | undefined {
   if (Array.isArray(value)) {
     return value[0];
@@ -36,11 +51,14 @@ function getBearerToken(authorizationHeader: string | undefined): string | null 
   return token;
 }
 
-function parseMimeType(rawMimeType: string | undefined): string {
+function normalizeMimeType(rawMimeType: string | undefined): string | null {
   if (!rawMimeType) {
-    return 'application/octet-stream';
+    return null;
   }
-  return rawMimeType.split(';')[0].trim();
+
+  const baseMimeType = rawMimeType.split(';')[0].trim().toLowerCase();
+  const normalized = MIME_TYPE_MAP[baseMimeType] ?? baseMimeType;
+  return SUPPORTED_AUDIO_MIME_TYPES.has(normalized) ? normalized : null;
 }
 
 function parseFileSize(
@@ -69,6 +87,13 @@ function getUploadBody(req: Request): Request | Buffer {
   }
 
   throw new Error('Upload request body is empty');
+}
+
+function getBodySize(body: Request | Buffer): number | null {
+  if (Buffer.isBuffer(body)) {
+    return body.length;
+  }
+  return null;
 }
 
 /**
@@ -113,13 +138,34 @@ export const uploadAudioToGemini = onRequest(
     const fileName = fileNameHeader ? decodeURIComponent(fileNameHeader) : 'audio-upload';
     const mimeTypeHeader = getSingleHeaderValue(req.headers['x-mime-type']);
     const contentTypeHeader = getSingleHeaderValue(req.headers['content-type']);
-    const mimeType = parseMimeType(mimeTypeHeader ?? contentTypeHeader);
-    const fileSize = parseFileSize(
+    const mimeType = normalizeMimeType(mimeTypeHeader ?? contentTypeHeader);
+    if (!mimeType) {
+      res.status(400).json({
+        error: 'Unsupported or missing audio mime type',
+        details: {
+          received: mimeTypeHeader ?? contentTypeHeader ?? null,
+          supported: Array.from(SUPPORTED_AUDIO_MIME_TYPES),
+        },
+      });
+      return;
+    }
+
+    const headerFileSize = parseFileSize(
       getSingleHeaderValue(req.headers['x-file-size']),
       getSingleHeaderValue(req.headers['content-length'])
     );
 
-    if (fileSize && fileSize > MAX_FILE_BYTES) {
+    const uploadBody = getUploadBody(req);
+    const bodySize = getBodySize(uploadBody);
+    const fileSize = headerFileSize ?? bodySize;
+    if (!fileSize) {
+      res.status(400).json({
+        error: 'Missing file size. Include X-File-Size header.',
+      });
+      return;
+    }
+
+    if (fileSize > MAX_FILE_BYTES) {
       res.status(413).json({ error: 'File too large. Maximum is 500MB.' });
       return;
     }
@@ -138,7 +184,7 @@ export const uploadAudioToGemini = onRequest(
           'X-Goog-Upload-Protocol': 'resumable',
           'X-Goog-Upload-Command': 'start',
           'X-Goog-Upload-Header-Content-Type': mimeType,
-          ...(fileSize ? { 'X-Goog-Upload-Header-Content-Length': String(fileSize) } : {}),
+          'X-Goog-Upload-Header-Content-Length': String(fileSize),
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -153,7 +199,10 @@ export const uploadAudioToGemini = onRequest(
         status: startUploadResponse.status,
         errorText,
       });
-      res.status(502).json({ error: 'Failed to initiate Gemini upload' });
+      res.status(502).json({
+        error: 'Failed to initiate Gemini upload',
+        details: errorText,
+      });
       return;
     }
 
@@ -162,8 +211,6 @@ export const uploadAudioToGemini = onRequest(
       res.status(502).json({ error: 'Gemini did not return an upload URL' });
       return;
     }
-
-    const uploadBody = getUploadBody(req);
 
     const uploadToGeminiResponse = await fetch(uploadUrl, {
       method: 'POST',
@@ -182,7 +229,10 @@ export const uploadAudioToGemini = onRequest(
         status: uploadToGeminiResponse.status,
         errorText,
       });
-      res.status(502).json({ error: 'Failed to upload file to Gemini' });
+      res.status(502).json({
+        error: 'Failed to upload file to Gemini',
+        details: errorText,
+      });
       return;
     }
 

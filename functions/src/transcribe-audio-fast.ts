@@ -24,6 +24,11 @@ interface TranscriptionResponsePayload {
   message?: string;
 }
 
+interface GeminiFileStateResponse {
+  state?: string | { name?: string };
+  error?: unknown;
+}
+
 /**
  * Fast transcription using direct Gemini API call
  *
@@ -203,6 +208,9 @@ async function processTranscriptionAsync(
     const googleAi = new GoogleGenAI({ apiKey: process.env.GOOGLE_AI_API_KEY! });
 
     const prompt = buildTranscriptionPrompt(kankaContext);
+
+    // Gemini Files can take a short time to become ACTIVE after upload finalize.
+    await waitForGeminiFileToBecomeActive(fileUri, process.env.GOOGLE_AI_API_KEY!);
 
     logger.debug(`[Fast Transcription] Calling Gemini API with request:`, {
       model,
@@ -428,4 +436,63 @@ function formatTimestamp(seconds: number): string {
   }
 
   return `${minutes}:${secs.toString().padStart(2, '0')}`;
+}
+
+async function waitForGeminiFileToBecomeActive(
+  fileUri: string,
+  apiKey: string
+): Promise<void> {
+  const maxAttempts = 15;
+  const delayMs = 2000;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const response = await fetch(`${fileUri}?key=${apiKey}`, {
+      method: 'GET',
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(
+        `Failed to read Gemini file state (${response.status}): ${errorText}`
+      );
+    }
+
+    const payload = (await response.json()) as GeminiFileStateResponse;
+    const rawState = payload.state;
+    const state =
+      typeof rawState === 'string'
+        ? rawState
+        : rawState && typeof rawState === 'object'
+          ? rawState.name
+          : undefined;
+
+    logger.debug('[Fast Transcription] Gemini file state check', {
+      attempt,
+      maxAttempts,
+      fileUri,
+      state,
+    });
+
+    if (state === 'ACTIVE') {
+      return;
+    }
+
+    if (state === 'FAILED') {
+      throw new Error(
+        `Gemini file processing failed before transcription: ${JSON.stringify(payload)}`
+      );
+    }
+
+    if (attempt < maxAttempts) {
+      await sleep(delayMs);
+    }
+  }
+
+  throw new Error(
+    `Gemini file did not become ACTIVE in time: ${fileUri}`
+  );
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
