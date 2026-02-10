@@ -6,6 +6,7 @@ import { CharacterService } from '../../../../core/services/character.service';
 import { CharacterVersionService } from '../../../../core/services/character-version.service';
 import { ChatService } from '../../../../chat/chat.service';
 import { Character, CharacterVersion } from '../../../../core/models/schemas/character.schema';
+import { DndCharacter } from '../../../../shared/schemas/dnd-character.schema';
 import { CharacterSheetComponent } from '../../components/character-sheet/character-sheet.component';
 import { ChatComponent } from '../../../../chat/chat.component';
 import { CharacterDraftPreviewComponent } from '../../components/character-draft-preview/character-draft-preview.component';
@@ -145,7 +146,7 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
       <app-character-version-history
         [versions]="versions()"
         [activeVersionId]="activeVersion()?.id || ''"
-        (close)="showHistory.set(false)"
+        (closed)="showHistory.set(false)"
         (restore)="restoreVersion($event)"
       ></app-character-version-history>
     }
@@ -238,7 +239,7 @@ export class CharacterBuilderPageComponent {
 
   async onCreateCharacter() {
     const name = `New Character ${this.characters().length + 1}`;
-    const initialData: any = {
+    const initialData = {
       name,
       class: 'Fighter',
       level: 1,
@@ -272,10 +273,11 @@ export class CharacterBuilderPageComponent {
       attacks: [],
       equipment: [],
       coins: { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 },
-      featuresAndTraits: []
+      featuresAndTraits: [],
+      experiencePoints: 0
     };
 
-    const id = await this.characterService.createCharacter(name, initialData);
+    const id = await this.characterService.createCharacter(name, initialData as DndCharacter);
     await this.loadCharacters();
     this.onSelectCharacter(id);
   }

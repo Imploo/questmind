@@ -1,6 +1,6 @@
-import { Component, signal, inject, OnInit, effect } from '@angular/core';
+import { Component, signal, inject, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, QueryDocumentSnapshot } from 'firebase/firestore';
 import { AuthService } from '../auth/auth.service';
 import { PodcastAudioService } from './services/podcast-audio.service';
 import { PodcastVersion } from './services/audio-session.models';
@@ -151,7 +151,7 @@ interface SessionWithPodcasts {
     </div>
   `
 })
-export class PodcastLibraryComponent implements OnInit {
+export class PodcastLibraryComponent {
   private readonly authService = inject(AuthService);
   private readonly podcastAudioService = inject(PodcastAudioService);
   private readonly campaignContext = inject(CampaignContextService);
@@ -169,10 +169,6 @@ export class PodcastLibraryComponent implements OnInit {
       this.campaignContext.selectedCampaignId();
       void this.loadPodcasts();
     });
-  }
-
-  async ngOnInit() {
-    // Initial load will be triggered by the effect in the constructor
   }
 
   private async loadPodcasts() {
@@ -195,22 +191,28 @@ export class PodcastLibraryComponent implements OnInit {
       const snapshot = await getDocs(sessionsRef);
       const sessions: SessionWithPodcasts[] = [];
 
-      snapshot.forEach((doc: any) => {
+      snapshot.forEach((doc: QueryDocumentSnapshot) => {
         const data = doc.data();
         const podcasts = data['podcasts'];
-        
+
         // Only include sessions that have at least one podcast
         if (podcasts && Array.isArray(podcasts) && podcasts.length > 0) {
           sessions.push({
             sessionId: doc.id,
             sessionTitle: data['title'] || 'Untitled Session',
             sessionDate: data['sessionDate'] || 'Unknown',
-            podcasts: podcasts.map((p: any) => ({
-              ...p,
-              createdAt: p.createdAt?.toDate ? p.createdAt.toDate() : new Date(p.createdAt),
-              scriptGeneratedAt: p.scriptGeneratedAt?.toDate ? p.scriptGeneratedAt.toDate() : new Date(p.scriptGeneratedAt),
-              audioGeneratedAt: p.audioGeneratedAt?.toDate ? p.audioGeneratedAt.toDate() : (p.audioGeneratedAt ? new Date(p.audioGeneratedAt) : undefined)
-            }))
+            podcasts: podcasts.map((p: Record<string, unknown>) => {
+              const toDate = (val: unknown): Date =>
+                val && typeof val === 'object' && 'toDate' in val
+                  ? (val as { toDate: () => Date }).toDate()
+                  : new Date(val as string);
+              return {
+                ...(p as unknown as PodcastVersion),
+                createdAt: toDate(p['createdAt']),
+                scriptGeneratedAt: toDate(p['scriptGeneratedAt']),
+                audioGeneratedAt: p['audioGeneratedAt'] ? toDate(p['audioGeneratedAt']) : undefined
+              };
+            })
           });
         }
       });

@@ -260,7 +260,7 @@ export class AudioUploadPageComponent implements OnInit, OnDestroy {
       await new Promise(resolve => setTimeout(resolve, 800));
 
       // Navigate to the new session
-      this.selectSession({ id: result.sessionId } as any);
+      this.selectSession({ id: result.sessionId } as AudioSessionRecord);
     } catch (error) {
       console.error('Error starting complete processing:', error);
       this.stage.set('failed');

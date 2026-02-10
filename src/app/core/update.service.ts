@@ -1,4 +1,4 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, inject, isDevMode, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import bundledVersion from '../../version.json';
@@ -10,6 +10,7 @@ export class UpdateService {
   updateAvailable = signal(false);
 
   async init(): Promise<void> {
+    if (isDevMode()) return;
     await this.checkForUpdate();
     setInterval(() => void this.checkForUpdate(), 30 * 60 * 1000);
   }

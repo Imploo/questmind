@@ -1,4 +1,4 @@
-import { Injectable, signal, effect } from '@angular/core';
+import { Injectable, signal, effect, inject } from '@angular/core';
 import {
   collection,
   doc,
@@ -28,11 +28,11 @@ export class AudioSessionStateService {
   private activeCampaignId: string | null = null;
   private sessionsUnsubscribe?: () => void;
 
-  constructor(
-    private readonly authService: AuthService,
-    private readonly campaignContext: CampaignContextService,
-    private readonly firebase: FirebaseService
-  ) {
+  private readonly authService = inject(AuthService);
+  private readonly campaignContext = inject(CampaignContextService);
+  private readonly firebase = inject(FirebaseService);
+
+  constructor() {
     this.db = this.firebase.firestore;
 
     effect(() => {

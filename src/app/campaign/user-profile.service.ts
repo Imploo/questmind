@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import {
   doc,
   getDoc,
@@ -12,9 +12,10 @@ import { FirebaseService } from '../core/firebase.service';
 
 @Injectable({ providedIn: 'root' })
 export class UserProfileService {
+  private readonly firebase = inject(FirebaseService);
   private readonly db: Firestore | null;
 
-  constructor(private readonly firebase: FirebaseService) {
+  constructor() {
     this.db = this.firebase.firestore;
   }
 

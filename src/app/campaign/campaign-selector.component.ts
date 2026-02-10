@@ -195,8 +195,8 @@ export class CampaignSelectorComponent {
       this.showCreateCampaign.set(false);
       this.newCampaignName = '';
       this.newCampaignDescription = '';
-    } catch (error: any) {
-      this.errorMessage.set(error?.message || 'Failed to create campaign');
+    } catch (error: unknown) {
+      this.errorMessage.set((error as Error)?.message || 'Failed to create campaign');
     }
   }
 

@@ -183,7 +183,7 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
               <!-- Progress card (only shown when session is processing) -->
               <app-session-progress-card
                 [progress]="displayProgress()"
-                (cancel)="cancelCurrentOperation()"
+                (cancelled)="cancelCurrentOperation()"
                 (retry)="retryFailedOperation()"
               />
 
@@ -375,18 +375,17 @@ export class AudioSessionComponent implements OnDestroy {
     return null;
   });
 
+  private readonly sessionStateService = inject(AudioSessionStateService);
+  private readonly backendOperations = inject(AudioBackendOperationsService);
+  private readonly podcastAudioService = inject(PodcastAudioService);
+  readonly authService = inject(AuthService);
+  private readonly injector = inject(Injector);
+  readonly formatting = inject(FormattingService);
+  private readonly firebaseService = inject(FirebaseService);
   private functions: Functions;
   private firestore: Firestore;
 
-  constructor(
-        private readonly sessionStateService: AudioSessionStateService,
-        private readonly backendOperations: AudioBackendOperationsService,
-    private readonly podcastAudioService: PodcastAudioService,
-    public readonly authService: AuthService,
-    private readonly injector: Injector,
-    public readonly formatting: FormattingService,
-    private readonly firebaseService: FirebaseService,
-  ) {
+  constructor() {
     this.functions = this.firebaseService.requireFunctions();
     this.firestore = this.firebaseService.requireFirestore();
     this.sessions = this.sessionStateService.sessions;
@@ -515,9 +514,9 @@ export class AudioSessionComponent implements OnDestroy {
         }
       );
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to start story regeneration:', error);
-      this.failSession(error?.message || 'Failed to start story regeneration');
+      this.failSession((error as Error)?.message || 'Failed to start story regeneration');
       this.cleanupProgressListener();
     }
   }
@@ -601,9 +600,9 @@ export class AudioSessionComponent implements OnDestroy {
         }
       );
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to start retranscription:', error);
-      this.failSession(error?.message || 'Failed to start retranscription');
+      this.failSession((error as Error)?.message || 'Failed to start retranscription');
       this.cleanupProgressListener();
     }
   }
@@ -819,9 +818,9 @@ export class AudioSessionComponent implements OnDestroy {
         this.failSession(result.data.message);
         this.cleanupProgressListener();
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error('[TranscribeFast] Failed to call transcribeAudioFast:', error);
-      this.failSession(error?.message || 'Failed to start transcription');
+      this.failSession((error as Error)?.message || 'Failed to start transcription');
       this.cleanupProgressListener();
     }
   }
@@ -1051,9 +1050,9 @@ export class AudioSessionComponent implements OnDestroy {
         session.sessionDate                    // Date
       );
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to start podcast generation:', error);
-      this.podcastError.set(error?.message || 'Failed to start podcast generation');
+      this.podcastError.set((error as Error)?.message || 'Failed to start podcast generation');
       this.podcastGenerationProgress.set('');
       this.podcastGenerationProgressPercent.set(0);
       this.isGeneratingPodcast.set(false);

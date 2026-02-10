@@ -7,13 +7,14 @@ export const MAX_TRANSCRIPTION_OUTPUT_TOKENS = 128000;
 export const CHUNK_DURATION_SECONDS = 30 * 60;
 export const CHUNK_MIME_TYPE = 'audio/wav';
 
-export function isOverloadedError(error: any): boolean {
-  const status = error?.status ?? error?.error?.status;
-  const code = error?.code ?? error?.error?.code;
+export function isOverloadedError(error: unknown): boolean {
+  const e = error as { status?: unknown; error?: { status?: unknown; code?: unknown }; code?: unknown };
+  const status = e?.status ?? e?.error?.status;
+  const code = e?.code ?? e?.error?.code;
   return status === 503 || status === 'UNAVAILABLE' || code === 503;
 }
 
-export function getRetryDelay(error: any, retryCount: number): Observable<number> {
+export function getRetryDelay(error: unknown, retryCount: number): Observable<number> {
   if (!isOverloadedError(error)) {
     return throwError(() => error);
   }

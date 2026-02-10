@@ -155,7 +155,7 @@ export interface TranscriptionBatchMetadata {
   batchJobName?: string;
   status?: 'submitted' | 'running' | 'completed' | 'failed';
   error?: string;
-  lastCheckedAt?: any; // Firestore timestamp
+  lastCheckedAt?: unknown; // Firestore timestamp
   enableKankaContext?: boolean;
   userCorrections?: string;
 }

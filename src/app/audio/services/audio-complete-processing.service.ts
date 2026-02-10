@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpEventType, HttpHeaders, HttpRequest } from '@angular/common/http';
 import { httpsCallable, type Functions } from 'firebase/functions';
-import { doc, onSnapshot, updateDoc, type Firestore, type Unsubscribe } from 'firebase/firestore';
+import {doc, onSnapshot, updateDoc, type Firestore, type Unsubscribe, DocumentSnapshot} from 'firebase/firestore';
 import { UnifiedProgress } from './audio-session.models';
 import { FirebaseService } from '../../core/firebase.service';
 import * as logger from '../../shared/logger';
@@ -105,7 +105,7 @@ export class AudioCompleteProcessingService {
       `campaigns/${campaignId}/audioSessions/${sessionId}`
     );
 
-    return onSnapshot(sessionRef, (snapshot: any) => {
+    return onSnapshot(sessionRef, (snapshot: DocumentSnapshot) => {
       if (!snapshot.exists()) {
         logger.warn(`Session ${sessionId} does not exist`);
         callback(null);
@@ -114,7 +114,7 @@ export class AudioCompleteProcessingService {
       const data = snapshot.data();
       const progress = data?.['progress'] as UnifiedProgress | undefined;
       callback(progress || null);
-    }, (error: any) => {
+    }, (error: unknown) => {
       console.error('Error listening to progress:', error);
       callback(null);
     });

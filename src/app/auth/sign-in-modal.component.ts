@@ -1,4 +1,4 @@
-import { Component, signal, output } from '@angular/core';
+import { Component, signal, output, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from './auth.service';
@@ -21,7 +21,7 @@ type AuthMode = 'signin' | 'signup' | 'reset';
         <button
           type="button"
           class="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-2xl font-light leading-none"
-          (click)="close.emit()"
+          (click)="closed.emit()"
           aria-label="Close"
         >
           ×
@@ -181,19 +181,18 @@ type AuthMode = 'signin' | 'signup' | 'reset';
   `]
 })
 export class SignInModalComponent {
-  close = output<void>();
-  
+  readonly authService = inject(AuthService);
+  closed = output<void>();
+
   mode = signal<AuthMode>('signin');
   email = '';
   password = '';
   loading = signal<boolean>(false);
   successMessage = signal<string | null>(null);
 
-  constructor(public authService: AuthService) {}
-
   handleBackdropClick(event: MouseEvent): void {
     if (event.target === event.currentTarget) {
-      this.close.emit();
+      this.closed.emit();
     }
   }
 
@@ -203,7 +202,7 @@ export class SignInModalComponent {
     
     try {
       await this.authService.signInWithGoogle();
-      this.close.emit();
+      this.closed.emit();
     } catch (error) {
       console.error('Google sign-in failed:', error);
     } finally {
@@ -222,10 +221,10 @@ export class SignInModalComponent {
     try {
       if (this.mode() === 'signin') {
         await this.authService.signInWithEmail(this.email, this.password);
-        this.close.emit();
+        this.closed.emit();
       } else if (this.mode() === 'signup') {
         await this.authService.signUpWithEmail(this.email, this.password);
-        this.close.emit();
+        this.closed.emit();
       } else {
         await this.authService.sendPasswordReset(this.email);
         this.successMessage.set('Password reset email sent! Check your inbox.');

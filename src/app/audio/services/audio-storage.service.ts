@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { Observable, throwError } from 'rxjs';
 import {
   getDownloadURL,
@@ -24,9 +24,10 @@ const SUPPORTED_TYPES = [
   providedIn: 'root'
 })
 export class AudioStorageService {
+  private readonly firebase = inject(FirebaseService);
   private readonly storage: FirebaseStorage | null;
 
-  constructor(private readonly firebase: FirebaseService) {
+  constructor() {
     this.storage = this.firebase.storage;
   }
 

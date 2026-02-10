@@ -79,11 +79,11 @@ export const KankaOrganisationSchema = z.object({
 export type KankaEntityType = z.infer<typeof KankaEntityTypeSchema>;
 export type KankaTag = z.infer<typeof KankaTagSchema>;
 export type KankaEntity = z.infer<typeof KankaEntitySchema>;
-export type KankaApiResponse<T> = {
+export interface KankaApiResponse<T> {
   data: T[];
   links?: unknown;
   meta?: unknown;
-};
+}
 export type KankaSearchResult = z.infer<typeof KankaSearchResultSchema>;
 export type KankaCharacter = z.infer<typeof KankaCharacterSchema>;
 export type KankaLocation = z.infer<typeof KankaLocationSchema>;

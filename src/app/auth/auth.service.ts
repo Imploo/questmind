@@ -19,6 +19,7 @@ import * as logger from '../shared/logger';
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private readonly sentryService = inject(SentryService);
+  private readonly firebase = inject(FirebaseService);
   private auth: Auth;
   private user = signal<User | null>(null);
   private loading = signal<boolean>(true);
@@ -33,7 +34,7 @@ export class AuthService {
   private authStateInitialized = false;
   private redirectCheckComplete = false;
 
-  constructor(private readonly firebase: FirebaseService) {
+  constructor() {
     this.auth = this.firebase.requireAuth();
     this.initAuthStateListener();
     this.checkRedirectResult();

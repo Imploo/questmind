@@ -79,7 +79,7 @@ export class CharacterVersionService {
     const versionId = doc(versionsRef).id;
     const now = Timestamp.now();
 
-    const version: any = {
+    const version: CharacterVersion = {
       id: versionId,
       versionNumber: nextVersionNumber,
       character: validatedData,

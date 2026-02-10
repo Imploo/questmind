@@ -15,6 +15,7 @@ module.exports = defineConfig([
     ],
     processor: angular.processInlineTemplates,
     rules: {
+      "no-unused-private-class-members": "error",
       "@angular-eslint/directive-selector": [
         "error",
         {

@@ -45,7 +45,7 @@ import { SessionProgress, SessionProgressStage } from './services/audio-session.
               @if (!isFailed() && canCancel()) {
                 <button
                   type="button"
-                  (click)="cancel.emit()"
+                  (click)="cancelled.emit()"
                   class="px-4 py-2 text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 border border-gray-300 rounded-lg transition-colors">
                   Cancel
                 </button>
@@ -112,7 +112,7 @@ export class SessionProgressCardComponent {
   progress = input<SessionProgress | null | undefined>();
 
   // Outputs
-  cancel = output<void>();
+  cancelled = output<void>();
   retry = output<void>();
 
   // Computed values

@@ -1,6 +1,6 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { httpsCallable, type Functions } from 'firebase/functions';
-import { doc, onSnapshot, getDoc, type Firestore, type Unsubscribe } from 'firebase/firestore';
+import { doc, onSnapshot, getDoc, type Firestore, type Unsubscribe, type DocumentSnapshot } from 'firebase/firestore';
 import { FirebaseService } from '../../core/firebase.service';
 import { UnifiedProgress } from './audio-session.models';
 
@@ -64,10 +64,11 @@ export interface RegenerateStoryProgress {
  */
 @Injectable({ providedIn: 'root' })
 export class AudioBackendOperationsService {
+  private readonly firebase = inject(FirebaseService);
   private functions: Functions;
   private firestore: Firestore;
 
-  constructor(private firebase: FirebaseService) {
+  constructor() {
     this.functions = this.firebase.requireFunctions();
     this.firestore = this.firebase.requireFirestore();
   }
@@ -137,7 +138,7 @@ export class AudioBackendOperationsService {
       `campaigns/${campaignId}/audioSessions/${sessionId}`
     );
 
-    return onSnapshot(sessionRef, (snapshot: any) => {
+    return onSnapshot(sessionRef, (snapshot: DocumentSnapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
 
@@ -243,7 +244,7 @@ export class AudioBackendOperationsService {
       `campaigns/${campaignId}/audioSessions/${sessionId}`
     );
 
-    return onSnapshot(sessionRef, (snapshot: any) => {
+    return onSnapshot(sessionRef, (snapshot: DocumentSnapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
 

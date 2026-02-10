@@ -9,7 +9,7 @@ import { FirebaseService } from '../firebase.service';
 
 interface ChatContent {
   role: string;
-  parts: Array<{ text: string }>;
+  parts: { text: string }[];
 }
 
 interface ChatGenerationConfig {
@@ -43,7 +43,7 @@ export class CharacterChatService {
 
   private messages = signal<ChatMessage[]>([]);
   private draftCharacter = signal<DndCharacter | null>(null);
-  private conversationHistory: Array<{ role: string; parts: Array<{ text: string }> }> = [];
+  private conversationHistory: { role: string; parts: { text: string }[] }[] = [];
 
   getMessages() {
     return this.messages.asReadonly();

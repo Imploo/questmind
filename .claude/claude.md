@@ -16,6 +16,11 @@ and
 ```bash
 npm run build:backend
 ```
+and
+```bash
+npm run lint
+```
+
 in parallel with npm subagent runners.
 
 This ensures both the frontend and backend builds are validated before considering the task complete.

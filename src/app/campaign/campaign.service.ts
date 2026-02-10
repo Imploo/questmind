@@ -131,7 +131,7 @@ export class CampaignService {
       if (!targetUser) {
         throw new Error(`No user found with email: ${normalizedEmail}. The user must create an account first.`);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error during user lookup:', error);
       throw error;
     }
@@ -183,7 +183,7 @@ export class CampaignService {
     await this.userProfileService.removeCampaign(memberId, campaignId);
   }
 
-  async getCampaignMembers(campaignId: string): Promise<Array<CampaignMember & { userId: string }>> {
+  async getCampaignMembers(campaignId: string): Promise<(CampaignMember & { userId: string })[]> {
     const campaign = await this.getCampaign(campaignId);
     if (!campaign) {
       return [];

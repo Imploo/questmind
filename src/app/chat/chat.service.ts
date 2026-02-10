@@ -10,7 +10,7 @@ import { FirebaseService } from '../core/firebase.service';
 
 interface ChatContent {
   role: string;
-  parts: Array<{ text: string }>;
+  parts: { text: string }[];
 }
 
 interface ChatGenerationConfig {
@@ -48,7 +48,7 @@ export class ChatService {
   private readonly aiSettingsService = inject(AiSettingsService);
 
   private messages = signal<Message[]>([]);
-  private conversationHistory: Array<{ role: string; parts: Array<{ text: string }> }> = [];
+  private conversationHistory: { role: string; parts: { text: string }[] }[] = [];
   private draftCharacter = signal<DndCharacter | null>(null);
   private currentCharacter: DndCharacter | null = null;
 

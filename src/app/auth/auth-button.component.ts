@@ -1,4 +1,4 @@
-import { Component, signal } from '@angular/core';
+import { Component, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { AuthService } from './auth.service';
 import { SignInModalComponent } from './sign-in-modal.component';
@@ -51,7 +51,7 @@ import { SignInModalComponent } from './sign-in-modal.component';
     </div>
 
     @if (showSignInModal()) {
-      <app-sign-in-modal (close)="closeSignInModal()"></app-sign-in-modal>
+      <app-sign-in-modal (closed)="closeSignInModal()"></app-sign-in-modal>
     }
   `,
   styles: [`
@@ -61,10 +61,9 @@ import { SignInModalComponent } from './sign-in-modal.component';
   `]
 })
 export class AuthButtonComponent {
+  readonly authService = inject(AuthService);
   showSignInModal = signal<boolean>(false);
   signingOut = signal<boolean>(false);
-
-  constructor(public authService: AuthService) {}
 
   get user() {
     return this.authService.currentUser;

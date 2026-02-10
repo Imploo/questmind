@@ -1,4 +1,4 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, inject, signal, OnDestroy } from '@angular/core';
 import { doc, getDoc, onSnapshot, type Firestore, type Unsubscribe } from 'firebase/firestore';
 import { FirebaseService } from '../firebase.service';
 
@@ -26,7 +26,7 @@ export interface AiSettings {
 @Injectable({
   providedIn: 'root'
 })
-export class AiSettingsService {
+export class AiSettingsService implements OnDestroy {
   private readonly firebase = inject(FirebaseService);
   private readonly db: Firestore | null;
   private unsubscribe: Unsubscribe | null = null;

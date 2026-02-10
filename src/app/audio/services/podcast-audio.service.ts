@@ -1,7 +1,8 @@
-import { Injectable, signal, Signal } from '@angular/core';
+import { Injectable, signal, Signal, inject } from '@angular/core';
 import { doc, onSnapshot, DocumentSnapshot, type Firestore } from 'firebase/firestore';
 import { httpsCallable, type Functions } from 'firebase/functions';
 import { FirebaseService } from '../../core/firebase.service';
+import { PodcastVersion } from './audio-session.models';
 
 /**
  * @deprecated Use SessionProgress instead (Ticket #43)
@@ -29,11 +30,12 @@ export interface PodcastProgress {
   providedIn: 'root'
 })
 export class PodcastAudioService {
+  private readonly firebase = inject(FirebaseService);
   private readonly firestore: Firestore;
   private readonly functions: Functions;
   private currentAudio: HTMLAudioElement | null = null;
 
-  constructor(private readonly firebase: FirebaseService) {
+  constructor() {
     this.firestore = this.firebase.requireFirestore();
     this.functions = this.firebase.requireFunctions();
   }
@@ -115,7 +117,7 @@ export class PodcastAudioService {
 
         const data = snapshot.data();
         const podcasts = data?.['podcasts'] || [];
-        const podcast = podcasts.find((p: any) => p.version === version);
+        const podcast = (podcasts as PodcastVersion[]).find((p) => p.version === version);
 
         if (!podcast) {
           progressSignal.set({

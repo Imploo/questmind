@@ -7,11 +7,11 @@ import { CharacterVersion } from '../../../../core/models/schemas/character.sche
   standalone: true,
   imports: [CommonModule],
   template: `
-    <div class="fixed inset-0 bg-black/50 z-50 flex justify-end" (click)="close.emit()">
+    <div class="fixed inset-0 bg-black/50 z-50 flex justify-end" (click)="closed.emit()">
       <div class="w-96 bg-base-100 h-full shadow-xl overflow-y-auto p-6" (click)="$event.stopPropagation()">
         <div class="flex justify-between items-center mb-6">
           <h2 class="text-xl font-bold">Version History</h2>
-          <button class="btn btn-circle btn-ghost btn-sm" (click)="close.emit()">
+          <button class="btn btn-circle btn-ghost btn-sm" (click)="closed.emit()">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
@@ -52,6 +52,6 @@ export class CharacterVersionHistoryComponent {
   versions = input.required<CharacterVersion[]>();
   activeVersionId = input.required<string>();
   
-  close = output<void>();
+  closed = output<void>();
   restore = output<CharacterVersion>();
 }

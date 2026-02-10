@@ -304,7 +304,7 @@ export class CharacterSheetComponent {
     ];
   }
 
-  isString(value: any): value is string {
+  isString(value: unknown): value is string {
     return typeof value === 'string';
   }
 
@@ -319,7 +319,7 @@ export class CharacterSheetComponent {
 
     // If it's a record, convert to array
     return Object.entries(spellcasting.slots)
-      .map(([level, data]: [string, any]) => ({
+      .map(([level, data]: [string, { total?: number; expended?: number }]) => ({
         level: parseInt(level),
         total: data.total || 0,
         expended: data.expended || 0,

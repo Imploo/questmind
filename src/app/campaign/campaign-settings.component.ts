@@ -172,7 +172,7 @@ export class CampaignSettingsComponent {
   private readonly campaignContext = inject(CampaignContextService);
 
   selectedCampaign = this.campaignContext.selectedCampaign;
-  campaignMembers = signal<Array<{ userId: string; role: string; email: string }>>([]);
+  campaignMembers = signal<{ userId: string; role: string; email: string }[]>([]);
   
   inviteEmail = '';
   inviteError = signal('');

@@ -38,7 +38,7 @@ export const authGuard: CanActivateFn = (_route, state) => {
  * Prevents authenticated users from accessing public routes like sign-in.
  * Redirects to home/dashboard if user is already authenticated.
  */
-export const noAuthGuard: CanActivateFn = (route, _state) => {
+export const noAuthGuard: CanActivateFn = (route) => {
   const authService = inject(AuthService);
   const router = inject(Router);
 

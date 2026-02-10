@@ -245,20 +245,21 @@ export class ChatComponent {
     );
   }
 
-  private getErrorMessage(error: any): string {
-    if (error.status === 0) {
+  private getErrorMessage(error: unknown): string {
+    const e = error as { status?: number; error?: { error?: { message?: string } }; message?: string };
+    if (e.status === 0) {
       return 'Network error. Please check your connection.';
     }
-    if (error.status === 401) {
+    if (e.status === 401) {
       return 'API key invalid or missing. Please check your configuration.';
     }
-    if (error.status === 429) {
+    if (e.status === 429) {
       return 'Rate limit exceeded. Please try again later.';
     }
-    if (error.error?.error?.message) {
-      return error.error.error.message;
+    if (e.error?.error?.message) {
+      return e.error.error.message;
     }
-    return error.message || 'An unexpected error occurred.';
+    return e.message || 'An unexpected error occurred.';
   }
 
   private scrollToBottom(container: HTMLElement): void {

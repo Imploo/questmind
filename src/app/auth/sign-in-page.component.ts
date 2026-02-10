@@ -69,8 +69,8 @@ export class SignInPageComponent {
       await this.authService.signInWithGoogle();
       // Navigate to home after successful popup sign-in
       this.router.navigate(['/']);
-    } catch (err: any) {
-      this.error.set(err.message || 'Failed to sign in. Please try again.');
+    } catch (err: unknown) {
+      this.error.set((err as Error).message || 'Failed to sign in. Please try again.');
     }
   }
 }
