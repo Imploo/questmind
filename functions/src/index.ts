@@ -26,19 +26,14 @@ initializeApp();
 // Podcast generation (kept separate from transcription flow)
 export { generatePodcastAudio } from './generate-podcast-audio';
 
-// Transcription flow (both fast and batch modes)
+// Audio upload — initiates a resumable Gemini Files API upload session
+export { initiateGeminiUpload } from './initiate-gemini-upload';
+
+// Transcription
 export { transcribeAudioFast } from './transcribe-audio-fast';
-export { transcribeAudioBatch } from './transcribe-audio-batch';
-export { geminiCallback } from './gemini-callback';
-export { pollBatchJobs } from './poll-batch-jobs';
-export { getBatchStatus } from './get-batch-status';
 
 // Story generation (triggered after transcription)
 export { storyGenerationWorker } from './workers/story-generation-worker';
-
-// Background upload support
-export { generateSignedUploadUrl } from './generate-signed-upload-url';
-export { finalizeUpload } from './finalize-upload';
 
 // Character chat proxy
 export { characterChat } from './character-chat';

@@ -125,9 +125,7 @@ export interface AISettings {
 export type SessionProgressStage =
   | 'idle'
   | 'uploading'
-  | 'transcribing'          // Fast transcription
-  | 'batch-submitted'       // Batch transcription submitted
-  | 'batch-processing'      // Batch transcription running
+  | 'transcribing'
   | 'retranscribing'
   | 'generating-story'
   | 'regenerating-story'

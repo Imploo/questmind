@@ -2,7 +2,6 @@ import * as logger from './utils/logger';
 import { GoogleGenAI } from '@google/genai';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
-import { storage } from 'firebase-admin';
 import { AIFeatureConfig, AISettings, TranscriptionSegment } from './types/audio-session.types';
 import { ProgressTrackerService } from './services/progress-tracker.service';
 import { WorkerQueueService } from './services/worker-queue.service';
@@ -13,7 +12,7 @@ import { wrapCallable } from './utils/sentry-error-handler';
 export interface TranscribeAudioFastRequest {
   campaignId: string;
   sessionId: string;
-  storageUrl: string;
+  fileUri: string;
   audioFileName: string;
   audioFileSize?: number;
   userCorrections?: string;
@@ -47,23 +46,16 @@ export const transcribeAudioFast = onCall(
     const {
       campaignId,
       sessionId,
-      storageUrl,
+      fileUri,
       audioFileName,
       userCorrections,
     } = request.data;
 
     // Validate required fields
-    if (!campaignId || !sessionId || !storageUrl || !audioFileName) {
+    if (!campaignId || !sessionId || !fileUri || !audioFileName) {
       throw new HttpsError(
         'invalid-argument',
-        'Missing required fields: campaignId, sessionId, storageUrl, audioFileName'
-      );
-    }
-
-    if (!storageUrl.startsWith('gs://')) {
-      throw new HttpsError(
-        'invalid-argument',
-        'storageUrl must be a gs:// URL'
+        'Missing required fields: campaignId, sessionId, fileUri, audioFileName'
       );
     }
 
@@ -103,14 +95,13 @@ export const transcribeAudioFast = onCall(
     // Fetch Kanka enabled setting from campaign settings
     const kankaEnabled = await getCampaignKankaEnabled(campaignId);
 
-    // Store fast transcription metadata and storage URL at root
+    // Store fast transcription metadata
     await sessionRef.update({
-      storageUrl, // Store at root level for easy access
       transcriptionFast: {
         mode: 'fast',
         enableKankaContext: kankaEnabled,
         userCorrections,
-        storageUrl,
+        fileUri,
         audioFileName,
         submittedAt: FieldValue.serverTimestamp(),
         status: 'processing',
@@ -121,7 +112,7 @@ export const transcribeAudioFast = onCall(
     processTranscriptionAsync(
       campaignId,
       sessionId,
-      storageUrl,
+      fileUri,
       audioFileName,
       kankaEnabled,
       userCorrections
@@ -162,7 +153,7 @@ async function getCampaignKankaEnabled(campaignId: string): Promise<boolean> {
 async function processTranscriptionAsync(
   campaignId: string,
   sessionId: string,
-  storageUrl: string,
+  fileUri: string,
   audioFileName: string,
   enableKankaContext: boolean,
   userCorrections?: string
@@ -208,19 +199,7 @@ async function processTranscriptionAsync(
       enableKankaContext
     );
 
-    // 3. Generate signed URL for Gemini API access
-    const bucket = storage().bucket();
-    const filePath = storageUrl.replace(`gs://${bucket.name}/`, '');
-    const file = bucket.file(filePath);
-
-    logger.debug(`[Fast Transcription] Generating signed URL for: ${filePath}`);
-
-    const [signedUrl] = await file.getSignedUrl({
-      action: 'read',
-      expires: Date.now() + 60 * 60 * 1000, // 1 hour (enough for fast processing)
-    });
-
-    // 4. Call Gemini API directly (not batch)
+    // 3. Call Gemini API with the Files API URI
     const googleAi = new GoogleGenAI({ apiKey: process.env.GOOGLE_AI_API_KEY! });
 
     const prompt = buildTranscriptionPrompt(kankaContext);
@@ -248,7 +227,7 @@ async function processTranscriptionAsync(
             {
               fileData: {
                 mimeType: mimeType,
-                fileUri: signedUrl,
+                fileUri: fileUri,
               },
             },
           ],
