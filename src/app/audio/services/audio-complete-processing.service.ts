@@ -32,8 +32,8 @@ export class AudioCompleteProcessingService {
 
   /**
    * Start complete audio processing:
-   * 1. Initiate a resumable Gemini Files API upload session (backend)
-   * 2. Upload file directly to Gemini from the browser (with progress)
+   * 1. Upload file to backend proxy endpoint (with progress)
+   * 2. Backend streams file to Gemini Files API and returns fileUri
    * 3. Call transcribeAudioFast with the resulting fileUri
    */
   async startCompleteProcessing(
@@ -48,24 +48,12 @@ export class AudioCompleteProcessingService {
       `campaigns/${campaignId}/audioSessions/${sessionId}`
     );
 
-    // 1. Initiate resumable upload session
-    logger.info('[AudioCompleteProcessing] Initiating Gemini Files API upload...');
-    const initiate = httpsCallable<
-      { mimeType: string; fileName: string; fileSize: number },
-      { uploadUrl: string }
-    >(this.functions, 'initiateGeminiUpload');
-
-    const { data: { uploadUrl } } = await initiate({
-      mimeType: audioFile.type,
-      fileName: audioFile.name,
-      fileSize: audioFile.size,
-    });
-
-    // 2. Upload file directly to Gemini with progress tracking
-    logger.info('[AudioCompleteProcessing] Uploading file to Gemini Files API...');
+    // 1. Upload file to backend proxy (which forwards to Gemini)
+    logger.info('[AudioCompleteProcessing] Uploading file via backend Gemini proxy...');
     const fileUri = await this.uploadToGemini(
       audioFile,
-      uploadUrl,
+      campaignId,
+      sessionId,
       sessionRef,
       onUploadProgress
     );
@@ -126,60 +114,82 @@ export class AudioCompleteProcessingService {
    */
   private uploadToGemini(
     file: File,
-    uploadUrl: string,
+    campaignId: string,
+    sessionId: string,
     sessionRef: ReturnType<typeof doc>,
     onProgress?: (progress: number) => void
   ): Promise<string> {
     return new Promise((resolve, reject) => {
-      const req = new HttpRequest('POST', uploadUrl, file, {
-        headers: new HttpHeaders({
-          'Content-Type': file.type,
-          'X-Goog-Upload-Offset': '0',
-          'X-Goog-Upload-Command': 'upload, finalize',
-        }),
-        reportProgress: true,
-      });
-
-      let lastFirestoreUpdate = 0;
-      let lastProgress = -1;
-
-      this.http.request(req).subscribe({
-        next: async (event) => {
-          if (event.type === HttpEventType.UploadProgress && event.total) {
-            const progress = Math.round((event.loaded / event.total) * 90);
-
-            if (onProgress) {
-              onProgress(progress);
-            }
-
-            const now = Date.now();
-            const delta = progress - lastProgress;
-            if (delta >= 5 || now - lastFirestoreUpdate >= 1500) {
-              lastProgress = progress;
-              lastFirestoreUpdate = now;
-              void updateDoc(sessionRef, {
-                progress: {
-                  stage: 'uploading',
-                  progress,
-                  message: `Uploading audio... ${progress}%`,
-                  updatedAt: new Date(),
-                },
-              });
-            }
+      void (async () => {
+        try {
+          const auth = this.firebase.requireAuth();
+          const currentUser = auth.currentUser;
+          if (!currentUser) {
+            reject(new Error('User must be signed in before uploading audio.'));
+            return;
           }
 
-          if (event.type === HttpEventType.Response) {
-            const body = event.body as { file?: { uri?: string } };
-            const uri = body?.file?.uri;
-            if (!uri) {
-              reject(new Error('Gemini Files API did not return a file URI'));
-              return;
-            }
-            resolve(uri);
-          }
-        },
-        error: reject,
-      });
+          const idToken = await currentUser.getIdToken();
+          const uploadUrl = 'api/uploadAudioToGemini';
+          const mimeType = file.type || 'application/octet-stream';
+
+          const req = new HttpRequest('POST', uploadUrl, file, {
+            headers: new HttpHeaders({
+              'Authorization': `Bearer ${idToken}`,
+              'Content-Type': mimeType,
+              'X-File-Name': encodeURIComponent(file.name),
+              'X-File-Size': String(file.size),
+              'X-Mime-Type': mimeType,
+              'X-Campaign-Id': campaignId,
+              'X-Session-Id': sessionId,
+            }),
+            reportProgress: true,
+          });
+
+          let lastFirestoreUpdate = 0;
+          let lastProgress = -1;
+
+          this.http.request<{ fileUri?: string }>(req).subscribe({
+            next: async (event) => {
+              if (event.type === HttpEventType.UploadProgress && event.total) {
+                const progress = Math.round((event.loaded / event.total) * 90);
+
+                if (onProgress) {
+                  onProgress(progress);
+                }
+
+                const now = Date.now();
+                const delta = progress - lastProgress;
+                if (delta >= 5 || now - lastFirestoreUpdate >= 1500) {
+                  lastProgress = progress;
+                  lastFirestoreUpdate = now;
+                  void updateDoc(sessionRef, {
+                    progress: {
+                      stage: 'uploading',
+                      progress,
+                      message: `Uploading audio... ${progress}%`,
+                      updatedAt: new Date(),
+                    },
+                  });
+                }
+              }
+
+              if (event.type === HttpEventType.Response) {
+                const uri = event.body?.fileUri;
+                if (!uri) {
+                  reject(new Error('Backend proxy did not return a Gemini file URI'));
+                  return;
+                }
+                resolve(uri);
+              }
+            },
+            error: reject,
+          });
+        } catch (error: unknown) {
+          reject(error);
+        }
+      })();
     });
   }
+
 }

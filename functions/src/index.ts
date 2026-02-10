@@ -28,6 +28,7 @@ export { generatePodcastAudio } from './generate-podcast-audio';
 
 // Audio upload — initiates a resumable Gemini Files API upload session
 export { initiateGeminiUpload } from './initiate-gemini-upload';
+export { uploadAudioToGemini } from './upload-audio-to-gemini';
 
 // Transcription
 export { transcribeAudioFast } from './transcribe-audio-fast';
