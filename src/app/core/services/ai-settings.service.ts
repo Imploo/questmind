@@ -10,12 +10,17 @@ export interface AiModelConfig {
   maxOutputTokens: number;
 }
 
+export interface AiImageConfig {
+  model: string;
+}
+
 export interface AiSettings {
   features: {
     transcription: AiModelConfig;
     storyGeneration: AiModelConfig;
     podcastScript: AiModelConfig;
     characterChat: AiModelConfig;
+    imageGeneration: AiImageConfig;
     podcastVoices: {
       host1VoiceId: string;
       host2VoiceId: string;
@@ -45,6 +50,10 @@ export class AiSettingsService implements OnDestroy {
     maxOutputTokens: 8192
   };
 
+  private readonly defaultImageGenerationConfig: AiImageConfig = {
+    model: 'fal-ai/flux/schnell'
+  };
+
   constructor() {
     this.db = this.firebase.firestore;
     if (this.db) {
@@ -58,6 +67,14 @@ export class AiSettingsService implements OnDestroy {
   getCharacterChatConfig(): AiModelConfig {
     const settings = this.settings();
     return settings?.features?.characterChat ?? this.defaultCharacterChatConfig;
+  }
+
+  /**
+   * Get image generation config (with fallback to defaults)
+   */
+  getImageGenerationConfig(): AiImageConfig {
+    const settings = this.settings();
+    return settings?.features?.imageGeneration ?? this.defaultImageGenerationConfig;
   }
 
   /**

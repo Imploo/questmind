@@ -1,4 +1,4 @@
-import { Component, signal, inject, input, effect, viewChild, ElementRef, afterNextRender, runInInjectionContext, EnvironmentInjector } from '@angular/core';
+import { Component, signal, inject, input, effect, viewChild, ElementRef, afterNextRender, runInInjectionContext, EnvironmentInjector, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
@@ -81,23 +81,40 @@ import { DndCharacter } from '../shared/schemas/dnd-character.schema';
         }
       </div>
 
-      <div class="flex gap-2 p-4 border-t border-gray-200 bg-white">
-        <input 
-          #messageInput
-          type="text" 
-          [(ngModel)]="newMessage"
-          (keyup.enter)="sendMessage()"
-          [disabled]="isLoading()"
-          placeholder="Type a message..."
-          class="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/10 disabled:bg-gray-100 disabled:cursor-not-allowed"
-        />
-        <button 
-          (click)="sendMessage()"
-          [disabled]="isLoading() || !newMessage().trim()"
-          class="px-4 py-2 text-sm font-semibold text-white bg-primary border-none rounded-lg cursor-pointer transition-all duration-200 hover:bg-primary-dark disabled:bg-gray-300 disabled:cursor-not-allowed"
-        >
-          {{ isLoading() ? '...' : 'Send' }}
-        </button>
+      <div class="border-t border-gray-200 bg-white">
+        @if (isImageMode()) {
+          <div class="flex items-center gap-2 px-4 pt-3 pb-1">
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-700 border border-purple-200">
+              <span>🎨</span>
+              <span>Afbeelding genereren</span>
+            </span>
+            <span class="text-xs text-gray-400">Stuurt naar fal.ai beeldgenerator</span>
+          </div>
+        }
+        <div class="flex gap-2 p-4" [class.pt-2]="isImageMode()">
+          <input
+            #messageInput
+            type="text"
+            [(ngModel)]="newMessage"
+            (keyup.enter)="sendMessage()"
+            [disabled]="isLoading()"
+            placeholder="Type a message..."
+            class="flex-1 px-3 py-2 text-sm border rounded-lg outline-none transition-all duration-200 disabled:bg-gray-100 disabled:cursor-not-allowed"
+            [class]="isImageMode()
+              ? 'border-purple-400 focus:border-purple-500 focus:ring-2 focus:ring-purple-200'
+              : 'border-gray-200 focus:border-primary focus:ring-2 focus:ring-primary/10'"
+          />
+          <button
+            (click)="sendMessage()"
+            [disabled]="isLoading() || !newMessage().trim()"
+            class="px-4 py-2 text-sm font-semibold text-white border-none rounded-lg cursor-pointer transition-all duration-200 disabled:bg-gray-300 disabled:cursor-not-allowed"
+            [class]="isImageMode()
+              ? 'bg-purple-600 hover:bg-purple-700'
+              : 'bg-primary hover:bg-primary-dark'"
+          >
+            {{ isLoading() ? '...' : isImageMode() ? '🎨' : 'Send' }}
+          </button>
+        </div>
       </div>
 
       @if (error()) {
@@ -119,6 +136,7 @@ export class ChatComponent {
   error = signal<string>('');
   messagesContainer = viewChild<ElementRef<HTMLDivElement>>('messagesContainer');
   messageInput = viewChild<ElementRef<HTMLInputElement>>('messageInput');
+  isImageMode = computed(() => this.chatService.isImageGenerationRequest(this.newMessage()));
 
   private chatService = inject(ChatService);
   private sanitizer = inject(DomSanitizer);

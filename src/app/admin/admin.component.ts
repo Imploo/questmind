@@ -40,6 +40,9 @@ export interface AiSettings {
       topK: number;
       maxOutputTokens: number;
     };
+    imageGeneration: {
+      model: string;
+    };
     podcastVoices: PodcastVoiceSettings;
   };
 }
@@ -354,6 +357,27 @@ export interface AiSettings {
                 </div>
               </div>
 
+              <!-- Image Generation Settings -->
+              <div class="mb-6 p-4 bg-gray-50 rounded-lg">
+                <h4 class="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                  <span>🎨</span>
+                  <span>Image Generation (fal.ai)</span>
+                </h4>
+                <p class="text-xs text-gray-500 mb-3">Triggered when user types "maak afbeelding" in chat. Uses FAL_API_KEY secret.</p>
+                <div class="grid grid-cols-1 gap-4">
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Model</label>
+                    <input
+                      type="text"
+                      [(ngModel)]="aiSettings()!.features.imageGeneration.model"
+                      name="image-model"
+                      placeholder="e.g. fal-ai/flux/schnell"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                    />
+                  </div>
+                </div>
+              </div>
+
               <!-- Podcast Voice Settings -->
               <div class="mb-6 p-4 bg-gray-50 rounded-lg">
                 <h4 class="font-semibold text-gray-800 mb-3 flex items-center gap-2">
@@ -475,6 +499,9 @@ export class AdminComponent implements OnInit {
     host1VoiceId: '',
     host2VoiceId: ''
   };
+  private readonly defaultImageGenerationConfig = {
+    model: 'fal-ai/flux/schnell'
+  };
 
   // AI Settings Editor
   aiSettings = signal<AiSettings | null>(null);
@@ -573,6 +600,10 @@ export class AdminComponent implements OnInit {
         characterChat: {
           ...this.defaultCharacterChatConfig,
           ...features.characterChat
+        },
+        imageGeneration: {
+          ...this.defaultImageGenerationConfig,
+          ...features.imageGeneration
         },
         podcastVoices: {
           ...this.defaultPodcastVoices,

@@ -38,3 +38,6 @@ export { storyGenerationWorker } from './workers/story-generation-worker';
 
 // Character chat proxy
 export { characterChat } from './character-chat';
+
+// Image generation via fal.ai
+export { generateImage } from './generate-image';

@@ -7,6 +7,8 @@ import { DndCharacter } from '../shared/schemas/dnd-character.schema';
 import { AiSettingsService } from '../core/services/ai-settings.service';
 import { FirebaseService } from '../core/firebase.service';
 
+const IMAGE_TRIGGER_REGEX = /maak\s+afbeelding/i;
+
 interface ChatContent {
   role: string;
   parts: { text: string }[];
@@ -26,6 +28,17 @@ interface CharacterChatRequest {
   config: ChatGenerationConfig;
   model: string;
   characterId?: string;
+}
+
+interface GenerateImageRequest {
+  prompt: string;
+  model: string;
+  characterId?: string;
+}
+
+interface GenerateImageResponse {
+  imageUrl: string;
+  mimeType: string;
 }
 
 export interface MessageImage {
@@ -95,12 +108,20 @@ export class ChatService {
     this.draftCharacter.set(null);
   }
 
+  isImageGenerationRequest(message: string): boolean {
+    return IMAGE_TRIGGER_REGEX.test(message);
+  }
+
   sendMessage(userMessage: string): Observable<{ text: string; images?: MessageImage[] }> {
     if (!this.currentCharacter) {
       return throwError(() => ({
         status: 400,
         message: 'No character selected. Please open a character to chat.'
       }));
+    }
+
+    if (this.isImageGenerationRequest(userMessage)) {
+      return this.sendImageGenerationMessage(userMessage);
     }
 
     const functions = this.firebase.requireFunctions();
@@ -166,6 +187,37 @@ export class ChatService {
         }
 
         return { text: responseText, images };
+      }),
+      catchError(error => throwError(() => this.formatError(error)))
+    );
+  }
+
+  private sendImageGenerationMessage(userMessage: string): Observable<{ text: string; images?: MessageImage[] }> {
+    const functions = this.firebase.requireFunctions();
+
+    // Extract prompt: text after "maak afbeelding", or use the full message as prompt
+    const match = userMessage.match(/maak\s+afbeelding\s*(.*)/i);
+    const prompt = match?.[1]?.trim() || userMessage;
+
+    const imageConfig = this.aiSettingsService.getImageGenerationConfig();
+
+    const generateImage = httpsCallable<GenerateImageRequest, GenerateImageResponse>(
+      functions, 'generateImage'
+    );
+
+    const payload: GenerateImageRequest = {
+      prompt,
+      model: imageConfig.model,
+      ...(this.characterId && { characterId: this.characterId })
+    };
+
+    return from(generateImage(payload)).pipe(
+      map(result => {
+        const { imageUrl, mimeType } = result.data;
+        return {
+          text: '',
+          images: [{ url: imageUrl, mimeType }]
+        };
       }),
       catchError(error => throwError(() => this.formatError(error)))
     );
