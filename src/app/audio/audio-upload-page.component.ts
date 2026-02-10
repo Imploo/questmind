@@ -244,7 +244,6 @@ export class AudioUploadPageComponent implements OnInit, OnDestroy {
         {
           sessionTitle: event.sessionName || 'Untitled Session',
           sessionDate: event.sessionDate,
-          transcriptionMode: event.transcriptionMode || 'batch'
         },
         (uploadProgress) => {
           // Track upload progress (0-99%)

@@ -4,11 +4,9 @@ import { FormsModule } from '@angular/forms';
 import { AudioUpload } from './services/audio-session.models';
 
 type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' | 'failed';
-export type TranscriptionMode = 'fast' | 'batch';
 
 // Export for external use
 export interface UploadRequestEvent extends AudioUpload {
-  transcriptionMode?: TranscriptionMode;
   keepAwake?: boolean;
 }
 
@@ -85,65 +83,6 @@ export interface UploadRequestEvent extends AudioUpload {
             <span class="text-xs text-gray-400">(Not supported on this device)</span>
           }
         </label>
-
-        <!-- Transcription Mode Selector -->
-        <div class="border border-gray-200 rounded-lg p-4 bg-gray-50">
-          <h4 class="text-sm font-semibold text-gray-700 mb-3">Transcription Speed</h4>
-          <div class="space-y-2">
-            <label
-              class="flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-colors"
-              [class.bg-white]="transcriptionMode() === 'fast'"
-              [class.border-primary]="transcriptionMode() === 'fast'"
-              [class.border-gray-200]="transcriptionMode() !== 'fast'"
-              [class.bg-gray-50]="transcriptionMode() !== 'fast'"
-            >
-              <input
-                type="radio"
-                name="transcriptionMode"
-                value="fast"
-                class="mt-0.5"
-                [checked]="transcriptionMode() === 'fast'"
-                (change)="transcriptionMode.set('fast')"
-                [disabled]="isBusy || !canUpload"
-              />
-              <div class="flex-1">
-                <div class="flex items-center gap-2">
-                  <span class="font-medium text-gray-900">⚡ Fast Transcription</span>
-                </div>
-                <p class="text-xs text-gray-600 mt-1 m-0">
-                  Immediate processing, higher cost (~2-5 minutes)
-                </p>
-              </div>
-            </label>
-
-            <label
-              class="flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-colors"
-              [class.bg-white]="transcriptionMode() === 'batch'"
-              [class.border-primary]="transcriptionMode() === 'batch'"
-              [class.border-gray-200]="transcriptionMode() !== 'batch'"
-              [class.bg-gray-50]="transcriptionMode() !== 'batch'"
-            >
-              <input
-                type="radio"
-                name="transcriptionMode"
-                value="batch"
-                class="mt-0.5"
-                [checked]="transcriptionMode() === 'batch'"
-                (change)="transcriptionMode.set('batch')"
-                [disabled]="isBusy || !canUpload"
-              />
-              <div class="flex-1">
-                <div class="flex items-center gap-2">
-                  <span class="font-medium text-gray-900">⏱️ Batch Transcription</span>
-                  <span class="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full">Recommended</span>
-                </div>
-                <p class="text-xs text-gray-600 mt-1 m-0">
-                  Queued processing, lower cost (~10-30 minutes)
-                </p>
-              </div>
-            </label>
-          </div>
-        </div>
 
         <!-- Session Details -->
         <div class="grid gap-3 md:grid-cols-2">
@@ -228,7 +167,6 @@ export class AudioUploadComponent {
   sessionDate = '';
   dragActive = signal(false);
   error = signal('');
-  transcriptionMode = signal<TranscriptionMode>('batch');
   keepAwake = signal(true);
 
   badgeClass = computed(() => {
@@ -297,7 +235,6 @@ export class AudioUploadComponent {
       sessionDate: this.sessionDate,
       userId: this.userId,
       campaignId: this.campaignId,
-      transcriptionMode: this.transcriptionMode(),
       keepAwake: this.keepAwake()
     });
   }

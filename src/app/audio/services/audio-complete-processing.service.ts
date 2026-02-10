@@ -10,7 +10,6 @@ export interface StartProcessingOptions {
   sessionTitle: string;
   sessionDate?: string;
   userCorrections?: string;
-  transcriptionMode?: 'fast' | 'batch';
 }
 
 export interface ProcessingResult {
