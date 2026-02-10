@@ -15,6 +15,7 @@ interface ChatContent {
 
 interface ChatGenerationConfig {
   responseMimeType: string;
+  responseModalities?: string[];
   temperature: number;
   topP: number;
   topK: number;
@@ -121,6 +122,7 @@ export class ChatService {
     const aiConfig = this.aiSettingsService.getCharacterChatConfig();
     const config = {
       responseMimeType: 'application/json',
+      responseModalities: ['TEXT', 'IMAGE'],
       temperature: aiConfig.temperature,
       topP: aiConfig.topP,
       topK: aiConfig.topK,
