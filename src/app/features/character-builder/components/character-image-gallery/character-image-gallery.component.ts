@@ -81,10 +81,12 @@ export class CharacterImageGalleryComponent {
     this.lightboxUrl.set(null);
   }
 
-  formatDate(timestamp: any): string {
+  formatDate(timestamp: { toDate?: () => Date } | string | Date): string {
     try {
       // Handle Firestore Timestamp
-      const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+      const date = typeof timestamp === 'object' && timestamp !== null && 'toDate' in timestamp && timestamp.toDate
+        ? timestamp.toDate()
+        : new Date(timestamp as string | Date);
       return new Intl.DateTimeFormat('nl-NL', {
         day: 'numeric',
         month: 'short',

@@ -3,10 +3,8 @@ import {
   collection,
   doc,
   getDocs,
-  setDoc,
   query,
   orderBy,
-  Timestamp,
   type Firestore,
   deleteDoc
 } from 'firebase/firestore';
@@ -33,33 +31,6 @@ export class CharacterImageService {
     const snapshot = await getDocs(q);
 
     return snapshot.docs.map(doc => doc.data() as CharacterImage);
-  }
-
-  async addImage(
-    characterId: string,
-    url: string,
-    mimeType: string,
-    versionId?: string
-  ): Promise<string> {
-    const user = this.authService.currentUser();
-    if (!user) throw new Error('User not authenticated');
-    if (!this.db) throw new Error('Firestore is not configured');
-
-    const imageId = doc(collection(this.db, 'users', user.uid, 'characters', characterId, 'images')).id;
-
-    const image: CharacterImage = {
-      id: imageId,
-      characterId,
-      url,
-      mimeType,
-      versionId,
-      createdAt: Timestamp.now(),
-    };
-
-    const imageRef = doc(this.db, 'users', user.uid, 'characters', characterId, 'images', imageId);
-    await setDoc(imageRef, image);
-
-    return imageId;
   }
 
   async deleteImage(characterId: string, imageId: string): Promise<void> {
