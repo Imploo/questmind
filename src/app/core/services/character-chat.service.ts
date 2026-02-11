@@ -64,14 +64,9 @@ export class CharacterChatService {
   }
 
   sendMessage(userMessage: string, currentCharacter: DndCharacter): Observable<string> {
-    const systemPrompt = `${CHARACTER_BUILDER_PROMPT}\n\nCurrent Character JSON:\n${JSON.stringify(currentCharacter, null, 2)}`;
-
-    if (this.conversationHistory.length === 0) {
-      this.conversationHistory = [
-        { role: 'user', parts: [{ text: systemPrompt }] },
-        { role: 'model', parts: [{ text: '{"thought": "System initialized", "character": ' + JSON.stringify(currentCharacter) + ', "response": "Ready to help."}' }] }
-      ];
-    }
+    // Always use the latest character: draft if exists, otherwise the current saved version
+    const latestCharacter = this.draftCharacter() ?? currentCharacter;
+    const systemPrompt = `${CHARACTER_BUILDER_PROMPT}\n\nCurrent Character JSON:\n${JSON.stringify(latestCharacter, null, 2)}`;
 
     const userMsgObj: ChatMessage = {
       id: Date.now().toString(),
@@ -89,7 +84,10 @@ export class CharacterChatService {
       timestamp: new Date()
     }]);
 
+    // Build contents: system prompt + conversation history (messages only) + new user message
     const contents = [
+      { role: 'user', parts: [{ text: systemPrompt }] },
+      { role: 'model', parts: [{ text: '{"thought": "System initialized", "character": ' + JSON.stringify(latestCharacter) + ', "response": "Ready to help."}' }] },
       ...this.conversationHistory,
       { role: 'user', parts: [{ text: userMessage }] }
     ];
@@ -109,20 +107,18 @@ export class CharacterChatService {
         const parsed = this.parseAiResponse(fullText);
         const responseText = parsed?.response ?? fullText;
 
-        if (parsed) {
-          this.conversationHistory.push(
-            { role: 'user', parts: [{ text: userMessage }] },
-            { role: 'model', parts: [{ text: JSON.stringify(parsed) }] }
-          );
+        // Store only the messages in conversation history (not the JSON models)
+        this.conversationHistory.push(
+          { role: 'user', parts: [{ text: userMessage }] },
+          { role: 'model', parts: [{ text: responseText }] }
+        );
 
-          if (JSON.stringify(parsed.character) !== JSON.stringify(currentCharacter)) {
+        // Update draft character if it changed
+        if (parsed) {
+          const latestCharacter = this.draftCharacter() ?? currentCharacter;
+          if (JSON.stringify(parsed.character) !== JSON.stringify(latestCharacter)) {
             this.draftCharacter.set(parsed.character);
           }
-        } else {
-          this.conversationHistory.push(
-            { role: 'user', parts: [{ text: userMessage }] },
-            { role: 'model', parts: [{ text: fullText }] }
-          );
         }
 
         this.updateAiMessage(aiMessageId, responseText);
