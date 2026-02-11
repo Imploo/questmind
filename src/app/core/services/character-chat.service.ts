@@ -66,7 +66,6 @@ export class CharacterChatService {
   sendMessage(userMessage: string, currentCharacter: DndCharacter): Observable<string> {
     // Always use the latest character: draft if exists, otherwise the current saved version
     const latestCharacter = this.draftCharacter() ?? currentCharacter;
-    const systemPrompt = `${CHARACTER_BUILDER_PROMPT}\n\nCurrent Character JSON:\n${JSON.stringify(latestCharacter, null, 2)}`;
 
     const userMsgObj: ChatMessage = {
       id: Date.now().toString(),
@@ -84,10 +83,12 @@ export class CharacterChatService {
       timestamp: new Date()
     }]);
 
-    // Build contents: system prompt + conversation history (messages only) + new user message
+    // Build contents: system prompt (once) + current character + message history + new user message
     const contents = [
-      { role: 'user', parts: [{ text: systemPrompt }] },
-      { role: 'model', parts: [{ text: '{"thought": "System initialized", "character": ' + JSON.stringify(latestCharacter) + ', "response": "Ready to help."}' }] },
+      { role: 'user', parts: [{ text: CHARACTER_BUILDER_PROMPT }] },
+      { role: 'model', parts: [{ text: 'I understand. I will help you build and modify D&D 5e characters following the rules and schema provided.' }] },
+      { role: 'user', parts: [{ text: `Current Character JSON:\n${JSON.stringify(latestCharacter, null, 2)}` }] },
+      { role: 'model', parts: [{ text: 'Character loaded. How can I help you modify this character?' }] },
       ...this.conversationHistory,
       { role: 'user', parts: [{ text: userMessage }] }
     ];
