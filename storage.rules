@@ -28,6 +28,14 @@ service firebase.storage {
                        || request.resource.contentType == 'audio/m4a');
     }
 
+    // Generated character images — owner can delete, authenticated users can read
+    match /images/{characterId}/{filename} {
+      allow read: if true;
+      allow delete: if request.auth != null &&
+        firestore.get(/databases/(default)/documents/characters/$(characterId)).data.userId == request.auth.uid;
+      // Write handled by backend only
+    }
+
     // Chat images per character
     match /chat/{characterId}/{filename} {
       allow read: if request.auth != null;

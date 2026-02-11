@@ -8,6 +8,7 @@ import {
   type Firestore,
   deleteDoc
 } from 'firebase/firestore';
+import { ref, deleteObject } from 'firebase/storage';
 import { AuthService } from '../../auth/auth.service';
 import { FirebaseService } from '../firebase.service';
 import { CharacterImage } from '../models/schemas/character-image.schema';
@@ -32,11 +33,18 @@ export class CharacterImageService {
     return snapshot.docs.map(doc => doc.data() as CharacterImage);
   }
 
-  async deleteImage(characterId: string, imageId: string): Promise<void> {
+  async deleteImage(image: CharacterImage): Promise<void> {
     const user = this.authService.currentUser();
     if (!user || !this.db) return;
 
-    const imageRef = doc(this.db, 'characters', characterId, 'images', imageId);
+    // Delete from Cloud Storage if we have the storage path
+    if (image.storagePath && this.firebase.storage) {
+      const storageRef = ref(this.firebase.storage, image.storagePath);
+      await deleteObject(storageRef);
+    }
+
+    // Delete metadata from Firestore
+    const imageRef = doc(this.db, 'characters', image.characterId, 'images', image.id);
     await deleteDoc(imageRef);
   }
 }

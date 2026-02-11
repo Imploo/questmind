@@ -9,6 +9,7 @@ export const CharacterImageSchema = z.object({
   characterId: z.string(),
   url: z.string(),
   mimeType: z.string(),
+  storagePath: z.string().optional(),
   versionId: z.string().optional(), // Optional: link to the version when it was created
   createdAt: TimestampSchema,
 });

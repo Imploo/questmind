@@ -155,7 +155,7 @@ import { CharacterImageGalleryComponent } from '../character-image-gallery/chara
         <div class="space-y-6">
           <!-- Character Images Gallery -->
           @if (images().length > 0) {
-            <app-character-image-gallery [images]="images()" />
+            <app-character-image-gallery [images]="images()" [canDelete]="canDelete()" (deleteImage)="deleteImage.emit($event)" />
           }
 
           <!-- Spellcasting -->
@@ -284,7 +284,9 @@ export class CharacterSheetComponent {
   character = input.required<DndCharacter>();
   characterName = input.required<string>();
   images = input<CharacterImage[]>([]);
+  canDelete = input<boolean>(false);
   viewHistory = output<void>();
+  deleteImage = output<CharacterImage>();
 
   expandedSpells = signal<Set<number>>(new Set());
 

@@ -1,4 +1,4 @@
-import { Component, input, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, input, output, signal, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ImageLightboxComponent } from '../../../../chat/image-lightbox.component';
 import { CharacterImage } from '../../../../core/models/schemas/character-image.schema';
@@ -28,30 +28,42 @@ import { CharacterImage } from '../../../../core/models/schemas/character-image.
         } @else {
           <div class="grid grid-cols-2 gap-3">
             @for (image of images(); track image.url) {
-              <div 
-                class="relative group cursor-pointer overflow-hidden rounded-lg border border-base-300 hover:border-primary transition-all duration-200 shadow-sm hover:shadow-md"
-                (click)="openLightbox(image.url)"
-              >
-                <img
-                  [src]="image.url"
-                  [alt]="'Karakter afbeelding ' + ($index + 1)"
-                  class="w-full h-40 object-cover transition-transform duration-200 group-hover:scale-105"
-                  loading="lazy"
-                />
-                <div class="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
-                  <svg 
-                    xmlns="http://www.w3.org/2000/svg" 
-                    class="h-8 w-8 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" 
-                    fill="none" 
-                    viewBox="0 0 24 24" 
-                    stroke="currentColor"
-                  >
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
-                  </svg>
+              <div class="rounded-lg border border-base-300 hover:border-primary transition-all duration-200 shadow-sm hover:shadow-md overflow-hidden">
+                <div
+                  class="relative group cursor-pointer overflow-hidden"
+                  (click)="openLightbox(image.url)"
+                >
+                  <img
+                    [src]="image.url"
+                    [alt]="'Karakter afbeelding ' + ($index + 1)"
+                    class="w-full h-40 object-cover transition-transform duration-200 group-hover:scale-105"
+                    loading="lazy"
+                  />
+                  <div class="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      class="h-8 w-8 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                    </svg>
+                  </div>
                 </div>
-                <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-2">
-                  <span class="text-xs text-white opacity-90">{{ formatDate(image.createdAt) }}</span>
-                </div>
+                @if (canDelete()) {
+                  <div class="flex items-center justify-end px-2 py-1 bg-base-200">
+                    <button
+                      class="p-1 opacity-50 hover:opacity-100 hover:text-error transition-opacity"
+                      title="Verwijder afbeelding"
+                      (click)="onDeleteClick($event, image)"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
+                }
               </div>
             }
           </div>
@@ -71,6 +83,8 @@ import { CharacterImage } from '../../../../core/models/schemas/character-image.
 })
 export class CharacterImageGalleryComponent {
   images = input.required<CharacterImage[]>();
+  canDelete = input<boolean>(false);
+  deleteImage = output<CharacterImage>();
   lightboxUrl = signal<string | null>(null);
 
   openLightbox(url: string): void {
@@ -81,19 +95,10 @@ export class CharacterImageGalleryComponent {
     this.lightboxUrl.set(null);
   }
 
-  formatDate(timestamp: { toDate?: () => Date } | string | Date): string {
-    try {
-      // Handle Firestore Timestamp
-      const date = typeof timestamp === 'object' && timestamp !== null && 'toDate' in timestamp && timestamp.toDate
-        ? timestamp.toDate()
-        : new Date(timestamp as string | Date);
-      return new Intl.DateTimeFormat('nl-NL', {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric'
-      }).format(date);
-    } catch {
-      return '';
-    }
+  onDeleteClick(event: MouseEvent, image: CharacterImage): void {
+    event.stopPropagation();
+    this.deleteImage.emit(image);
   }
+
+  protected readonly caches = caches;
 }

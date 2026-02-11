@@ -56,7 +56,9 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
                       [character]="displayCharacter() || activeVersion()!.character"
                       [characterName]="selectedCharacter()?.name || 'Unknown'"
                       [images]="characterImages()"
+                      [canDelete]="isOwner()"
                       (viewHistory)="showHistory.set(true)"
+                      (deleteImage)="onDeleteImage($event)"
                     ></app-character-sheet>
                   </mat-card-content>
                 </mat-card>
@@ -108,7 +110,9 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
                           [character]="displayCharacter() || activeVersion()!.character"
                           [characterName]="selectedCharacter()?.name || 'Unknown'"
                           [images]="characterImages()"
+                          [canDelete]="isOwner()"
                           (viewHistory)="showHistory.set(true)"
+                          (deleteImage)="onDeleteImage($event)"
                         ></app-character-sheet>
                       </mat-card-content>
                     </mat-card>
@@ -246,7 +250,13 @@ export class CharacterBuilderPageComponent {
 
   async loadCharacters() {
     const chars = await this.characterService.getCharacters();
-    this.characters.set(chars);
+    // Merge: keep any publicly-loaded characters not returned by the user query
+    // (handles the race where loadActiveVersion runs before auth resolves)
+    this.characters.update(existing => {
+      const newIds = new Set(chars.map(c => c.id));
+      const preserved = existing.filter(c => !newIds.has(c.id));
+      return [...chars, ...preserved];
+    });
   }
 
   async loadActiveVersion(characterId: string) {
@@ -403,6 +413,11 @@ export class CharacterBuilderPageComponent {
       return;
     }
     this.isNarrow.set(window.innerWidth < 1024);
+  }
+
+  async onDeleteImage(image: CharacterImage): Promise<void> {
+    await this.characterImageService.deleteImage(image);
+    this.characterImages.update(list => list.filter(i => i.id !== image.id));
   }
 
   private isEditableTarget(target: HTMLElement | null): boolean {
