@@ -2,6 +2,7 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { wrapCallable } from './utils/sentry-error-handler';
 import { SHARED_CORS } from './index';
 import { getStorage } from 'firebase-admin/storage';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { randomUUID } from 'crypto';
 import { fal } from '@fal-ai/client';
 
@@ -30,6 +31,7 @@ export interface GenerateImageRequest {
 export interface GenerateImageResponse {
   imageUrl: string;
   mimeType: string;
+  imageId?: string;
 }
 
 function buildImagePrompt(userPrompt: string, visuals?: CharacterVisuals): string {
@@ -138,9 +140,35 @@ export const generateImage = onCall(
         expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
       });
 
+      // Save image metadata to Firestore if characterId is provided
+      let imageId: string | undefined;
+      if (characterId && request.auth) {
+        const userId = request.auth.uid;
+        const db = getFirestore();
+        const imageRef = db
+          .collection('users')
+          .doc(userId)
+          .collection('characters')
+          .doc(characterId)
+          .collection('images')
+          .doc();
+
+        imageId = imageRef.id;
+
+        await imageRef.set({
+          id: imageId,
+          characterId,
+          url: signedUrl,
+          mimeType,
+          storagePath,
+          createdAt: FieldValue.serverTimestamp(),
+        });
+      }
+
       return {
         imageUrl: signedUrl,
         mimeType,
+        imageId,
       };
     }
   )

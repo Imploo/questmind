@@ -4,8 +4,10 @@ import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { CharacterService } from '../../../../core/services/character.service';
 import { CharacterVersionService } from '../../../../core/services/character-version.service';
+import { CharacterImageService } from '../../../../core/services/character-image.service';
 import { ChatService } from '../../../../chat/chat.service';
 import { Character, CharacterVersion } from '../../../../core/models/schemas/character.schema';
+import { CharacterImage } from '../../../../core/models/schemas/character-image.schema';
 import { DndCharacter } from '../../../../shared/schemas/dnd-character.schema';
 import { CharacterSheetComponent } from '../../components/character-sheet/character-sheet.component';
 import { ChatComponent } from '../../../../chat/chat.component';
@@ -52,6 +54,7 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
                     <app-character-sheet
                       [character]="displayCharacter() || activeVersion()!.character"
                       [characterName]="selectedCharacter()?.name || 'Unknown'"
+                      [images]="characterImages()"
                       (viewHistory)="showHistory.set(true)"
                     ></app-character-sheet>
                   </mat-card-content>
@@ -101,6 +104,7 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
                         <app-character-sheet
                           [character]="displayCharacter() || activeVersion()!.character"
                           [characterName]="selectedCharacter()?.name || 'Unknown'"
+                          [images]="characterImages()"
                           (viewHistory)="showHistory.set(true)"
                         ></app-character-sheet>
                       </mat-card-content>
@@ -157,11 +161,13 @@ export class CharacterBuilderPageComponent {
   private router = inject(Router);
   private characterService = inject(CharacterService);
   private characterVersionService = inject(CharacterVersionService);
+  private characterImageService = inject(CharacterImageService);
   private chatService = inject(ChatService);
 
   // State
   characters = signal<Character[]>([]);
   selectedCharacterId = signal<string | null>(null);
+  characterImages = signal<CharacterImage[]>([]);
 
   selectedCharacter = computed(() =>
     this.characters().find(c => c.id === this.selectedCharacterId())
@@ -241,6 +247,14 @@ export class CharacterBuilderPageComponent {
         this.activeVersion.set(version);
       }
     }
+    
+    // Load images for this character
+    await this.loadCharacterImages(characterId);
+  }
+
+  async loadCharacterImages(characterId: string) {
+    const images = await this.characterImageService.getImages(characterId);
+    this.characterImages.set(images);
   }
 
   onSelectCharacter(id: string) {
@@ -255,7 +269,6 @@ export class CharacterBuilderPageComponent {
       level: 1,
       race: 'Human',
       experiencePoints: 0,
-      images: [],
       abilities: {
         strength: { score: 10, modifier: 0 },
         dexterity: { score: 10, modifier: 0 },
