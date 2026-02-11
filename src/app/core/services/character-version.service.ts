@@ -26,14 +26,12 @@ export class CharacterVersionService {
     this.db = this.firebase.firestore;
   }
 
-  // Helper to create the very first version when a character is created
-  async createInitialVersion(userId: string, characterId: string, characterData: DndCharacter): Promise<string> {
+  async createInitialVersion(characterId: string, characterData: DndCharacter): Promise<string> {
     if (!this.db) throw new Error('Firestore is not configured');
 
-    // Validate character data with Zod
     const validatedData = DndCharacterSchema.parse(characterData);
 
-    const versionId = doc(collection(this.db, 'users', userId, 'characters', characterId, 'versions')).id;
+    const versionId = doc(collection(this.db, 'characters', characterId, 'versions')).id;
     const now = Timestamp.now();
 
     const version: CharacterVersion = {
@@ -45,7 +43,7 @@ export class CharacterVersionService {
       createdAt: now,
     };
 
-    const versionRef = doc(this.db, 'users', userId, 'characters', characterId, 'versions', versionId);
+    const versionRef = doc(this.db, 'characters', characterId, 'versions', versionId);
     await setDoc(versionRef, version);
 
     return versionId;
@@ -62,12 +60,10 @@ export class CharacterVersionService {
     if (!user) throw new Error('User not authenticated');
     if (!this.db) throw new Error('Firestore is not configured');
 
-    // Validate character data with Zod
     const validatedData = DndCharacterSchema.parse(characterData);
 
-    // Get the latest version number
-    const versionsRef = collection(this.db, 'users', user.uid, 'characters', characterId, 'versions');
-    const q = query(versionsRef, orderBy('versionNumber', 'desc')); // Limit 1 would be better if supported easily, but this is fine for now
+    const versionsRef = collection(this.db, 'characters', characterId, 'versions');
+    const q = query(versionsRef, orderBy('versionNumber', 'desc'));
     const snapshot = await getDocs(q);
 
     let nextVersionNumber = 1;
@@ -88,16 +84,14 @@ export class CharacterVersionService {
       createdAt: now,
     };
 
-    // Only add restoredFromVersionId if it's defined (Firestore doesn't support undefined)
     if (restoredFromVersionId) {
       version.restoredFromVersionId = restoredFromVersionId;
     }
 
-    const versionRef = doc(this.db, 'users', user.uid, 'characters', characterId, 'versions', versionId);
+    const versionRef = doc(this.db, 'characters', characterId, 'versions', versionId);
     await setDoc(versionRef, version);
 
-    // Update the character's activeVersionId
-    const characterRef = doc(this.db, 'users', user.uid, 'characters', characterId);
+    const characterRef = doc(this.db, 'characters', characterId);
     await updateDoc(characterRef, {
       activeVersionId: versionId,
       updatedAt: now
@@ -107,10 +101,9 @@ export class CharacterVersionService {
   }
 
   async getVersions(characterId: string): Promise<CharacterVersion[]> {
-    const user = this.authService.currentUser();
-    if (!user || !this.db) return [];
+    if (!this.db) return [];
 
-    const versionsRef = collection(this.db, 'users', user.uid, 'characters', characterId, 'versions');
+    const versionsRef = collection(this.db, 'characters', characterId, 'versions');
     const q = query(versionsRef, orderBy('versionNumber', 'desc'));
     const snapshot = await getDocs(q);
 
@@ -118,22 +111,19 @@ export class CharacterVersionService {
   }
 
   async getVersion(characterId: string, versionId: string): Promise<CharacterVersion | null> {
-    const user = this.authService.currentUser();
-    if (!user || !this.db) return null;
+    if (!this.db) return null;
 
-    const versionRef = doc(this.db, 'users', user.uid, 'characters', characterId, 'versions', versionId);
+    const versionRef = doc(this.db, 'characters', characterId, 'versions', versionId);
     const snapshot = await getDoc(versionRef);
 
     if (!snapshot.exists()) return null;
 
     const data = snapshot.data() as CharacterVersion;
 
-    // Validate character data with Zod (now more lenient with defaults)
     try {
       data.character = DndCharacterSchema.parse(data.character);
     } catch (error) {
       console.error('Invalid character data detected:', error);
-      // If validation still fails, return null or throw
       throw error;
     }
 

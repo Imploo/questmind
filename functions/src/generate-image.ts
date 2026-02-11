@@ -141,11 +141,8 @@ export const generateImage = onCall(
 
       // Save image metadata to Firestore if characterId is provided
       if (characterId && request.auth) {
-        const userId = request.auth.uid;
         const db = getFirestore();
         const imageRef = db
-          .collection('users')
-          .doc(userId)
           .collection('characters')
           .doc(characterId)
           .collection('images')

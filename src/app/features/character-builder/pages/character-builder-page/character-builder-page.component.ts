@@ -2,6 +2,7 @@ import { Component, inject, signal, computed, effect, viewChild, ChangeDetection
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
+import { AuthService } from '../../../../auth/auth.service';
 import { CharacterService } from '../../../../core/services/character.service';
 import { CharacterVersionService } from '../../../../core/services/character-version.service';
 import { CharacterImageService } from '../../../../core/services/character-image.service';
@@ -77,10 +78,12 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
 
           </div>
 
-          <app-chat-drawer
-            #chatDrawer
-            [character]="activeVersion()?.character ?? null"
-          ></app-chat-drawer>
+          @if (isOwner()) {
+            <app-chat-drawer
+              #chatDrawer
+              [character]="activeVersion()?.character ?? null"
+            ></app-chat-drawer>
+          }
         </div>
       } @else {
         <div class="flex w-full items-start">
@@ -128,20 +131,22 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
             </div>
           </div>
 
-          <!-- Right Chat Panel -->
-          <div class="w-1/3 bg-base-200 p-4 sticky top-4 h-[calc(100vh-2rem)]">
-            <mat-card class="h-full bg-base-100 shadow-xl border border-base-300">
-              <mat-card-content class="p-4 h-full">
-                @if (activeVersion()) {
-                  <app-chat #chat [character]="activeVersion()!.character"></app-chat>
-                } @else {
-                  <div class="flex h-full items-center justify-center opacity-60 text-sm">
-                    Select a character to chat
-                  </div>
-                }
-              </mat-card-content>
-            </mat-card>
-          </div>
+          <!-- Right Chat Panel (owner only) -->
+          @if (isOwner()) {
+            <div class="w-1/3 bg-base-200 p-4 sticky top-4 h-[calc(100vh-2rem)]">
+              <mat-card class="h-full bg-base-100 shadow-xl border border-base-300">
+                <mat-card-content class="p-4 h-full">
+                  @if (activeVersion()) {
+                    <app-chat #chat [character]="activeVersion()!.character"></app-chat>
+                  } @else {
+                    <div class="flex h-full items-center justify-center opacity-60 text-sm">
+                      Select a character to chat
+                    </div>
+                  }
+                </mat-card-content>
+              </mat-card>
+            </div>
+          }
         </div>
       }
     </div>
@@ -159,6 +164,7 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
 export class CharacterBuilderPageComponent {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
+  private authService = inject(AuthService);
   private characterService = inject(CharacterService);
   private characterVersionService = inject(CharacterVersionService);
   private characterImageService = inject(CharacterImageService);
@@ -172,6 +178,14 @@ export class CharacterBuilderPageComponent {
   selectedCharacter = computed(() =>
     this.characters().find(c => c.id === this.selectedCharacterId())
   );
+
+  // True when the current user is the owner of the loaded character
+  isOwner = computed(() => {
+    const user = this.authService.currentUser();
+    const character = this.selectedCharacter();
+    if (!user || !character) return false;
+    return user.uid === character.userId;
+  });
 
   activeVersion = signal<CharacterVersion | null>(null);
   draftCharacter = this.chatService.getDraftCharacter();
@@ -206,7 +220,7 @@ export class CharacterBuilderPageComponent {
         this.activeVersion.set(null);
       }
     });
-    
+
     // Load versions when history is opened or character changes
     effect(async () => {
         if (this.showHistory() && this.selectedCharacterId()) {
@@ -236,23 +250,20 @@ export class CharacterBuilderPageComponent {
   }
 
   async loadActiveVersion(characterId: string) {
-    const character = this.characters().find(c => c.id === characterId);
+    let character = this.characters().find(c => c.id === characterId);
+    if (!character) {
+      const fetched = await this.characterService.getCharacter(characterId);
+      if (fetched) {
+        character = fetched;
+        this.characters.update(list => [...list, fetched]);
+      }
+    }
+
     if (character) {
       const version = await this.characterVersionService.getVersion(characterId, character.activeVersionId);
       this.activeVersion.set(version);
-    } else {
-      const fetchedChar = await this.characterService.getCharacter(characterId);
-      if (fetchedChar) {
-        const version = await this.characterVersionService.getVersion(characterId, fetchedChar.activeVersionId);
-        this.activeVersion.set(version);
-      }
     }
-    
-    // Load images for this character
-    await this.loadCharacterImages(characterId);
-  }
 
-  async loadCharacterImages(characterId: string) {
     const images = await this.characterImageService.getImages(characterId);
     this.characterImages.set(images);
   }
@@ -342,7 +353,7 @@ export class CharacterBuilderPageComponent {
     if (!charId) return;
 
     await this.characterVersionService.restoreVersion(charId, version);
-    
+
     // Reload
     await this.loadCharacters();
     await this.loadActiveVersion(charId);
@@ -350,7 +361,7 @@ export class CharacterBuilderPageComponent {
   }
 
   onWindowKeydown(event: KeyboardEvent): void {
-    if (!this.activeVersion() || event.defaultPrevented) {
+    if (!this.isOwner() || !this.activeVersion() || event.defaultPrevented) {
       return;
     }
     if (event.ctrlKey || event.metaKey || event.altKey) {

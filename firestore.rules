@@ -57,19 +57,23 @@ service cloud.firestore {
         request.resource.data.campaigns.hasAll(resource.data.get('campaigns', []));
     }
 
-    // Characters (Top-level match for clarity, though nested works too)
-    match /users/{userId}/characters/{characterId} {
-      allow read, write: if isAuthenticated() && getUserId() == userId;
+    // Characters — top-level collection, publicly readable
+    match /characters/{characterId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && request.resource.data.userId == getUserId();
+      allow update, delete: if isAuthenticated() && resource.data.userId == getUserId();
 
-      // Character Versions
       match /versions/{versionId} {
-        allow read, create, delete: if isAuthenticated() && getUserId() == userId;
+        allow read: if true;
+        allow create, delete: if isAuthenticated() &&
+          get(/databases/$(database)/documents/characters/$(characterId)).data.userId == getUserId();
         allow update: if false; // Immutable
       }
 
-      // Character images (generated via fal.ai)
       match /images/{imageId} {
-        allow read, create, delete: if isAuthenticated() && getUserId() == userId;
+        allow read: if true;
+        allow create, delete: if isAuthenticated() &&
+          get(/databases/$(database)/documents/characters/$(characterId)).data.userId == getUserId();
         allow update: if false; // Immutable
       }
     }

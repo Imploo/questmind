@@ -5,6 +5,7 @@ import {
   getDoc,
   getDocs,
   query,
+  where,
   setDoc,
   updateDoc,
   Timestamp,
@@ -33,12 +34,10 @@ export class CharacterService {
     if (!user) throw new Error('User not authenticated');
     if (!this.db) throw new Error('Firestore is not configured');
 
-    const characterId = doc(collection(this.db, 'users', user.uid, 'characters')).id;
+    const characterId = doc(collection(this.db, 'characters')).id;
     const now = Timestamp.now();
 
-    // Create the initial version first
     const versionId = await this.characterVersionService.createInitialVersion(
-      user.uid,
       characterId,
       initialData
     );
@@ -53,7 +52,7 @@ export class CharacterService {
       updatedAt: now,
     };
 
-    const characterRef = doc(this.db, 'users', user.uid, 'characters', characterId);
+    const characterRef = doc(this.db, 'characters', characterId);
     await setDoc(characterRef, character);
 
     return characterId;
@@ -63,18 +62,20 @@ export class CharacterService {
     const user = this.authService.currentUser();
     if (!user || !this.db) return [];
 
-    const charactersRef = collection(this.db, 'users', user.uid, 'characters');
-    const q = query(charactersRef, orderBy('updatedAt', 'desc'));
+    const q = query(
+      collection(this.db, 'characters'),
+      where('userId', '==', user.uid),
+      orderBy('updatedAt', 'desc')
+    );
     const snapshot = await getDocs(q);
 
-    return snapshot.docs.map(doc => doc.data() as Character);
+    return snapshot.docs.map(d => d.data() as Character);
   }
 
   async getCharacter(characterId: string): Promise<Character | null> {
-    const user = this.authService.currentUser();
-    if (!user || !this.db) return null;
+    if (!this.db) return null;
 
-    const characterRef = doc(this.db, 'users', user.uid, 'characters', characterId);
+    const characterRef = doc(this.db, 'characters', characterId);
     const snapshot = await getDoc(characterRef);
 
     return snapshot.exists() ? (snapshot.data() as Character) : null;
@@ -84,7 +85,7 @@ export class CharacterService {
     const user = this.authService.currentUser();
     if (!user || !this.db) return;
 
-    const characterRef = doc(this.db, 'users', user.uid, 'characters', characterId);
+    const characterRef = doc(this.db, 'characters', characterId);
     await updateDoc(characterRef, {
       ...updates,
       updatedAt: Timestamp.now()

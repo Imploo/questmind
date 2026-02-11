@@ -23,10 +23,9 @@ export class CharacterImageService {
   }
 
   async getImages(characterId: string): Promise<CharacterImage[]> {
-    const user = this.authService.currentUser();
-    if (!user || !this.db) return [];
+    if (!this.db) return [];
 
-    const imagesRef = collection(this.db, 'users', user.uid, 'characters', characterId, 'images');
+    const imagesRef = collection(this.db, 'characters', characterId, 'images');
     const q = query(imagesRef, orderBy('createdAt', 'desc'));
     const snapshot = await getDocs(q);
 
@@ -37,7 +36,7 @@ export class CharacterImageService {
     const user = this.authService.currentUser();
     if (!user || !this.db) return;
 
-    const imageRef = doc(this.db, 'users', user.uid, 'characters', characterId, 'images', imageId);
+    const imageRef = doc(this.db, 'characters', characterId, 'images', imageId);
     await deleteDoc(imageRef);
   }
 }

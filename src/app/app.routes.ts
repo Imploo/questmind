@@ -16,6 +16,17 @@ export const routes: Routes = [
     component: SignInPageComponent,
     canActivate: [noAuthGuard],
   },
+  // Character detail is publicly accessible — no auth guard
+  {
+    path: 'characters/:characterId',
+    component: AppShellComponent,
+    children: [
+      {
+        path: '',
+        loadComponent: () => import('./features/character-builder/pages/character-builder-page/character-builder-page.component').then(m => m.CharacterBuilderPageComponent)
+      }
+    ]
+  },
   {
     path: '',
     component: AppShellComponent,
@@ -45,10 +56,6 @@ export const routes: Routes = [
       {
         path: 'characters',
         loadComponent: () => import('./features/character-builder/pages/character-list-page/character-list-page.component').then(m => m.CharacterListPageComponent)
-      },
-      {
-        path: 'characters/:characterId',
-        loadComponent: () => import('./features/character-builder/pages/character-builder-page/character-builder-page.component').then(m => m.CharacterBuilderPageComponent)
       },
       {
         path: 'admin',
