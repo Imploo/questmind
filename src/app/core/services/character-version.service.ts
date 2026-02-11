@@ -26,12 +26,12 @@ export class CharacterVersionService {
     this.db = this.firebase.firestore;
   }
 
-  async createInitialVersion(characterId: string, characterData: DndCharacter): Promise<string> {
+  async createInitialVersion(characterId: string, characterData: DndCharacter, preGeneratedVersionId?: string): Promise<string> {
     if (!this.db) throw new Error('Firestore is not configured');
 
     const validatedData = DndCharacterSchema.parse(characterData);
 
-    const versionId = doc(collection(this.db, 'characters', characterId, 'versions')).id;
+    const versionId = preGeneratedVersionId ?? doc(collection(this.db, 'characters', characterId, 'versions')).id;
     const now = Timestamp.now();
 
     const version: CharacterVersion = {

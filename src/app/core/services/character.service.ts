@@ -35,13 +35,11 @@ export class CharacterService {
     if (!this.db) throw new Error('Firestore is not configured');
 
     const characterId = doc(collection(this.db, 'characters')).id;
+    const versionId = doc(collection(this.db, 'characters', characterId, 'versions')).id;
     const now = Timestamp.now();
 
-    const versionId = await this.characterVersionService.createInitialVersion(
-      characterId,
-      initialData
-    );
-
+    // Create the character document first so Firestore rules can verify
+    // ownership when the initial version subcollection document is written.
     const character: Character = {
       id: characterId,
       userId: user.uid,
@@ -54,6 +52,12 @@ export class CharacterService {
 
     const characterRef = doc(this.db, 'characters', characterId);
     await setDoc(characterRef, character);
+
+    await this.characterVersionService.createInitialVersion(
+      characterId,
+      initialData,
+      versionId
+    );
 
     return characterId;
   }
