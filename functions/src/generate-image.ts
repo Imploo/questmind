@@ -2,6 +2,7 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { wrapCallable } from './utils/sentry-error-handler';
 import { SHARED_CORS } from './index';
 import { getStorage } from 'firebase-admin/storage';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { randomUUID } from 'crypto';
 import { fal } from '@fal-ai/client';
 
@@ -137,6 +138,28 @@ export const generateImage = onCall(
         action: 'read',
         expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
       });
+
+      // Save image metadata to Firestore if characterId is provided
+      if (characterId && request.auth) {
+        const userId = request.auth.uid;
+        const db = getFirestore();
+        const imageRef = db
+          .collection('users')
+          .doc(userId)
+          .collection('characters')
+          .doc(characterId)
+          .collection('images')
+          .doc();
+
+        await imageRef.set({
+          id: imageRef.id,
+          characterId,
+          url: signedUrl,
+          mimeType,
+          storagePath,
+          createdAt: FieldValue.serverTimestamp(),
+        });
+      }
 
       return {
         imageUrl: signedUrl,
