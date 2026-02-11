@@ -3,7 +3,7 @@ import { provideRouter, Router } from '@angular/router';
 import { provideHttpClient, withFetch } from '@angular/common/http';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { initializeFirebase } from './firebase.init';
-import { LucideAngularModule, MessageSquare, Mic, Music, Settings, ChevronLeft, ChevronRight, Plus, BookOpen, Users } from 'lucide-angular';
+import { LucideAngularModule, MessageSquare, Mic, Music, Settings, ChevronLeft, ChevronRight, Plus, BookOpen, Users, LogOut } from 'lucide-angular';
 import * as Sentry from '@sentry/angular';
 
 import { routes } from './app.routes';
@@ -15,7 +15,7 @@ export const appConfig: ApplicationConfig = {
     provideAnimations(),
     provideRouter(routes),
     provideHttpClient(withFetch()),
-    importProvidersFrom(LucideAngularModule.pick({ MessageSquare, Mic, Music, Settings, ChevronLeft, ChevronRight, Plus, BookOpen, Users })),
+    importProvidersFrom(LucideAngularModule.pick({ MessageSquare, Mic, Music, Settings, ChevronLeft, ChevronRight, Plus, BookOpen, Users, LogOut })),
     {
       provide: APP_INITIALIZER,
       useFactory: () => () => initializeFirebase(),
