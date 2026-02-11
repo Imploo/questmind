@@ -4,11 +4,12 @@ import { AuthService } from './auth/auth.service';
 import { LoadingComponent } from './loading.component';
 import { CommonModule } from '@angular/common';
 import { UpdateService } from './core/update.service';
+import { ToastContainerComponent } from './shared/components/toast-container/toast-container.component';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [RouterOutlet, LoadingComponent, CommonModule],
+  imports: [RouterOutlet, LoadingComponent, CommonModule, ToastContainerComponent],
   templateUrl: './app.html',
   styleUrl: './app.css'
 })

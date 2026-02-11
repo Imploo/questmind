@@ -1,11 +1,11 @@
-import { Component, input, output, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, input, output, signal, ChangeDetectionStrategy, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ImageLightboxComponent } from '../../../../chat/image-lightbox.component';
 import { CharacterImage } from '../../../../core/models/schemas/character-image.schema';
+import { ToastService } from '../../../../shared/services/toast.service';
 
 @Component({
   selector: 'app-character-image-gallery',
-  standalone: true,
   imports: [CommonModule, ImageLightboxComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -16,7 +16,7 @@ import { CharacterImage } from '../../../../core/models/schemas/character-image.
     <div class="card bg-base-100 shadow-sm border border-base-200">
       <div class="card-body p-4">
         <h3 class="card-title text-sm uppercase tracking-wider border-b pb-2 mb-3">Afbeeldingen Galerij</h3>
-        
+
         @if (images().length === 0) {
           <div class="text-center py-8 text-sm opacity-60">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto mb-2 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -51,10 +51,11 @@ import { CharacterImage } from '../../../../core/models/schemas/character-image.
                     </svg>
                   </div>
                 </div>
+
                 @if (canDelete()) {
-                  <div class="flex items-center justify-end px-2 py-1 bg-base-200">
+                  <div class="flex items-center justify-center px-2 py-1 bg-base-200">
                     <button
-                      class="p-1 opacity-50 hover:opacity-100 hover:text-error transition-opacity"
+                      class="p-1 rounded opacity-50 hover:opacity-100 hover:bg-red-600 hover:text-white transition-all"
                       title="Verwijder afbeelding"
                       (click)="onDeleteClick($event, image)"
                     >
@@ -67,7 +68,7 @@ import { CharacterImage } from '../../../../core/models/schemas/character-image.
               </div>
             }
           </div>
-          
+
           <div class="mt-3 text-xs text-center opacity-60">
             {{ images().length }} {{ images().length === 1 ? 'afbeelding' : 'afbeeldingen' }}
           </div>
@@ -82,6 +83,8 @@ import { CharacterImage } from '../../../../core/models/schemas/character-image.
   `]
 })
 export class CharacterImageGalleryComponent {
+  private toastService = inject(ToastService);
+
   images = input.required<CharacterImage[]>();
   canDelete = input<boolean>(false);
   deleteImage = output<CharacterImage>();
@@ -95,10 +98,11 @@ export class CharacterImageGalleryComponent {
     this.lightboxUrl.set(null);
   }
 
-  onDeleteClick(event: MouseEvent, image: CharacterImage): void {
+  async onDeleteClick(event: MouseEvent, image: CharacterImage): Promise<void> {
     event.stopPropagation();
-    this.deleteImage.emit(image);
+    const confirmed = await this.toastService.confirm('Afbeelding verwijderen?');
+    if (confirmed) {
+      this.deleteImage.emit(image);
+    }
   }
-
-  protected readonly caches = caches;
 }
