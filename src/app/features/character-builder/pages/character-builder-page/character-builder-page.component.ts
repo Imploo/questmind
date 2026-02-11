@@ -36,61 +36,9 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
   ],
   template: `
     <div class="flex min-h-screen bg-base-200">
-      @if (isNarrow()) {
-        <div class="relative w-full">
-          @if (draftCharacter()) {
-            <div class="sticky -top-2 z-20 bg-base-200 pb-4">
-              <app-character-draft-preview
-                [loading]="isCommitting()"
-                (commit)="commitDraft()"
-                (dismiss)="dismissDraft()"
-              ></app-character-draft-preview>
-            </div>
-          }
-          <div class="flex flex-col gap-4" style="padding-bottom: calc(10vh + 1rem)">
-            @if (selectedCharacterId()) {
-              @if (activeVersion()) {
-                <mat-card class="bg-base-100 shadow-xl border border-base-300">
-                  <mat-card-content>
-                    <app-character-sheet
-                      [character]="displayCharacter() || activeVersion()!.character"
-                      [characterName]="selectedCharacter()?.name || 'Unknown'"
-                      [images]="characterImages()"
-                      [canDelete]="isOwner()"
-                      (viewHistory)="showHistory.set(true)"
-                      (deleteImage)="onDeleteImage($event)"
-                    ></app-character-sheet>
-                  </mat-card-content>
-                </mat-card>
-              } @else {
-                <mat-card class="bg-base-100 shadow-lg border border-base-300">
-                  <mat-card-content class="flex items-center justify-center min-h-[320px]">
-                    <span class="loading loading-spinner loading-lg"></span>
-                  </mat-card-content>
-                </mat-card>
-              }
-            } @else {
-              <mat-card class="bg-base-100 shadow-lg border border-base-300">
-                <mat-card-content class="flex flex-col items-center justify-center min-h-[320px] text-base-content/60">
-                  <h2 class="text-2xl font-bold mb-2">Select a Character</h2>
-                  <p>Choose a character from the list or create a new one.</p>
-                </mat-card-content>
-              </mat-card>
-            }
-
-          </div>
-
-          @if (isOwner()) {
-            <app-chat-drawer
-              #chatDrawer
-              [character]="activeVersion()?.character ?? null"
-            ></app-chat-drawer>
-          }
-        </div>
-      } @else {
         <div class="flex w-full items-start">
           <!-- Center Character Sheet -->
-          <div class="w-2/3 p-4">
+          <div [class]="isNarrow() ? 'w-full' : 'w-2/3 p-4'">
             <div class="flex flex-col gap-4">
               @if (draftCharacter()) {
                 <div class="sticky top-8 z-10">
@@ -135,24 +83,30 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
             </div>
           </div>
 
-          <!-- Right Chat Panel (owner only) -->
+          <!-- Chat Panel (owner only) -->
           @if (isOwner()) {
-            <div class="w-1/3 bg-base-200 p-4 sticky top-4 h-[calc(100vh-2rem)]">
-              <mat-card class="h-full bg-base-100 shadow-xl border border-base-300">
-                <mat-card-content class="p-4 h-full">
-                  @if (activeVersion()) {
-                    <app-chat #chat [character]="activeVersion()!.character"></app-chat>
-                  } @else {
-                    <div class="flex h-full items-center justify-center opacity-60 text-sm">
-                      Select a character to chat
-                    </div>
-                  }
-                </mat-card-content>
-              </mat-card>
-            </div>
+            @if (isNarrow()) {
+              <app-chat-drawer
+                  #chatDrawer
+                  [character]="activeVersion()?.character ?? null"
+              ></app-chat-drawer>
+            } @else {
+              <div class="w-1/3 bg-base-200 p-4 sticky top-4 h-[calc(100vh-2rem)]">
+                <mat-card class="h-full bg-base-100 shadow-xl border border-base-300">
+                  <mat-card-content class="p-4 h-full">
+                    @if (activeVersion()) {
+                      <app-chat #chat [character]="activeVersion()!.character"></app-chat>
+                    } @else {
+                      <div class="flex h-full items-center justify-center opacity-60 text-sm">
+                        Select a character to chat
+                      </div>
+                    }
+                  </mat-card-content>
+                </mat-card>
+              </div>  
+            }
           }
         </div>
-      }
     </div>
 
     @if (showHistory() && selectedCharacterId()) {
