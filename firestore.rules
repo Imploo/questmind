@@ -60,12 +60,17 @@ service cloud.firestore {
     // Characters (Top-level match for clarity, though nested works too)
     match /users/{userId}/characters/{characterId} {
       allow read, write: if isAuthenticated() && getUserId() == userId;
-      
+
       // Character Versions
       match /versions/{versionId} {
-        allow read: if isAuthenticated() && getUserId() == userId;
-        allow create: if isAuthenticated() && getUserId() == userId;
-        allow update, delete: if false; // Immutable
+        allow read, create, delete: if isAuthenticated() && getUserId() == userId;
+        allow update: if false; // Immutable
+      }
+
+      // Character images (generated via fal.ai)
+      match /images/{imageId} {
+        allow read, create, delete: if isAuthenticated() && getUserId() == userId;
+        allow update: if false; // Immutable
       }
     }
 

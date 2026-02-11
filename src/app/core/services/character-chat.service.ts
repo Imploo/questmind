@@ -22,6 +22,12 @@ interface CharacterChatRequest {
   model: string;
 }
 
+// Only the visible text per turn — no metadata, no JSON blobs
+interface DialogueTurn {
+  role: 'user' | 'model';
+  text: string;
+}
+
 export interface ChatMessage {
   id: string;
   sender: 'user' | 'ai' | 'error';
@@ -43,7 +49,9 @@ export class CharacterChatService {
 
   private messages = signal<ChatMessage[]>([]);
   private draftCharacter = signal<DndCharacter | null>(null);
-  private conversationHistory: { role: string; parts: { text: string }[] }[] = [];
+
+  // Only stores the visible dialogue — user text as typed, AI text as the response field
+  private dialogueHistory: DialogueTurn[] = [];
 
   getMessages() {
     return this.messages.asReadonly();
@@ -56,7 +64,7 @@ export class CharacterChatService {
   resetConversation() {
     this.messages.set([]);
     this.draftCharacter.set(null);
-    this.conversationHistory = [];
+    this.dialogueHistory = [];
   }
 
   clearDraft() {
@@ -64,15 +72,6 @@ export class CharacterChatService {
   }
 
   sendMessage(userMessage: string, currentCharacter: DndCharacter): Observable<string> {
-    const systemPrompt = `${CHARACTER_BUILDER_PROMPT}\n\nCurrent Character JSON:\n${JSON.stringify(currentCharacter, null, 2)}`;
-
-    if (this.conversationHistory.length === 0) {
-      this.conversationHistory = [
-        { role: 'user', parts: [{ text: systemPrompt }] },
-        { role: 'model', parts: [{ text: '{"thought": "System initialized", "character": ' + JSON.stringify(currentCharacter) + ', "response": "Ready to help."}' }] }
-      ];
-    }
-
     const userMsgObj: ChatMessage = {
       id: Date.now().toString(),
       sender: 'user',
@@ -89,10 +88,7 @@ export class CharacterChatService {
       timestamp: new Date()
     }]);
 
-    const contents = [
-      ...this.conversationHistory,
-      { role: 'user', parts: [{ text: userMessage }] }
-    ];
+    const contents = this.buildContents(userMessage, currentCharacter);
 
     const functions = this.firebaseService.requireFunctions();
     const characterChat = httpsCallable<CharacterChatRequest, { text: string }>(
@@ -109,20 +105,14 @@ export class CharacterChatService {
         const parsed = this.parseAiResponse(fullText);
         const responseText = parsed?.response ?? fullText;
 
-        if (parsed) {
-          this.conversationHistory.push(
-            { role: 'user', parts: [{ text: userMessage }] },
-            { role: 'model', parts: [{ text: JSON.stringify(parsed) }] }
-          );
+        // Store only the visible dialogue — no metadata, no embedded JSON
+        this.dialogueHistory.push(
+          { role: 'user', text: userMessage },
+          { role: 'model', text: responseText }
+        );
 
-          if (JSON.stringify(parsed.character) !== JSON.stringify(currentCharacter)) {
-            this.draftCharacter.set(parsed.character);
-          }
-        } else {
-          this.conversationHistory.push(
-            { role: 'user', parts: [{ text: userMessage }] },
-            { role: 'model', parts: [{ text: fullText }] }
-          );
+        if (parsed && JSON.stringify(parsed.character) !== JSON.stringify(currentCharacter)) {
+          this.draftCharacter.set(parsed.character);
         }
 
         this.updateAiMessage(aiMessageId, responseText);
@@ -139,6 +129,29 @@ export class CharacterChatService {
         return throwError(() => err);
       })
     );
+  }
+
+  /**
+   * Builds the full contents payload for each request:
+   * 1. System prompt
+   * 2. Current character state (draft if available, otherwise the last known version)
+   * 3. Visible dialogue history (user text + AI response text only)
+   * 4. New user message
+   */
+  private buildContents(userMessage: string, currentCharacter: DndCharacter): ChatContent[] {
+    const character = this.draftCharacter() ?? currentCharacter;
+
+    return [
+      { role: 'user', parts: [{ text: CHARACTER_BUILDER_PROMPT }] },
+      { role: 'model', parts: [{ text: 'Ready to help evolve your character.' }] },
+      { role: 'user', parts: [{ text: `Huidig karakter:\n${JSON.stringify(character, null, 2)}` }] },
+      { role: 'model', parts: [{ text: 'Begrepen, ik gebruik dit als basis.' }] },
+      ...this.dialogueHistory.map(turn => ({
+        role: turn.role,
+        parts: [{ text: turn.text }]
+      })),
+      { role: 'user', parts: [{ text: userMessage }] },
+    ];
   }
 
   private updateAiMessage(messageId: string, text: string): void {
