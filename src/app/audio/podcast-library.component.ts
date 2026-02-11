@@ -5,6 +5,7 @@ import { AuthService } from '../auth/auth.service';
 import { PodcastAudioService } from './services/podcast-audio.service';
 import { PodcastVersion } from './services/audio-session.models';
 import { CampaignContextService } from '../campaign/campaign-context.service';
+import { CampaignSelectorComponent } from '../campaign/campaign-selector.component';
 import { FormattingService } from '../shared/formatting.service';
 import { FirebaseService } from '../core/firebase.service';
 
@@ -18,9 +19,13 @@ interface SessionWithPodcasts {
 @Component({
   selector: 'app-podcast-library',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, CampaignSelectorComponent],
   template: `
-    <div class="max-w-7xl mx-auto px-4 py-8">
+    <div class="max-w-5xl mx-auto">
+      <div class="mb-6">
+        <app-campaign-selector />
+      </div>
+
       <div class="mb-8">
         <h1 class="text-3xl font-bold m-0">🎙️ Podcast Bibliotheek</h1>
         <p class="text-gray-600 m-0 mt-2">

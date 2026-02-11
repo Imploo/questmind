@@ -12,52 +12,82 @@ import { Campaign } from './campaign.models';
   imports: [FormsModule, LucideAngularModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <!-- When expanded: Full layout -->
+    <!-- Expanded: pill bar with campaign name + icon buttons -->
     @if (!isCollapsed()) {
-      <div class="w-full">
-      <div class="flex flex-col gap-2">
-        <div class="flex flex-col gap-2 w-full">
-          <label class="text-xs font-semibold text-gray-600">Campaign</label>
-          <select
-            [(ngModel)]="selectedId"
-            (ngModelChange)="onCampaignChange($event)"
-            class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-          >
-            @for (campaign of campaigns(); track campaign.id) {
-              <option [value]="campaign.id">
-                {{ campaign.name }}
-                @if (isCampaignOwner(campaign)) { (Owner) }
-              </option>
-            }
-          </select>
-        </div>
-        <div class="flex gap-2 w-full">
+      <div class="flex items-center justify-center gap-2">
+
+        <!-- Settings button (left) -->
+        <button
+          (click)="openManageCampaign()"
+          [disabled]="!selectedCampaign()"
+          class="w-9 h-9 flex items-center justify-center rounded-full bg-white shadow-sm border border-gray-200 text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+          title="Campaign instellingen"
+        >
+          <lucide-icon name="settings" class="w-4 h-4" />
+        </button>
+
+        <!-- Campaign pill -->
+        <div class="relative flex-1 min-w-0 max-w-[50vw] md:max-w-80">
           <button
-            (click)="showCreateCampaign.set(true)"
-            class="flex-1 px-2 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center justify-center gap-1"
+            (click)="toggleDropdown()"
+            class="flex items-center gap-2 w-full px-4 py-2.5 bg-white rounded-full shadow-sm border border-gray-200 hover:bg-gray-50 transition-all text-left"
           >
-            <lucide-icon name="plus" class="w-3 h-3" />
-            <span>New</span>
+            <lucide-icon name="book-open" class="w-4 h-4 text-gray-400 flex-shrink-0" />
+            <span class="flex-1 text-sm font-medium text-gray-800 truncate">
+              {{ selectedCampaign()?.name || 'Selecteer een campaign' }}
+            </span>
+            <lucide-icon
+              name="chevron-down"
+              class="w-4 h-4 text-gray-400 flex-shrink-0 transition-transform duration-200"
+              [style.transform]="showDropdown() ? 'rotate(180deg)' : 'rotate(0deg)'"
+            />
           </button>
-          @if (selectedCampaign()) {
-            <button
-              (click)="openManageCampaign(); showDropdown.set(false)"
-              class="flex-1 px-2 py-1.5 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors flex items-center justify-center gap-1"
-            >
-              <lucide-icon name="settings" class="w-3 h-3" />
-              <span>Settings</span>
-            </button>
+
+          <!-- Backdrop -->
+          @if (showDropdown()) {
+            <div class="fixed inset-0 z-40" (click)="showDropdown.set(false)"></div>
+          }
+
+          <!-- Dropdown list -->
+          @if (showDropdown()) {
+            <div class="absolute top-full mt-2 left-1/2 -translate-x-1/2 w-72 bg-white rounded-2xl shadow-xl z-50 border border-gray-100 overflow-hidden">
+              @for (campaign of campaigns(); track campaign.id) {
+                <button
+                  (click)="onCampaignChange(campaign.id); showDropdown.set(false)"
+                  class="w-full px-4 py-3 text-left text-sm transition-colors flex items-center justify-between gap-2 hover:bg-gray-50"
+                  [class.bg-blue-50]="campaign.id === selectedId"
+                  [class.text-blue-700]="campaign.id === selectedId"
+                  [class.font-medium]="campaign.id === selectedId"
+                >
+                  <span class="truncate">{{ campaign.name }}</span>
+                  @if (isCampaignOwner(campaign)) {
+                    <span class="text-xs text-gray-400 flex-shrink-0">Owner</span>
+                  }
+                </button>
+              }
+              @if (campaigns().length === 0) {
+                <div class="px-4 py-3 text-sm text-gray-400">Geen campaigns gevonden</div>
+              }
+            </div>
           }
         </div>
+
+        <!-- New campaign button (right) -->
+        <button
+          (click)="showCreateCampaign.set(true)"
+          class="w-9 h-9 flex items-center justify-center rounded-full bg-white shadow-sm border border-gray-200 text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all flex-shrink-0"
+          title="Nieuwe campaign aanmaken"
+        >
+          <lucide-icon name="plus" class="w-4 h-4" />
+        </button>
       </div>
 
       @if (errorMessage()) {
-        <div class="text-xs text-red-600 mt-1">{{ errorMessage() }}</div>
+        <div class="text-xs text-red-600 mt-2 px-1">{{ errorMessage() }}</div>
       }
-      </div>
     }
 
-    <!-- When collapsed: Compact dropdown only -->
+    <!-- Collapsed: icon button with dropdown (sidebar use) -->
     @if (isCollapsed()) {
       <div class="relative">
         <button
@@ -67,38 +97,41 @@ import { Campaign } from './campaign.models';
         >
           <lucide-icon name="book-open" class="w-6 h-6 mx-auto" />
         </button>
+
         @if (showDropdown()) {
-          <div class="absolute left-full ml-2 top-0 w-64 bg-white rounded-lg shadow-xl z-50 border border-gray-200">
+          <div class="fixed inset-0 z-40" (click)="showDropdown.set(false)"></div>
+          <div class="absolute left-full ml-2 top-0 w-64 bg-white rounded-xl shadow-xl z-50 border border-gray-100 overflow-hidden">
             <div class="p-2">
-              <label class="block text-xs font-semibold text-gray-700 mb-2 px-2">Select Campaign</label>
-              <select
-                [(ngModel)]="selectedId"
-                (ngModelChange)="onCampaignChange($event); showDropdown.set(false)"
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                @for (campaign of campaigns(); track campaign.id) {
-                  <option [value]="campaign.id">
-                    {{ campaign.name }}
-                    @if (isCampaignOwner(campaign)) { (Owner) }
-                  </option>
-                }
-              </select>
+              <p class="text-xs font-semibold text-gray-500 px-3 py-2">Campaign</p>
+              @for (campaign of campaigns(); track campaign.id) {
+                <button
+                  (click)="onCampaignChange(campaign.id); showDropdown.set(false)"
+                  class="w-full px-3 py-2.5 text-left text-sm rounded-lg transition-colors flex items-center justify-between gap-2 hover:bg-gray-50"
+                  [class.bg-blue-50]="campaign.id === selectedId"
+                  [class.text-blue-700]="campaign.id === selectedId"
+                >
+                  <span class="truncate">{{ campaign.name }}</span>
+                  @if (isCampaignOwner(campaign)) {
+                    <span class="text-xs text-gray-400 flex-shrink-0">Owner</span>
+                  }
+                </button>
+              }
             </div>
-            <div class="border-t border-gray-200 p-2">
+            <div class="border-t border-gray-100 p-2">
               <button
                 (click)="showCreateCampaign.set(true); showDropdown.set(false)"
-                class="w-full px-3 py-2 text-left text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors flex items-center gap-2"
+                class="w-full px-3 py-2.5 text-left text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors flex items-center gap-2"
               >
                 <lucide-icon name="plus" class="w-4 h-4" />
-                <span>New Campaign</span>
+                <span>Nieuwe campaign</span>
               </button>
               @if (selectedCampaign()) {
                 <button
                   (click)="openManageCampaign(); showDropdown.set(false)"
-                  class="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors flex items-center gap-2"
+                  class="w-full px-3 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors flex items-center gap-2"
                 >
                   <lucide-icon name="settings" class="w-4 h-4" />
-                  <span>Campaign Settings</span>
+                  <span>Instellingen</span>
                 </button>
               }
             </div>
@@ -107,27 +140,28 @@ import { Campaign } from './campaign.models';
       </div>
     }
 
+    <!-- Create campaign modal -->
     @if (showCreateCampaign()) {
       <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div class="bg-white rounded-lg p-6 max-w-md w-full">
-          <h3 class="text-xl font-bold mb-4">Create New Campaign</h3>
+        <div class="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
+          <h3 class="text-xl font-bold mb-4">Nieuwe campaign aanmaken</h3>
           <div class="space-y-4">
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Campaign Name</label>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Naam</label>
               <input
                 type="text"
                 [(ngModel)]="newCampaignName"
-                class="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                placeholder="My D&D Campaign"
+                class="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Mijn D&D Campaign"
               />
             </div>
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Description (Optional)</label>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Beschrijving (optioneel)</label>
               <textarea
                 [(ngModel)]="newCampaignDescription"
-                class="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                class="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 rows="3"
-                placeholder="Description of your campaign..."
+                placeholder="Beschrijving van je campaign..."
               ></textarea>
             </div>
           </div>
@@ -135,15 +169,15 @@ import { Campaign } from './campaign.models';
             <button
               (click)="createCampaign()"
               [disabled]="!newCampaignName.trim().length"
-              class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
             >
-              Create
+              Aanmaken
             </button>
             <button
               (click)="showCreateCampaign.set(false)"
-              class="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+              class="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors font-medium"
             >
-              Cancel
+              Annuleren
             </button>
           </div>
         </div>

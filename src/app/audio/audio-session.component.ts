@@ -17,6 +17,7 @@ import {
 } from './services/audio-session.models';
 import { SessionStoryComponent } from './session-story.component';
 import { SessionProgressCardComponent } from './session-progress-card.component';
+import { CampaignSelectorComponent } from '../campaign/campaign-selector.component';
 import { httpsCallable, Functions } from 'firebase/functions';
 import { doc, onSnapshot, Unsubscribe, Firestore } from 'firebase/firestore';
 import { FirebaseService } from '../core/firebase.service';
@@ -25,9 +26,15 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
 
 @Component({
   selector: 'app-audio-session',
-  imports: [CommonModule, SessionStoryComponent, SessionProgressCardComponent],
+  imports: [CommonModule, SessionStoryComponent, SessionProgressCardComponent, CampaignSelectorComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
+    @if (authService.isAuthenticated()) {
+      <div class="mb-6">
+        <app-campaign-selector />
+      </div>
+    }
+
     @if (!authService.isAuthenticated()) {
       <div class="border border-gray-200 rounded-xl bg-white shadow-sm p-8 text-center">
         <div class="max-w-md mx-auto">

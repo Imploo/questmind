@@ -12,7 +12,7 @@ import { AuthService } from './auth/auth.service';
     <main class="w-full min-h-screen bg-gradient-to-br from-primary to-secondary">
       <app-nav-rail />
 
-      <div [class]="authService.isAuthenticated() ? 'ml-20 min-h-screen p-4' : 'min-h-screen p-4'">
+      <div [class]="authService.isAuthenticated() ? 'sm:ml-20 min-h-screen p-4' : 'min-h-screen p-4'">
         <section>
           <router-outlet />
         </section>

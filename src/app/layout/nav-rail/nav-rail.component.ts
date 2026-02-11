@@ -1,4 +1,4 @@
-import { Component, ChangeDetectionStrategy, inject, computed } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, computed, signal } from '@angular/core';
 import { Router, RouterLink, NavigationEnd } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { filter, map, startWith } from 'rxjs/operators';
@@ -13,6 +13,36 @@ import { NavItem } from '../nav-item.model';
   imports: [RouterLink, LucideAngularModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [`
+    .hamburger-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      z-index: 50;
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: rgba(255,255,255,0.2);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.25);
+      cursor: pointer;
+      color: white;
+    }
+
+    .hamburger-btn:hover {
+      background: rgba(255,255,255,0.3);
+    }
+
+    .backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 39;
+      background: rgba(0,0,0,0.35);
+    }
+
     .nav-rail {
       width: 80px;
       position: fixed;
@@ -28,6 +58,18 @@ import { NavItem } from '../nav-item.model';
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
       border-right: 1px solid rgba(255,255,255,0.2);
+      transform: translateX(-100%);
+      transition: transform 280ms ease;
+    }
+
+    .nav-rail.is-open {
+      transform: translateX(0);
+    }
+
+    @media (min-width: 640px) {
+      .hamburger-btn { display: none; }
+      .backdrop { display: none !important; }
+      .nav-rail { transform: translateX(0); transition: none; }
     }
 
     .nav-item {
@@ -123,14 +165,25 @@ import { NavItem } from '../nav-item.model';
   `],
   template: `
     @if (authService.isAuthenticated()) {
-      <nav class="nav-rail">
+      <!-- Hamburger button (mobile only) -->
+      <button class="hamburger-btn" (click)="toggleMenu()" [attr.aria-label]="isMenuOpen() ? 'Menu sluiten' : 'Menu openen'">
+        <lucide-icon [name]="isMenuOpen() ? 'x' : 'menu'" style="width:20px;height:20px;" />
+      </button>
+
+      <!-- Backdrop (mobile only) -->
+      @if (isMenuOpen()) {
+        <div class="backdrop" (click)="closeMenu()"></div>
+      }
+
+      <nav class="nav-rail" [class.is-open]="isMenuOpen()">
         <!-- Nav items -->
-        <div style="flex: 1; width: 100%; display: flex; flex-direction: column; gap: 4px; padding-top: 16px;">
+        <div style="flex: 1; width: 100%; display: flex; flex-direction: column; gap: 4px;" class="pt-16 sm:pt-4">
           @for (item of navItems(); track item.id) {
             <a
               [routerLink]="item.route"
               class="nav-item"
               [class.active]="isItemActive(item)"
+              (click)="closeMenu()"
             >
               <div class="nav-indicator">
                 <lucide-icon [name]="item.icon" class="nav-icon" style="width:20px;height:20px;" />
@@ -167,6 +220,8 @@ export class NavRailComponent {
   private readonly userService = inject(UserService);
   private readonly campaignContext = inject(CampaignContextService);
   private readonly router = inject(Router);
+
+  readonly isMenuOpen = signal(false);
 
   private readonly routerEvents = toSignal(
     this.router.events.pipe(
@@ -217,6 +272,14 @@ export class NavRailComponent {
     if (item.id === 'audio') return active === 'audio';
     if (item.id === 'podcasts') return active === 'podcasts';
     return active === item.route;
+  }
+
+  toggleMenu(): void {
+    this.isMenuOpen.update(v => !v);
+  }
+
+  closeMenu(): void {
+    this.isMenuOpen.set(false);
   }
 
   async signOut(): Promise<void> {
