@@ -22,9 +22,8 @@ import { ImageLightboxComponent } from './image-lightbox.component';
     }
 
     <div class="flex flex-col h-full bg-white">
-      <div class="p-4 border-b border-gray-200 bg-gradient-to-br from-primary to-secondary text-white">
-        <h2 class="m-0 mb-1 text-lg font-bold">Sidekick</h2>
-        <p class="m-0 opacity-90 text-xs">Character building assistant</p>
+      <div class="py-1.5 px-4 border-b border-gray-200 bg-gradient-to-br from-primary to-secondary text-white rounded-2xl text-center">
+        <h2 class="!m-0 text-sm font-bold">The Sidekick</h2>
       </div>
 
       <div class="flex-1 overflow-y-auto p-4 flex flex-col gap-3 bg-gray-50 scrollbar-thin" #messagesContainer>

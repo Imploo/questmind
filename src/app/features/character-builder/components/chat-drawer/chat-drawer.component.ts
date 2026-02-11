@@ -11,7 +11,7 @@ import {
 import { ChatComponent } from '../../../../chat/chat.component';
 import { DndCharacter } from '../../../../shared/schemas/dnd-character.schema';
 
-const COLLAPSED_VH = 0.10;
+const COLLAPSED_VH = 0.08;
 const EXPANDED_VH = 0.82;
 const DRAG_THRESHOLD_PX = 40;
 
