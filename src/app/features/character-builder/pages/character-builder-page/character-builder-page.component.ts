@@ -254,6 +254,8 @@ export class CharacterBuilderPageComponent {
       class: 'Fighter',
       level: 1,
       race: 'Human',
+      experiencePoints: 0,
+      images: [],
       abilities: {
         strength: { score: 10, modifier: 0 },
         dexterity: { score: 10, modifier: 0 },
@@ -283,8 +285,7 @@ export class CharacterBuilderPageComponent {
       attacks: [],
       equipment: [],
       coins: { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 },
-      featuresAndTraits: [],
-      experiencePoints: 0
+      featuresAndTraits: []
     };
 
     const id = await this.characterService.createCharacter(name, initialData as DndCharacter);

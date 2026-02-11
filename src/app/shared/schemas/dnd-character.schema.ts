@@ -54,6 +54,13 @@ export const DndCharacterSchema = z.object({
     'Unaligned'
   ]).optional(),
   experiencePoints: z.number().min(0).default(0),
+  
+  // Character Images
+  images: z.array(z.object({
+    url: z.string(),
+    mimeType: z.string(),
+    createdAt: z.string().optional(),
+  })).optional().default([]),
 
   // Ability Scores
   abilities: z.object({

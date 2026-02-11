@@ -136,6 +136,7 @@ export class CharacterListPageComponent {
         level: 1,
         race: 'Human',
         experiencePoints: 0,
+        images: [],
         abilities: {
           strength: { score: 10, modifier: 0 },
           dexterity: { score: 10, modifier: 0 },

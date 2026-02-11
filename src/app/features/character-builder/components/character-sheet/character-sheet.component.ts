@@ -1,11 +1,12 @@
 import { Component, input, output, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DndCharacter } from '../../../../shared/schemas/dnd-character.schema';
+import { CharacterImageGalleryComponent } from '../character-image-gallery/character-image-gallery.component';
 
 @Component({
   selector: 'app-character-sheet',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, CharacterImageGalleryComponent],
   template: `
     <div class="p-2 max-w-4xl mx-auto space-y-8">
       <!-- Header -->
@@ -151,6 +152,11 @@ import { DndCharacter } from '../../../../shared/schemas/dnd-character.schema';
 
         <!-- Right Column -->
         <div class="space-y-6">
+          <!-- Character Images Gallery -->
+          @if (character().images && character().images!.length > 0) {
+            <app-character-image-gallery [images]="character().images!" />
+          }
+
           <!-- Spellcasting -->
           @let spellcasting = character().spellcasting;
           @if (spellcasting) {
