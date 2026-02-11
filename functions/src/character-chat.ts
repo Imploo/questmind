@@ -15,8 +15,6 @@ export interface CharacterChatResponse {
 
 export const characterChat = onCall(
   {
-    timeoutSeconds: 300,
-    memory: '512MiB',
     cors: SHARED_CORS,
     secrets: ['GOOGLE_AI_API_KEY'],
   },
