@@ -38,7 +38,10 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
     <div class="flex min-h-screen bg-base-200">
         <div class="flex w-full items-start">
           <!-- Center Character Sheet -->
-          <div [class]="isNarrow() ? 'w-full' : 'w-2/3 p-4'">
+          <div 
+              class="max-w-5xl mx-auto"
+              [class]="isNarrow() || !isOwner() ? 'w-full' : 'w-2/3 p-4'"
+          >
             <div class="flex flex-col gap-4">
               @if (draftCharacter()) {
                 <div class="sticky top-8 z-10">
@@ -109,7 +112,7 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
         </div>
     </div>
 
-    @if (showHistory() && selectedCharacterId()) {
+    @if (isOwner() && showHistory() && selectedCharacterId()) {
       <app-character-version-history
         [versions]="versions()"
         [activeVersionId]="activeVersion()?.id || ''"
