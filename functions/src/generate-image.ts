@@ -31,7 +31,6 @@ export interface GenerateImageRequest {
 export interface GenerateImageResponse {
   imageUrl: string;
   mimeType: string;
-  imageId?: string;
 }
 
 function buildImagePrompt(userPrompt: string, visuals?: CharacterVisuals): string {
@@ -141,7 +140,6 @@ export const generateImage = onCall(
       });
 
       // Save image metadata to Firestore if characterId is provided
-      let imageId: string | undefined;
       if (characterId && request.auth) {
         const userId = request.auth.uid;
         const db = getFirestore();
@@ -153,10 +151,8 @@ export const generateImage = onCall(
           .collection('images')
           .doc();
 
-        imageId = imageRef.id;
-
         await imageRef.set({
-          id: imageId,
+          id: imageRef.id,
           characterId,
           url: signedUrl,
           mimeType,
@@ -168,7 +164,6 @@ export const generateImage = onCall(
       return {
         imageUrl: signedUrl,
         mimeType,
-        imageId,
       };
     }
   )
