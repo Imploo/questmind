@@ -10,8 +10,7 @@ interface ChatHistoryMessage {
 
 export interface CharacterChatRequest {
   systemPrompt: string;
-  message: string;
-  chatHistory?: ChatHistoryMessage[];
+  chatHistory: ChatHistoryMessage[];
 }
 
 export interface CharacterChatResponse {
@@ -21,13 +20,14 @@ export interface CharacterChatResponse {
 export const characterChat = onCall(
   {
     cors: SHARED_CORS,
+    secrets: [],
   },
   wrapCallable<CharacterChatRequest, CharacterChatResponse>(
     'characterChat',
     async (request): Promise<CharacterChatResponse> => {
-      const { systemPrompt, chatHistory = [] } = request.data;
+      const { systemPrompt, chatHistory } = request.data;
 
-      if (!systemPrompt || !chatHistory) {
+      if (!systemPrompt || !Array.isArray(chatHistory) || chatHistory.length === 0) {
         throw new HttpsError('invalid-argument', 'Missing required fields: systemPrompt, chatHistory');
       }
 

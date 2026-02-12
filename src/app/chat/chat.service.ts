@@ -5,29 +5,22 @@ import {httpsCallable} from 'firebase/functions';
 import {CHARACTER_BUILDER_PROMPT} from '../prompts/character-builder.prompt';
 import {IMAGE_GENERATION_SYSTEM_PROMPT} from '../prompts/image-generation.prompt';
 import {DndCharacter} from '../shared/schemas/dnd-character.schema';
-import {buildCharacterChatRequest} from '../shared/utils/build-character-context';
+import {
+  buildCharacterChatRequest,
+  type CharacterChatRequest,
+  type ChatHistoryMessage,
+} from '../shared/utils/build-character-context';
 import {AiSettingsService} from '../core/services/ai-settings.service';
 import {FirebaseService} from '../core/firebase.service';
 
+export type { ChatHistoryMessage, CharacterChatRequest };
+
 const IMAGE_TRIGGER_REGEX = /maak\s+afbeelding/i;
-
-type ChatRole = 'user' | 'assistant';
-
-export interface ChatHistoryMessage {
-  role: ChatRole;
-  content: string;
-}
-
-export interface CharacterChatRequest {
-  systemPrompt: string;
-  message: string;
-  chatHistory?: ChatHistoryMessage[];
-}
 
 interface GenerateImageRequest {
   chatRequest: CharacterChatRequest;
   model: string;
-  characterId?: string;
+  characterId: string;
 }
 
 interface GenerateImageResponse {
@@ -131,6 +124,13 @@ export class ChatService {
   }
 
   private sendImageGenerationMessage(userMessage: string): Observable<{ text: string; images?: MessageImage[] }> {
+    if (!this.characterId) {
+      return throwError(() => ({
+        status: 400,
+        message: 'No character selected. Please open a character to generate an image.'
+      }));
+    }
+
     const functions = this.firebase.requireFunctions();
 
     const match = userMessage.match(/maak\s+afbeelding\s*(.*)/i);
@@ -147,7 +147,7 @@ export class ChatService {
     const payload: GenerateImageRequest = {
       chatRequest,
       model: imageConfig.model,
-      ...(this.characterId && { characterId: this.characterId }),
+      characterId: this.characterId,
     };
 
     return from(generateImage(payload)).pipe(

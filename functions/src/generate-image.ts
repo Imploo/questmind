@@ -6,17 +6,14 @@ import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { randomUUID } from 'crypto';
 import { fal } from '@fal-ai/client';
 
-type ChatRole = 'user' | 'assistant';
-
 export interface ChatHistoryMessage {
-    role: ChatRole;
+    role: 'user' | 'assistant';
     content: string;
 }
 
 export interface CharacterChatRequest {
     systemPrompt: string;
-    message: string;
-    chatHistory?: ChatHistoryMessage[];
+    chatHistory: ChatHistoryMessage[];
 }
 
 interface GenerateImageRequest {
@@ -49,7 +46,7 @@ export const generateImage = onCall(
         throw new HttpsError('failed-precondition', 'FAL API key not configured');
       }
 
-      const prompt = chatRequest.systemPrompt + chatRequest.chatHistory?.join('\n');
+      const prompt = chatRequest.systemPrompt + chatRequest.chatHistory.map(chat => `[${chat.role}]: ${chat.content}\n`);
 
       fal.config({ credentials: apiKey });
 

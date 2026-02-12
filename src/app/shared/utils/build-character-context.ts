@@ -1,12 +1,38 @@
 import { DndCharacter } from '../schemas/dnd-character.schema';
-import {CharacterChatRequest, ChatHistoryMessage} from "../../chat/chat.service";
 
-export function buildCharacterChatRequest(character: DndCharacter | null, systemPrompt: string, message: string, history: ChatHistoryMessage[]): CharacterChatRequest {
-  const messages = [
-    {role: 'user', message: `Huidig karakter:\n${JSON.stringify(character, null, 2)}`},
+export interface ChatHistoryMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface CharacterChatRequest {
+  systemPrompt: string;
+  chatHistory: ChatHistoryMessage[];
+}
+
+/**
+ * Builds a CharacterChatRequest with the current character JSON embedded
+ * in the new user message. The character JSON is part of the message text
+ * (not a standalone history entry) to preserve Anthropic's alternating
+ * user/assistant message requirement.
+ */
+export function buildCharacterChatRequest(
+  character: DndCharacter | null,
+  systemPrompt: string,
+  message: string,
+  history: ChatHistoryMessage[]
+): CharacterChatRequest {
+  const characterContext = character
+    ? `Huidig karakter:\n${JSON.stringify(character, null, 2)}\n\n`
+    : '';
+
+  return {
+    systemPrompt,
+    chatHistory: [
+      {role: 'user', content: characterContext},
+      {role: 'assistant', content: 'Karakter ontvangen, zal het inlezen.'},
       ...history,
-    {role: 'user', message}
-  ] as ChatHistoryMessage[];
-
-  return {systemPrompt: systemPrompt, message, chatHistory: messages};
+      { role: 'user', content: message },
+    ],
+  };
 }
