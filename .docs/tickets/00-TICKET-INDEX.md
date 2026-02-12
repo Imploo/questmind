@@ -416,5 +416,23 @@ Start here for immediate impact with minimal risk:
 
 ---
 
-**Last Updated:** 2026-02-08
+---
+
+## 🤖 AI Stack Refactoring
+
+| Ticket | Title | Priority | Status | Effort | Dependencies |
+|--------|-------|----------|--------|--------|--------------|
+| [#47](./47-refactor-ai-stack-to-vertexai.md) | Refactor AI Stack naar Vertex AI + Claude Haiku | High | Todo | 1–2 weken | #46 |
+
+**Key Changes:**
+- **Ticket 47**: Volledige AI stack refactor
+  - `characterChat` → Claude Haiku 4.5 (Anthropic)
+  - `generateImage` → Imagen 4 op Vertex AI (vervangt FAL.ai)
+  - `generatePodcastAudio` → script via Haiku 4.5, audio via Chirp 3 HD (directe MP3 output, vervangt ElevenLabs)
+  - Audio uploads → GCloud Storage bucket + `gs://` URI (vervangt Gemini Files API)
+  - Nieuwe gedeelde `buildContextContents()` utility voor characterChat én generateImage
+
+---
+
+**Last Updated:** 2026-02-12
 **Status:** Planning Complete, Ready to Begin

@@ -7,6 +7,8 @@
     "start:backend:functions": "firebase emulators:start --only functions",
     "prebuild": "node scripts/set-version.js",
     "build": "ng build",
+    "build:dev": "ng build --configuration development",
+    "build:beta": "ng build --configuration beta",
     "build:backend": "cd functions && tsc",
     "build:backend:watch": "cd functions && tsc --watch",
     "watch": "ng build --watch --configuration development",
@@ -14,6 +16,7 @@
     "generate:icons": "node scripts/generate-icons.js",
     "sentry:sourcemaps": "sentry-cli releases files $npm_package_version upload-sourcemaps ./dist/questmind/browser --rewrite",
     "deploy:prod": "npm run build && npm run sentry:sourcemaps",
+    "deploy:beta": "npm run build:beta && firebase deploy --project questmind-beta",
     "lint": "ng lint"
   },
   "prettier": {

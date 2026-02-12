@@ -67,3 +67,4 @@ bruno/.env
 # Dev Container - Service Account Credentials
 .devcontainer/service-account.json
 .devcontainer/*.key.json
+/src/environments/environment.beta.ts
