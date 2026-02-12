@@ -13,10 +13,12 @@
     "deploy": "npm run build && firebase deploy --only functions"
   },
   "dependencies": {
+    "@anthropic-ai/vertex-sdk": "^0.14.3",
     "@elevenlabs/elevenlabs-js": "^2.34.0",
     "@fal-ai/client": "^1.9.0",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@google-cloud/storage": "^7.17.1",
+    "@google-cloud/text-to-speech": "^6.4.0",
     "@google/genai": "^1.39.0",
     "@google/generative-ai": "^0.24.1",
     "@sentry/node": "^10.38.0",

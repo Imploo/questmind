@@ -1,7 +1,7 @@
 # Ticket #47 — Refactor AI Stack naar Vertex AI + Claude Haiku
 
 - **Created:** 2026-02-12
-- **Status:** Todo
+- **Status:** Done
 - **Priority:** High
 - **Effort:** 1–2 weken
 

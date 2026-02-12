@@ -422,7 +422,7 @@ Start here for immediate impact with minimal risk:
 
 | Ticket | Title | Priority | Status | Effort | Dependencies |
 |--------|-------|----------|--------|--------|--------------|
-| [#47](./47-refactor-ai-stack-to-vertexai.md) | Refactor AI Stack naar Vertex AI + Claude Haiku | High | Todo | 1–2 weken | #46 |
+| [#47](./done/47-refactor-ai-stack-to-vertexai.md) | Refactor AI Stack naar Vertex AI + Claude Haiku | High | Done | 1–2 weken | #46 |
 
 **Key Changes:**
 - **Ticket 47**: Volledige AI stack refactor

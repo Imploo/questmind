@@ -1,55 +1,33 @@
-import { Injectable, signal, inject } from '@angular/core';
-import { Observable, from, throwError } from 'rxjs';
-import { map, catchError } from 'rxjs/operators';
-import { httpsCallable } from 'firebase/functions';
-import { CHARACTER_BUILDER_PROMPT } from "../prompts/character-builder.prompt";
-import { DndCharacter } from '../shared/schemas/dnd-character.schema';
-import { AiSettingsService } from '../core/services/ai-settings.service';
-import { FirebaseService } from '../core/firebase.service';
+import {inject, Injectable, signal} from '@angular/core';
+import {from, Observable, throwError} from 'rxjs';
+import {catchError, map} from 'rxjs/operators';
+import {httpsCallable} from 'firebase/functions';
+import {CHARACTER_BUILDER_PROMPT} from '../prompts/character-builder.prompt';
+import {IMAGE_GENERATION_SYSTEM_PROMPT} from '../prompts/image-generation.prompt';
+import {DndCharacter} from '../shared/schemas/dnd-character.schema';
+import {buildCharacterChatRequest} from '../shared/utils/build-character-context';
+import {AiSettingsService} from '../core/services/ai-settings.service';
+import {FirebaseService} from '../core/firebase.service';
 
 const IMAGE_TRIGGER_REGEX = /maak\s+afbeelding/i;
 
-interface ChatContent {
-  role: string;
-  parts: { text: string }[];
+type ChatRole = 'user' | 'assistant';
+
+export interface ChatHistoryMessage {
+  role: ChatRole;
+  content: string;
 }
 
-interface ChatGenerationConfig {
-  responseMimeType: string;
-  responseModalities?: string[];
-  temperature: number;
-  topP: number;
-  topK: number;
-  maxOutputTokens: number;
-}
-
-interface CharacterChatRequest {
-  contents: ChatContent[];
-  config: ChatGenerationConfig;
-  model: string;
-  characterId?: string;
-}
-
-interface CharacterVisuals {
-  name: string;
-  race: string;
-  characterClass: string;
-  appearance?: {
-    age?: string;
-    height?: string;
-    weight?: string;
-    eyes?: string;
-    skin?: string;
-    hair?: string;
-    description?: string;
-  };
+export interface CharacterChatRequest {
+  systemPrompt: string;
+  message: string;
+  chatHistory?: ChatHistoryMessage[];
 }
 
 interface GenerateImageRequest {
-  prompt: string;
+  chatRequest: CharacterChatRequest;
   model: string;
   characterId?: string;
-  characterVisuals?: CharacterVisuals;
 }
 
 interface GenerateImageResponse {
@@ -84,32 +62,15 @@ export class ChatService {
   private readonly aiSettingsService = inject(AiSettingsService);
 
   private messages = signal<Message[]>([]);
-  private conversationHistory: { role: string; parts: { text: string }[] }[] = [];
+  private conversationHistory: ChatHistoryMessage[] = [];
   private draftCharacter = signal<DndCharacter | null>(null);
   private currentCharacter: DndCharacter | null = null;
   private characterId: string | null = null;
 
-  constructor() {
-    this.initializeConversation();
-  }
-
-  private initializeConversation(): void {
-    this.conversationHistory = [
-      {
-        role: 'user',
-        parts: [{ text: CHARACTER_BUILDER_PROMPT }]
-      },
-      {
-        role: 'model',
-        parts: [{ text: 'Ready to help evolve your character.' }]
-      }
-    ];
-  }
-
   setCurrentCharacter(character: DndCharacter | null): void {
     this.currentCharacter = character;
     this.draftCharacter.set(null);
-    this.initializeConversation();
+    this.conversationHistory = [];
   }
 
   setCharacterId(characterId: string | null): void {
@@ -129,53 +90,17 @@ export class ChatService {
   }
 
   sendMessage(userMessage: string): Observable<{ text: string; images?: MessageImage[] }> {
-    if (!this.currentCharacter) {
-      return throwError(() => ({
-        status: 400,
-        message: 'No character selected. Please open a character to chat.'
-      }));
-    }
-
     if (this.isImageGenerationRequest(userMessage)) {
       return this.sendImageGenerationMessage(userMessage);
     }
 
     const functions = this.firebase.requireFunctions();
 
-    const messageText = `Current Character JSON:\n${JSON.stringify(this.currentCharacter, null, 2)}\n\nUser Message: ${userMessage}`;
-
-    const contents = [
-      ...this.conversationHistory.map(msg => ({
-        role: msg.role,
-        parts: [{ text: msg.parts[0].text }]
-      })),
-      {
-        role: 'user',
-        parts: [{ text: messageText }]
-      }
-    ];
-
-    const aiConfig = this.aiSettingsService.getCharacterChatConfig();
-    const config = {
-      responseMimeType: 'application/json',
-      temperature: aiConfig.temperature,
-      topP: aiConfig.topP,
-      topK: aiConfig.topK,
-      maxOutputTokens: aiConfig.maxOutputTokens
-    };
-
-    const model = aiConfig.model;
+    const payload = buildCharacterChatRequest(this.draftCharacter() ?? this.currentCharacter, CHARACTER_BUILDER_PROMPT, userMessage, this.conversationHistory);
 
     const characterChat = httpsCallable<CharacterChatRequest, { text: string; images?: MessageImage[] }>(
       functions, 'characterChat'
     );
-
-    const payload: CharacterChatRequest = {
-      contents,
-      config,
-      model,
-      ...(this.characterId && { characterId: this.characterId })
-    };
 
     return from(characterChat(payload)).pipe(
       map(result => {
@@ -191,15 +116,12 @@ export class ChatService {
         }
 
         this.conversationHistory.push(
-          { role: 'user', parts: [{ text: userMessage }] },
-          { role: 'model', parts: [{ text: parsed ? JSON.stringify(parsed) : fullText }] }
+          { role: 'user', content: userMessage },
+          { role: 'assistant', content: parsed ? JSON.stringify(parsed) : fullText }
         );
 
-        if (this.conversationHistory.length > 22) {
-          this.conversationHistory = [
-            ...this.conversationHistory.slice(0, 2),
-            ...this.conversationHistory.slice(-20)
-          ];
+        if (this.conversationHistory.length > 20) {
+          this.conversationHistory = this.conversationHistory.slice(-20);
         }
 
         return { text: responseText, images };
@@ -211,9 +133,8 @@ export class ChatService {
   private sendImageGenerationMessage(userMessage: string): Observable<{ text: string; images?: MessageImage[] }> {
     const functions = this.firebase.requireFunctions();
 
-    // Extract prompt: text after "maak afbeelding", or use the full message as prompt
     const match = userMessage.match(/maak\s+afbeelding\s*(.*)/i);
-    const prompt = match?.[1]?.trim() || userMessage;
+    const userPrompt = match?.[1]?.trim() || userMessage;
 
     const imageConfig = this.aiSettingsService.getImageGenerationConfig();
 
@@ -221,20 +142,12 @@ export class ChatService {
       functions, 'generateImage'
     );
 
-    const characterVisuals: CharacterVisuals | undefined = this.currentCharacter
-      ? {
-          name: this.currentCharacter.name,
-          race: this.currentCharacter.race,
-          characterClass: this.currentCharacter.class,
-          ...(this.currentCharacter.appearance && { appearance: this.currentCharacter.appearance })
-        }
-      : undefined;
+    const chatRequest = buildCharacterChatRequest(this.draftCharacter() ?? this.currentCharacter, IMAGE_GENERATION_SYSTEM_PROMPT, userPrompt, this.conversationHistory);
 
     const payload: GenerateImageRequest = {
-      prompt,
+      chatRequest,
       model: imageConfig.model,
       ...(this.characterId && { characterId: this.characterId }),
-      ...(characterVisuals && { characterVisuals })
     };
 
     return from(generateImage(payload)).pipe(
@@ -257,7 +170,6 @@ export class ChatService {
       errorMessage = err.message;
     }
 
-    // Firebase Functions error codes
     if (err?.code === 'functions/invalid-argument') {
       errorMessage = 'Invalid request. Please try rephrasing your message.';
     } else if (err?.code === 'functions/unauthenticated') {
@@ -291,10 +203,5 @@ export class ChatService {
 
   getMessages(): Message[] {
     return this.messages();
-  }
-
-  clearHistory(): void {
-    this.messages.set([]);
-    this.initializeConversation();
   }
 }
