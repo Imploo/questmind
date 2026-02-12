@@ -43,8 +43,8 @@ export interface Message {
 
 export interface CharacterUpdateResponse {
   thought: string;
-  character: DndCharacter;
-  response: string;
+  character: string;
+  text: string;
 }
 
 @Injectable({
@@ -97,27 +97,28 @@ export class ChatService {
 
     return from(characterChat(payload)).pipe(
       map(result => {
-        const fullText = result.data.text;
         const images = result.data.images;
-        const parsed = this.parseCharacterUpdateResponse(fullText);
-        const responseText = parsed?.response ?? fullText;
+        const response = result.data as CharacterUpdateResponse;
+        const parsedCharacter = JSON.parse(response.character);
+        // const parsed = this.parseCharacterUpdateResponse(fullText);
+        // const responseText = parsed?.response ?? fullText;
 
-        if (parsed && this.currentCharacter) {
-          if (JSON.stringify(parsed.character) !== JSON.stringify(this.currentCharacter)) {
-            this.draftCharacter.set(parsed.character);
+        if (parsedCharacter && this.currentCharacter) {
+          if (JSON.stringify(parsedCharacter) !== JSON.stringify(this.currentCharacter)) {
+            this.draftCharacter.set(parsedCharacter);
           }
         }
 
         this.conversationHistory.push(
           { role: 'user', content: userMessage },
-          { role: 'assistant', content: parsed ? JSON.stringify(parsed) : fullText }
+          { role: 'assistant', content: response.text }
         );
 
         if (this.conversationHistory.length > 20) {
           this.conversationHistory = this.conversationHistory.slice(-20);
         }
 
-        return { text: responseText, images };
+        return { text: response.text, images };
       }),
       catchError(error => throwError(() => this.formatError(error)))
     );
@@ -191,15 +192,15 @@ export class ChatService {
     };
   }
 
-  private parseCharacterUpdateResponse(text: string): CharacterUpdateResponse | null {
-    if (!text) return null;
-    try {
-      return JSON.parse(text) as CharacterUpdateResponse;
-    } catch (error) {
-      console.error('Failed to parse character update response', error);
-      return null;
-    }
-  }
+  // private parseCharacterUpdateResponse(text: string): CharacterUpdateResponse | null {
+  //   if (!text) return null;
+  //   try {
+  //     return JSON.parse(text) as CharacterUpdateResponse;
+  //   } catch (error) {
+  //     console.error('Failed to parse character update response', error);
+  //     return null;
+  //   }
+  // }
 
   getMessages(): Message[] {
     return this.messages();

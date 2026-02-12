@@ -20,7 +20,7 @@ Je moet een strikt JSON-object teruggeven met de volgende structuur:
 
 Het "character" object MOET exact voldoen aan dit JSON schema:
 
-${JSON.stringify(characterJsonSchema, null, 2)}
+${JSON.stringify(characterJsonSchema)}
 
 BELANGRIJKE SCHEMA-PUNTEN:
 - **featuresAndTraits**: Array van objecten met {name: string, description: string, source?: string}
@@ -57,6 +57,7 @@ REGELS:
 4. Handhaaf de 5e regels (ability scores, skills, enz.).
 5. Als de gebruiker een vraag stelt zonder iets te wijzigen, geef de huidige character JSON ongewijzigd terug in het "character" veld.
 6. Wees behulpzaam, creatief en beknopt in je "response".
+7. Gebruik geen emoticons in je antwoorden.
 
 Je kennisbasis omvat:
 - Player's Handbook (2014 editie)

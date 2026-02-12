@@ -22,15 +22,17 @@ export function buildCharacterChatRequest(
   message: string,
   history: ChatHistoryMessage[]
 ): CharacterChatRequest {
-  const characterContext = character
-    ? `Huidig karakter:\n${JSON.stringify(character, null, 2)}\n\n`
-    : '';
+  const characterPreamble: ChatHistoryMessage[] = character
+    ? [
+        { role: 'user', content: `Huidig karakter:\n${JSON.stringify(character)}\n\n` },
+        { role: 'assistant', content: 'Karakter ontvangen, zal het inlezen.' },
+      ]
+    : [];
 
   return {
     systemPrompt,
     chatHistory: [
-      {role: 'user', content: characterContext},
-      {role: 'assistant', content: 'Karakter ontvangen, zal het inlezen.'},
+      ...characterPreamble,
       ...history,
       { role: 'user', content: message },
     ],
