@@ -1,5 +1,6 @@
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
-import { RateLimitError, Anthropic } from '@anthropic-ai/sdk';
+import ModelClient, { isUnexpected } from '@azure-rest/ai-inference';
+import { AzureKeyCredential } from '@azure/core-auth';
 import { wrapCallable } from './utils/sentry-error-handler';
 import { SHARED_CORS } from './index';
 
@@ -19,10 +20,16 @@ export interface CharacterChatResponse {
   character?: unknown;
 }
 
+interface SubmitResponseInput {
+  thought: string;
+  message: string;
+  character?: string;
+}
+
 export const characterChat = onCall(
   {
     cors: SHARED_CORS,
-    secrets: ['CLAUDE_API_KEY'],
+    secrets: ['AZURE_FOUNDRY_API_KEY', 'AZURE_FOUNDRY_ENDPOINT'],
   },
   wrapCallable<CharacterChatRequest, CharacterChatResponse>(
     'characterChat',
@@ -33,58 +40,69 @@ export const characterChat = onCall(
         throw new HttpsError('invalid-argument', 'Missing required fields: systemPrompt, chatHistory');
       }
 
-      const client = new Anthropic({
-        apiKey: process.env.CLAUDE_API_KEY,
-      });
+      const endpoint = process.env.AZURE_FOUNDRY_ENDPOINT!;
+      const apiKey = process.env.AZURE_FOUNDRY_API_KEY!;
+
+      const client = ModelClient(endpoint, new AzureKeyCredential(apiKey));
 
       try {
-          const response = await client.messages.create({
-              model: 'claude-haiku-4-5-20251001',
-              max_tokens: 4096,
-              system: systemPrompt,
-              messages: chatHistory,
-              tools: [{
-                  name: "submit_response",
-                  description: "Gebruik deze tool om je interne gedachten en je uiteindelijke antwoord naar de gebruiker te sturen.",
-                  input_schema: {
-                      type: "object",
-                      properties: {
-                          thought: {
-                              type: "string",
-                              description: "Je interne monoloog of redenering."
-                          },
-                          message: {
-                              type: "string",
-                              description: "Het daadwerkelijke bericht naar de gebruiker."
-                          },
-                          character: {
-                              type: "string",
-                              descriptipn: "De JSON data van het karakter volgens het schema in de system prompt."
-                          }
-                      },
-                      required: ["thought", "message"]
-                  }
-              }],
-              tool_choice: { type: "tool", name: "submit_response" }
-          });
+        const response = await client.path('/chat/completions').post({
+          body: {
+            model: 'claude-haiku-4-5',
+            max_tokens: 4096,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              ...chatHistory,
+            ],
+            tools: [{
+              type: 'function',
+              function: {
+                name: 'submit_response',
+                description: 'Gebruik deze tool om je interne gedachten en je uiteindelijke antwoord naar de gebruiker te sturen.',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    thought: {
+                      type: 'string',
+                      description: 'Je interne monoloog of redenering.',
+                    },
+                    message: {
+                      type: 'string',
+                      description: 'Het daadwerkelijke bericht naar de gebruiker.',
+                    },
+                    character: {
+                      type: 'string',
+                      description: 'De JSON data van het karakter volgens het schema in de system prompt.',
+                    },
+                  },
+                  required: ['thought', 'message'],
+                },
+              },
+            }],
+            tool_choice: { type: 'function', function: { name: 'submit_response' } },
+          },
+        });
 
-          const toolBlock = response.content.find(block => block.type === 'tool_use');
+        if (isUnexpected(response)) {
+          throw new HttpsError('internal', `Azure AI Foundry error: ${response.body.error.message}`);
+        }
 
-          if (!toolBlock || !toolBlock.input) {
-              throw new HttpsError('internal', 'AI model failed to use the required tool');
-          }
+        const toolCall = response.body.choices[0]?.message?.tool_calls?.[0];
 
-          return {
-              //@ts-ignore
-              thought: toolBlock.input?.thought,
-              //@ts-ignore
-              text: toolBlock.input?.message,
-              //@ts-ignore
-              character: toolBlock.input?.character
-          };
+        if (!toolCall) {
+          throw new HttpsError('internal', 'AI model failed to use the required tool');
+        }
+
+        const input = JSON.parse(toolCall.function.arguments) as SubmitResponseInput;
+
+        return {
+          thought: input.thought,
+          text: input.message,
+          character: input.character,
+        };
       } catch (error) {
-        if (error instanceof RateLimitError) {
-          throw new HttpsError('resource-exhausted', 'Rate limit exceeded. Please wait a moment before trying again.');
+        if (error instanceof HttpsError) {
+          throw error;
         }
         throw error;
       }

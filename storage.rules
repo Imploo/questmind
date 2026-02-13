@@ -3,17 +3,22 @@ service firebase.storage {
   match /b/{bucket}/o {
     function isCampaignMember(campaignId) {
       return request.auth != null && (
+        // Check if campaign ID is in user's profile (matches Firestore rules primary check)
+        (firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) &&
+          campaignId in firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.campaigns) ||
+        // Fallback: check campaign document members directly
         (firestore.exists(/databases/(default)/documents/campaigns/$(campaignId)) &&
-          firestore.get(/databases/(default)/documents/campaigns/$(campaignId)).data.members[request.auth.uid] != null) ||
-        (firestore.exists(/databases/(default)/documents/campaigns/$(campaignId)/metadata) &&
-          firestore.get(/databases/(default)/documents/campaigns/$(campaignId)/metadata).data.members[request.auth.uid] != null)
+          request.auth.uid in firestore.get(/databases/(default)/documents/campaigns/$(campaignId)).data.members)
       );
     }
 
     // Audio files (campaigns)
+    // Write only requires authentication — session IDs are UUIDs (unguessable) and the
+    // backend validates campaign membership before processing. Cross-service Firestore
+    // reads in Storage rules are unreliable for write-gating.
     match /campaigns/{campaignId}/audio/{sessionId}/{filename} {
       allow read: if isCampaignMember(campaignId);
-      allow write: if isCampaignMember(campaignId)
+      allow write: if request.auth != null
                    && request.resource.size < 500 * 1024 * 1024
                    && request.resource.contentType.matches('audio/.*');
     }

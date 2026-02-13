@@ -193,7 +193,7 @@ async function processTranscriptionAsync(
     const googleAi = new GoogleGenAI({
       vertexai: true,
       project: process.env.GCLOUD_PROJECT,
-      location: 'europe-west1',
+      location: 'global',
     });
 
     const prompt = buildTranscriptionPrompt(kankaContext);
