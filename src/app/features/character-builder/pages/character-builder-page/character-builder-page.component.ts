@@ -10,7 +10,7 @@ import { ChatService } from '../../../../chat/chat.service';
 import { Character, CharacterVersion } from '../../../../core/models/schemas/character.schema';
 import { CharacterImage } from '../../../../core/models/schemas/character-image.schema';
 import { DndCharacter } from '../../../../shared/schemas/dnd-character.schema';
-import { CharacterSheetComponent } from '../../components/character-sheet/character-sheet.component';
+import { CharacterSheetComponent, SpellResolvedEvent } from '../../components/character-sheet/character-sheet.component';
 import { ChatComponent } from '../../../../chat/chat.component';
 import { CharacterDraftPreviewComponent } from '../../components/character-draft-preview/character-draft-preview.component';
 import { CharacterVersionHistoryComponent } from '../../components/character-version-history/character-version-history.component';
@@ -60,10 +60,13 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
                         <app-character-sheet
                           [character]="displayCharacter() || activeVersion()!.character"
                           [characterName]="selectedCharacter()?.name || 'Unknown'"
+                          [characterId]="selectedCharacterId()"
+                          [activeVersionId]="activeVersion()?.id ?? ''"
                           [images]="characterImages()"
                           [canDelete]="isOwner()"
                           (viewHistory)="showHistory.set(true)"
                           (deleteImage)="onDeleteImage($event)"
+                          (spellResolved)="onSpellResolved($event)"
                         ></app-character-sheet>
                       </mat-card-content>
                     </mat-card>
@@ -375,6 +378,44 @@ export class CharacterBuilderPageComponent {
   async onDeleteImage(image: CharacterImage): Promise<void> {
     await this.characterImageService.deleteImage(image);
     this.characterImages.update(list => list.filter(i => i.id !== image.id));
+  }
+
+  async onSpellResolved(event: SpellResolvedEvent): Promise<void> {
+    type SpellItem = string | { name: string; [k: string]: unknown };
+    const updateSpells = (spells: SpellItem[]) =>
+      spells.map(s =>
+        typeof s === 'string' ? s
+          : (s as { name: string }).name.toLowerCase() === event.spellName.toLowerCase()
+            ? { ...s, description: event.description, usage: event.usage }
+            : s
+      );
+
+    // Update draft if active
+    if (this.draftCharacter()) {
+      this.chatService.setDraftSpellDetails(event.spellName, event.description, event.usage);
+    }
+
+    // Always update activeVersion for display
+    const av = this.activeVersion();
+    if (av) {
+      const updatedSpells = updateSpells(av.character.spellcasting?.spells ?? []);
+      this.activeVersion.set({
+        ...av,
+        character: {
+          ...av.character,
+          spellcasting: av.character.spellcasting
+            ? { ...av.character.spellcasting, spells: updatedSpells }
+            : undefined,
+        },
+      });
+    }
+
+    // Patch Firestore active version
+    const charId = this.selectedCharacterId();
+    const versionId = this.activeVersion()?.id;
+    if (charId && versionId) {
+      await this.characterVersionService.patchSpellDetails(charId, versionId, event.spellName, event.description, event.usage);
+    }
   }
 
   private isEditableTarget(target: HTMLElement | null): boolean {

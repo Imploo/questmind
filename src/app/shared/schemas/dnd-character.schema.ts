@@ -34,7 +34,8 @@ export const SpellSlotSchema = z.object({
 
 export const SpellSchema = z.object({
   name: z.string(),
-  description: z.string(),
+  description: z.string().optional(),
+  usage: z.string().optional(),
   level: z.number().min(0).max(9).optional(), // 0 for cantrips
   school: z.string().optional(), // e.g., "Evocation", "Abjuration"
 });

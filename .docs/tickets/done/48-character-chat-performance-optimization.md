@@ -1,7 +1,8 @@
 # Ticket #48 – Character Chat Performance Optimization
 
 - **Created:** 2026-02-14
-- **Status:** Todo
+- **Status:** Done
+- **Completed:** 2026-02-14
 - **Priority:** High
 - **Effort:** 3–5 days
 

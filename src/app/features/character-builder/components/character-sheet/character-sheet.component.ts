@@ -1,12 +1,23 @@
-import { Component, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, input, output, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { HttpClient } from '@angular/common/http';
+import { httpsCallable } from 'firebase/functions';
 import { DndCharacter } from '../../../../shared/schemas/dnd-character.schema';
 import { CharacterImage } from '../../../../core/models/schemas/character-image.schema';
 import { CharacterImageGalleryComponent } from '../character-image-gallery/character-image-gallery.component';
+import { FirebaseService } from '../../../../core/firebase.service';
+import { lookupSpellFromJson, SpellDetails } from '../../../../shared/utils/spell-lookup';
+
+export interface SpellResolvedEvent {
+  spellName: string;
+  description: string;
+  usage: string;
+}
 
 @Component({
   selector: 'app-character-sheet',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule, CharacterImageGalleryComponent],
   template: `
     <div class="p-2 max-w-4xl mx-auto space-y-8">
@@ -21,7 +32,7 @@ import { CharacterImageGalleryComponent } from '../character-image-gallery/chara
             {{ character().background }} • {{ character().alignment }}
           </div>
         </div>
-        
+
         <div class="flex flex-col items-end gap-2">
             <button class="btn btn-sm btn-ghost" (click)="viewHistory.emit()">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
@@ -59,7 +70,7 @@ import { CharacterImageGalleryComponent } from '../character-image-gallery/chara
 
       <!-- Main Content Grid -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-        
+
         <!-- Left Column -->
         <div class="space-y-6">
           <!-- Skills -->
@@ -110,7 +121,7 @@ import { CharacterImageGalleryComponent } from '../character-image-gallery/chara
                         <div>
                           <div
                             class="flex items-center justify-between cursor-pointer hover:bg-base-200 -mx-2 px-2 py-1 rounded transition-colors"
-                            (click)="toggleSpell($index)"
+                            (click)="toggleSpell($index, spell)"
                           >
                             <div class="flex items-center gap-2 flex-1">
                               <svg
@@ -136,9 +147,18 @@ import { CharacterImageGalleryComponent } from '../character-image-gallery/chara
                               }
                             </div>
                           </div>
-                          @if (expandedSpells().has($index) && spell.description) {
-                            <div class="ml-5 mt-2 text-xs opacity-70 animate-fade-in">
-                              {{ spell.description }}
+                          @if (expandedSpells().has($index)) {
+                            <div class="ml-5 mt-2 text-xs opacity-70">
+                              @if (loadingSpells().has($index)) {
+                                <span class="loading loading-dots loading-xs"></span>
+                              } @else if (spell.description) {
+                                <div class="whitespace-pre-line">{{ spell.description }}</div>
+                                @if (spell.usage) {
+                                  <div class="mt-2 font-mono text-xs opacity-60 whitespace-pre-line border-t border-base-300 pt-2">{{ spell.usage }}</div>
+                                }
+                              } @else {
+                                <span class="italic opacity-50">Geen beschrijving beschikbaar</span>
+                              }
                             </div>
                           }
                         </div>
@@ -257,7 +277,7 @@ import { CharacterImageGalleryComponent } from '../character-image-gallery/chara
               </div>
             </div>
           </div>
-          
+
            <!-- Inventory -->
            <div class="card bg-base-100 shadow-sm border border-base-200">
             <div class="card-body p-4">
@@ -283,23 +303,67 @@ import { CharacterImageGalleryComponent } from '../character-image-gallery/chara
 export class CharacterSheetComponent {
   character = input.required<DndCharacter>();
   characterName = input.required<string>();
+  characterId = input<string | null>(null);
+  activeVersionId = input<string>('');
   images = input<CharacterImage[]>([]);
   canDelete = input<boolean>(false);
   viewHistory = output<void>();
   deleteImage = output<CharacterImage>();
+  spellResolved = output<SpellResolvedEvent>();
 
   expandedSpells = signal<Set<number>>(new Set());
+  loadingSpells = signal<Set<number>>(new Set());
 
-  toggleSpell(index: number): void {
+  private readonly http = inject(HttpClient);
+  private readonly firebase = inject(FirebaseService);
+
+  async toggleSpell(
+    index: number,
+    spell: string | { name: string; description?: string; usage?: string; level?: number; school?: string }
+  ): Promise<void> {
+    const isExpanding = !this.expandedSpells().has(index);
     this.expandedSpells.update(set => {
-      const newSet = new Set(set);
-      if (newSet.has(index)) {
-        newSet.delete(index);
+      const s = new Set(set);
+      if (isExpanding) {
+        s.add(index);
       } else {
-        newSet.add(index);
+        s.delete(index);
       }
-      return newSet;
+      return s;
     });
+
+    if (!isExpanding || typeof spell === 'string' || spell.description) return;
+
+    this.loadingSpells.update(s => new Set([...s, index]));
+    try {
+      // 1. Try static Spell.json first
+      const local: SpellDetails | null = await lookupSpellFromJson(this.http, spell.name);
+      if (local) {
+        this.spellResolved.emit({ spellName: spell.name, ...local });
+        return;
+      }
+
+      // 2. Fallback: resolveSpell Cloud Function
+      const fn = httpsCallable<unknown, { description: string; usage: string }>(
+        this.firebase.requireFunctions(),
+        'resolveSpell'
+      );
+      const result = await fn({
+        characterId: this.characterId(),
+        spellName: spell.name,
+        spellLevel: spell.level,
+        spellSchool: spell.school,
+      });
+      this.spellResolved.emit({ spellName: spell.name, ...result.data });
+    } catch (e) {
+      console.error('Failed to resolve spell details:', e);
+    } finally {
+      this.loadingSpells.update(s => {
+        const n = new Set(s);
+        n.delete(index);
+        return n;
+      });
+    }
   }
 
   get abilities() {
@@ -322,12 +386,10 @@ export class CharacterSheetComponent {
     const spellcasting = this.character().spellcasting;
     if (!spellcasting?.slots) return [];
 
-    // Handle both array and record format
     if (Array.isArray(spellcasting.slots)) {
       return spellcasting.slots.sort((a, b) => a.level - b.level);
     }
 
-    // If it's a record, convert to array
     return Object.entries(spellcasting.slots)
       .map(([level, data]: [string, { total?: number; expended?: number }]) => ({
         level: parseInt(level),
@@ -345,7 +407,6 @@ export class CharacterSheetComponent {
     const c = this.character();
     const characterSkills = c.skills;
 
-    // All D&D 5e skills with their associated ability
     const allDndSkills = [
       { name: 'Acrobatics', ability: 'dexterity' },
       { name: 'Animal Handling', ability: 'wisdom' },
@@ -369,19 +430,12 @@ export class CharacterSheetComponent {
 
     return allDndSkills.map(skill => {
       const charSkill = characterSkills.find(s => s.name === skill.name);
-      if (charSkill) {
-        return charSkill;
-      }
+      if (charSkill) return charSkill;
 
-      // Calculate modifier based on ability score
       const abilityKey = skill.ability as keyof typeof c.abilities;
       const modifier = c.abilities[abilityKey].modifier;
 
-      return {
-        name: skill.name,
-        proficient: false,
-        modifier: modifier
-      };
+      return { name: skill.name, proficient: false, modifier };
     });
   }
 }

@@ -62,7 +62,8 @@
       "mcp__context7__query-docs",
       "Bash(firebase functions:log:*)",
       "Bash(gcloud run services get-iam-policy:*)",
-      "Bash(gcloud run services add-iam-policy-binding:*)"
+      "Bash(gcloud run services add-iam-policy-binding:*)",
+      "Bash(npm run lint:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

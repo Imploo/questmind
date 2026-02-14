@@ -42,9 +42,35 @@ export interface Message {
 }
 
 export interface CharacterUpdateResponse {
-  thought: string;
-  character: string;
+  character?: Record<string, unknown>;
   text: string;
+}
+
+function preserveSpellDetails(updated: DndCharacter, existing: DndCharacter): DndCharacter {
+  const existingSpells = existing.spellcasting?.spells;
+  const updatedSpells = updated.spellcasting?.spells;
+  if (!existingSpells || !updatedSpells) return updated;
+
+  const existingByName = new Map<string, Record<string, unknown>>();
+  for (const s of existingSpells as (string | Record<string, unknown>)[]) {
+    if (typeof s === 'object' && s !== null) {
+      existingByName.set((s as Record<string, unknown>)['name'] as string, s as Record<string, unknown>);
+    }
+  }
+
+  const mergedSpells = (updatedSpells as (string | Record<string, unknown>)[]).map(s => {
+    if (typeof s === 'string') return s;
+    const existing = existingByName.get((s as Record<string, unknown>)['name'] as string);
+    if (existing) {
+      return { ...s, description: existing['description'], usage: existing['usage'] };
+    }
+    return s;
+  });
+
+  return {
+    ...updated,
+    spellcasting: { ...updated.spellcasting!, spells: mergedSpells },
+  } as DndCharacter;
 }
 
 @Injectable({
@@ -78,6 +104,20 @@ export class ChatService {
     this.draftCharacter.set(null);
   }
 
+  setDraftSpellDetails(spellName: string, description: string, usage: string): void {
+    const draft = this.draftCharacter();
+    if (!draft) return;
+    const updatedSpells = (draft.spellcasting?.spells ?? []).map(spell => {
+      if (typeof spell === 'string') return spell;
+      if (spell.name.toLowerCase() === spellName.toLowerCase()) return { ...spell, description, usage };
+      return spell;
+    });
+    this.draftCharacter.set({
+      ...draft,
+      spellcasting: draft.spellcasting ? { ...draft.spellcasting, spells: updatedSpells } : undefined,
+    });
+  }
+
   isImageGenerationRequest(message: string): boolean {
     return IMAGE_TRIGGER_REGEX.test(message);
   }
@@ -99,14 +139,12 @@ export class ChatService {
       map(result => {
         const images = result.data.images;
         const response = result.data as CharacterUpdateResponse;
-        const parsedCharacter = JSON.parse(response.character);
-        // const parsed = this.parseCharacterUpdateResponse(fullText);
-        // const responseText = parsed?.response ?? fullText;
 
-        if (parsedCharacter && this.currentCharacter) {
-          if (JSON.stringify(parsedCharacter) !== JSON.stringify(this.currentCharacter)) {
-            this.draftCharacter.set(parsedCharacter);
-          }
+        if (response.character && typeof response.character === 'object') {
+          const updated = response.character as unknown as DndCharacter;
+          const existing = this.draftCharacter() ?? this.currentCharacter;
+          const withDetails = existing ? preserveSpellDetails(updated, existing) : updated;
+          this.draftCharacter.set(withDetails);
         }
 
         this.conversationHistory.push(
@@ -191,16 +229,6 @@ export class ChatService {
       error: err
     };
   }
-
-  // private parseCharacterUpdateResponse(text: string): CharacterUpdateResponse | null {
-  //   if (!text) return null;
-  //   try {
-  //     return JSON.parse(text) as CharacterUpdateResponse;
-  //   } catch (error) {
-  //     console.error('Failed to parse character update response', error);
-  //     return null;
-  //   }
-  // }
 
   getMessages(): Message[] {
     return this.messages();

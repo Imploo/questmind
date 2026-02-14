@@ -15,8 +15,7 @@ export interface CharacterChatRequest {
 
 export interface CharacterChatResponse {
   text: string;
-  thought: string;
-  character?: unknown;
+  character?: Record<string, unknown>;
 }
 
 export const characterChat = onCall(
@@ -40,7 +39,7 @@ export const characterChat = onCall(
       try {
           const response = await client.messages.create({
               model: 'claude-haiku-4-5-20251001',
-              max_tokens: 4096,
+              max_tokens: 1024,
               system: systemPrompt,
               messages: chatHistory,
               tools: [{
@@ -49,20 +48,17 @@ export const characterChat = onCall(
                   input_schema: {
                       type: "object",
                       properties: {
-                          thought: {
-                              type: "string",
-                              description: "Je interne monoloog of redenering."
-                          },
                           message: {
                               type: "string",
                               description: "Het daadwerkelijke bericht naar de gebruiker."
                           },
                           character: {
-                              type: "string",
-                              descriptipn: "De JSON data van het karakter volgens het schema in de system prompt."
+                              type: "object",
+                              description: "Het volledige bijgewerkte karakter als JSON object. Alleen meesturen als het karakter is gewijzigd. Weglaten als de gebruiker alleen een vraag stelt zonder wijzigingen. Nooit description of usage van spells meesturen.",
+                              additionalProperties: true
                           }
                       },
-                      required: ["thought", "message"]
+                      required: ["message"]
                   }
               }],
               tool_choice: { type: "tool", name: "submit_response" }
@@ -76,11 +72,9 @@ export const characterChat = onCall(
 
           return {
               //@ts-ignore
-              thought: toolBlock.input?.thought,
-              //@ts-ignore
               text: toolBlock.input?.message,
               //@ts-ignore
-              character: toolBlock.input?.character
+              character: toolBlock.input?.character ?? undefined,
           };
       } catch (error) {
         if (error instanceof RateLimitError) {

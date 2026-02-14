@@ -139,4 +139,25 @@ export class CharacterVersionService {
       versionToRestore.id
     );
   }
+
+  async patchSpellDetails(
+    characterId: string,
+    activeVersionId: string,
+    spellName: string,
+    description: string,
+    usage: string
+  ): Promise<void> {
+    if (!this.db) return;
+    const versionRef = doc(this.db, 'characters', characterId, 'versions', activeVersionId);
+    const snapshot = await getDoc(versionRef);
+    if (!snapshot.exists()) return;
+    const data = snapshot.data() as CharacterVersion;
+    const spells = data.character.spellcasting?.spells ?? [];
+    const updated = spells.map(spell => {
+      if (typeof spell === 'string') return spell;
+      if (spell.name.toLowerCase() === spellName.toLowerCase()) return { ...spell, description, usage };
+      return spell;
+    });
+    await updateDoc(versionRef, { 'character.spellcasting.spells': updated });
+  }
 }

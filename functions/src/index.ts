@@ -41,3 +41,6 @@ export { characterChat } from './character-chat';
 
 // Image generation via fal.ai
 export { generateImage } from './generate-image';
+
+// Spell description resolution for lazy loading
+export { resolveSpell } from './resolve-spell';

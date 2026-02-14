@@ -440,7 +440,7 @@ Start here for immediate impact with minimal risk:
 
 | Ticket | Title | Priority | Status | Effort | Dependencies |
 |--------|-------|----------|--------|--------|--------------|
-| [#48](./48-character-chat-performance-optimization.md) | Character Chat Performance Optimization | High | Todo | 3–5 days | #47 |
+| [#48](./done/48-character-chat-performance-optimization.md) | Character Chat Performance Optimization | High | Done | 3–5 days | #47 |
 
 **Key Improvements:**
 - **Ticket 48**: Snellere character chat via LLM output reductie
