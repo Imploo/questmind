@@ -382,6 +382,7 @@ Start here for immediate impact with minimal risk:
 | Ticket | Title | Priority | Status | Completed | Effort | Dependencies |
 |--------|-------|----------|--------|-----------|--------|--------------|
 | [#45](./done/45-transcription-retry-and-retranscribe-buttons.md) | Enable Retry and Re-Transcribe Buttons for Failed/Completed Transcriptions | High | Done | 2026-02-07 | 2-3 days | #43 |
+| [#47](./47-openai-whisper-transcription.md) | Integrate OpenAI Whisper for Audio Transcription | High | Todo | - | 2-3 days | - |
 
 **Key Improvements:**
 - **Ticket 45**: Retry and re-transcribe functionality
@@ -416,5 +417,5 @@ Start here for immediate impact with minimal risk:
 
 ---
 
-**Last Updated:** 2026-02-08
+**Last Updated:** 2026-02-14
 **Status:** Planning Complete, Ready to Begin
