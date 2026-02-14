@@ -97,14 +97,16 @@ function getBodySize(body: Request | Buffer): number | null {
 }
 
 /**
- * Receives an audio file from the frontend and forwards it directly to Gemini Files API.
+ * Receives a (browser-compressed) audio file from the frontend and forwards
+ * it directly to the Gemini Files API.
  *
- * This avoids browser->Gemini CORS issues while still skipping Cloud Storage entirely.
+ * This proxy exists because the Gemini resumable upload endpoint does not
+ * include CORS headers, blocking direct browser uploads.
  */
 export const uploadAudioToGemini = onRequest(
   {
     timeoutSeconds: 540,
-    memory: '1GiB',
+    memory: '2GiB',
     secrets: ['GOOGLE_AI_API_KEY'],
     cors: true,
   },

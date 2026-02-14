@@ -1,5 +1,6 @@
 export const environment = {
   production: true,
+  uploadAudioUrl: '/api/uploadAudioToGemini',
   eleven: {
     voice1: 'Bill Oxley',
     voice2: 'Ruth',
