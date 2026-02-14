@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { AudioUploadComponent, UploadRequestEvent } from './audio-upload.component';
 import { AudioSessionStateService } from './services/audio-session-state.service';
-import { AudioCompleteProcessingService } from './services/audio-complete-processing.service';
+import { AudioCompleteProcessingService, UploadStage } from './services/audio-complete-processing.service';
 import { AuthService } from '../auth/auth.service';
 import { CampaignContextService } from '../campaign/campaign-context.service';
 import { AudioUpload, AudioSessionRecord } from './services/audio-session.models';
@@ -166,7 +166,7 @@ export class AudioUploadPageComponent implements OnInit, OnDestroy {
   userId = computed(() => this.authService.currentUser()?.uid ?? null);
   campaignId = computed(() => this.campaignContextService.selectedCampaignId());
 
-  stage = signal<'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' | 'failed'>('idle');
+  stage = signal<'idle' | 'compressing' | 'uploading' | 'transcribing' | 'generating' | 'completed' | 'failed'>('idle');
   progress = signal(0);
   statusMessage = signal('');
   isBusy = computed(() => this.stage() !== 'idle' && this.stage() !== 'completed' && this.stage() !== 'failed');
@@ -222,9 +222,9 @@ export class AudioUploadPageComponent implements OnInit, OnDestroy {
     }
 
     try {
-      this.stage.set('uploading');
+      this.stage.set('compressing');
       this.progress.set(0);
-      this.statusMessage.set('Preparing upload...');
+      this.statusMessage.set('Compressing audio...');
 
       const upload: AudioUpload = {
         file: event.file,
@@ -236,7 +236,7 @@ export class AudioUploadPageComponent implements OnInit, OnDestroy {
 
       const sessionDraft = this.sessionStateService.createSessionDraft(upload);
 
-      // Start upload with progress tracking
+      // Start compression + upload with stage-aware progress tracking
       const result = await this.completeProcessingService.startCompleteProcessing(
         campaignId,
         sessionDraft.id,
@@ -245,10 +245,15 @@ export class AudioUploadPageComponent implements OnInit, OnDestroy {
           sessionTitle: event.sessionName || 'Untitled Session',
           sessionDate: event.sessionDate,
         },
-        (uploadProgress) => {
-          // Track upload progress (0-99%)
-          this.progress.set(uploadProgress);
-          this.statusMessage.set(`Uploading to cloud... ${Math.round(uploadProgress)}%`);
+        (stage: UploadStage, stageProgress: number) => {
+          this.progress.set(stageProgress);
+          if (stage === 'compressing') {
+            this.stage.set('compressing');
+            this.statusMessage.set(`Compressing audio... ${Math.round(stageProgress)}%`);
+          } else {
+            this.stage.set('uploading');
+            this.statusMessage.set(`Uploading to cloud... ${Math.round(stageProgress)}%`);
+          }
         }
       );
 

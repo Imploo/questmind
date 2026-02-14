@@ -416,5 +416,24 @@ Start here for immediate impact with minimal risk:
 
 ---
 
-**Last Updated:** 2026-02-08
+---
+
+## 🎵 Audio Processing
+
+| Ticket | Title | Priority | Status | Effort | Dependencies |
+|--------|-------|----------|--------|--------|--------------|
+| [#47](./47-browser-audio-compression-before-upload.md) | Browser Audio Compression Before Upload | High | Todo | 3-5 days | #46 |
+
+**Key Improvements:**
+- **Ticket 47**: Compress audio in the browser before uploading to GCS
+  - Reduces 300 MB recordings to ~50 MB using Web Audio API + MediaRecorder (Opus/WebM)
+  - Zero new dependencies — fully browser-native
+  - Mono, 32–64 kbps, 16 kHz sample rate
+  - Compression progress shown to user before upload begins
+  - Fallback to original file if compression fails
+  - **Benefits:** ~6× smaller uploads, lower GCS costs, faster upload on mobile, reduced Gemini token consumption
+
+---
+
+**Last Updated:** 2026-02-14
 **Status:** Planning Complete, Ready to Begin

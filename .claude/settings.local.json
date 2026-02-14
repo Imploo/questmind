@@ -59,7 +59,9 @@
       "WebFetch(domain:chromestatus.com)",
       "Bash(/Users/mattcady/git/questmind/cors.json << 'CORSEOF'\n[\n  {\n    \"origin\": [\"https://questmind.nl\", \"http://localhost:4200\"],\n    \"method\": [\"PUT\", \"OPTIONS\"],\n    \"responseHeader\": [\"Content-Type\"],\n    \"maxAgeSeconds\": 3600\n  }\n]\nCORSEOF)",
       "mcp__context7__resolve-library-id",
-      "mcp__context7__query-docs"
+      "mcp__context7__query-docs",
+      "Bash(npm run lint:*)",
+      "Bash(firebase functions:log:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
