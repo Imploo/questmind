@@ -22,48 +22,7 @@ jobs:
           cache: 'npm'
 
       - name: Generate environment.beta.ts
-        run: |
-          cat > src/environments/environment.beta.ts << 'EOF'
-          export const environment = {
-            production: true,
-            FAL:"70de704b-8c19-4b2a-8192-9b026c87cb70:0c3e79c1888aea4462cc2c48d361caae",
-            eleven: {
-              voice1: 'Bill Oxley',
-              voice2: 'Ruth',
-              apiKey: 'private'
-            },
-            googleCloudApiKey: 'YOUR_GOOGLE_CLOUD_API_KEY',
-            aiModel: 'gemma-3-27b-it',
-            audioModel: 'gemini-2.5-flash',
-            tts: {
-              enabled: true,
-              voiceMale: 'nl-NL-Wavenet-B',
-              voiceFemale: 'nl-NL-Wavenet-A',
-              speakingRate: 1.0,
-              pitch: 0.0
-            },
-            kanka: {
-              enabled: true,
-              apiUrl: 'https://api.kanka.io/1.0',
-              token: 'YOUR_KANKA_PERSONAL_ACCESS_TOKEN',
-              campaignId: 'YOUR_CAMPAIGN_ID',
-              maxContextEntities: 20,
-              cacheTimeout: 300000
-            },
-            sentry: {
-              dsn: 'https://1781192df2b465d67143294e13c12b8f@o4510852114022400.ingest.de.sentry.io/4510852117102672',
-              environment: 'beta'
-            },
-            firebaseConfig: {
-              apiKey: "AIzaSyDhY9Bf3n_ADSpXPVIQ_yMpyu6yDHtc8W8",
-              authDomain: "questmind-beta.firebaseapp.com",
-              projectId: "questmind-beta",
-              storageBucket: "questmind-beta.firebasestorage.app",
-              messagingSenderId: "111769662924",
-              appId: "1:111769662924:web:3a7c54c80199921ecd9969"
-            }
-          };
-          EOF
+        run: touch src/environments/environment.beta.ts
 
       - name: Replace environment placeholders
         run: |
