@@ -434,5 +434,25 @@ Start here for immediate impact with minimal risk:
 
 ---
 
-**Last Updated:** 2026-02-12
+---
+
+## ⚡ Performance Optimization
+
+| Ticket | Title | Priority | Status | Effort | Dependencies |
+|--------|-------|----------|--------|--------|--------------|
+| [#48](./48-character-chat-performance-optimization.md) | Character Chat Performance Optimization | High | Todo | 3–5 days | #47 |
+
+**Key Improvements:**
+- **Ticket 48**: Snellere character chat via LLM output reductie
+  - LLM geeft alleen gewijzigde velden terug (`characterDelta`) i.p.v. volledig karakter
+  - Spell descriptions worden nooit door de LLM gegenereerd
+  - Statische SRD-database voor bekende spells (instant lookup)
+  - Nieuwe `resolveSpell` Cloud Function als fallback voor niet-SRD spells
+  - Descriptions worden gecached op het karakter in Firestore
+  - `max_tokens` verlaagd van 4096 naar 1024
+  - Verwachte latency reductie: 50–70%
+
+---
+
+**Last Updated:** 2026-02-14
 **Status:** Planning Complete, Ready to Begin
