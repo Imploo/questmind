@@ -74,20 +74,12 @@ export class AudioCompleteProcessingService {
       });
     }
 
-    // ── 2. Trigger browser download of compressed file ────────────────────────
-    const uploadFileName = replaceExtension(audioFile.name, 'mp3');
-    const downloadUrl = URL.createObjectURL(compressionResult.blob);
-    const anchor = document.createElement('a');
-    anchor.href = downloadUrl;
-    anchor.download = uploadFileName;
-    anchor.click();
-    URL.revokeObjectURL(downloadUrl);
-
-    // ── 3. Upload compressed blob → Gemini Files API via Cloud Function ───────
+    // ── 2. Upload compressed blob → Gemini Files API via Cloud Function ───────
     logger.info('[AudioCompleteProcessing] Uploading to Gemini via Cloud Function...');
 
     onProgress?.('uploading', 0);
 
+    const uploadFileName = replaceExtension(audioFile.name, 'mp3');
     const fileUri = await this.uploadToGemini(
       compressionResult.blob,
       compressionResult.mimeType,
