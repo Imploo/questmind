@@ -71,9 +71,52 @@ export interface Message {
 }
 
 export interface CharacterUpdateResponse {
-  thought: string;
   character: DndCharacter;
   response: string;
+}
+
+function stripSpellDetails(character: DndCharacter): DndCharacter {
+  const spells = character.spellcasting?.spells;
+  if (!spells) return character;
+  return {
+    ...character,
+    spellcasting: {
+      ...character.spellcasting,
+      spells: spells.map(spell => {
+        if (typeof spell === 'string') return spell;
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { description: _d, usage: _u, ...rest } = spell;
+        return rest;
+      }),
+    },
+  };
+}
+
+function preserveSpellDetails(updated: DndCharacter, existing: DndCharacter): DndCharacter {
+  const existingSpells = existing.spellcasting?.spells;
+  const updatedSpells = updated.spellcasting?.spells;
+  if (!existingSpells || !updatedSpells) return updated;
+
+  const existingByName = new Map<string, Record<string, unknown>>();
+  for (const s of existingSpells as (string | Record<string, unknown>)[]) {
+    if (typeof s === 'object' && s !== null) {
+      existingByName.set((s as Record<string, unknown>)['name'] as string, s as Record<string, unknown>);
+    }
+  }
+
+  const mergedSpells = (updatedSpells as (string | Record<string, unknown>)[]).map(s => {
+    if (typeof s === 'string') return s;
+    const prev = existingByName.get((s as Record<string, unknown>)['name'] as string);
+    if (prev) {
+      return { ...s, description: prev['description'], usage: prev['usage'] };
+    }
+    return s;
+  });
+
+  return {
+    ...updated,
+    spellcasting: { ...updated.spellcasting!, spells: mergedSpells },
+  } as DndCharacter;
 }
 
 @Injectable({
@@ -124,6 +167,20 @@ export class ChatService {
     this.draftCharacter.set(null);
   }
 
+  setDraftSpellDetails(spellName: string, description: string, usage: string): void {
+    const draft = this.draftCharacter();
+    if (!draft) return;
+    const updatedSpells = (draft.spellcasting?.spells ?? []).map(spell => {
+      if (typeof spell === 'string') return spell;
+      if (spell.name.toLowerCase() === spellName.toLowerCase()) return { ...spell, description, usage };
+      return spell;
+    });
+    this.draftCharacter.set({
+      ...draft,
+      spellcasting: draft.spellcasting ? { ...draft.spellcasting, spells: updatedSpells } : undefined,
+    });
+  }
+
   isImageGenerationRequest(message: string): boolean {
     return IMAGE_TRIGGER_REGEX.test(message);
   }
@@ -142,7 +199,8 @@ export class ChatService {
 
     const functions = this.firebase.requireFunctions();
 
-    const messageText = `Current Character JSON:\n${JSON.stringify(this.currentCharacter, null, 2)}\n\nUser Message: ${userMessage}`;
+    const characterForLlm = stripSpellDetails(this.draftCharacter() ?? this.currentCharacter!);
+    const messageText = `Current Character JSON:\n${JSON.stringify(characterForLlm)}\n\nUser Message: ${userMessage}`;
 
     const contents = [
       ...this.conversationHistory.map(msg => ({
@@ -184,9 +242,11 @@ export class ChatService {
         const parsed = this.parseCharacterUpdateResponse(fullText);
         const responseText = parsed?.response ?? fullText;
 
-        if (parsed && this.currentCharacter) {
-          if (JSON.stringify(parsed.character) !== JSON.stringify(this.currentCharacter)) {
-            this.draftCharacter.set(parsed.character);
+        if (parsed?.character && this.currentCharacter) {
+          const existing = this.draftCharacter() ?? this.currentCharacter;
+          const withDetails = preserveSpellDetails(parsed.character, existing);
+          if (JSON.stringify(withDetails) !== JSON.stringify(existing)) {
+            this.draftCharacter.set(withDetails);
           }
         }
 

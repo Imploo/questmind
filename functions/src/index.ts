@@ -41,3 +41,6 @@ export { characterChat } from './character-chat';
 
 // Image generation via fal.ai
 export { generateImage } from './generate-image';
+
+// Spell resolution (fallback when not found in static Spell.json)
+export { resolveSpell } from './resolve-spell';

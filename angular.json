@@ -25,6 +25,11 @@
                 "glob": "version.json",
                 "input": "src",
                 "output": "/"
+              },
+              {
+                "glob": "Spell.json",
+                "input": "data",
+                "output": "/"
               }
             ],
             "styles": [
