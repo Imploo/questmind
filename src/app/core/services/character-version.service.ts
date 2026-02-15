@@ -16,6 +16,22 @@ import { FirebaseService } from '../firebase.service';
 import { CharacterVersion } from '../models/schemas/character.schema';
 import { DndCharacter, DndCharacterSchema } from '../../shared/schemas/dnd-character.schema';
 
+function stripUndefined(obj: unknown): unknown {
+  if (obj === null || obj === undefined) return obj;
+  if (Array.isArray(obj)) return obj.map(stripUndefined);
+  if (obj instanceof Timestamp) return obj;
+  if (typeof obj === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+      if (value !== undefined) {
+        result[key] = stripUndefined(value);
+      }
+    }
+    return result;
+  }
+  return obj;
+}
+
 @Injectable({ providedIn: 'root' })
 export class CharacterVersionService {
   private readonly authService = inject(AuthService);
@@ -44,7 +60,7 @@ export class CharacterVersionService {
     };
 
     const versionRef = doc(this.db, 'characters', characterId, 'versions', versionId);
-    await setDoc(versionRef, version);
+    await setDoc(versionRef, stripUndefined(version) as CharacterVersion);
 
     return versionId;
   }
@@ -89,7 +105,7 @@ export class CharacterVersionService {
     }
 
     const versionRef = doc(this.db, 'characters', characterId, 'versions', versionId);
-    await setDoc(versionRef, version);
+    await setDoc(versionRef, stripUndefined(version) as CharacterVersion);
 
     const characterRef = doc(this.db, 'characters', characterId);
     await updateDoc(characterRef, {
