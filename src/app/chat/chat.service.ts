@@ -108,7 +108,10 @@ function preserveSpellDetails(updated: DndCharacter, existing: DndCharacter): Dn
     if (typeof s === 'string') return s;
     const prev = existingByName.get((s as Record<string, unknown>)['name'] as string);
     if (prev) {
-      return { ...s, description: prev['description'], usage: prev['usage'] };
+      const merged: Record<string, unknown> = { ...s };
+      if (prev['description'] !== undefined) merged['description'] = prev['description'];
+      if (prev['usage'] !== undefined) merged['usage'] = prev['usage'];
+      return merged;
     }
     return s;
   });
