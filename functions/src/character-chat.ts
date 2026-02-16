@@ -1,6 +1,7 @@
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { getFunctions } from 'firebase-admin/functions';
-import OpenAI from 'openai';
+import { getFirestore } from 'firebase-admin/firestore';
+import { Anthropic, RateLimitError } from '@anthropic-ai/sdk';
 import { wrapCallable } from './utils/sentry-error-handler';
 import { SHARED_CORS } from './index';
 import { CHARACTER_RESPONDER_PROMPT } from './prompts/character-responder.prompt';
@@ -25,7 +26,7 @@ export interface CharacterChatResponse {
 export const characterChat = onCall(
   {
     cors: SHARED_CORS,
-    secrets: ['AZURE_FOUNDRY_API_KEY', 'AZURE_FOUNDRY_ENDPOINT'],
+    secrets: ['CLAUDE_API_KEY'],
   },
   wrapCallable<CharacterChatRequest, CharacterChatResponse>(
     'characterChat',
@@ -36,15 +37,14 @@ export const characterChat = onCall(
         throw new HttpsError('invalid-argument', 'Missing required fields: characterId, currentCharacter, chatHistory');
       }
 
-      const baseURL = process.env.AZURE_FOUNDRY_ENDPOINT;
-      const apiKey = process.env.AZURE_FOUNDRY_API_KEY;
+      const apiKey = process.env.CLAUDE_API_KEY;
 
-      if (!baseURL || !apiKey) {
-        console.error('Missing Azure Foundry credentials. AZURE_FOUNDRY_ENDPOINT:', baseURL ? 'set' : 'MISSING', 'AZURE_FOUNDRY_API_KEY:', apiKey ? 'set' : 'MISSING');
+      if (!apiKey) {
+        console.error('Missing CLAUDE_API_KEY');
         throw new HttpsError('internal', 'AI service not configured');
       }
 
-      const client = new OpenAI({ baseURL, apiKey });
+      const client = new Anthropic({ apiKey });
 
       // AI 1: Text responder — build messages with character context
       const characterPreamble: { role: 'user' | 'assistant'; content: string }[] = [
@@ -52,36 +52,50 @@ export const characterChat = onCall(
         { role: 'assistant', content: 'Karakter ontvangen, zal het inlezen.' },
       ];
 
-      const response = await client.chat.completions.create({
-        model: 'gpt-5-mini',
-        max_completion_tokens: 1024,
-        messages: [
-          { role: 'system', content: CHARACTER_RESPONDER_PROMPT },
-          ...characterPreamble,
-          ...chatHistory,
-        ],
-      });
-
-      const text = response.choices[0]?.message?.content;
-
-      if (!text) {
-        console.error('AI model returned empty response. Choices:', JSON.stringify(response.choices));
-        throw new HttpsError('internal', 'No response from AI model');
-      }
-
-      // Enqueue Cloud Task for AI 2 (generateCharacterDraft)
-      // Fire-and-forget: don't await, don't block the response
-      const payload = { characterId, currentCharacter, chatHistory, ai1Response: text };
-      const queue = getFunctions().taskQueue('generateCharacterDraft');
-      queue.enqueue(payload).catch(err => {
-        console.warn('Cloud Tasks enqueue failed (expected locally), falling back to direct execution:', err.message);
-        // Fallback: run directly when Cloud Tasks is unavailable (e.g. local emulator)
-        executeGenerateCharacterDraft(payload).catch(directErr => {
-          console.error('Direct generateCharacterDraft execution also failed:', directErr);
+      try {
+        const response = await client.messages.create({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 512,
+          system: CHARACTER_RESPONDER_PROMPT,
+          messages: [
+            ...characterPreamble,
+            ...chatHistory,
+          ],
         });
-      });
 
-      return { text };
+        const textBlock = response.content.find(block => block.type === 'text');
+        const text = textBlock && 'text' in textBlock ? textBlock.text : null;
+
+        if (!text) {
+          console.error('AI model returned empty response. Content:', JSON.stringify(response.content));
+          throw new HttpsError('internal', 'No response from AI model');
+        }
+
+        // Mark character as generating before enqueuing AI 2
+        const db = getFirestore();
+        db.collection('characters').doc(characterId).update({ isGenerating: true }).catch(err => {
+          console.warn('Failed to set isGenerating flag:', err.message);
+        });
+
+        // Enqueue Cloud Task for AI 2 (generateCharacterDraft)
+        // Fire-and-forget: don't await, don't block the response
+        const payload = { characterId, currentCharacter, chatHistory, ai1Response: text };
+        const queue = getFunctions().taskQueue('generateCharacterDraft');
+        queue.enqueue(payload).catch(err => {
+          console.warn('Cloud Tasks enqueue failed (expected locally), falling back to direct execution:', err.message);
+          // Fallback: run directly when Cloud Tasks is unavailable (e.g. local emulator)
+          executeGenerateCharacterDraft(payload).catch(directErr => {
+            console.error('Direct generateCharacterDraft execution also failed:', directErr);
+          });
+        });
+
+        return { text };
+      } catch (error) {
+        if (error instanceof RateLimitError) {
+          throw new HttpsError('resource-exhausted', 'Rate limit exceeded. Please wait a moment before trying again.');
+        }
+        throw error;
+      }
     }
   )
 );

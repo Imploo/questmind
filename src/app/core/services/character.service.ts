@@ -8,10 +8,12 @@ import {
   where,
   setDoc,
   updateDoc,
+  onSnapshot,
   Timestamp,
   type Firestore,
   orderBy
 } from 'firebase/firestore';
+import { Observable } from 'rxjs';
 import { AuthService } from '../../auth/auth.service';
 import { FirebaseService } from '../firebase.service';
 import { Character } from '../models/schemas/character.schema';
@@ -102,5 +104,25 @@ export class CharacterService {
 
   async unlinkCampaign(characterId: string): Promise<void> {
     await this.updateCharacter(characterId, { campaignId: null });
+  }
+
+  watchCharacter(characterId: string): Observable<Character | null> {
+    return new Observable(subscriber => {
+      if (!this.db) {
+        subscriber.next(null);
+        subscriber.complete();
+        return;
+      }
+
+      const characterRef = doc(this.db, 'characters', characterId);
+
+      const unsubscribe = onSnapshot(characterRef, snapshot => {
+        subscriber.next(snapshot.exists() ? (snapshot.data() as Character) : null);
+      }, error => {
+        subscriber.error(error);
+      });
+
+      return unsubscribe;
+    });
   }
 }

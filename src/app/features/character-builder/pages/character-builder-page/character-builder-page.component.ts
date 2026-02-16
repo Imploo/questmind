@@ -2,6 +2,7 @@ import { Component, inject, signal, computed, effect, viewChild, ChangeDetection
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { Subscription } from 'rxjs';
 import { AuthService } from '../../../../auth/auth.service';
 import { CharacterService } from '../../../../core/services/character.service';
@@ -29,6 +30,7 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
     CommonModule,
     RouterModule,
     MatCardModule,
+    MatProgressSpinnerModule,
     CharacterSheetComponent,
     ChatComponent,
     CharacterDraftPreviewComponent,
@@ -56,7 +58,12 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
               <div class="flex-1">
                 @if (selectedCharacterId()) {
                   @if (latestVersion()) {
-                    <mat-card class="bg-base-100 shadow-xl border border-base-300">
+                    <mat-card class="bg-base-100 shadow-xl border border-base-300 relative">
+                      @if (isGenerating()) {
+                        <div class="absolute inset-0 z-10 flex items-center justify-center bg-white/70 rounded-[inherit]">
+                          <mat-spinner diameter="30"></mat-spinner>
+                        </div>
+                      }
                       <mat-card-content class="p-6">
                         <app-character-sheet
                           [character]="latestVersion()!.character"
@@ -166,7 +173,10 @@ export class CharacterBuilderPageComponent {
   isNarrow = signal<boolean>(false);
   isCommitting = signal<boolean>(false);
 
+  isGenerating = computed(() => this.selectedCharacter()?.isGenerating === true);
+
   private versionSubscription: Subscription | null = null;
+  private characterSubscription: Subscription | null = null;
 
   constructor() {
     this.updateLayoutWidth();
@@ -177,9 +187,11 @@ export class CharacterBuilderPageComponent {
     this.route.paramMap.subscribe(params => {
       const id = params.get('characterId');
 
-      // Clean up previous version subscription
+      // Clean up previous subscriptions
       this.versionSubscription?.unsubscribe();
       this.versionSubscription = null;
+      this.characterSubscription?.unsubscribe();
+      this.characterSubscription = null;
 
       if (id) {
         this.selectedCharacterId.set(id);
@@ -190,6 +202,17 @@ export class CharacterBuilderPageComponent {
           .watchLatestVersion(id)
           .subscribe(version => {
             this.latestVersion.set(version);
+          });
+
+        // Start real-time listener for character document (isGenerating flag)
+        this.characterSubscription = this.characterService
+          .watchCharacter(id)
+          .subscribe(character => {
+            if (character) {
+              this.characters.update(list =>
+                list.map(c => c.id === character.id ? character : c)
+              );
+            }
           });
       } else {
         this.selectedCharacterId.set(null);
@@ -215,9 +238,10 @@ export class CharacterBuilderPageComponent {
       }
     });
 
-    // Clean up subscription on destroy
+    // Clean up subscriptions on destroy
     this.destroyRef.onDestroy(() => {
       this.versionSubscription?.unsubscribe();
+      this.characterSubscription?.unsubscribe();
     });
   }
 

@@ -64,6 +64,10 @@ export async function executeGenerateCharacterDraft(payload: GenerateCharacterDr
 
   // Save as draft version in Firestore
   await saveDraftVersion(characterId, validatedCharacter);
+
+  // Clear the generating flag so the frontend hides the loader
+  const db = getFirestore();
+  await db.collection('characters').doc(characterId).update({ isGenerating: false });
 }
 
 export const generateCharacterDraft = onTaskDispatched(
@@ -79,6 +83,14 @@ export const generateCharacterDraft = onTaskDispatched(
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       captureFunctionError('generateCharacterDraft', err);
+
+      // Clear the generating flag so the user isn't stuck with a permanent loader
+      const payload = request.data as GenerateCharacterDraftPayload;
+      if (payload.characterId) {
+        const db = getFirestore();
+        await db.collection('characters').doc(payload.characterId).update({ isGenerating: false }).catch(() => {});
+      }
+
       throw err; // Re-throw so Cloud Tasks can retry
     }
   }
@@ -108,8 +120,9 @@ async function saveDraftVersion(characterId: string, character: DndCharacter): P
       ? 1
       : lastVersionSnap.docs[0].data().versionNumber + 1;
 
-    await versionsRef.add({
-      id: db.collection('_').doc().id, // auto-generated ID
+    const newDocRef = versionsRef.doc();
+    await newDocRef.set({
+      id: newDocRef.id,
       versionNumber: nextNumber,
       character,
       commitMessage: 'Draft via AI chat',

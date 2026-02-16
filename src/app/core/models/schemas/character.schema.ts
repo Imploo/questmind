@@ -7,6 +7,7 @@ export interface Character {
   name: string;
   activeVersionId: string;
   campaignId: string | null;
+  isGenerating?: boolean;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
