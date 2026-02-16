@@ -26,7 +26,7 @@ export interface CharacterChatResponse {
 export const characterChat = onCall(
   {
     cors: SHARED_CORS,
-    secrets: ['CLAUDE_API_KEY'],
+    secrets: ['CLAUDE_API_KEY', 'GOOGLE_AI_API_KEY'],
   },
   wrapCallable<CharacterChatRequest, CharacterChatResponse>(
     'characterChat',

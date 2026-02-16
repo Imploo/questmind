@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { Router, ActivatedRoute } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { AudioSessionStateService } from './services/audio-session-state.service';
-import { AudioBackendOperationsService, RetranscribeProgress, RegenerateStoryProgress } from './services/audio-backend-operations.service';
+import { AudioBackendOperationsService, RegenerateStoryProgress } from './services/audio-backend-operations.service';
 import { PodcastAudioService, PodcastProgress } from './services/podcast-audio.service';
 import { AuthService } from '../auth/auth.service';
 import { FormattingService } from '../shared/formatting.service';
@@ -201,7 +201,6 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
                 [story]="currentSession()?.content || ''"
                 [transcript]="currentSession()?.transcription?.rawTranscript || ''"
                 [isBusy]="isBusy()"
-                [canRetranscribe]="canRetranscribe()"
                 [canRegenerate]="canRegenerateStory()"
                 [canEditStory]="canEditStory()"
                 [canEditCorrections]="canEditCorrections()"
@@ -217,7 +216,6 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
                 [backgroundJobMessage]="backgroundJobMessage()"
                 (storyUpdated)="saveStoryEdits($event)"
                 (regenerate)="regenerateStory()"
-                (retranscribe)="retranscribeSessionFast()"
                 (correctionsChanged)="onCorrectionsInput($event)"
                 (generatePodcast)="generatePodcast()"
                 (downloadPodcast)="downloadPodcast($event)"
@@ -295,21 +293,6 @@ export class AudioSessionComponent implements OnDestroy {
     return '';
   });
   canRegenerateStory = computed(() => this.isSessionOwner());
-  canRetranscribe = computed(() => {
-    const session = this.currentSession();
-    const isOwner = this.isSessionOwner();
-    const hasAudio = !!this.resolveAudioStorageUrl(session);
-
-    // Allow re-transcribe if:
-    // 1. User owns the session
-    // 2. There's an audio file available
-    // 3. Session is not currently processing
-    const isProcessing = session?.progress?.stage === 'transcribing' ||
-                        session?.progress?.stage === 'retranscribing' ||
-                        session?.status === 'processing';
-
-    return isOwner && hasAudio && !isProcessing;
-  });
   canGeneratePodcast = computed(() => this.isSessionOwner());
   canEditStory = computed(() => this.isSessionOwner());
   canEditCorrections = computed(() => !!this.currentSession());
@@ -528,92 +511,6 @@ export class AudioSessionComponent implements OnDestroy {
     }
   }
 
-  async retranscribeSession(): Promise<void> {
-    if (!this.canRetranscribe()) {
-      return;
-    }
-    const session = this.currentSession();
-    const audioStorageUrl = this.resolveAudioStorageUrl(session);
-    const uid = this.userId();
-    const campaignId = session?.campaignId;
-
-    if (!audioStorageUrl) {
-      this.failSession('No stored audio file found for this session.');
-      return;
-    }
-    if (!uid) {
-      this.failSession('User not authenticated.');
-      return;
-    }
-    if (!campaignId) {
-      this.failSession('No campaign selected.');
-      return;
-    }
-
-    this.resetProgress();
-    this.stage.set('transcribing');
-    this.statusMessage.set('Starting retranscription...');
-
-    try {
-      // Start listening to progress BEFORE starting processing
-      this.cleanupProgressListener();
-      this.progressUnsubscribe = this.backendOperations.listenToRetranscribeProgress(
-        campaignId,
-        session.id,
-        (progress: RetranscribeProgress) => {
-          // Update UI based on status
-          this.progress.set(progress.progress);
-          this.statusMessage.set(progress.message);
-
-          if (progress.error) {
-            this.failSession(progress.error);
-            this.cleanupProgressListener();
-            return;
-          }
-
-          // Map backend status to frontend stage
-          switch (progress.status) {
-            case 'loading_context':
-              this.stage.set('transcribing');
-              break;
-            case 'transcribing':
-            case 'transcription_complete':
-              this.stage.set('transcribing');
-              break;
-            case 'generating_story':
-            case 'story_complete':
-              this.stage.set('generating');
-              break;
-            case 'completed':
-              this.stage.set('completed');
-              this.cleanupProgressListener();
-              this.refreshSessions();
-              break;
-            case 'failed':
-              this.failSession(progress.error || 'Retranscription failed');
-              this.cleanupProgressListener();
-              break;
-          }
-        }
-      );
-
-      // Start processing (fire-and-forget)
-      await this.backendOperations.retranscribeAudio(
-        campaignId,
-        session.id,
-        {
-          userCorrections: this.userCorrections(),
-          regenerateStoryAfterTranscription: true
-        }
-      );
-
-    } catch (error: unknown) {
-      console.error('Failed to start retranscription:', error);
-      this.failSession((error as Error)?.message || 'Failed to start retranscription');
-      this.cleanupProgressListener();
-    }
-  }
-
   saveStoryEdits(content: string): void {
     if (!this.canEditStory()) {
       return;
@@ -717,55 +614,6 @@ export class AudioSessionComponent implements OnDestroy {
       storageUrl,
       session.audioFileName || 'audio.wav',
       this.userCorrections() || undefined
-    );
-  }
-
-  /**
-   * Re-transcribe completed session using fast transcription
-   * This allows users to improve transcription accuracy with corrections
-   */
-  async retranscribeSessionFast(): Promise<void> {
-    if (!this.canRetranscribe()) {
-      logger.warn('[Retranscribe] Cannot retranscribe - permission denied');
-      return;
-    }
-
-    const session = this.currentSession();
-    const storageUrl = this.resolveAudioStorageUrl(session);
-
-    if (!storageUrl) {
-      alert('Cannot re-transcribe: No audio file found for this session.');
-      return;
-    }
-
-    if (!session?.campaignId) {
-      alert('Cannot re-transcribe: No campaign selected.');
-      return;
-    }
-
-    logger.debug('[Retranscribe] Re-transcribing session with fast mode:', session.id);
-
-    // Optionally prompt for user corrections
-    const shouldPrompt = confirm('Would you like to add corrections or context to improve transcription accuracy?');
-    let userCorrections = this.userCorrections() || undefined;
-
-    if (shouldPrompt) {
-      const input = prompt('Enter corrections or context (optional):', userCorrections || '');
-      if (input !== null) {
-        userCorrections = input || undefined;
-        if (userCorrections) {
-          this.userCorrections.set(userCorrections);
-        }
-      }
-    }
-
-    // Call transcribeAudioFast with session parameters
-    await this.callTranscribeAudioFast(
-      session.campaignId,
-      session.id,
-      storageUrl,
-      session.audioFileName || 'audio.wav',
-      userCorrections
     );
   }
 

@@ -12,7 +12,7 @@ import { wrapCallable } from './utils/sentry-error-handler';
 export interface TranscribeAudioFastRequest {
   campaignId: string;
   sessionId: string;
-  gsUri: string;
+  fileUri: string;
   audioFileName: string;
   audioFileSize?: number;
   userCorrections?: string;
@@ -22,6 +22,11 @@ interface TranscriptionResponsePayload {
   segments?: TranscriptionSegment[];
   error?: string;
   message?: string;
+}
+
+interface GeminiFileStateResponse {
+  state?: string | { name?: string };
+  error?: unknown;
 }
 
 /**
@@ -36,7 +41,7 @@ interface TranscriptionResponsePayload {
  */
 export const transcribeAudioFast = onCall(
   {
-    secrets: ['KANKA_API_TOKEN'],
+    secrets: ['GOOGLE_AI_API_KEY', 'KANKA_API_TOKEN'],
   },
   wrapCallable<TranscribeAudioFastRequest, { success: boolean; message: string }>(
     'transcribeAudioFast',
@@ -44,16 +49,24 @@ export const transcribeAudioFast = onCall(
     const {
       campaignId,
       sessionId,
-      gsUri,
+      fileUri,
       audioFileName,
       userCorrections,
     } = request.data;
 
     // Validate required fields
-    if (!campaignId || !sessionId || !gsUri || !audioFileName) {
+    if (!campaignId || !sessionId || !fileUri || !audioFileName) {
       throw new HttpsError(
         'invalid-argument',
-        'Missing required fields: campaignId, sessionId, gsUri, audioFileName'
+        'Missing required fields: campaignId, sessionId, fileUri, audioFileName'
+      );
+    }
+
+    const googleAiKey = process.env.GOOGLE_AI_API_KEY;
+    if (!googleAiKey) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Google AI API key not configured'
       );
     }
 
@@ -91,7 +104,7 @@ export const transcribeAudioFast = onCall(
         mode: 'fast',
         enableKankaContext: kankaEnabled,
         userCorrections,
-        gsUri,
+        fileUri,
         audioFileName,
         submittedAt: FieldValue.serverTimestamp(),
         status: 'processing',
@@ -102,7 +115,7 @@ export const transcribeAudioFast = onCall(
     processTranscriptionAsync(
       campaignId,
       sessionId,
-      gsUri,
+      fileUri,
       audioFileName,
       kankaEnabled,
       userCorrections
@@ -143,7 +156,7 @@ async function getCampaignKankaEnabled(campaignId: string): Promise<boolean> {
 async function processTranscriptionAsync(
   campaignId: string,
   sessionId: string,
-  gsUri: string,
+  fileUri: string,
   audioFileName: string,
   enableKankaContext: boolean,
   userCorrections?: string
@@ -189,16 +202,15 @@ async function processTranscriptionAsync(
       enableKankaContext
     );
 
-    // 3. Call Gemini Vertex AI with the GCS URI
-    const googleAi = new GoogleGenAI({
-      vertexai: true,
-      project: process.env.GCLOUD_PROJECT,
-      location: 'global',
-    });
+    // 3. Call Gemini API with the Files API URI
+    const googleAi = new GoogleGenAI({ apiKey: process.env.GOOGLE_AI_API_KEY! });
 
     const prompt = buildTranscriptionPrompt(kankaContext);
 
-    logger.debug(`[Fast Transcription] Calling Gemini Vertex AI with request:`, {
+    // Gemini Files can take a short time to become ACTIVE after upload finalize.
+    await waitForGeminiFileToBecomeActive(fileUri, process.env.GOOGLE_AI_API_KEY!);
+
+    logger.debug(`[Fast Transcription] Calling Gemini API with request:`, {
       model,
       config: {
         temperature: transcriptionConfig.temperature,
@@ -221,7 +233,7 @@ async function processTranscriptionAsync(
             {
               fileData: {
                 mimeType: mimeType,
-                fileUri: gsUri,
+                fileUri: fileUri,
               },
             },
           ],
@@ -439,4 +451,61 @@ function formatTimestamp(seconds: number): string {
   return `${minutes}:${secs.toString().padStart(2, '0')}`;
 }
 
+async function waitForGeminiFileToBecomeActive(
+  fileUri: string,
+  apiKey: string
+): Promise<void> {
+  const maxAttempts = 15;
+  const delayMs = 2000;
 
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const response = await fetch(`${fileUri}?key=${apiKey}`, {
+      method: 'GET',
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(
+        `Failed to read Gemini file state (${response.status}): ${errorText}`
+      );
+    }
+
+    const payload = (await response.json()) as GeminiFileStateResponse;
+    const rawState = payload.state;
+    const state =
+      typeof rawState === 'string'
+        ? rawState
+        : rawState && typeof rawState === 'object'
+          ? rawState.name
+          : undefined;
+
+    logger.debug('[Fast Transcription] Gemini file state check', {
+      attempt,
+      maxAttempts,
+      fileUri,
+      state,
+    });
+
+    if (state === 'ACTIVE') {
+      return;
+    }
+
+    if (state === 'FAILED') {
+      throw new Error(
+        `Gemini file processing failed before transcription: ${JSON.stringify(payload)}`
+      );
+    }
+
+    if (attempt < maxAttempts) {
+      await sleep(delayMs);
+    }
+  }
+
+  throw new Error(
+    `Gemini file did not become ACTIVE in time: ${fileUri}`
+  );
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
