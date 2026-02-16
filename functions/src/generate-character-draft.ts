@@ -1,6 +1,6 @@
 import { onTaskDispatched } from 'firebase-functions/v2/tasks';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
-import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import { DndCharacterSchema, DndCharacter } from './schemas/dnd-character.schema';
 import { CHARACTER_JSON_GENERATOR_PROMPT } from './prompts/character-json-generator.prompt';
 import { captureFunctionError } from './utils/sentry-error-handler';
@@ -29,10 +29,7 @@ export async function executeGenerateCharacterDraft(payload: GenerateCharacterDr
     return;
   }
 
-  const client = new OpenAI({
-    baseURL: process.env.AZURE_FOUNDRY_ENDPOINT!,
-    apiKey: process.env.AZURE_FOUNDRY_API_KEY!,
-  });
+  const client = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY! });
 
   // AI 2: JSON generator — build messages with full context
   const characterPreamble: { role: 'user' | 'assistant'; content: string }[] = [
@@ -40,11 +37,12 @@ export async function executeGenerateCharacterDraft(payload: GenerateCharacterDr
     { role: 'assistant', content: 'Karakter ontvangen, zal het inlezen.' },
   ];
 
-  const response = await client.chat.completions.create({
-    model: 'gpt-5-mini',
-    max_completion_tokens: 4096,
+  const response = await client.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 4096,
+    temperature: 0.1,
+    system: CHARACTER_JSON_GENERATOR_PROMPT,
     messages: [
-      { role: 'system', content: CHARACTER_JSON_GENERATOR_PROMPT },
       ...characterPreamble,
       ...chatHistory,
       { role: 'assistant', content: ai1Response },
@@ -52,7 +50,8 @@ export async function executeGenerateCharacterDraft(payload: GenerateCharacterDr
     ],
   });
 
-  const text = response.choices[0]?.message?.content;
+  const textBlock = response.content.find(block => block.type === 'text');
+  const text = textBlock && 'text' in textBlock ? textBlock.text : null;
 
   if (!text) {
     throw new Error('No response from AI model');
@@ -72,7 +71,7 @@ export async function executeGenerateCharacterDraft(payload: GenerateCharacterDr
 
 export const generateCharacterDraft = onTaskDispatched(
   {
-    secrets: ['AZURE_FOUNDRY_API_KEY', 'AZURE_FOUNDRY_ENDPOINT'],
+    secrets: ['CLAUDE_API_KEY'],
     retryConfig: {
       maxAttempts: 3,
     },
