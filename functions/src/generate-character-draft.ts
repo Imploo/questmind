@@ -10,11 +10,60 @@ interface ChatHistoryMessage {
   content: string;
 }
 
-interface GenerateCharacterDraftPayload {
+export interface GenerateCharacterDraftPayload {
   characterId: string;
   currentCharacter: DndCharacter;
   chatHistory: ChatHistoryMessage[];
   ai1Response: string;
+}
+
+/**
+ * Core logic for AI 2: generates a character draft from chat context.
+ * Extracted so it can be called both from Cloud Tasks and directly as fallback.
+ */
+export async function executeGenerateCharacterDraft(payload: GenerateCharacterDraftPayload): Promise<void> {
+  const { characterId, currentCharacter, chatHistory, ai1Response } = payload;
+
+  if (!characterId || !currentCharacter || !chatHistory || !ai1Response) {
+    console.error('generateCharacterDraft: missing required payload fields');
+    return;
+  }
+
+  const client = new OpenAI({
+    baseURL: process.env.AZURE_FOUNDRY_ENDPOINT!,
+    apiKey: process.env.AZURE_FOUNDRY_API_KEY!,
+  });
+
+  // AI 2: JSON generator — build messages with full context
+  const characterPreamble: { role: 'user' | 'assistant'; content: string }[] = [
+    { role: 'user', content: `Huidig karakter:\n${JSON.stringify(currentCharacter)}` },
+    { role: 'assistant', content: 'Karakter ontvangen, zal het inlezen.' },
+  ];
+
+  const response = await client.chat.completions.create({
+    model: 'gpt-5-mini',
+    max_completion_tokens: 4096,
+    messages: [
+      { role: 'system', content: CHARACTER_JSON_GENERATOR_PROMPT },
+      ...characterPreamble,
+      ...chatHistory,
+      { role: 'assistant', content: ai1Response },
+      { role: 'user', content: 'Update het karakter op basis van het bovenstaande gesprek. Retourneer alleen een geldig JSON-object.' },
+    ],
+  });
+
+  const text = response.choices[0]?.message?.content;
+
+  if (!text) {
+    throw new Error('No response from AI model');
+  }
+
+  // Parse and validate JSON
+  const parsed = JSON.parse(text);
+  const validatedCharacter = DndCharacterSchema.parse(parsed);
+
+  // Save as draft version in Firestore
+  await saveDraftVersion(characterId, validatedCharacter);
 }
 
 export const generateCharacterDraft = onTaskDispatched(
@@ -25,50 +74,8 @@ export const generateCharacterDraft = onTaskDispatched(
     },
   },
   async (request) => {
-    const { characterId, currentCharacter, chatHistory, ai1Response } =
-      request.data as GenerateCharacterDraftPayload;
-
-    if (!characterId || !currentCharacter || !chatHistory || !ai1Response) {
-      console.error('generateCharacterDraft: missing required payload fields');
-      return;
-    }
-
     try {
-      const client = new OpenAI({
-        baseURL: process.env.AZURE_FOUNDRY_ENDPOINT!,
-        apiKey: process.env.AZURE_FOUNDRY_API_KEY!,
-      });
-
-      // AI 2: JSON generator — build messages with full context
-      const characterPreamble: { role: 'user' | 'assistant'; content: string }[] = [
-        { role: 'user', content: `Huidig karakter:\n${JSON.stringify(currentCharacter)}` },
-        { role: 'assistant', content: 'Karakter ontvangen, zal het inlezen.' },
-      ];
-
-      const response = await client.chat.completions.create({
-        model: 'gpt-5-mini',
-        max_completion_tokens: 4096,
-        messages: [
-          { role: 'system', content: CHARACTER_JSON_GENERATOR_PROMPT },
-          ...characterPreamble,
-          ...chatHistory,
-          { role: 'assistant', content: ai1Response },
-          { role: 'user', content: 'Update het karakter op basis van het bovenstaande gesprek. Retourneer alleen een geldig JSON-object.' },
-        ],
-      });
-
-      const text = response.choices[0]?.message?.content;
-
-      if (!text) {
-        throw new Error('No response from AI model');
-      }
-
-      // Parse and validate JSON
-      const parsed = JSON.parse(text);
-      const validatedCharacter = DndCharacterSchema.parse(parsed);
-
-      // Save as draft version in Firestore
-      await saveDraftVersion(characterId, validatedCharacter);
+      await executeGenerateCharacterDraft(request.data as GenerateCharacterDraftPayload);
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       captureFunctionError('generateCharacterDraft', err);

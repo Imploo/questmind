@@ -5,6 +5,7 @@ import { wrapCallable } from './utils/sentry-error-handler';
 import { SHARED_CORS } from './index';
 import { CHARACTER_RESPONDER_PROMPT } from './prompts/character-responder.prompt';
 import { DndCharacter } from './schemas/dnd-character.schema';
+import { executeGenerateCharacterDraft } from './generate-character-draft';
 
 interface ChatHistoryMessage {
   role: 'user' | 'assistant';
@@ -35,10 +36,15 @@ export const characterChat = onCall(
         throw new HttpsError('invalid-argument', 'Missing required fields: characterId, currentCharacter, chatHistory');
       }
 
-      const client = new OpenAI({
-        baseURL: process.env.AZURE_FOUNDRY_ENDPOINT!,
-        apiKey: process.env.AZURE_FOUNDRY_API_KEY!,
-      });
+      const baseURL = process.env.AZURE_FOUNDRY_ENDPOINT;
+      const apiKey = process.env.AZURE_FOUNDRY_API_KEY;
+
+      if (!baseURL || !apiKey) {
+        console.error('Missing Azure Foundry credentials. AZURE_FOUNDRY_ENDPOINT:', baseURL ? 'set' : 'MISSING', 'AZURE_FOUNDRY_API_KEY:', apiKey ? 'set' : 'MISSING');
+        throw new HttpsError('internal', 'AI service not configured');
+      }
+
+      const client = new OpenAI({ baseURL, apiKey });
 
       // AI 1: Text responder — build messages with character context
       const characterPreamble: { role: 'user' | 'assistant'; content: string }[] = [
@@ -59,19 +65,20 @@ export const characterChat = onCall(
       const text = response.choices[0]?.message?.content;
 
       if (!text) {
+        console.error('AI model returned empty response. Choices:', JSON.stringify(response.choices));
         throw new HttpsError('internal', 'No response from AI model');
       }
 
       // Enqueue Cloud Task for AI 2 (generateCharacterDraft)
       // Fire-and-forget: don't await, don't block the response
+      const payload = { characterId, currentCharacter, chatHistory, ai1Response: text };
       const queue = getFunctions().taskQueue('generateCharacterDraft');
-      queue.enqueue({
-        characterId,
-        currentCharacter,
-        chatHistory,
-        ai1Response: text,
-      }).catch(err => {
-        console.error('Failed to enqueue generateCharacterDraft task:', err);
+      queue.enqueue(payload).catch(err => {
+        console.warn('Cloud Tasks enqueue failed (expected locally), falling back to direct execution:', err.message);
+        // Fallback: run directly when Cloud Tasks is unavailable (e.g. local emulator)
+        executeGenerateCharacterDraft(payload).catch(directErr => {
+          console.error('Direct generateCharacterDraft execution also failed:', directErr);
+        });
       });
 
       return { text };
