@@ -9,7 +9,7 @@ import {
   NgZone,
 } from '@angular/core';
 import { ChatComponent } from '../../../../chat/chat.component';
-import { DndCharacter } from '../../../../shared/schemas/dnd-character.schema';
+import { DndCharacter } from '../../../../shared/models/dnd-character.model';
 
 const COLLAPSED_VH = 0.08;
 const EXPANDED_VH = 0.82;

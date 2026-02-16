@@ -2,7 +2,8 @@ import { Injectable } from '@angular/core';
 import { getApp, type FirebaseApp } from 'firebase/app';
 import { getAuth, type Auth } from 'firebase/auth';
 import { getFirestore, type Firestore } from 'firebase/firestore';
-import { getFunctions, type Functions } from 'firebase/functions';
+import { connectFunctionsEmulator, getFunctions, type Functions } from 'firebase/functions';
+import { environment } from '../../environments/environment';
 import { getStorage, type FirebaseStorage } from 'firebase/storage';
 
 @Injectable({ providedIn: 'root' })
@@ -19,6 +20,9 @@ export class FirebaseService {
       this.auth = getAuth(this.app);
       this.firestore = getFirestore(this.app);
       this.functions = getFunctions(this.app, 'europe-west1');
+      if (environment.useEmulators) {
+        connectFunctionsEmulator(this.functions, 'localhost', 5002);
+      }
       this.storage = getStorage(this.app);
     } catch (error) {
       console.error('Firebase not initialized:', error);
@@ -50,4 +54,5 @@ export class FirebaseService {
     }
     return this.functions;
   }
+
 }

@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, input, output, signal, inject } fro
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { httpsCallable } from 'firebase/functions';
-import { DndCharacter } from '../../../../shared/schemas/dnd-character.schema';
+import { DndCharacter } from '../../../../shared/models/dnd-character.model';
 import { CharacterImage } from '../../../../core/models/schemas/character-image.schema';
 import { CharacterImageGalleryComponent } from '../character-image-gallery/character-image-gallery.component';
 import { FirebaseService } from '../../../../core/firebase.service';
@@ -16,7 +16,6 @@ export interface SpellResolvedEvent {
 
 @Component({
   selector: 'app-character-sheet',
-  standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule, CharacterImageGalleryComponent],
   template: `
@@ -240,7 +239,7 @@ export interface SpellResolvedEvent {
                     @for (attack of character().attacks; track attack.name) {
                       <tr>
                         <td class="font-bold">{{ attack.name }}</td>
-                        <td>{{ attack.bonus >= 0 ? '+' : '' }}{{ attack.bonus }}</td>
+                        <td>{{ (attack.bonus ?? 0) >= 0 ? '+' : '' }}{{ attack.bonus ?? 0 }}</td>
                         <td>{{ attack.damage }} {{ attack.type }}</td>
                       </tr>
                     } @empty {
@@ -391,11 +390,14 @@ export class CharacterSheetComponent {
     }
 
     return Object.entries(spellcasting.slots)
-      .map(([level, data]: [string, { total?: number; expended?: number }]) => ({
-        level: parseInt(level),
-        total: data.total || 0,
-        expended: data.expended || 0,
-      }))
+      .map(([level, data]) => {
+        const slotData = data as { total?: number; expended?: number };
+        return {
+          level: parseInt(level),
+          total: slotData.total || 0,
+          expended: slotData.expended || 0,
+        };
+      })
       .sort((a, b) => a.level - b.level);
   }
 

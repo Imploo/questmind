@@ -1,7 +1,12 @@
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
-import { RateLimitError, Anthropic } from '@anthropic-ai/sdk';
+import { getFunctions } from 'firebase-admin/functions';
+import { getFirestore } from 'firebase-admin/firestore';
+import { Anthropic, RateLimitError } from '@anthropic-ai/sdk';
 import { wrapCallable } from './utils/sentry-error-handler';
 import { SHARED_CORS } from './index';
+import { CHARACTER_RESPONDER_PROMPT } from './prompts/character-responder.prompt';
+import { DndCharacter } from './schemas/dnd-character.schema';
+import { executeGenerateCharacterDraft } from './generate-character-draft';
 
 interface ChatHistoryMessage {
   role: 'user' | 'assistant';
@@ -9,13 +14,13 @@ interface ChatHistoryMessage {
 }
 
 export interface CharacterChatRequest {
-  systemPrompt: string;
+  characterId: string;
+  currentCharacter: DndCharacter;
   chatHistory: ChatHistoryMessage[];
 }
 
 export interface CharacterChatResponse {
   text: string;
-  character?: Record<string, unknown>;
 }
 
 export const characterChat = onCall(
@@ -26,56 +31,65 @@ export const characterChat = onCall(
   wrapCallable<CharacterChatRequest, CharacterChatResponse>(
     'characterChat',
     async (request): Promise<CharacterChatResponse> => {
-      const { systemPrompt, chatHistory } = request.data;
+      const { characterId, currentCharacter, chatHistory } = request.data;
 
-      if (!systemPrompt || !Array.isArray(chatHistory) || chatHistory.length === 0) {
-        throw new HttpsError('invalid-argument', 'Missing required fields: systemPrompt, chatHistory');
+      if (!characterId || !currentCharacter || !Array.isArray(chatHistory) || chatHistory.length === 0) {
+        throw new HttpsError('invalid-argument', 'Missing required fields: characterId, currentCharacter, chatHistory');
       }
 
-      const client = new Anthropic({
-        apiKey: process.env.CLAUDE_API_KEY,
-      });
+      const apiKey = process.env.CLAUDE_API_KEY;
+
+      if (!apiKey) {
+        console.error('Missing CLAUDE_API_KEY');
+        throw new HttpsError('internal', 'AI service not configured');
+      }
+
+      const client = new Anthropic({ apiKey });
+
+      // AI 1: Text responder — build messages with character context
+      const characterPreamble: { role: 'user' | 'assistant'; content: string }[] = [
+        { role: 'user', content: `Huidig karakter:\n${JSON.stringify(currentCharacter)}` },
+        { role: 'assistant', content: 'Karakter ontvangen, zal het inlezen.' },
+      ];
 
       try {
-          const response = await client.messages.create({
-              model: 'claude-haiku-4-5-20251001',
-              max_tokens: 1024,
-              system: systemPrompt,
-              messages: chatHistory,
-              tools: [{
-                  name: "submit_response",
-                  description: "Gebruik deze tool om je interne gedachten en je uiteindelijke antwoord naar de gebruiker te sturen.",
-                  input_schema: {
-                      type: "object",
-                      properties: {
-                          message: {
-                              type: "string",
-                              description: "Het daadwerkelijke bericht naar de gebruiker."
-                          },
-                          character: {
-                              type: "object",
-                              description: "Het volledige bijgewerkte karakter als JSON object. Alleen meesturen als het karakter is gewijzigd. Weglaten als de gebruiker alleen een vraag stelt zonder wijzigingen. Nooit description of usage van spells meesturen.",
-                              additionalProperties: true
-                          }
-                      },
-                      required: ["message"]
-                  }
-              }],
-              tool_choice: { type: "tool", name: "submit_response" }
+        const response = await client.messages.create({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 512,
+          system: CHARACTER_RESPONDER_PROMPT,
+          messages: [
+            ...characterPreamble,
+            ...chatHistory,
+          ],
+        });
+
+        const textBlock = response.content.find(block => block.type === 'text');
+        const text = textBlock && 'text' in textBlock ? textBlock.text : null;
+
+        if (!text) {
+          console.error('AI model returned empty response. Content:', JSON.stringify(response.content));
+          throw new HttpsError('internal', 'No response from AI model');
+        }
+
+        // Mark character as generating before enqueuing AI 2
+        const db = getFirestore();
+        db.collection('characters').doc(characterId).update({ isGenerating: true }).catch(err => {
+          console.warn('Failed to set isGenerating flag:', err.message);
+        });
+
+        // Enqueue Cloud Task for AI 2 (generateCharacterDraft)
+        // Fire-and-forget: don't await, don't block the response
+        const payload = { characterId, currentCharacter, chatHistory, ai1Response: text };
+        const queue = getFunctions().taskQueue('generateCharacterDraft');
+        queue.enqueue(payload).catch(err => {
+          console.warn('Cloud Tasks enqueue failed (expected locally), falling back to direct execution:', err.message);
+          // Fallback: run directly when Cloud Tasks is unavailable (e.g. local emulator)
+          executeGenerateCharacterDraft(payload).catch(directErr => {
+            console.error('Direct generateCharacterDraft execution also failed:', directErr);
           });
+        });
 
-          const toolBlock = response.content.find(block => block.type === 'tool_use');
-
-          if (!toolBlock || !toolBlock.input) {
-              throw new HttpsError('internal', 'AI model failed to use the required tool');
-          }
-
-          return {
-              //@ts-ignore
-              text: toolBlock.input?.message,
-              //@ts-ignore
-              character: toolBlock.input?.character ?? undefined,
-          };
+        return { text };
       } catch (error) {
         if (error instanceof RateLimitError) {
           throw new HttpsError('resource-exhausted', 'Rate limit exceeded. Please wait a moment before trying again.');

@@ -37,8 +37,8 @@ export const generateImage = onCall(
     async (request): Promise<GenerateImageResponse> => {
       const { chatRequest, model, characterId } = request.data;
 
-      if (!request || !model || !characterId) {
-        throw new HttpsError('invalid-argument', 'Missing required fields: request, model, characterId');
+      if (!chatRequest || !model || !characterId) {
+        throw new HttpsError('invalid-argument', 'Missing required fields: chatRequest, model, characterId');
       }
 
       const apiKey = process.env.FAL_API_KEY;
@@ -46,7 +46,7 @@ export const generateImage = onCall(
         throw new HttpsError('failed-precondition', 'FAL API key not configured');
       }
 
-      const prompt = chatRequest.systemPrompt + chatRequest.chatHistory.map(chat => `[${chat.role}]: ${chat.content}\n`);
+      const prompt = chatRequest.systemPrompt + '\n' + chatRequest.chatHistory.map(chat => `[${chat.role}]: ${chat.content}\n`).join('');
 
       fal.config({ credentials: apiKey });
 

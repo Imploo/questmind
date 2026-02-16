@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { ChatService, Message } from './chat.service';
 import { marked } from 'marked';
-import { DndCharacter } from '../shared/schemas/dnd-character.schema';
+import { DndCharacter } from '../shared/models/dnd-character.model';
 import { ImageLightboxComponent } from './image-lightbox.component';
 
 @Component({

@@ -9,23 +9,26 @@
     "build": "tsc",
     "build:watch": "tsc --watch",
     "lint": "eslint --ext .ts src",
-    "serve": "npm run build && firebase emulators:start --only functions",
+    "serve": "npm run build && firebase emulators:start --only functions --project questmind-dnd",
     "deploy": "npm run build && firebase deploy --only functions"
   },
   "dependencies": {
-    "@anthropic-ai/vertex-sdk": "^0.14.3",
+    "@anthropic-ai/sdk": "^0.74.0",
+    "@azure-rest/ai-inference": "1.0.0-beta.6",
+    "@azure/core-auth": "^1.9.0",
     "@elevenlabs/elevenlabs-js": "^2.34.0",
     "@fal-ai/client": "^1.9.0",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@google-cloud/storage": "^7.17.1",
-    "@google-cloud/text-to-speech": "^6.4.0",
     "@google/genai": "^1.39.0",
     "@google/generative-ai": "^0.24.1",
     "@sentry/node": "^10.38.0",
     "dotenv": "^16.4.7",
     "firebase-admin": "^12.7.0",
     "firebase-functions": "^7.0.5",
-    "fluent-ffmpeg": "^2.1.2"
+    "fluent-ffmpeg": "^2.1.2",
+    "openai": "^6.22.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/fluent-ffmpeg": "^2.1.28",

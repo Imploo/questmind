@@ -68,3 +68,4 @@ bruno/.env
 .devcontainer/service-account.json
 .devcontainer/*.key.json
 /src/environments/environment.beta.ts
+/functions/.secret.local

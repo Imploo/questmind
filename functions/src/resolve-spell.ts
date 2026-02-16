@@ -1,5 +1,5 @@
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
-import { Anthropic } from '@anthropic-ai/sdk';
+import { GoogleGenAI } from '@google/genai';
 import { getFirestore } from 'firebase-admin/firestore';
 import { wrapCallable } from './utils/sentry-error-handler';
 import { SHARED_CORS } from './index';
@@ -19,7 +19,7 @@ interface ResolveSpellResponse {
 export const resolveSpell = onCall(
   {
     cors: SHARED_CORS,
-    secrets: ['CLAUDE_API_KEY'],
+    secrets: ['GOOGLE_AI_API_KEY'],
   },
   wrapCallable<ResolveSpellRequest, ResolveSpellResponse>(
     'resolveSpell',
@@ -30,26 +30,31 @@ export const resolveSpell = onCall(
         throw new HttpsError('invalid-argument', 'Missing required fields: characterId, spellName');
       }
 
-      const client = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY });
+      const apiKey = process.env.GOOGLE_AI_API_KEY;
+      if (!apiKey) {
+        throw new HttpsError('failed-precondition', 'AI API key not configured');
+      }
+
+      const ai = new GoogleGenAI({ apiKey });
 
       const levelText = spellLevel === 0 ? 'cantrip' : spellLevel !== undefined ? `level ${spellLevel} spell` : 'spell';
       const schoolText = spellSchool ? ` (${spellSchool})` : '';
 
-      const response = await client.messages.create({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 512,
-        messages: [{
-          role: 'user',
-          content: `Return a JSON object (no markdown) for the D&D 5e spell "${spellName}" (${levelText}${schoolText}).
+      const result = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: `Return a JSON object (no markdown) for the D&D 5e spell "${spellName}" (${levelText}${schoolText}).
 Fields:
 - "description": full spell text from the rules, include "At Higher Levels." section if applicable
-- "usage": multiline string formatted as "Casting Time: ...\nRange: ...\nComponents: ...\nDuration: ..."
+- "usage": multiline string formatted as "Casting Time: ...\\nRange: ...\\nComponents: ...\\nDuration: ..."
 
-Return only valid JSON like: {"description": "...", "usage": "Casting Time: 1 action\nRange: 60 feet\nComponents: V, S\nDuration: Instantaneous"}`
-        }],
+Return only valid JSON like: {"description": "...", "usage": "Casting Time: 1 action\\nRange: 60 feet\\nComponents: V, S\\nDuration: Instantaneous"}`,
+        config: {
+          responseMimeType: 'application/json',
+          maxOutputTokens: 512,
+        },
       });
 
-      const text = response.content[0]?.type === 'text' ? response.content[0].text : '';
+      const text = result.text ?? '';
 
       let details: ResolveSpellResponse;
       try {
