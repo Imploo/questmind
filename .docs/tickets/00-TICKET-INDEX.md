@@ -482,5 +482,34 @@ Start here for immediate impact with minimal risk:
 
 ---
 
+## 🎙️ Azure Migration (Transcription & TTS)
+
+| Ticket | Title | Priority | Status | Effort | Dependencies |
+|--------|-------|----------|--------|--------|--------------|
+| [#51](./51-azure-speech-service-transcription.md) | Migrate Transcription to Azure Speech Service with Diarization | High | Todo | 3–5 days | - |
+| [#52](./done/52-azure-speech-podcast-generation.md) | Migrate Podcast TTS from Google Chirp 3 HD to Azure Speech Service | High | Done | 1–2 days | #51 |
+
+**Key Changes:**
+- **Ticket 51**: Vervangt Gemini Vertex AI transcriptie door Azure Speech Service
+  - **Batch API** (niet Fast) — sessies zijn altijd >2 uur, max 4 uur met diarization
+  - Azure Blob Storage voor audio staging (batch API vereist URL naar audio)
+  - Speaker diarization (1-5 sprekers), word-level timestamps, locale `nl-NL`
+  - Polling-based completion met Firestore progress updates
+  - Geen phrase list in batch API — Kanka context gaat via story generation LLM
+  - Output mapt naar bestaand `TranscriptionSegment[]` formaat
+  - Gemini transcriptie code volledig verwijderd
+  - Sessies >4 uur: voorlopig foutmelding, auto-split is fase 2
+
+- **Ticket 52**: Vervangt Google Cloud Chirp 3 HD TTS door Azure Speech Neural TTS
+  - Vendor consolidatie — hergebruikt Azure Speech resource uit ticket #51
+  - SSML-aanpak met `<voice>` tags blijft identiek (Azure ondersteunt dit)
+  - Stemmen: `nl-NL-MaartenNeural` (host1) + `nl-NL-FennaNeural` (host2)
+  - Simpele REST API call (`fetch()`) — geen extra npm package nodig
+  - Google `@google-cloud/text-to-speech` dependency verwijderd
+  - Script generatie (Claude Haiku 4.5) ongewijzigd
+  - Geen frontend wijzigingen nodig
+
+---
+
 **Last Updated:** 2026-02-16
 **Status:** Planning Complete, Ready to Begin

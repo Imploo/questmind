@@ -2,8 +2,7 @@ import * as logger from './utils/logger';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
-import { TextToSpeechClient } from '@google-cloud/text-to-speech';
-import { AnthropicVertex } from '@anthropic-ai/vertex-sdk';
+import { Anthropic } from '@anthropic-ai/sdk';
 import { randomUUID } from 'crypto';
 import { SHARED_CORS } from './index';
 import { PODCAST_SCRIPT_GENERATOR_PROMPT } from './prompts/podcast-script-generator.prompt';
@@ -11,36 +10,19 @@ import { ensureAuthForTesting } from './utils/emulator-helpers';
 import { ProgressTrackerService } from './services/progress-tracker.service';
 import { wrapCallable } from './utils/sentry-error-handler';
 
-const CHIRP_VOICES: Record<'host1' | 'host2', string> = {
-  host1: 'nl-NL-Chirp3-HD-Charon',
-  host2: 'nl-NL-Chirp3-HD-Aoede',
+const AZURE_VOICES: Record<'host1' | 'host2', string> = {
+  host1: 'nl-NL-Maarten:DragonHDOmniLatestNeural',
+  host2: 'nl-NL-Colette:DragonHDOmniLatestNeural',
 };
 
-/**
- * @deprecated Use ProgressTrackerService instead (Ticket #43)
- * Helper to update podcast-specific progress in Firestore
- * Still needed for updating individual podcast records, but unified session progress
- * should be tracked via ProgressTrackerService
- */
-async function updatePodcastProgress(
+async function updatePodcastEntry(
   sessionRef: FirebaseFirestore.DocumentReference,
   existingPodcasts: any[],
   version: number,
-  status: string,
-  progress: number,
-  message: string,
-  additionalData: any = {}
+  data: Record<string, unknown>
 ) {
-  const updatedPodcast = {
-    version,
-    status,
-    progress,
-    progressMessage: message,
-    ...additionalData
-  };
-
   await sessionRef.update({
-    podcasts: upsertPodcast(existingPodcasts, updatedPodcast),
+    podcasts: upsertPodcast(existingPodcasts, { version, ...data }),
     updatedAt: FieldValue.serverTimestamp()
   });
 }
@@ -68,9 +50,7 @@ interface PodcastGenerationRequest {
 export const generatePodcastAudio = onCall(
   {
     cors: SHARED_CORS,
-    secrets: [],
-    timeoutSeconds: 900, // 15 minutes
-    memory: '1GiB'
+    secrets: ['CLAUDE_API_KEY', 'AZURE_SPEECH_KEY'],
   },
   wrapCallable<PodcastGenerationRequest, unknown>('generatePodcastAudio', async (request) => {
     ensureAuthForTesting(request);
@@ -218,11 +198,48 @@ function escapeXml(text: string): string {
     .replace(/'/g, '&apos;');
 }
 
+function processLangTags(text: string): string {
+  // First escape XML, then convert [en]...[/en] markers to <lang> tags
+  const escaped = escapeXml(text);
+  return escaped
+    .replace(/\[en\](.*?)\[\/en\]/g, '<lang xml:lang="en-US">$1</lang>');
+}
+
 function buildSsml(segments: PodcastSegment[]): string {
   const ssmlParts = segments.map(seg =>
-    `<voice name="${CHIRP_VOICES[seg.speaker]}">${escapeXml(seg.text)}</voice>`
+    `<voice name="${AZURE_VOICES[seg.speaker]}">${processLangTags(seg.text)}</voice>`
   );
-  return `<speak>${ssmlParts.join('\n')}</speak>`;
+  return `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="nl-NL">${ssmlParts.join('\n')}</speak>`;
+}
+
+async function synthesizeSpeechAzure(ssml: string): Promise<Buffer> {
+  const speechKey = process.env.AZURE_SPEECH_KEY;
+  const speechRegion = 'swedencentral';
+
+  if (!speechKey || !speechRegion) {
+    throw new Error('Missing AZURE_SPEECH_KEY or AZURE_SPEECH_REGION environment variables');
+  }
+
+  const endpoint = `https://${speechRegion}.tts.speech.microsoft.com/cognitiveservices/v1`;
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Ocp-Apim-Subscription-Key': speechKey,
+      'Content-Type': 'application/ssml+xml',
+      'X-Microsoft-OutputFormat': 'audio-48khz-192kbitrate-mono-mp3',
+      'User-Agent': 'QuestMind-PodcastGenerator',
+    },
+    body: ssml,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Azure TTS failed (${response.status}): ${errorText}`);
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  return Buffer.from(arrayBuffer);
 }
 
 async function generatePodcastInBackground(
@@ -244,24 +261,14 @@ async function generatePodcastInBackground(
     // STEP 1: Generate script if not provided
     if (!script) {
       await ProgressTrackerService.updateProgress(
-        campaignId,
-        sessionId,
-        'generating-podcast-script',
-        10,
-        'Generating podcast script...'
+        campaignId, sessionId, 'generating-podcast-script', 10, 'Generating podcast script...'
       );
 
-      await updatePodcastProgress(sessionRef, existingPodcasts, version, 'generating_script', 15,
-        'Generating script with Claude Haiku...');
-
-      const anthropicClient = new AnthropicVertex({
-        projectId: process.env.GCLOUD_PROJECT,
-        region: 'europe-west1',
-      });
+      const anthropicClient = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY });
 
       const scriptResponse = await anthropicClient.messages.create({
-        model: 'claude-haiku-4-5@20251001',
-        max_tokens: 2048,
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 4096,
         system: PODCAST_SCRIPT_GENERATOR_PROMPT,
         messages: [
           {
@@ -283,101 +290,57 @@ async function generatePodcastInBackground(
       }
 
       const totalCharacters = finalScript.segments.reduce((sum, seg) => sum + seg.text.length, 0);
-      logger.debug(`Generated script: ${totalCharacters} characters (limit: 5000)`);
+      logger.debug(`Generated script: ${totalCharacters} characters (limit: 6000)`);
 
-      if (totalCharacters > 5000) {
+      if (totalCharacters > 6000) {
         throw new Error(
-          `Script too long (${totalCharacters} chars). Maximum is 5000. Try a shorter story.`
+          `Script too long (${totalCharacters} chars). Maximum is 6000. Try a shorter story.`
         );
       }
 
-      await updatePodcastProgress(sessionRef, existingPodcasts, version, 'script_complete', 50,
-        `Script generated with ${finalScript.segments.length} segments`,
-        {
-          script: finalScript,
-          scriptGeneratedAt: new Date(),
-          duration: finalScript.estimatedDuration,
-          modelUsed: 'claude-haiku-4-5@20251001'
-        }
-      );
+      await updatePodcastEntry(sessionRef, existingPodcasts, version, {
+        status: 'script_complete',
+        script: finalScript,
+        scriptGeneratedAt: new Date(),
+        duration: finalScript.estimatedDuration,
+        modelUsed: 'claude-haiku-4-5-20251001'
+      });
 
       logger.debug(`Script: ${finalScript.segments.length} segments, ~${finalScript.estimatedDuration}s`);
     } else {
       finalScript = script;
-      await updatePodcastProgress(sessionRef, existingPodcasts, version, 'script_complete', 50,
-        'Using provided script',
-        {
-          script: finalScript,
-          scriptGeneratedAt: new Date(),
-          duration: finalScript.estimatedDuration
-        }
-      );
+      await updatePodcastEntry(sessionRef, existingPodcasts, version, {
+        status: 'script_complete',
+        script: finalScript,
+        scriptGeneratedAt: new Date(),
+        duration: finalScript.estimatedDuration
+      });
       logger.debug(`Using provided script: ${finalScript.segments.length} segments`);
     }
 
-    // STEP 2: Generate audio via Chirp 3 HD
+    // STEP 2: Generate audio via Azure Speech
     await ProgressTrackerService.updateProgress(
-      campaignId,
-      sessionId,
-      'generating-podcast-audio',
-      55,
-      'Generating podcast audio with Chirp 3 HD...'
+      campaignId, sessionId, 'generating-podcast-audio', 55, 'Generating podcast audio with Azure Speech...'
     );
-
-    await updatePodcastProgress(
-      sessionRef,
-      existingPodcasts,
-      version,
-      'generating_audio',
-      55,
-      'Generating audio with Chirp 3 HD TTS...'
-    );
-
-    const ttsClient = new TextToSpeechClient({
-      apiEndpoint: 'eu-texttospeech.googleapis.com',
-    });
 
     const ssml = buildSsml(finalScript.segments);
+    logger.debug(`Generating podcast audio via Azure Speech (${finalScript.segments.length} segments)`);
 
-    logger.debug(`Generating podcast audio via Chirp 3 HD (${finalScript.segments.length} segments)`);
-
-    await updatePodcastProgress(
-      sessionRef,
-      existingPodcasts,
-      version,
-      'generating_audio',
-      65,
-      'Calling Chirp 3 HD TTS API...'
+    await ProgressTrackerService.updateProgress(
+      campaignId, sessionId, 'generating-podcast-audio', 65, 'Calling Azure Speech TTS API...'
     );
 
-    const [audioResponse] = await ttsClient.synthesizeSpeech({
-      input: { ssml },
-      voice: { languageCode: 'nl-NL' },
-      audioConfig: {
-        audioEncoding: 'MP3' as unknown as import('@google-cloud/text-to-speech').protos.google.cloud.texttospeech.v1.AudioEncoding,
-      },
-    });
-
-    if (!audioResponse.audioContent) {
-      throw new Error('No audio content returned from TTS API');
-    }
-
-    const audioBuffer = Buffer.from(audioResponse.audioContent as Uint8Array);
+    const audioBuffer = await synthesizeSpeechAzure(ssml);
 
     if (audioBuffer.length === 0) {
-      throw new Error('Empty audio buffer from Chirp 3 HD TTS');
+      throw new Error('Empty audio buffer from Azure Speech TTS');
     }
 
     logger.debug(`Generated podcast: ${audioBuffer.length} bytes`);
 
     // STEP 3: Upload to Firebase Storage
-    await updatePodcastProgress(
-      sessionRef,
-      existingPodcasts,
-      version,
-      'uploading',
-      85,
-      'Uploading podcast to storage...'
+    await ProgressTrackerService.updateProgress(
+      campaignId, sessionId, 'generating-podcast-audio', 85, 'Uploading podcast to storage...'
     );
 
     const storagePath = `campaigns/${campaignId}/podcasts/${sessionId}/v${version}.mp3`;
@@ -401,50 +364,27 @@ async function generatePodcastInBackground(
     const fileUrl = `https://firebasestorage.googleapis.com/v0/b/${storage.name}/o/${encodedPath}?alt=media&token=${downloadToken}`;
     const fileSize = audioBuffer.length;
 
-    await updatePodcastProgress(
-      sessionRef,
-      existingPodcasts,
-      version,
-      'completed',
-      100,
-      'Podcast ready!',
-      {
-        audioUrl: fileUrl,
-        fileSize,
-        audioGeneratedAt: new Date(),
-        modelUsed: 'claude-haiku-4-5@20251001',
-        error: null
-      }
-    );
+    await updatePodcastEntry(sessionRef, existingPodcasts, version, {
+      status: 'completed',
+      audioUrl: fileUrl,
+      fileSize,
+      audioGeneratedAt: new Date(),
+      modelUsed: 'claude-haiku-4-5-20251001',
+      error: null
+    });
 
-    await ProgressTrackerService.markCompleted(
-      campaignId,
-      sessionId,
-      'Podcast generation complete'
-    );
+    await ProgressTrackerService.markCompleted(campaignId, sessionId, 'Podcast generation complete');
 
     logger.debug(`Podcast generation completed: ${fileUrl}`);
 
   } catch (error: any) {
     console.error('Error generating podcast:', error);
 
-    await updatePodcastProgress(
-      sessionRef,
-      existingPodcasts,
-      version,
-      'failed',
-      0,
-      'Failed to generate podcast',
-      {
-        error: error?.message || 'Unknown error'
-      }
-    );
+    await updatePodcastEntry(sessionRef, existingPodcasts, version, {
+      status: 'failed',
+      error: error?.message || 'Unknown error'
+    });
 
-    await ProgressTrackerService.markFailed(
-      campaignId,
-      sessionId,
-      'generating-podcast-audio',
-      error
-    );
+    await ProgressTrackerService.markFailed(campaignId, sessionId, 'generating-podcast-audio', error);
   }
 }
