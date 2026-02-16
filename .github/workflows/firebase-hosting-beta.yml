@@ -21,13 +21,12 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      - name: Generate environment.beta.ts
-        run: touch src/environments/environment.beta.ts
-
       - name: Replace environment placeholders
         run: |
-          sed -i "s/googleCloudApiKey: 'YOUR_GOOGLE_CLOUD_API_KEY'/googleCloudApiKey: '${{ secrets.GOOGLE_CLOUD_API_KEY }}'/" src/environments/environment.beta.ts
-          sed -i "s/token: 'YOUR_KANKA_PERSONAL_ACCESS_TOKEN'/token: '${{ secrets.KANKA_TOKEN }}'/" src/environments/environment.beta.ts
+          sed -i 's/apiKey: "private"/apiKey: "${{ secrets.FIREBASE_API_KEY }}"/' src/environments/environment.ts
+
+      - name: Generate environment.beta.ts
+        run: mv src/environments/environment.ts src/environments/environment.beta.ts
 
       - name: Install dependencies
         run: npm ci

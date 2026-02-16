@@ -23,9 +23,6 @@ jobs:
 
       - name: Replace environment placeholders
         run: |
-          sed -i "s/googleAiApiKey: 'placeholder'/googleAiApiKey: '${{ secrets.GOOGLE_AI_API_KEY }}'/" src/environments/environment.ts
-          sed -i "s/googleCloudApiKey: 'YOUR_GOOGLE_CLOUD_API_KEY'/googleCloudApiKey: '${{ secrets.GOOGLE_CLOUD_API_KEY }}'/" src/environments/environment.ts
-          sed -i "s/token: 'YOUR_KANKA_PERSONAL_ACCESS_TOKEN'/token: '${{ secrets.KANKA_TOKEN }}'/" src/environments/environment.ts
           sed -i 's/apiKey: "private"/apiKey: "${{ secrets.FIREBASE_API_KEY }}"/' src/environments/environment.ts
 
       - name: Install dependencies
