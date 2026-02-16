@@ -4,6 +4,7 @@
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
+    "start:beta": "ng serve --configuration beta",
     "start:backend:functions": "firebase emulators:start --only functions",
     "prebuild": "node scripts/set-version.js",
     "build": "ng build",

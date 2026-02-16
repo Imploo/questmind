@@ -410,6 +410,12 @@ export class CharacterBuilderPageComponent {
       });
     }
 
+    // Patch Firestore active version
+    const charId = this.selectedCharacterId();
+    const versionId = this.activeVersion()?.id;
+    if (charId && versionId) {
+      await this.characterVersionService.patchSpellDetails(charId, versionId, event.spellName, event.description, event.usage);
+    }
   }
 
   private isEditableTarget(target: HTMLElement | null): boolean {
