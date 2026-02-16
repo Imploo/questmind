@@ -1,7 +1,8 @@
-import { Component, inject, signal, computed, effect, viewChild, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, signal, computed, effect, viewChild, ChangeDetectionStrategy, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
+import { Subscription } from 'rxjs';
 import { AuthService } from '../../../../auth/auth.service';
 import { CharacterService } from '../../../../core/services/character.service';
 import { CharacterVersionService } from '../../../../core/services/character-version.service';
@@ -9,7 +10,7 @@ import { CharacterImageService } from '../../../../core/services/character-image
 import { ChatService } from '../../../../chat/chat.service';
 import { Character, CharacterVersion } from '../../../../core/models/schemas/character.schema';
 import { CharacterImage } from '../../../../core/models/schemas/character-image.schema';
-import { DndCharacter } from '../../../../shared/schemas/dnd-character.schema';
+import { DndCharacter } from '../../../../shared/models/dnd-character.model';
 import { CharacterSheetComponent, SpellResolvedEvent } from '../../components/character-sheet/character-sheet.component';
 import { ChatComponent } from '../../../../chat/chat.component';
 import { CharacterDraftPreviewComponent } from '../../components/character-draft-preview/character-draft-preview.component';
@@ -38,12 +39,12 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
     <div class="flex min-h-screen bg-base-200">
         <div class="flex w-full items-start">
           <!-- Center Character Sheet -->
-          <div 
+          <div
               class="max-w-5xl mx-auto"
               [class]="isNarrow() || !isOwner() ? 'w-full' : 'w-2/3 p-4'"
           >
             <div class="flex flex-col gap-4">
-              @if (draftCharacter()) {
+              @if (isDraft()) {
                 <div class="sticky top-8 z-10">
                   <app-character-draft-preview
                       [loading]="isCommitting()"
@@ -54,14 +55,14 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
               }
               <div class="flex-1">
                 @if (selectedCharacterId()) {
-                  @if (activeVersion()) {
+                  @if (latestVersion()) {
                     <mat-card class="bg-base-100 shadow-xl border border-base-300">
                       <mat-card-content class="p-6">
                         <app-character-sheet
-                          [character]="displayCharacter() || activeVersion()!.character"
+                          [character]="latestVersion()!.character"
                           [characterName]="selectedCharacter()?.name || 'Unknown'"
                           [characterId]="selectedCharacterId()"
-                          [activeVersionId]="activeVersion()?.id ?? ''"
+                          [activeVersionId]="latestVersion()?.id ?? ''"
                           [images]="characterImages()"
                           [canDelete]="isOwner()"
                           (viewHistory)="showHistory.set(true)"
@@ -94,14 +95,14 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
             @if (isNarrow()) {
               <app-chat-drawer
                   #chatDrawer
-                  [character]="activeVersion()?.character ?? null"
+                  [character]="latestVersion()?.character ?? null"
               ></app-chat-drawer>
             } @else {
               <div class="w-1/3 bg-base-200 p-4 sticky top-4 h-[calc(100vh-2rem)]">
                 <mat-card class="h-full bg-base-100 shadow-xl border border-base-300">
                   <mat-card-content class="p-4 h-full">
-                    @if (activeVersion()) {
-                      <app-chat #chat [character]="activeVersion()!.character"></app-chat>
+                    @if (latestVersion()) {
+                      <app-chat #chat [character]="latestVersion()!.character"></app-chat>
                     } @else {
                       <div class="flex h-full items-center justify-center opacity-60 text-sm">
                         Select a character to chat
@@ -109,7 +110,7 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
                     }
                   </mat-card-content>
                 </mat-card>
-              </div>  
+              </div>
             }
           }
         </div>
@@ -118,7 +119,7 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
     @if (isOwner() && showHistory() && selectedCharacterId()) {
       <app-character-version-history
         [versions]="versions()"
-        [activeVersionId]="activeVersion()?.id || ''"
+        [activeVersionId]="latestVersion()?.id || ''"
         (closed)="showHistory.set(false)"
         (restore)="restoreVersion($event)"
       ></app-character-version-history>
@@ -133,6 +134,7 @@ export class CharacterBuilderPageComponent {
   private characterVersionService = inject(CharacterVersionService);
   private characterImageService = inject(CharacterImageService);
   private chatService = inject(ChatService);
+  private destroyRef = inject(DestroyRef);
 
   // State
   characters = signal<Character[]>([]);
@@ -151,8 +153,11 @@ export class CharacterBuilderPageComponent {
     return user.uid === character.userId;
   });
 
-  activeVersion = signal<CharacterVersion | null>(null);
-  draftCharacter = this.chatService.getDraftCharacter();
+  // Latest version from Firestore real-time listener (replaces activeVersion)
+  latestVersion = signal<CharacterVersion | null>(null);
+
+  // Draft detection: true when the latest version is a draft
+  isDraft = computed(() => this.latestVersion()?.isDraft === true);
 
   showHistory = signal(false);
   versions = signal<CharacterVersion[]>([]);
@@ -161,12 +166,7 @@ export class CharacterBuilderPageComponent {
   isNarrow = signal<boolean>(false);
   isCommitting = signal<boolean>(false);
 
-  // Computed character to display (draft or active)
-  displayCharacter = computed(() => {
-    const draft = this.draftCharacter();
-    if (draft) return draft;
-    return this.activeVersion()?.character;
-  });
+  private versionSubscription: Subscription | null = null;
 
   constructor() {
     this.updateLayoutWidth();
@@ -176,12 +176,24 @@ export class CharacterBuilderPageComponent {
     // Handle route params
     this.route.paramMap.subscribe(params => {
       const id = params.get('characterId');
+
+      // Clean up previous version subscription
+      this.versionSubscription?.unsubscribe();
+      this.versionSubscription = null;
+
       if (id) {
         this.selectedCharacterId.set(id);
-        this.loadActiveVersion(id);
+        this.loadCharacterData(id);
+
+        // Start real-time listener for latest version
+        this.versionSubscription = this.characterVersionService
+          .watchLatestVersion(id)
+          .subscribe(version => {
+            this.latestVersion.set(version);
+          });
       } else {
         this.selectedCharacterId.set(null);
-        this.activeVersion.set(null);
+        this.latestVersion.set(null);
       }
     });
 
@@ -202,6 +214,11 @@ export class CharacterBuilderPageComponent {
         this.chatService.setCharacterId(null);
       }
     });
+
+    // Clean up subscription on destroy
+    this.destroyRef.onDestroy(() => {
+      this.versionSubscription?.unsubscribe();
+    });
   }
 
   onWindowResize(): void {
@@ -211,7 +228,7 @@ export class CharacterBuilderPageComponent {
   async loadCharacters() {
     const chars = await this.characterService.getCharacters();
     // Merge: keep any publicly-loaded characters not returned by the user query
-    // (handles the race where loadActiveVersion runs before auth resolves)
+    // (handles the race where loadCharacterData runs before auth resolves)
     this.characters.update(existing => {
       const newIds = new Set(chars.map(c => c.id));
       const preserved = existing.filter(c => !newIds.has(c.id));
@@ -219,7 +236,7 @@ export class CharacterBuilderPageComponent {
     });
   }
 
-  async loadActiveVersion(characterId: string) {
+  private async loadCharacterData(characterId: string) {
     let character = this.characters().find(c => c.id === characterId);
     if (!character) {
       const fetched = await this.characterService.getCharacter(characterId);
@@ -227,11 +244,6 @@ export class CharacterBuilderPageComponent {
         character = fetched;
         this.characters.update(list => [...list, fetched]);
       }
-    }
-
-    if (character) {
-      const version = await this.characterVersionService.getVersion(characterId, character.activeVersionId);
-      this.activeVersion.set(version);
     }
 
     const images = await this.characterImageService.getImages(characterId);
@@ -288,34 +300,26 @@ export class CharacterBuilderPageComponent {
   }
 
   async commitDraft() {
-    const draft = this.draftCharacter();
+    const version = this.latestVersion();
     const charId = this.selectedCharacterId();
-    if (!draft || !charId) return;
+    if (!version?.isDraft || !charId) return;
 
     this.isCommitting.set(true);
 
     try {
-      // Create new version
-      await this.characterVersionService.createVersion(
-        charId,
-        draft,
-        'Updated via Sidekick',
-        'ai'
-      );
-
-      // Reload to get new active version
+      await this.characterVersionService.commitDraft(charId, version.id);
       await this.loadCharacters();
-      await this.loadActiveVersion(charId);
-
-      // Clear draft
-      this.chatService.clearDraft();
     } finally {
       this.isCommitting.set(false);
     }
   }
 
-  dismissDraft() {
-    this.chatService.clearDraft();
+  async dismissDraft() {
+    const version = this.latestVersion();
+    const charId = this.selectedCharacterId();
+    if (!version?.isDraft || !charId) return;
+
+    await this.characterVersionService.dismissDraft(charId, version.id);
   }
 
   async restoreVersion(version: CharacterVersion) {
@@ -324,14 +328,13 @@ export class CharacterBuilderPageComponent {
 
     await this.characterVersionService.restoreVersion(charId, version);
 
-    // Reload
+    // Reload character list to update activeVersionId
     await this.loadCharacters();
-    await this.loadActiveVersion(charId);
     this.showHistory.set(false);
   }
 
   onWindowKeydown(event: KeyboardEvent): void {
-    if (!this.isOwner() || !this.activeVersion() || event.defaultPrevented) {
+    if (!this.isOwner() || !this.latestVersion() || event.defaultPrevented) {
       return;
     }
     if (event.ctrlKey || event.metaKey || event.altKey) {
@@ -381,38 +384,9 @@ export class CharacterBuilderPageComponent {
   }
 
   async onSpellResolved(event: SpellResolvedEvent): Promise<void> {
-    type SpellItem = string | { name: string; [k: string]: unknown };
-    const updateSpells = (spells: SpellItem[]) =>
-      spells.map(s =>
-        typeof s === 'string' ? s
-          : (s as { name: string }).name.toLowerCase() === event.spellName.toLowerCase()
-            ? { ...s, description: event.description, usage: event.usage }
-            : s
-      );
-
-    // Update draft if active
-    if (this.draftCharacter()) {
-      this.chatService.setDraftSpellDetails(event.spellName, event.description, event.usage);
-    }
-
-    // Always update activeVersion for display
-    const av = this.activeVersion();
-    if (av) {
-      const updatedSpells = updateSpells(av.character.spellcasting?.spells ?? []);
-      this.activeVersion.set({
-        ...av,
-        character: {
-          ...av.character,
-          spellcasting: av.character.spellcasting
-            ? { ...av.character.spellcasting, spells: updatedSpells }
-            : undefined,
-        },
-      });
-    }
-
-    // Patch Firestore active version
+    // Patch Firestore — the onSnapshot listener will pick up the change automatically
     const charId = this.selectedCharacterId();
-    const versionId = this.activeVersion()?.id;
+    const versionId = this.latestVersion()?.id;
     if (charId && versionId) {
       await this.characterVersionService.patchSpellDetails(charId, versionId, event.spellName, event.description, event.usage);
     }

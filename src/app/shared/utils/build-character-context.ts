@@ -1,46 +1,68 @@
-import { DndCharacter } from '../schemas/dnd-character.schema';
+import { DndCharacter } from '../models/dnd-character.model';
 
 export interface ChatHistoryMessage {
   role: 'user' | 'assistant';
   content: string;
 }
 
-export interface CharacterChatRequest {
+/**
+ * Request interface for image generation (still uses systemPrompt from frontend).
+ * Character chat uses a different interface — see ChatService.
+ */
+export interface ImageChatRequest {
   systemPrompt: string;
   chatHistory: ChatHistoryMessage[];
 }
 
-function stripSpellDetails(character: DndCharacter): DndCharacter {
-  const spells = character.spellcasting?.spells;
-  if (!spells) return character;
-  return {
-    ...character,
-    spellcasting: {
-      ...character.spellcasting,
-      spells: spells.map(spell => {
-        if (typeof spell === 'string') return spell;
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { description: _d, usage: _u, ...rest } = spell;
-        return rest;
-      }),
-    },
-  };
+/**
+ * Strips spell descriptions/usage and feature descriptions from a character
+ * to reduce LLM input tokens. Both AI 1 and AI 2 receive the stripped version.
+ */
+export function stripCharacterDetails(character: DndCharacter): DndCharacter {
+  let result = { ...character };
+
+  // Strip spell descriptions/usage
+  if (result.spellcasting?.spells) {
+    result = {
+      ...result,
+      spellcasting: {
+        ...result.spellcasting,
+        spells: result.spellcasting.spells.map(spell => {
+          if (typeof spell === 'string') return spell;
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { description: _d, usage: _u, ...rest } = spell;
+          return rest;
+        }),
+      },
+    };
+  }
+
+  // Strip feature descriptions
+  if (result.featuresAndTraits?.length) {
+    result = {
+      ...result,
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      featuresAndTraits: result.featuresAndTraits.map(({ description: _d, ...rest }) => ({
+        ...rest,
+        description: '',
+      })),
+    };
+  }
+
+  return result;
 }
 
 /**
- * Builds a CharacterChatRequest with the current character JSON embedded
- * in the new user message. The character JSON is part of the message text
- * (not a standalone history entry) to preserve Anthropic's alternating
- * user/assistant message requirement.
- * Spell descriptions and usage are stripped to reduce LLM input tokens.
+ * Builds an ImageChatRequest for the image generation flow.
+ * Character chat no longer uses this function — it sends characterId + currentCharacter directly.
  */
-export function buildCharacterChatRequest(
+export function buildImageChatRequest(
   character: DndCharacter | null,
   systemPrompt: string,
   message: string,
   history: ChatHistoryMessage[]
-): CharacterChatRequest {
-  const characterForLlm = character ? stripSpellDetails(character) : null;
+): ImageChatRequest {
+  const characterForLlm = character ? stripCharacterDetails(character) : null;
 
   const characterPreamble: ChatHistoryMessage[] = characterForLlm
     ? [

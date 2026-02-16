@@ -458,6 +458,7 @@ Start here for immediate impact with minimal risk:
 | Ticket | Title | Priority | Status | Effort | Dependencies |
 |--------|-------|----------|--------|--------|--------------|
 | [#49](./done/48-character-chat-performance-optimization.md) | Character Chat Performance Optimization | High | Done | 3–5 days | #47 |
+| [#50](./done/50-split-character-chat-dual-ai.md) | Split Character Chat: Dual AI + Draft Versioning | High | Done | 1–2 weken | #49 |
 
 **Key Improvements:**
 - **Ticket 49**: Snellere character chat via LLM output reductie
@@ -468,6 +469,16 @@ Start here for immediate impact with minimal risk:
   - Descriptions worden gecached op het karakter in Firestore
   - `max_tokens` verlaagd van 4096 naar 1024
   - Verwachte latency reductie: 50–70%
+
+- **Ticket 50**: Split character chat in dual AI + draft versioning
+  - `characterChat` split in AI 1 (tekst-responder) + AI 2 (JSON-generator via Cloud Tasks)
+  - AI 1 retourneert tekst direct aan de frontend, AI 2 draait asynchroon
+  - AI 2 output gevalideerd via Zod schema (server-side), opgeslagen als draft version
+  - Frontend toont draft via Firestore real-time listener (onSnapshot)
+  - Draft commit/dismiss via Firestore update/delete
+  - System prompts verhuisd naar backend
+  - Zod schema verhuisd naar functions, frontend gebruikt plain TypeScript interfaces
+  - Firestore rules bijgewerkt voor draft update/delete
 
 ---
 

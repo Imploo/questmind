@@ -1,5 +1,6 @@
 export const environment = {
   production: true,
+  useEmulators: false,
   uploadAudioUrl: '/api/uploadAudioToGemini',
   eleven: {
     voice1: 'Bill Oxley',

@@ -15,7 +15,7 @@ import {
 import { AuthService } from '../../auth/auth.service';
 import { FirebaseService } from '../firebase.service';
 import { Character } from '../models/schemas/character.schema';
-import { DndCharacter } from '../../shared/schemas/dnd-character.schema';
+import { DndCharacter } from '../../shared/models/dnd-character.model';
 import { CharacterVersionService } from './character-version.service';
 
 @Injectable({ providedIn: 'root' })
