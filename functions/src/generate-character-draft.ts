@@ -1,6 +1,6 @@
 import { onTaskDispatched } from 'firebase-functions/v2/tasks';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
-import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenAI } from '@google/genai';
 import { DndCharacterSchema, DndCharacter } from './schemas/dnd-character.schema';
 import { CHARACTER_JSON_GENERATOR_PROMPT } from './prompts/character-json-generator.prompt';
 import { captureFunctionError } from './utils/sentry-error-handler';
@@ -29,29 +29,32 @@ export async function executeGenerateCharacterDraft(payload: GenerateCharacterDr
     return;
   }
 
-  const client = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY! });
+  const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_AI_API_KEY! });
 
   // AI 2: JSON generator — build messages with full context
-  const characterPreamble: { role: 'user' | 'assistant'; content: string }[] = [
-    { role: 'user', content: `Huidig karakter:\n${JSON.stringify(currentCharacter)}` },
-    { role: 'assistant', content: 'Karakter ontvangen, zal het inlezen.' },
-  ];
+  const conversationParts = [
+    `Huidig karakter:\n${JSON.stringify(currentCharacter)}`,
+    ...chatHistory.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`),
+    `Assistant: ${ai1Response}`,
+    'Update het karakter op basis van het bovenstaande gesprek. Retourneer alleen een geldig JSON-object.',
+  ].join('\n\n');
 
-  const response = await client.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 4096,
-    temperature: 0.1,
-    system: CHARACTER_JSON_GENERATOR_PROMPT,
-    messages: [
-      ...characterPreamble,
-      ...chatHistory,
-      { role: 'assistant', content: ai1Response },
-      { role: 'user', content: 'Update het karakter op basis van het bovenstaande gesprek. Retourneer alleen een geldig JSON-object.' },
-    ],
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: conversationParts,
+    config: {
+      systemInstruction: CHARACTER_JSON_GENERATOR_PROMPT,
+      responseMimeType: 'application/json',
+      maxOutputTokens: 4096,
+      temperature: 0.1,
+    },
   });
 
-  const textBlock = response.content.find(block => block.type === 'text');
-  const text = textBlock && 'text' in textBlock ? textBlock.text : null;
+  // Clear the generating flag so the frontend hides the loader
+  const db = getFirestore();
+  await db.collection('characters').doc(characterId).update({ isGenerating: false });
+
+  const text = response.text ?? '';
 
   if (!text) {
     throw new Error('No response from AI model');
@@ -63,15 +66,11 @@ export async function executeGenerateCharacterDraft(payload: GenerateCharacterDr
 
   // Save as draft version in Firestore
   await saveDraftVersion(characterId, validatedCharacter);
-
-  // Clear the generating flag so the frontend hides the loader
-  const db = getFirestore();
-  await db.collection('characters').doc(characterId).update({ isGenerating: false });
 }
 
 export const generateCharacterDraft = onTaskDispatched(
   {
-    secrets: ['CLAUDE_API_KEY'],
+    secrets: ['GOOGLE_AI_API_KEY'],
     retryConfig: {
       maxAttempts: 3,
     },
@@ -87,7 +86,7 @@ export const generateCharacterDraft = onTaskDispatched(
       const payload = request.data as GenerateCharacterDraftPayload;
       if (payload.characterId) {
         const db = getFirestore();
-        await db.collection('characters').doc(payload.characterId).update({ isGenerating: false }).catch(() => {});
+        await db.collection('characters').doc(payload.characterId).update({ isGenerating: false, isUpdating: false }).catch(() => {});
       }
 
       throw err; // Re-throw so Cloud Tasks can retry
