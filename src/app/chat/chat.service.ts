@@ -1,55 +1,32 @@
-import { Injectable, signal, inject } from '@angular/core';
-import { Observable, from, throwError } from 'rxjs';
-import { map, catchError } from 'rxjs/operators';
+import { inject, Injectable, signal } from '@angular/core';
+import { from, Observable, throwError } from 'rxjs';
+import { catchError, map } from 'rxjs/operators';
 import { httpsCallable } from 'firebase/functions';
-import { CHARACTER_BUILDER_PROMPT } from "../prompts/character-builder.prompt";
-import { DndCharacter } from '../shared/schemas/dnd-character.schema';
+import { IMAGE_GENERATION_SYSTEM_PROMPT } from '../prompts/image-generation.prompt';
+import { DndCharacter } from '../shared/models/dnd-character.model';
+import {
+  buildImageChatRequest,
+  stripCharacterDetails,
+  type ImageChatRequest,
+  type ChatHistoryMessage,
+} from '../shared/utils/build-character-context';
 import { AiSettingsService } from '../core/services/ai-settings.service';
 import { FirebaseService } from '../core/firebase.service';
 
+export type { ChatHistoryMessage };
+
 const IMAGE_TRIGGER_REGEX = /maak\s+afbeelding/i;
 
-interface ChatContent {
-  role: string;
-  parts: { text: string }[];
-}
-
-interface ChatGenerationConfig {
-  responseMimeType: string;
-  responseModalities?: string[];
-  temperature: number;
-  topP: number;
-  topK: number;
-  maxOutputTokens: number;
-}
-
 interface CharacterChatRequest {
-  contents: ChatContent[];
-  config: ChatGenerationConfig;
-  model: string;
-  characterId?: string;
-}
-
-interface CharacterVisuals {
-  name: string;
-  race: string;
-  characterClass: string;
-  appearance?: {
-    age?: string;
-    height?: string;
-    weight?: string;
-    eyes?: string;
-    skin?: string;
-    hair?: string;
-    description?: string;
-  };
+  characterId: string;
+  currentCharacter: DndCharacter;
+  chatHistory: ChatHistoryMessage[];
 }
 
 interface GenerateImageRequest {
-  prompt: string;
+  chatRequest: ImageChatRequest;
   model: string;
-  characterId?: string;
-  characterVisuals?: CharacterVisuals;
+  characterId: string;
 }
 
 interface GenerateImageResponse {
@@ -70,58 +47,6 @@ export interface Message {
   timestamp: Date;
 }
 
-export interface CharacterUpdateResponse {
-  character: DndCharacter;
-  response: string;
-}
-
-function stripSpellDetails(character: DndCharacter): DndCharacter {
-  const spells = character.spellcasting?.spells;
-  if (!spells) return character;
-  return {
-    ...character,
-    spellcasting: {
-      ...character.spellcasting,
-      spells: spells.map(spell => {
-        if (typeof spell === 'string') return spell;
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { description: _d, usage: _u, ...rest } = spell;
-        return rest;
-      }),
-    },
-  };
-}
-
-function preserveSpellDetails(updated: DndCharacter, existing: DndCharacter): DndCharacter {
-  const existingSpells = existing.spellcasting?.spells;
-  const updatedSpells = updated.spellcasting?.spells;
-  if (!existingSpells || !updatedSpells) return updated;
-
-  const existingByName = new Map<string, Record<string, unknown>>();
-  for (const s of existingSpells as (string | Record<string, unknown>)[]) {
-    if (typeof s === 'object' && s !== null) {
-      existingByName.set((s as Record<string, unknown>)['name'] as string, s as Record<string, unknown>);
-    }
-  }
-
-  const mergedSpells = (updatedSpells as (string | Record<string, unknown>)[]).map(s => {
-    if (typeof s === 'string') return s;
-    const prev = existingByName.get((s as Record<string, unknown>)['name'] as string);
-    if (prev) {
-      const merged: Record<string, unknown> = { ...s };
-      if (prev['description'] !== undefined) merged['description'] = prev['description'];
-      if (prev['usage'] !== undefined) merged['usage'] = prev['usage'];
-      return merged;
-    }
-    return s;
-  });
-
-  return {
-    ...updated,
-    spellcasting: { ...updated.spellcasting!, spells: mergedSpells },
-  } as DndCharacter;
-}
-
 @Injectable({
   providedIn: 'root'
 })
@@ -130,58 +55,19 @@ export class ChatService {
   private readonly aiSettingsService = inject(AiSettingsService);
 
   private messages = signal<Message[]>([]);
-  private conversationHistory: { role: string; parts: { text: string }[] }[] = [];
-  private draftCharacter = signal<DndCharacter | null>(null);
+  private conversationHistory: ChatHistoryMessage[] = [];
   private currentCharacter: DndCharacter | null = null;
   private characterId: string | null = null;
 
-  constructor() {
-    this.initializeConversation();
-  }
-
-  private initializeConversation(): void {
-    this.conversationHistory = [
-      {
-        role: 'user',
-        parts: [{ text: CHARACTER_BUILDER_PROMPT }]
-      },
-      {
-        role: 'model',
-        parts: [{ text: 'Ready to help evolve your character.' }]
-      }
-    ];
-  }
-
   setCurrentCharacter(character: DndCharacter | null): void {
     this.currentCharacter = character;
-    this.draftCharacter.set(null);
-    this.initializeConversation();
   }
 
   setCharacterId(characterId: string | null): void {
-    this.characterId = characterId;
-  }
-
-  getDraftCharacter() {
-    return this.draftCharacter.asReadonly();
-  }
-
-  clearDraft(): void {
-    this.draftCharacter.set(null);
-  }
-
-  setDraftSpellDetails(spellName: string, description: string, usage: string): void {
-    const draft = this.draftCharacter();
-    if (!draft) return;
-    const updatedSpells = (draft.spellcasting?.spells ?? []).map(spell => {
-      if (typeof spell === 'string') return spell;
-      if (spell.name.toLowerCase() === spellName.toLowerCase()) return { ...spell, description, usage };
-      return spell;
-    });
-    this.draftCharacter.set({
-      ...draft,
-      spellcasting: draft.spellcasting ? { ...draft.spellcasting, spells: updatedSpells } : undefined,
-    });
+    if (this.characterId !== characterId) {
+      this.characterId = characterId;
+      this.conversationHistory = [];
+    }
   }
 
   isImageGenerationRequest(message: string): boolean {
@@ -189,7 +75,7 @@ export class ChatService {
   }
 
   sendMessage(userMessage: string): Observable<{ text: string; images?: MessageImage[] }> {
-    if (!this.currentCharacter) {
+    if (!this.currentCharacter || !this.characterId) {
       return throwError(() => ({
         status: 400,
         message: 'No character selected. Please open a character to chat.'
@@ -201,82 +87,52 @@ export class ChatService {
     }
 
     const functions = this.firebase.requireFunctions();
+    const stripped = stripCharacterDetails(this.currentCharacter);
 
-    const characterForLlm = stripSpellDetails(this.draftCharacter() ?? this.currentCharacter!);
-    const messageText = `Current Character JSON:\n${JSON.stringify(characterForLlm)}\n\nUser Message: ${userMessage}`;
-
-    const contents = [
-      ...this.conversationHistory.map(msg => ({
-        role: msg.role,
-        parts: [{ text: msg.parts[0].text }]
-      })),
-      {
-        role: 'user',
-        parts: [{ text: messageText }]
-      }
-    ];
-
-    const aiConfig = this.aiSettingsService.getCharacterChatConfig();
-    const config = {
-      responseMimeType: 'application/json',
-      temperature: aiConfig.temperature,
-      topP: aiConfig.topP,
-      topK: aiConfig.topK,
-      maxOutputTokens: aiConfig.maxOutputTokens
+    const payload: CharacterChatRequest = {
+      characterId: this.characterId,
+      currentCharacter: stripped,
+      chatHistory: [
+        ...this.conversationHistory,
+        { role: 'user', content: userMessage },
+      ],
     };
 
-    const model = aiConfig.model;
-
-    const characterChat = httpsCallable<CharacterChatRequest, { text: string; images?: MessageImage[] }>(
+    const characterChat = httpsCallable<CharacterChatRequest, { text: string }>(
       functions, 'characterChat'
     );
 
-    const payload: CharacterChatRequest = {
-      contents,
-      config,
-      model,
-      ...(this.characterId && { characterId: this.characterId })
-    };
-
     return from(characterChat(payload)).pipe(
       map(result => {
-        const fullText = result.data.text;
-        const images = result.data.images;
-        const parsed = this.parseCharacterUpdateResponse(fullText);
-        const responseText = parsed?.response ?? fullText;
-
-        if (parsed?.character && this.currentCharacter) {
-          const existing = this.draftCharacter() ?? this.currentCharacter;
-          const withDetails = preserveSpellDetails(parsed.character, existing);
-          if (JSON.stringify(withDetails) !== JSON.stringify(existing)) {
-            this.draftCharacter.set(withDetails);
-          }
-        }
+        const text = result.data.text;
 
         this.conversationHistory.push(
-          { role: 'user', parts: [{ text: userMessage }] },
-          { role: 'model', parts: [{ text: parsed ? JSON.stringify(parsed) : fullText }] }
+          { role: 'user', content: userMessage },
+          { role: 'assistant', content: text }
         );
 
-        if (this.conversationHistory.length > 22) {
-          this.conversationHistory = [
-            ...this.conversationHistory.slice(0, 2),
-            ...this.conversationHistory.slice(-20)
-          ];
+        if (this.conversationHistory.length > 20) {
+          this.conversationHistory = this.conversationHistory.slice(-20);
         }
 
-        return { text: responseText, images };
+        return { text };
       }),
       catchError(error => throwError(() => this.formatError(error)))
     );
   }
 
   private sendImageGenerationMessage(userMessage: string): Observable<{ text: string; images?: MessageImage[] }> {
+    if (!this.characterId) {
+      return throwError(() => ({
+        status: 400,
+        message: 'No character selected. Please open a character to generate an image.'
+      }));
+    }
+
     const functions = this.firebase.requireFunctions();
 
-    // Extract prompt: text after "maak afbeelding", or use the full message as prompt
     const match = userMessage.match(/maak\s+afbeelding\s*(.*)/i);
-    const prompt = match?.[1]?.trim() || userMessage;
+    const userPrompt = match?.[1]?.trim() || userMessage;
 
     const imageConfig = this.aiSettingsService.getImageGenerationConfig();
 
@@ -284,20 +140,12 @@ export class ChatService {
       functions, 'generateImage'
     );
 
-    const characterVisuals: CharacterVisuals | undefined = this.currentCharacter
-      ? {
-          name: this.currentCharacter.name,
-          race: this.currentCharacter.race,
-          characterClass: this.currentCharacter.class,
-          ...(this.currentCharacter.appearance && { appearance: this.currentCharacter.appearance })
-        }
-      : undefined;
+    const chatRequest = buildImageChatRequest(this.currentCharacter, IMAGE_GENERATION_SYSTEM_PROMPT, userPrompt, this.conversationHistory);
 
     const payload: GenerateImageRequest = {
-      prompt,
+      chatRequest,
       model: imageConfig.model,
-      ...(this.characterId && { characterId: this.characterId }),
-      ...(characterVisuals && { characterVisuals })
+      characterId: this.characterId,
     };
 
     return from(generateImage(payload)).pipe(
@@ -320,7 +168,6 @@ export class ChatService {
       errorMessage = err.message;
     }
 
-    // Firebase Functions error codes
     if (err?.code === 'functions/invalid-argument') {
       errorMessage = 'Invalid request. Please try rephrasing your message.';
     } else if (err?.code === 'functions/unauthenticated') {
@@ -342,22 +189,12 @@ export class ChatService {
     };
   }
 
-  private parseCharacterUpdateResponse(text: string): CharacterUpdateResponse | null {
-    if (!text) return null;
-    try {
-      return JSON.parse(text) as CharacterUpdateResponse;
-    } catch (error) {
-      console.error('Failed to parse character update response', error);
-      return null;
-    }
-  }
-
   getMessages(): Message[] {
     return this.messages();
   }
 
   clearHistory(): void {
     this.messages.set([]);
-    this.initializeConversation();
+    this.conversationHistory = [];
   }
 }

@@ -45,14 +45,6 @@ import { FormattingService } from '../shared/formatting.service';
               >
                 {{ isEditing() ? 'Preview' : 'Edit' }}
               </button>
-              <button
-                type="button"
-                class="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:text-gray-800 disabled:text-gray-300"
-                (click)="retranscribe.emit()"
-                [disabled]="isBusy || !canRetranscribe"
-              >
-                Re-transcribe
-              </button>
             }
           </div>
         </div>
@@ -364,7 +356,6 @@ export class SessionStoryComponent implements OnChanges {
   @Input() story = '';
   @Input() transcript = '';
   @Input() isBusy = false;
-  @Input() canRetranscribe = false;
   @Input() canRegenerate = false;
   @Input() canEditStory = false;
   @Input() canEditCorrections = true;
@@ -385,7 +376,6 @@ export class SessionStoryComponent implements OnChanges {
   
   @Output() storyUpdated = new EventEmitter<string>();
   @Output() regenerate = new EventEmitter<void>();
-  @Output() retranscribe = new EventEmitter<void>();
   @Output() correctionsChanged = new EventEmitter<string>();
   @Output() generatePodcast = new EventEmitter<void>();
   @Output() downloadPodcast = new EventEmitter<PodcastVersion>();

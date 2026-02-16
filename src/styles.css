@@ -9,7 +9,6 @@
 
   --animate-slide-in: slideIn 0.3s ease-out;
   --animate-bounce-dot: bounce 1.4s infinite ease-in-out;
-
   @keyframes slideIn {
     from {
       opacity: 0;

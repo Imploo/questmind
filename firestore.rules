@@ -65,9 +65,14 @@ service cloud.firestore {
 
       match /versions/{versionId} {
         allow read: if true;
-        allow create, delete: if isAuthenticated() &&
+        allow create: if isAuthenticated() &&
           get(/databases/$(database)/documents/characters/$(characterId)).data.userId == getUserId();
-        allow update: if false; // Immutable
+        allow update: if isAuthenticated() &&
+          get(/databases/$(database)/documents/characters/$(characterId)).data.userId == getUserId() &&
+          resource.data.isDraft == true;
+        allow delete: if isAuthenticated() &&
+          get(/databases/$(database)/documents/characters/$(characterId)).data.userId == getUserId() &&
+          resource.data.isDraft == true;
       }
 
       match /images/{imageId} {

@@ -1,12 +1,22 @@
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
-import { GoogleGenAI, type ContentListUnion, type GenerateContentConfig } from '@google/genai';
+import { getFunctions } from 'firebase-admin/functions';
+import { getFirestore } from 'firebase-admin/firestore';
+import { Anthropic, RateLimitError } from '@anthropic-ai/sdk';
 import { wrapCallable } from './utils/sentry-error-handler';
 import { SHARED_CORS } from './index';
+import { CHARACTER_RESPONDER_PROMPT } from './prompts/character-responder.prompt';
+import { DndCharacter } from './schemas/dnd-character.schema';
+import { executeGenerateCharacterDraft } from './generate-character-draft';
+
+interface ChatHistoryMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
 
 export interface CharacterChatRequest {
-  contents: ContentListUnion;
-  config: GenerateContentConfig;
-  model: string;
+  characterId: string;
+  currentCharacter: DndCharacter;
+  chatHistory: ChatHistoryMessage[];
 }
 
 export interface CharacterChatResponse {
@@ -16,35 +26,76 @@ export interface CharacterChatResponse {
 export const characterChat = onCall(
   {
     cors: SHARED_CORS,
-    secrets: ['GOOGLE_AI_API_KEY'],
+    secrets: ['CLAUDE_API_KEY', 'GOOGLE_AI_API_KEY'],
   },
   wrapCallable<CharacterChatRequest, CharacterChatResponse>(
     'characterChat',
     async (request): Promise<CharacterChatResponse> => {
-      const { contents, config, model } = request.data;
+      const { characterId, currentCharacter, chatHistory } = request.data;
 
-      if (!contents || !model) {
-        throw new HttpsError('invalid-argument', 'Missing required fields: contents, model');
+      if (!characterId || !currentCharacter || !Array.isArray(chatHistory) || chatHistory.length === 0) {
+        throw new HttpsError('invalid-argument', 'Missing required fields: characterId, currentCharacter, chatHistory');
       }
 
-      const apiKey = process.env.GOOGLE_AI_API_KEY;
+      const apiKey = process.env.CLAUDE_API_KEY;
+
       if (!apiKey) {
-        throw new HttpsError('failed-precondition', 'AI API key not configured');
+        console.error('Missing CLAUDE_API_KEY');
+        throw new HttpsError('internal', 'AI service not configured');
       }
 
-      const ai = new GoogleGenAI({ apiKey });
+      const client = new Anthropic({ apiKey });
 
-      const result = await ai.models.generateContent({
-        model,
-        contents,
-        config,
-      });
+      // AI 1: Text responder — build messages with character context
+      const characterPreamble: { role: 'user' | 'assistant'; content: string }[] = [
+        { role: 'user', content: `Huidig karakter:\n${JSON.stringify(currentCharacter)}` },
+        { role: 'assistant', content: 'Karakter ontvangen, zal het inlezen.' },
+      ];
 
-      if (!result.text) {
-        throw new HttpsError('internal', 'No response from AI model');
+      try {
+        const response = await client.messages.create({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 512,
+          system: CHARACTER_RESPONDER_PROMPT,
+          messages: [
+            ...characterPreamble,
+            ...chatHistory,
+          ],
+        });
+
+        const textBlock = response.content.find(block => block.type === 'text');
+        const text = textBlock && 'text' in textBlock ? textBlock.text : null;
+
+        if (!text) {
+          console.error('AI model returned empty response. Content:', JSON.stringify(response.content));
+          throw new HttpsError('internal', 'No response from AI model');
+        }
+
+        // Mark character as generating before enqueuing AI 2
+        const db = getFirestore();
+        db.collection('characters').doc(characterId).update({ isGenerating: true }).catch(err => {
+          console.warn('Failed to set isGenerating flag:', err.message);
+        });
+
+        // Enqueue Cloud Task for AI 2 (generateCharacterDraft)
+        // Fire-and-forget: don't await, don't block the response
+        const payload = { characterId, currentCharacter, chatHistory, ai1Response: text };
+        const queue = getFunctions().taskQueue('generateCharacterDraft');
+        queue.enqueue(payload).catch(err => {
+          console.warn('Cloud Tasks enqueue failed (expected locally), falling back to direct execution:', err.message);
+          // Fallback: run directly when Cloud Tasks is unavailable (e.g. local emulator)
+          executeGenerateCharacterDraft(payload).catch(directErr => {
+            console.error('Direct generateCharacterDraft execution also failed:', directErr);
+          });
+        });
+
+        return { text };
+      } catch (error) {
+        if (error instanceof RateLimitError) {
+          throw new HttpsError('resource-exhausted', 'Rate limit exceeded. Please wait a moment before trying again.');
+        }
+        throw error;
       }
-
-      return { text: result.text };
     }
   )
 );

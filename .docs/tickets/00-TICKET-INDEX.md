@@ -435,5 +435,81 @@ Start here for immediate impact with minimal risk:
 
 ---
 
-**Last Updated:** 2026-02-14
+## 🤖 AI Stack Refactoring
+
+| Ticket | Title | Priority | Status | Effort | Dependencies |
+|--------|-------|----------|--------|--------|--------------|
+| [#48](./done/47-refactor-ai-stack-to-vertexai.md) | Refactor AI Stack naar Vertex AI + Claude Haiku | High | Done | 1–2 weken | #46 |
+
+**Key Changes:**
+- **Ticket 48**: Volledige AI stack refactor
+  - `characterChat` → Claude Haiku 4.5 (Anthropic)
+  - `generateImage` → Imagen 4 op Vertex AI (vervangt FAL.ai)
+  - `generatePodcastAudio` → script via Haiku 4.5, audio via Chirp 3 HD (directe MP3 output, vervangt ElevenLabs)
+  - Audio uploads → GCloud Storage bucket + `gs://` URI (vervangt Gemini Files API)
+  - Nieuwe gedeelde `buildContextContents()` utility voor characterChat én generateImage
+
+---
+
+---
+
+## ⚡ Performance Optimization
+
+| Ticket | Title | Priority | Status | Effort | Dependencies |
+|--------|-------|----------|--------|--------|--------------|
+| [#49](./done/48-character-chat-performance-optimization.md) | Character Chat Performance Optimization | High | Done | 3–5 days | #47 |
+| [#50](./done/50-split-character-chat-dual-ai.md) | Split Character Chat: Dual AI + Draft Versioning | High | Done | 1–2 weken | #49 |
+
+**Key Improvements:**
+- **Ticket 49**: Snellere character chat via LLM output reductie
+  - LLM geeft alleen gewijzigde velden terug (`characterDelta`) i.p.v. volledig karakter
+  - Spell descriptions worden nooit door de LLM gegenereerd
+  - Statische SRD-database voor bekende spells (instant lookup)
+  - Nieuwe `resolveSpell` Cloud Function als fallback voor niet-SRD spells
+  - Descriptions worden gecached op het karakter in Firestore
+  - `max_tokens` verlaagd van 4096 naar 1024
+  - Verwachte latency reductie: 50–70%
+
+- **Ticket 50**: Split character chat in dual AI + draft versioning
+  - `characterChat` split in AI 1 (tekst-responder) + AI 2 (JSON-generator via Cloud Tasks)
+  - AI 1 retourneert tekst direct aan de frontend, AI 2 draait asynchroon
+  - AI 2 output gevalideerd via Zod schema (server-side), opgeslagen als draft version
+  - Frontend toont draft via Firestore real-time listener (onSnapshot)
+  - Draft commit/dismiss via Firestore update/delete
+  - System prompts verhuisd naar backend
+  - Zod schema verhuisd naar functions, frontend gebruikt plain TypeScript interfaces
+  - Firestore rules bijgewerkt voor draft update/delete
+
+---
+
+## 🎙️ Azure Migration (Transcription & TTS)
+
+| Ticket | Title | Priority | Status | Effort | Dependencies |
+|--------|-------|----------|--------|--------|--------------|
+| [#51](./51-azure-speech-service-transcription.md) | Migrate Transcription to Azure Speech Service with Diarization | High | Todo | 3–5 days | - |
+| [#52](./done/52-azure-speech-podcast-generation.md) | Migrate Podcast TTS from Google Chirp 3 HD to Azure Speech Service | High | Done | 1–2 days | #51 |
+
+**Key Changes:**
+- **Ticket 51**: Vervangt Gemini Vertex AI transcriptie door Azure Speech Service
+  - **Batch API** (niet Fast) — sessies zijn altijd >2 uur, max 4 uur met diarization
+  - Azure Blob Storage voor audio staging (batch API vereist URL naar audio)
+  - Speaker diarization (1-5 sprekers), word-level timestamps, locale `nl-NL`
+  - Polling-based completion met Firestore progress updates
+  - Geen phrase list in batch API — Kanka context gaat via story generation LLM
+  - Output mapt naar bestaand `TranscriptionSegment[]` formaat
+  - Gemini transcriptie code volledig verwijderd
+  - Sessies >4 uur: voorlopig foutmelding, auto-split is fase 2
+
+- **Ticket 52**: Vervangt Google Cloud Chirp 3 HD TTS door Azure Speech Neural TTS
+  - Vendor consolidatie — hergebruikt Azure Speech resource uit ticket #51
+  - SSML-aanpak met `<voice>` tags blijft identiek (Azure ondersteunt dit)
+  - Stemmen: `nl-NL-MaartenNeural` (host1) + `nl-NL-FennaNeural` (host2)
+  - Simpele REST API call (`fetch()`) — geen extra npm package nodig
+  - Google `@google-cloud/text-to-speech` dependency verwijderd
+  - Script generatie (Claude Haiku 4.5) ongewijzigd
+  - Geen frontend wijzigingen nodig
+
+---
+
+**Last Updated:** 2026-02-16
 **Status:** Planning Complete, Ready to Begin

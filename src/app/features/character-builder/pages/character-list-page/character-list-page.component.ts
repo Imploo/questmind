@@ -5,7 +5,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { CharacterService } from '../../../../core/services/character.service';
 import { CharacterVersionService } from '../../../../core/services/character-version.service';
 import { Character } from '../../../../core/models/schemas/character.schema';
-import { DndCharacter } from '../../../../shared/schemas/dnd-character.schema';
+import { DndCharacter } from '../../../../shared/models/dnd-character.model';
 
 interface CharacterSummary {
   id: string;

@@ -468,28 +468,28 @@ export class AdminComponent implements OnInit {
   private readonly firebaseService = inject(FirebaseService);
   readonly userService = inject(UserService);
   private readonly defaultTranscriptionConfig = {
-    model: '',
+    model: 'gemini-2.0-flash-exp',
     temperature: 0.3,
     topP: 0.95,
     topK: 40,
     maxOutputTokens: 128000
   };
   private readonly defaultStoryConfig = {
-    model: '',
+    model: 'gemini-2.0-flash-exp',
     temperature: 0.8,
     topP: 0.95,
     topK: 40,
     maxOutputTokens: 32000
   };
   private readonly defaultPodcastScriptConfig = {
-    model: '',
+    model: 'gemini-2.0-flash-exp',
     temperature: 0.9,
     topP: 0.95,
     topK: 40,
     maxOutputTokens: 8192
   };
   private readonly defaultCharacterChatConfig = {
-    model: '',
+    model: 'gemini-2.0-flash-exp',
     temperature: 0.4,
     topP: 0.95,
     topK: 40,
@@ -527,12 +527,8 @@ export class AdminComponent implements OnInit {
       const settingsDoc = doc(firestore, 'settings/ai');
       const snapshot = await getDoc(settingsDoc);
 
-      if (snapshot.exists()) {
-        const settings = this.normalizeSettings(snapshot.data() as AiSettings);
-        this.aiSettings.set(settings);
-      } else {
-        this.settingsError.set('AI settings document not found. Run migration first.');
-      }
+      const data = snapshot.exists() ? snapshot.data() as AiSettings : {} as AiSettings;
+      this.aiSettings.set(this.normalizeSettings(data));
     } catch (error) {
       console.error('Error loading AI settings:', error);
       this.settingsError.set(

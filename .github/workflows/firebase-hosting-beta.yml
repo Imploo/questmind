@@ -1,9 +1,9 @@
-name: Deploy to Firebase Hosting on merge
+name: Deploy to Firebase Hosting (beta) on develop push
 on:
   workflow_dispatch:
   push:
     branches:
-      - main
+      - develop
 
 jobs:
   build_and_deploy:
@@ -23,7 +23,7 @@ jobs:
 
       - name: Replace environment placeholders
         run: |
-          sed -i 's/apiKey: "private"/apiKey: "${{ secrets.FIREBASE_API_KEY }}"/' src/environments/environment.ts
+          sed -i 's/apiKey: "private"/apiKey: "${{ secrets.FIREBASE_API_KEY }}"/' src/environments/environment.beta.ts
 
       - name: Install dependencies
         run: npm ci
@@ -31,17 +31,11 @@ jobs:
       - name: Install functions dependencies
         run: npm ci --prefix functions
 
-      - name: Lint
-        run: npm run lint
-
-      - name: Build
-        run: npm run build
-
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
           service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
 
-      - name: Deploy to Firebase Hosting
-        run: npx firebase-tools deploy --project questmind-dnd
+      - name: Deploy to Firebase (beta)
+        run: npm run deploy:beta

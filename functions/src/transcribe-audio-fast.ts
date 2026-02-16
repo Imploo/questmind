@@ -41,8 +41,6 @@ interface GeminiFileStateResponse {
  */
 export const transcribeAudioFast = onCall(
   {
-    timeoutSeconds: 540, // 9 minutes - allow time for processing
-    memory: '1GiB',
     secrets: ['GOOGLE_AI_API_KEY', 'KANKA_API_TOKEN'],
   },
   wrapCallable<TranscribeAudioFastRequest, { success: boolean; message: string }>(
