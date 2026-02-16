@@ -3,6 +3,8 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import OpenAI from 'openai';
+import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
+import { Readable } from 'stream';
 import { randomUUID } from 'crypto';
 import { SHARED_CORS } from './index';
 import { PODCAST_SCRIPT_GENERATOR_PROMPT } from './prompts/podcast-script-generator.prompt';
@@ -10,9 +12,9 @@ import { ensureAuthForTesting } from './utils/emulator-helpers';
 import { ProgressTrackerService } from './services/progress-tracker.service';
 import { wrapCallable } from './utils/sentry-error-handler';
 
-const AZURE_VOICES: Record<'host1' | 'host2', string> = {
-  host1: 'nl-NL-Maarten:DragonHDOmniLatestNeural',
-  host2: 'nl-NL-Colette:DragonHDOmniLatestNeural',
+const HOST_VOICES: Record<'host1' | 'host2', string> = {
+  host1: process.env.ELEVENLABS_HOST1_VOICE || 'tvFp0BgJPrEXGoDhDIA4', // Thomas
+  host2: process.env.ELEVENLABS_HOST2_VOICE || '7qdUFMklKPaaAVMsBTBt', // Roos
 };
 
 async function updatePodcastEntry(
@@ -50,7 +52,7 @@ interface PodcastGenerationRequest {
 export const generatePodcastAudio = onCall(
   {
     cors: SHARED_CORS,
-    secrets: ['AZURE_FOUNDRY_API_KEY', 'AZURE_FOUNDRY_ENDPOINT', 'AZURE_SPEECH_KEY'],
+    secrets: ['AZURE_FOUNDRY_API_KEY', 'AZURE_FOUNDRY_ENDPOINT', 'ELEVENLABS_API_KEY'],
   },
   wrapCallable<PodcastGenerationRequest, unknown>('generatePodcastAudio', async (request) => {
     ensureAuthForTesting(request);
@@ -189,53 +191,6 @@ function parseScriptResponse(text: string): PodcastScript {
   return { segments, estimatedDuration };
 }
 
-function escapeXml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
-}
-
-function buildSsml(segments: PodcastSegment[]): string {
-  const ssmlParts = segments.map(seg =>
-    `<voice name="${AZURE_VOICES[seg.speaker]}">${escapeXml(seg.text)}</voice>`
-  );
-  return `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="nl-NL">${ssmlParts.join('\n')}</speak>`;
-}
-
-async function synthesizeSpeechAzure(ssml: string): Promise<Buffer> {
-  const speechKey = process.env.AZURE_SPEECH_KEY;
-  const speechRegion = 'swedencentral';
-
-  if (!speechKey || !speechRegion) {
-    throw new Error('Missing AZURE_SPEECH_KEY or AZURE_SPEECH_REGION environment variables');
-  }
-
-  const endpoint = `https://${speechRegion}.tts.speech.microsoft.com/cognitiveservices/v1`;
-
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Ocp-Apim-Subscription-Key': speechKey,
-      'Content-Type': 'application/ssml+xml',
-      'X-Microsoft-OutputFormat': 'audio-48khz-192kbitrate-mono-mp3',
-      'User-Agent': 'QuestMind-PodcastGenerator',
-    },
-    body: ssml,
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    const contentType = response.headers.get('content-type') || 'unknown';
-    throw new Error(`Azure TTS failed (${response.status}, ${contentType}, ssml=${ssml.length} chars): ${errorText}`);
-  }
-
-  const arrayBuffer = await response.arrayBuffer();
-  return Buffer.from(arrayBuffer);
-}
-
 async function generatePodcastInBackground(
   campaignId: string,
   sessionId: string,
@@ -315,22 +270,45 @@ async function generatePodcastInBackground(
       logger.debug(`Using provided script: ${finalScript.segments.length} segments`);
     }
 
-    // STEP 2: Generate audio via Azure Speech
+    // STEP 2: Generate audio via ElevenLabs text-to-dialogue
     await ProgressTrackerService.updateProgress(
-      campaignId, sessionId, 'generating-podcast-audio', 55, 'Generating podcast audio with Azure Speech...'
+      campaignId, sessionId, 'generating-podcast-audio', 55, 'Generating podcast audio with ElevenLabs...'
     );
 
-    const ssml = buildSsml(finalScript.segments);
-    logger.debug(`Generating podcast audio via Azure Speech (${finalScript.segments.length} segments, SSML length: ${ssml.length} chars)`);
+    const apiKey = process.env.ELEVENLABS_API_KEY;
+    if (!apiKey) {
+      throw new Error('ElevenLabs API key is not configured');
+    }
+
+    const elevenlabs = new ElevenLabsClient({ apiKey });
+    const dialogueInputs = finalScript.segments.map(seg => ({
+      text: seg.text,
+      voiceId: HOST_VOICES[seg.speaker]
+    }));
+
+    logger.debug(`Generating podcast audio via ElevenLabs text-to-dialogue (${finalScript.segments.length} segments)`);
 
     await ProgressTrackerService.updateProgress(
-      campaignId, sessionId, 'generating-podcast-audio', 65, 'Calling Azure Speech TTS API...'
+      campaignId, sessionId, 'generating-podcast-audio', 65, 'Calling ElevenLabs text-to-dialogue API...'
     );
 
-    const audioBuffer = await synthesizeSpeechAzure(ssml);
+    const audioStream = await elevenlabs.textToDialogue.convert({
+      inputs: dialogueInputs
+    });
+
+    await ProgressTrackerService.updateProgress(
+      campaignId, sessionId, 'generating-podcast-audio', 75, 'Receiving audio stream...'
+    );
+
+    const chunks: Buffer[] = [];
+    const readable = Readable.from(audioStream as any);
+    for await (const chunk of readable) {
+      chunks.push(Buffer.from(chunk));
+    }
+    const audioBuffer = Buffer.concat(chunks);
 
     if (audioBuffer.length === 0) {
-      throw new Error('Empty audio buffer from Azure Speech TTS');
+      throw new Error('Empty audio buffer from ElevenLabs text-to-dialogue');
     }
 
     logger.debug(`Generated podcast: ${audioBuffer.length} bytes`);
