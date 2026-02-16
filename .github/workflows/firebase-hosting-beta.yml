@@ -26,7 +26,7 @@ jobs:
           sed -i 's/apiKey: "private"/apiKey: "${{ secrets.FIREBASE_API_KEY }}"/' src/environments/environment.ts
 
       - name: Generate environment.beta.ts
-        run: mv src/environments/environment.ts src/environments/environment.beta.ts
+        run: cp src/environments/environment.ts src/environments/environment.beta.ts
 
       - name: Install dependencies
         run: npm ci
