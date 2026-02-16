@@ -1,0 +1,11 @@
+{
+  "/api/uploadAudioToGemini": {
+    "target": "https://europe-west1-questmind-dnd.cloudfunctions.net",
+    "secure": true,
+    "changeOrigin": true,
+    "pathRewrite": {
+      "^/api/uploadAudioToGemini": "/uploadAudioToGemini"
+    },
+    "logLevel": "debug"
+  }
+}

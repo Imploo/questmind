@@ -241,6 +241,21 @@ async function processTranscriptionAsync(
 
     const text = result.text;
 
+    // Log usage metadata to detect output token truncation
+    const usage = result.usageMetadata;
+    const finishReason = result.candidates?.[0]?.finishReason;
+    logger.info('[Fast Transcription] Gemini usage metadata', {
+      promptTokenCount: usage?.promptTokenCount,
+      candidatesTokenCount: usage?.candidatesTokenCount,
+      totalTokenCount: usage?.totalTokenCount,
+      configuredMaxOutputTokens: transcriptionConfig.maxOutputTokens,
+      finishReason,
+    });
+
+    if (finishReason === 'MAX_TOKENS') {
+      logger.warn('[Fast Transcription] Response was truncated — output hit maxOutputTokens limit. Transcription may be incomplete.');
+    }
+
     logger.debug(`[Fast Transcription] Received response, parsing...`);
 
     // 5. Parse JSON response

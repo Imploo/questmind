@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AudioUpload } from './services/audio-session.models';
 
-type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' | 'failed';
+type Stage = 'idle' | 'compressing' | 'uploading' | 'transcribing' | 'generating' | 'completed' | 'failed';
 
 // Export for external use
 export interface UploadRequestEvent extends AudioUpload {
@@ -172,6 +172,7 @@ export class AudioUploadComponent {
   badgeClass = computed(() => {
     const stageMap: Record<Stage, string> = {
       'idle': 'bg-gray-100 text-gray-700',
+      'compressing': 'bg-yellow-100 text-yellow-700',
       'uploading': 'bg-blue-100 text-blue-700',
       'transcribing': 'bg-purple-100 text-purple-700',
       'generating': 'bg-orange-100 text-orange-700',
@@ -184,6 +185,7 @@ export class AudioUploadComponent {
   stageLabel = computed(() => {
     const labels: Record<Stage, string> = {
       'idle': 'Ready',
+      'compressing': 'Compressing',
       'uploading': 'Uploading',
       'transcribing': 'Transcribing',
       'generating': 'Generating',

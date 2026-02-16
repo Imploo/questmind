@@ -26,8 +26,8 @@ initializeApp();
 // Podcast generation (kept separate from transcription flow)
 export { generatePodcastAudio } from './generate-podcast-audio';
 
-// Audio upload — initiates a resumable Gemini Files API upload session
-export { initiateGeminiUpload } from './initiate-gemini-upload';
+// Audio upload — browser compresses audio, then proxies through backend to Gemini
+// (Gemini resumable upload URLs block direct browser requests via CORS)
 export { uploadAudioToGemini } from './upload-audio-to-gemini';
 
 // Transcription
@@ -41,3 +41,6 @@ export { characterChat } from './character-chat';
 
 // Image generation via fal.ai
 export { generateImage } from './generate-image';
+
+// Spell resolution (fallback when not found in static Spell.json)
+export { resolveSpell } from './resolve-spell';

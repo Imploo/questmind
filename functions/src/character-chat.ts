@@ -16,14 +16,6 @@ export interface CharacterChatRequest {
 
 export interface CharacterChatResponse {
   text: string;
-  thought: string;
-  character?: unknown;
-}
-
-interface SubmitResponseInput {
-  thought: string;
-  message: string;
-  character?: string;
 }
 
 export const characterChat = onCall(
@@ -45,67 +37,28 @@ export const characterChat = onCall(
 
       const client = ModelClient(endpoint, new AzureKeyCredential(apiKey));
 
-      try {
-        const response = await client.path('/chat/completions').post({
-          body: {
-            model: 'claude-haiku-4-5',
-            max_tokens: 4096,
-            messages: [
-              { role: 'system', content: systemPrompt },
-              ...chatHistory,
-            ],
-            tools: [{
-              type: 'function',
-              function: {
-                name: 'submit_response',
-                description: 'Gebruik deze tool om je interne gedachten en je uiteindelijke antwoord naar de gebruiker te sturen.',
-                parameters: {
-                  type: 'object',
-                  properties: {
-                    thought: {
-                      type: 'string',
-                      description: 'Je interne monoloog of redenering.',
-                    },
-                    message: {
-                      type: 'string',
-                      description: 'Het daadwerkelijke bericht naar de gebruiker.',
-                    },
-                    character: {
-                      type: 'string',
-                      description: 'De JSON data van het karakter volgens het schema in de system prompt.',
-                    },
-                  },
-                  required: ['thought', 'message'],
-                },
-              },
-            }],
-            tool_choice: { type: 'function', function: { name: 'submit_response' } },
-          },
-        });
+      const response = await client.path('/chat/completions').post({
+        body: {
+          model: 'claude-haiku-4-5',
+          max_tokens: 4096,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            ...chatHistory,
+          ],
+        },
+      });
 
-        if (isUnexpected(response)) {
-          throw new HttpsError('internal', `Azure AI Foundry error: ${response.body.error.message}`);
-        }
-
-        const toolCall = response.body.choices[0]?.message?.tool_calls?.[0];
-
-        if (!toolCall) {
-          throw new HttpsError('internal', 'AI model failed to use the required tool');
-        }
-
-        const input = JSON.parse(toolCall.function.arguments) as SubmitResponseInput;
-
-        return {
-          thought: input.thought,
-          text: input.message,
-          character: input.character,
-        };
-      } catch (error) {
-        if (error instanceof HttpsError) {
-          throw error;
-        }
-        throw error;
+      if (isUnexpected(response)) {
+        throw new HttpsError('internal', `Azure AI Foundry error: ${response.body.error.message}`);
       }
+
+      const text = response.body.choices[0]?.message?.content;
+
+      if (!text) {
+        throw new HttpsError('internal', 'No response from AI model');
+      }
+
+      return { text };
     }
   )
 );

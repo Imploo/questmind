@@ -418,14 +418,31 @@ Start here for immediate impact with minimal risk:
 
 ---
 
+## 🎵 Audio Processing
+
+| Ticket | Title | Priority | Status | Effort | Dependencies |
+|--------|-------|----------|--------|--------|--------------|
+| [#47](./47-browser-audio-compression-before-upload.md) | Browser Audio Compression Before Upload | High | Todo | 3-5 days | #46 |
+
+**Key Improvements:**
+- **Ticket 47**: Compress audio in the browser before uploading to GCS
+  - Reduces 300 MB recordings to ~50 MB using Web Audio API + MediaRecorder (Opus/WebM)
+  - Zero new dependencies — fully browser-native
+  - Mono, 32–64 kbps, 16 kHz sample rate
+  - Compression progress shown to user before upload begins
+  - Fallback to original file if compression fails
+  - **Benefits:** ~6× smaller uploads, lower GCS costs, faster upload on mobile, reduced Gemini token consumption
+
+---
+
 ## 🤖 AI Stack Refactoring
 
 | Ticket | Title | Priority | Status | Effort | Dependencies |
 |--------|-------|----------|--------|--------|--------------|
-| [#47](./done/47-refactor-ai-stack-to-vertexai.md) | Refactor AI Stack naar Vertex AI + Claude Haiku | High | Done | 1–2 weken | #46 |
+| [#48](./done/47-refactor-ai-stack-to-vertexai.md) | Refactor AI Stack naar Vertex AI + Claude Haiku | High | Done | 1–2 weken | #46 |
 
 **Key Changes:**
-- **Ticket 47**: Volledige AI stack refactor
+- **Ticket 48**: Volledige AI stack refactor
   - `characterChat` → Claude Haiku 4.5 (Anthropic)
   - `generateImage` → Imagen 4 op Vertex AI (vervangt FAL.ai)
   - `generatePodcastAudio` → script via Haiku 4.5, audio via Chirp 3 HD (directe MP3 output, vervangt ElevenLabs)
@@ -434,5 +451,5 @@ Start here for immediate impact with minimal risk:
 
 ---
 
-**Last Updated:** 2026-02-12
+**Last Updated:** 2026-02-16
 **Status:** Planning Complete, Ready to Begin
