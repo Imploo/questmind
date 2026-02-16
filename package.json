@@ -17,7 +17,7 @@
     "generate:icons": "node scripts/generate-icons.js",
     "sentry:sourcemaps": "sentry-cli releases files $npm_package_version upload-sourcemaps ./dist/questmind/browser --rewrite",
     "deploy:prod": "npm run build && npm run sentry:sourcemaps",
-    "deploy:beta": "npm run build:beta && firebase deploy --project questmind-beta",
+    "deploy:beta": "npm run build:beta && npx firebase-tools deploy --project questmind-beta",
     "lint": "ng lint"
   },
   "prettier": {
