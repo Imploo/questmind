@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, input, output, signal, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { httpsCallable } from 'firebase/functions';
@@ -30,6 +30,12 @@ export interface SpellResolvedEvent {
           <div class="text-sm opacity-60 mt-1">
             {{ character().background }} • {{ character().alignment }}
           </div>
+          @if (character().playerName) {
+            <div class="text-xs opacity-50 mt-1">Player: {{ character().playerName }}</div>
+          }
+          @if (character().experiencePoints) {
+            <div class="text-xs opacity-50">XP: {{ character().experiencePoints }}</div>
+          }
         </div>
 
         <div class="flex flex-col items-end gap-2">
@@ -47,8 +53,16 @@ export interface SpellResolvedEvent {
                     <span>{{ character().hitPoints.current }}/{{ character().hitPoints.max }}</span>
                 </div>
                 <div class="flex justify-between gap-4">
+                    <span>Initiative</span>
+                    <span>{{ character().initiative >= 0 ? '+' : '' }}{{ character().initiative }}</span>
+                </div>
+                <div class="flex justify-between gap-4">
                     <span>Speed</span>
-                    <span>{{ character().speed }}</span>
+                    <span>{{ character().speed }} ft</span>
+                </div>
+                <div class="flex justify-between gap-4">
+                    <span>Hit Dice</span>
+                    <span>{{ character().hitDice.current }}/{{ character().hitDice.total }}{{ character().hitDice.die }}</span>
                 </div>
             </div>
         </div>
@@ -86,6 +100,27 @@ export interface SpellResolvedEvent {
                   </li>
                 }
               </ul>
+            </div>
+          </div>
+
+          <!-- Saving Throws -->
+          <div class="card bg-base-100 shadow-sm border border-base-200">
+            <div class="card-body p-4">
+              <h3 class="card-title text-sm uppercase tracking-wider border-b pb-2 mb-2">Saving Throws</h3>
+              <ul class="space-y-1 text-sm">
+                @for (st of savingThrowsList; track st.key) {
+                  <li class="flex justify-between items-center">
+                    <span [class.font-bold]="st.proficient">
+                      {{ st.proficient ? '●' : '○' }} {{ st.label }}
+                    </span>
+                    <span>{{ st.modifier >= 0 ? '+' : '' }}{{ st.modifier }}</span>
+                  </li>
+                }
+              </ul>
+              <div class="flex justify-between items-center text-sm mt-3 pt-2 border-t border-base-300">
+                <span class="font-semibold">Passive Wisdom</span>
+                <span class="font-bold">{{ character().passiveWisdom }}</span>
+              </div>
             </div>
           </div>
 
@@ -222,6 +257,41 @@ export interface SpellResolvedEvent {
             </div>
           }
 
+          <!-- Death Saves -->
+          @if (character().deathSaves.successes > 0 || character().deathSaves.failures > 0) {
+            <div class="card bg-base-100 shadow-sm border border-base-200">
+              <div class="card-body p-4">
+                <h3 class="card-title text-sm uppercase tracking-wider border-b pb-2 mb-2">Death Saves</h3>
+                <div class="flex justify-between text-sm">
+                  <div>
+                    <span class="opacity-60">Successes:</span>
+                    <span class="ml-2 flex gap-1 inline-flex">
+                      @for (i of [0, 1, 2]; track i) {
+                        <span class="w-3 h-3 rounded-full border-2 inline-block"
+                          [class.bg-success]="i < character().deathSaves.successes"
+                          [class.border-success]="i < character().deathSaves.successes"
+                          [class.border-base-300]="i >= character().deathSaves.successes"
+                        ></span>
+                      }
+                    </span>
+                  </div>
+                  <div>
+                    <span class="opacity-60">Failures:</span>
+                    <span class="ml-2 flex gap-1 inline-flex">
+                      @for (i of [0, 1, 2]; track i) {
+                        <span class="w-3 h-3 rounded-full border-2 inline-block"
+                          [class.bg-error]="i < character().deathSaves.failures"
+                          [class.border-error]="i < character().deathSaves.failures"
+                          [class.border-base-300]="i >= character().deathSaves.failures"
+                        ></span>
+                      }
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          }
+
            <!-- Attacks -->
            <div class="card bg-base-100 shadow-sm border border-base-200">
             <div class="card-body p-4">
@@ -284,7 +354,9 @@ export interface SpellResolvedEvent {
               <div class="flex flex-wrap gap-2 mb-4">
                 <div class="badge badge-neutral">CP: {{ character().coins.cp }}</div>
                 <div class="badge badge-neutral">SP: {{ character().coins.sp }}</div>
+                <div class="badge badge-neutral">EP: {{ character().coins.ep }}</div>
                 <div class="badge badge-neutral">GP: {{ character().coins.gp }}</div>
+                <div class="badge badge-neutral">PP: {{ character().coins.pp }}</div>
               </div>
               <ul class="list-disc list-inside text-sm opacity-80">
                 @for (item of character().equipment; track item) {
@@ -296,6 +368,85 @@ export interface SpellResolvedEvent {
 
         </div>
       </div>
+
+      <!-- Personality & Flavor -->
+      @if (character().personalityTraits || character().ideals || character().bonds || character().flaws) {
+        <div class="card bg-base-100 shadow-sm border border-base-200">
+          <div class="card-body p-4">
+            <h3 class="card-title text-sm uppercase tracking-wider border-b pb-2 mb-2">Personality</h3>
+            <div class="space-y-3 text-sm">
+              @if (character().personalityTraits) {
+                <div>
+                  <div class="font-bold text-xs uppercase opacity-60 mb-1">Personality Traits</div>
+                  <p class="whitespace-pre-line">{{ character().personalityTraits }}</p>
+                </div>
+              }
+              @if (character().ideals) {
+                <div>
+                  <div class="font-bold text-xs uppercase opacity-60 mb-1">Ideals</div>
+                  <p class="whitespace-pre-line">{{ character().ideals }}</p>
+                </div>
+              }
+              @if (character().bonds) {
+                <div>
+                  <div class="font-bold text-xs uppercase opacity-60 mb-1">Bonds</div>
+                  <p class="whitespace-pre-line">{{ character().bonds }}</p>
+                </div>
+              }
+              @if (character().flaws) {
+                <div>
+                  <div class="font-bold text-xs uppercase opacity-60 mb-1">Flaws</div>
+                  <p class="whitespace-pre-line">{{ character().flaws }}</p>
+                </div>
+              }
+            </div>
+          </div>
+        </div>
+      }
+
+      <!-- Appearance -->
+      @if (character().appearance) {
+        <div class="card bg-base-100 shadow-sm border border-base-200">
+          <div class="card-body p-4">
+            <h3 class="card-title text-sm uppercase tracking-wider border-b pb-2 mb-2">Appearance</h3>
+            @if (hasAppearanceDetails()) {
+              <div class="flex flex-wrap gap-x-6 gap-y-2 text-sm mb-3">
+                @if (character().appearance!.age) {
+                  <div><span class="opacity-60">Age:</span> {{ character().appearance!.age }}</div>
+                }
+                @if (character().appearance!.height) {
+                  <div><span class="opacity-60">Height:</span> {{ character().appearance!.height }}</div>
+                }
+                @if (character().appearance!.weight) {
+                  <div><span class="opacity-60">Weight:</span> {{ character().appearance!.weight }}</div>
+                }
+                @if (character().appearance!.eyes) {
+                  <div><span class="opacity-60">Eyes:</span> {{ character().appearance!.eyes }}</div>
+                }
+                @if (character().appearance!.skin) {
+                  <div><span class="opacity-60">Skin:</span> {{ character().appearance!.skin }}</div>
+                }
+                @if (character().appearance!.hair) {
+                  <div><span class="opacity-60">Hair:</span> {{ character().appearance!.hair }}</div>
+                }
+              </div>
+            }
+            @if (character().appearance!.description) {
+              <p class="text-sm whitespace-pre-line">{{ character().appearance!.description }}</p>
+            }
+          </div>
+        </div>
+      }
+
+      <!-- Backstory -->
+      @if (character().backstory) {
+        <div class="card bg-base-100 shadow-sm border border-base-200">
+          <div class="card-body p-4">
+            <h3 class="card-title text-sm uppercase tracking-wider border-b pb-2 mb-2">Backstory</h3>
+            <p class="text-sm whitespace-pre-line">{{ character().backstory }}</p>
+          </div>
+        </div>
+      }
     </div>
   `
 })
@@ -363,6 +514,23 @@ export class CharacterSheetComponent {
         return n;
       });
     }
+  }
+
+  hasAppearanceDetails = computed(() => {
+    const a = this.character().appearance;
+    return !!(a?.age || a?.height || a?.weight || a?.eyes || a?.skin || a?.hair);
+  });
+
+  get savingThrowsList() {
+    const st = this.character().savingThrows;
+    return [
+      { key: 'strength', label: 'STR', ...st.strength },
+      { key: 'dexterity', label: 'DEX', ...st.dexterity },
+      { key: 'constitution', label: 'CON', ...st.constitution },
+      { key: 'intelligence', label: 'INT', ...st.intelligence },
+      { key: 'wisdom', label: 'WIS', ...st.wisdom },
+      { key: 'charisma', label: 'CHA', ...st.charisma },
+    ];
   }
 
   get abilities() {
