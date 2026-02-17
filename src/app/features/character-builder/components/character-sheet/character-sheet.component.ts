@@ -161,7 +161,8 @@ export interface FeatureResolvedEvent {
                       } @else {
                         <div>
                           <div
-                            class="flex items-center justify-between cursor-pointer select-none hover:bg-base-200 -mx-2 px-2 py-1 rounded transition-colors"
+                            class="flex items-center justify-between cursor-pointer select-none touch-manipulation hover:bg-base-200 -mx-2 px-2 py-1 rounded transition-colors"
+                            style="-webkit-touch-callout: none"
                             (click)="toggleSpell($index, spell)"
                           >
                             <div class="flex items-center gap-2 flex-1">
@@ -340,7 +341,8 @@ export interface FeatureResolvedEvent {
                     } @else {
                       <div>
                         <div
-                          class="flex items-center justify-between cursor-pointer select-none hover:bg-base-200 -mx-2 px-2 py-1 rounded transition-colors"
+                          class="flex items-center justify-between cursor-pointer select-none touch-manipulation hover:bg-base-200 -mx-2 px-2 py-1 rounded transition-colors"
+                          style="-webkit-touch-callout: none"
                           (click)="toggleFeature($index, feature)"
                         >
                           <div class="flex items-center gap-2 flex-1">

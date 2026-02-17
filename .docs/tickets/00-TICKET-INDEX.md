@@ -511,5 +511,21 @@ Start here for immediate impact with minimal risk:
 
 ---
 
-**Last Updated:** 2026-02-16
+## 🎵 Audio Upload Improvements
+
+| Ticket | Title | Priority | Status | Effort | Dependencies |
+|--------|-------|----------|--------|--------|--------------|
+| [#53](./53-multi-file-audio-upload.md) | Multi-File Audio Upload (Concatenate & Upload) | Medium | Todo | 2-3 days | - |
+
+**Key Improvements:**
+- **Ticket 53**: Meerdere audiobestanden van dezelfde sessie samenvoegen en als één bestand uploaden
+  - Multi-file selectie via file picker en drag-and-drop
+  - Elk bestand individueel comprimeren, daarna MP3-blobs concateneren tot één bestand
+  - Geconcateneerd bestand gaat door bestaande upload pipeline (geen backend wijzigingen)
+  - Volgorde-beheer in de UI (pijltjes omhoog/omlaag)
+  - Bij 1 bestand: identiek gedrag aan huidige flow (geen regressie)
+
+---
+
+**Last Updated:** 2026-02-17
 **Status:** Planning Complete, Ready to Begin
