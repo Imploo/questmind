@@ -50,11 +50,16 @@ Fields:
 Return only valid JSON like: {"description": "...", "usage": "Casting Time: 1 action\\nRange: 60 feet\\nComponents: V, S\\nDuration: Instantaneous"}`,
         config: {
           responseMimeType: 'application/json',
-          maxOutputTokens: 512,
+          maxOutputTokens: 1024,
         },
       });
 
-      const text = result.text ?? '';
+      let text = (result.text ?? '').trim();
+
+      // Strip markdown code fences if present
+      if (text.startsWith('```')) {
+        text = text.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
+      }
 
       let details: ResolveSpellResponse;
       try {
@@ -62,7 +67,8 @@ Return only valid JSON like: {"description": "...", "usage": "Casting Time: 1 ac
         if (!details.description || !details.usage) {
           throw new Error('Missing required fields in response');
         }
-      } catch {
+      } catch (parseError) {
+        console.error('resolveSpell: Failed to parse AI response:', text);
         throw new HttpsError('internal', 'Failed to parse spell details from AI response');
       }
 

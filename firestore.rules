@@ -68,8 +68,7 @@ service cloud.firestore {
         allow create: if isAuthenticated() &&
           get(/databases/$(database)/documents/characters/$(characterId)).data.userId == getUserId();
         allow update: if isAuthenticated() &&
-          get(/databases/$(database)/documents/characters/$(characterId)).data.userId == getUserId() &&
-          resource.data.isDraft == true;
+          get(/databases/$(database)/documents/characters/$(characterId)).data.userId == getUserId();
         allow delete: if isAuthenticated() &&
           get(/databases/$(database)/documents/characters/$(characterId)).data.userId == getUserId() &&
           resource.data.isDraft == true;
