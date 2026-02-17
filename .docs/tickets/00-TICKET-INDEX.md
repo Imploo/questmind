@@ -511,5 +511,30 @@ Start here for immediate impact with minimal risk:
 
 ---
 
-**Last Updated:** 2026-02-16
+## 🎵 Audio Upload & Transcription Pipeline
+
+| Ticket | Title | Priority | Status | Effort | Dependencies |
+|--------|-------|----------|--------|--------|--------------|
+| [#53](./53-multi-file-audio-upload.md) | Multi-File Audio Upload (Concatenate & Upload) | Medium | Todo | 2-3 days | - |
+| [#54](./54-refactor-transcription-to-raw-story.md) | Refactor Transcription Pipeline naar Raw Story + Polished Story | High | Todo | 3-5 days | - |
+
+**Key Improvements:**
+- **Ticket 53**: Meerdere audiobestanden van dezelfde sessie samenvoegen en als een bestand uploaden
+  - Multi-file selectie via file picker en drag-and-drop
+  - Elk bestand individueel comprimeren, daarna MP3-blobs concateneren
+  - Geconcateneerd bestand gaat door bestaande upload pipeline (geen backend wijzigingen)
+  - Bij 1 bestand: identiek gedrag aan huidige flow (geen regressie)
+  - Code geimplementeerd, nog niet gecommit
+
+- **Ticket 54**: Transcriptie-pipeline vervangen door raw story aanpak
+  - Audio -> ruw uitgebreid verhaal (plain text, geen JSON/timestamps) -> gepolijst verhaal
+  - Lost max output token limiet op: plain text is 40-60% minder tokens dan JSON segments
+  - Ruw verhaal bevat alle details (namen, acties, combat, NPC interacties)
+  - Correcties worden toegepast bij polijsten: ruw verhaal + corrections -> nieuw gepolijst verhaal
+  - Geen audio herverwerking nodig bij regeneratie
+  - Geen migratie nodig voor bestaande sessies
+
+---
+
+**Last Updated:** 2026-02-17
 **Status:** Planning Complete, Ready to Begin
