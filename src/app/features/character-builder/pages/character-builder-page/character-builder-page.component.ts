@@ -12,7 +12,7 @@ import { ChatService } from '../../../../chat/chat.service';
 import { Character, CharacterVersion } from '../../../../core/models/schemas/character.schema';
 import { CharacterImage } from '../../../../core/models/schemas/character-image.schema';
 import { DndCharacter } from '../../../../shared/models/dnd-character.model';
-import { CharacterSheetComponent, SpellResolvedEvent } from '../../components/character-sheet/character-sheet.component';
+import { CharacterSheetComponent, SpellResolvedEvent, FeatureResolvedEvent } from '../../components/character-sheet/character-sheet.component';
 import { ChatComponent } from '../../../../chat/chat.component';
 import { CharacterDraftPreviewComponent } from '../../components/character-draft-preview/character-draft-preview.component';
 import { CharacterVersionHistoryComponent } from '../../components/character-version-history/character-version-history.component';
@@ -75,6 +75,7 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
                           (viewHistory)="showHistory.set(true)"
                           (deleteImage)="onDeleteImage($event)"
                           (spellResolved)="onSpellResolved($event)"
+                          (featureResolved)="onFeatureResolved($event)"
                         ></app-character-sheet>
                       </mat-card-content>
                     </mat-card>
@@ -413,6 +414,14 @@ export class CharacterBuilderPageComponent {
     const versionId = this.latestVersion()?.id;
     if (charId && versionId) {
       await this.characterVersionService.patchSpellDetails(charId, versionId, event.spellName, event.description, event.usage);
+    }
+  }
+
+  async onFeatureResolved(event: FeatureResolvedEvent): Promise<void> {
+    const charId = this.selectedCharacterId();
+    const versionId = this.latestVersion()?.id;
+    if (charId && versionId) {
+      await this.characterVersionService.patchFeatureDescription(charId, versionId, event.featureName, event.description);
     }
   }
 

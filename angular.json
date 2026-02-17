@@ -30,6 +30,11 @@
                 "glob": "Spell.json",
                 "input": "data",
                 "output": "/"
+              },
+              {
+                "glob": "ClassFeature.json",
+                "input": "data",
+                "output": "/"
               }
             ],
             "styles": [

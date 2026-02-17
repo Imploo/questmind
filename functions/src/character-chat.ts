@@ -80,7 +80,7 @@ export const characterChat = onCall(
         // Enqueue Cloud Task for AI 2 (generateCharacterDraft)
         // Fire-and-forget: don't await, don't block the response
         const payload = { characterId, currentCharacter, chatHistory, ai1Response: text };
-        const queue = getFunctions().taskQueue('generateCharacterDraft');
+        const queue = getFunctions().taskQueue('locations/europe-west1/functions/generateCharacterDraft');
         queue.enqueue(payload).catch(err => {
           console.warn('Cloud Tasks enqueue failed (expected locally), falling back to direct execution:', err.message);
           // Fallback: run directly when Cloud Tasks is unavailable (e.g. local emulator)
