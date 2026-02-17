@@ -207,7 +207,7 @@ export class AudioBackendOperationsService {
     }
 
     const sessionData = sessionSnap.data();
-    const transcriptionText = sessionData['transcription']?.['rawTranscript'];
+    const transcriptionText = sessionData['rawStory'] || sessionData['transcription']?.['rawTranscript'];
 
     if (!transcriptionText) {
       throw new Error('No transcription found for this session');

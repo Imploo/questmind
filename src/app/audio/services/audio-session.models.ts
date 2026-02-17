@@ -176,6 +176,7 @@ export interface AudioSessionRecord extends SessionStory {
   transcriptions?: TranscriptionRecord[];
   userCorrections?: string;
   correctionsUpdatedAt?: string;
+  rawStory?: string;
   storyRegeneratedAt?: string;
   storyRegenerationCount?: number;
   podcasts?: PodcastVersion[];

@@ -205,6 +205,7 @@ export const AudioSessionRecordSchema = SessionStorySchema.extend({
   status: z.enum(['uploading', 'processing', 'completed', 'failed']),
   updatedAt: z.string(),
   storageUrl: z.string().optional(), // gs:// URL for Cloud Functions (primary storage reference)
+  rawStory: z.string().optional(),
   transcription: TranscriptionResultSchema.optional(),
   storageMetadata: StorageMetadataSchema.optional(),
   activeTranscriptionId: z.string().optional(),
