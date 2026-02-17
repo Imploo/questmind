@@ -1,19 +1,19 @@
-import {AUDIO_TRANSCRIPTION_PROMPT} from '../prompts/audio-transcription.prompt';
+import {RAW_STORY_TRANSCRIPTION_PROMPT} from '../prompts/raw-story-transcription.prompt';
 import {KankaSearchResult} from '../types/audio-session.types';
 
-export function buildTranscriptionPrompt(
+export function buildRawStoryPrompt(
   kankaContext?: KankaSearchResult
 ): string {
   if (!kankaContext || Object.keys(kankaContext).length === 0) {
-    return AUDIO_TRANSCRIPTION_PROMPT;
+    return RAW_STORY_TRANSCRIPTION_PROMPT;
   }
 
   const contextPrompt = buildKankaContextPrompt(kankaContext);
   if (!contextPrompt) {
-    return AUDIO_TRANSCRIPTION_PROMPT;
+    return RAW_STORY_TRANSCRIPTION_PROMPT;
   }
 
-  return `${AUDIO_TRANSCRIPTION_PROMPT}\n\n${contextPrompt}`;
+  return `${RAW_STORY_TRANSCRIPTION_PROMPT}\n\n${contextPrompt}`;
 }
 
 function buildKankaContextPrompt(context: KankaSearchResult): string {
