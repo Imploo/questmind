@@ -45,7 +45,7 @@ export async function executeGenerateCharacterDraft(payload: GenerateCharacterDr
     config: {
       systemInstruction: CHARACTER_JSON_GENERATOR_PROMPT,
       responseMimeType: 'application/json',
-      maxOutputTokens: 4096,
+      maxOutputTokens: 8192,
       temperature: 0.1,
     },
   });
