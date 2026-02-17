@@ -51,11 +51,6 @@ export class AudioCompleteProcessingService {
     options: StartProcessingOptions,
     onProgress?: (stage: UploadStage, progress: number) => void
   ): Promise<ProcessingResult> {
-    const sessionRef = doc(
-      this.firestore,
-      `campaigns/${campaignId}/audioSessions/${sessionId}`
-    );
-
     // ── 1. Compress audio in the browser ────────────────────────────────────
     logger.info('[AudioCompleteProcessing] Compressing audio before upload...');
 
@@ -74,26 +69,53 @@ export class AudioCompleteProcessingService {
       });
     }
 
-    // ── 2. Upload compressed blob → Gemini Files API via Cloud Function ───────
+    // ── 2. Upload + transcribe ──────────────────────────────────────────────
+    return this.uploadAndTranscribe(
+      campaignId,
+      sessionId,
+      compressionResult.blob,
+      replaceExtension(audioFile.name, 'mp3'),
+      { originalSize: compressionResult.originalSize, compressedSize: compressionResult.compressedSize },
+      options,
+      (uploadProgress) => onProgress?.('uploading', uploadProgress),
+    );
+  }
+
+  /**
+   * Upload a pre-compressed audio blob and start transcription.
+   * Use this when compression is handled externally (e.g. multi-file concatenation).
+   */
+  async uploadAndTranscribe(
+    campaignId: string,
+    sessionId: string,
+    blob: Blob,
+    fileName: string,
+    sizeInfo: { originalSize: number; compressedSize: number },
+    options: StartProcessingOptions,
+    onProgress?: (progress: number) => void,
+  ): Promise<ProcessingResult> {
+    const sessionRef = doc(
+      this.firestore,
+      `campaigns/${campaignId}/audioSessions/${sessionId}`
+    );
+
     logger.info('[AudioCompleteProcessing] Uploading to Gemini via Cloud Function...');
 
-    onProgress?.('uploading', 0);
+    onProgress?.(0);
 
-    const uploadFileName = replaceExtension(audioFile.name, 'mp3');
     const fileUri = await this.uploadToGemini(
-      compressionResult.blob,
-      compressionResult.mimeType,
-      uploadFileName,
+      blob,
+      'audio/mpeg',
+      fileName,
       sessionRef,
-      (uploadProgress) => onProgress?.('uploading', uploadProgress),
+      (uploadProgress) => onProgress?.(uploadProgress),
     );
 
     logger.info(`[AudioCompleteProcessing] Gemini upload complete: ${fileUri}`);
 
-    // ── 3. Persist metadata + start transcription ─────────────────────────────
     await updateDoc(sessionRef, {
-      audioCompressedSizeBytes: compressionResult.compressedSize,
-      audioOriginalSizeBytes: compressionResult.originalSize,
+      audioCompressedSizeBytes: sizeInfo.compressedSize,
+      audioOriginalSizeBytes: sizeInfo.originalSize,
       updatedAt: new Date(),
     });
 
@@ -102,8 +124,8 @@ export class AudioCompleteProcessingService {
       campaignId,
       sessionId,
       fileUri,
-      audioFileName: uploadFileName,
-      audioFileSize: compressionResult.compressedSize,
+      audioFileName: fileName,
+      audioFileSize: sizeInfo.compressedSize,
       userCorrections: options.userCorrections,
     });
 

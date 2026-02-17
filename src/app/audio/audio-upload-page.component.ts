@@ -4,6 +4,7 @@ import { Router } from '@angular/router';
 import { AudioUploadComponent, UploadRequestEvent } from './audio-upload.component';
 import { AudioSessionStateService } from './services/audio-session-state.service';
 import { AudioCompleteProcessingService, UploadStage } from './services/audio-complete-processing.service';
+import { AudioCompressionService } from './services/audio-compression.service';
 import { AuthService } from '../auth/auth.service';
 import { CampaignContextService } from '../campaign/campaign-context.service';
 import { AudioUpload, AudioSessionRecord } from './services/audio-session.models';
@@ -153,6 +154,7 @@ export class AudioUploadPageComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private sessionStateService = inject(AudioSessionStateService);
   private completeProcessingService = inject(AudioCompleteProcessingService);
+  private audioCompression = inject(AudioCompressionService);
   private authService = inject(AuthService);
   private campaignContextService = inject(CampaignContextService);
   private wakeLockSentinel: WakeLockSentinel | null = null;
@@ -222,50 +224,102 @@ export class AudioUploadPageComponent implements OnInit, OnDestroy {
     }
 
     try {
-      this.stage.set('compressing');
-      this.progress.set(0);
-      this.statusMessage.set('Compressing audio...');
+      const files = event.files;
 
+      // Create session draft using the first file's name for metadata
       const upload: AudioUpload = {
-        file: event.file,
+        file: files[0],
         sessionName: event.sessionName,
         sessionDate: event.sessionDate,
         userId,
         campaignId
       };
-
       const sessionDraft = this.sessionStateService.createSessionDraft(upload);
 
-      // Start compression + upload with stage-aware progress tracking
-      const result = await this.completeProcessingService.startCompleteProcessing(
-        campaignId,
-        sessionDraft.id,
-        event.file,
-        {
-          sessionTitle: event.sessionName || 'Untitled Session',
-          sessionDate: event.sessionDate,
-        },
-        (stage: UploadStage, stageProgress: number) => {
-          this.progress.set(stageProgress);
-          if (stage === 'compressing') {
-            this.stage.set('compressing');
-            this.statusMessage.set(`Compressing audio... ${Math.round(stageProgress)}%`);
-          } else {
-            this.stage.set('uploading');
-            this.statusMessage.set(`Uploading to cloud... ${Math.round(stageProgress)}%`);
+      if (files.length === 1) {
+        // ── Single file: existing flow ──────────────────────────────────────
+        this.stage.set('compressing');
+        this.progress.set(0);
+        this.statusMessage.set('Compressing audio...');
+
+        const result = await this.completeProcessingService.startCompleteProcessing(
+          campaignId,
+          sessionDraft.id,
+          files[0],
+          {
+            sessionTitle: event.sessionName || 'Untitled Session',
+            sessionDate: event.sessionDate,
+          },
+          (stage: UploadStage, stageProgress: number) => {
+            this.progress.set(stageProgress);
+            if (stage === 'compressing') {
+              this.stage.set('compressing');
+              this.statusMessage.set(`Compressing audio... ${Math.round(stageProgress)}%`);
+            } else {
+              this.stage.set('uploading');
+              this.statusMessage.set(`Uploading to cloud... ${Math.round(stageProgress)}%`);
+            }
           }
+        );
+
+        this.progress.set(100);
+        this.statusMessage.set('Upload complete! Processing audio...');
+        await new Promise(resolve => setTimeout(resolve, 800));
+        this.selectSession({ id: result.sessionId } as AudioSessionRecord);
+      } else {
+        // ── Multi file: compress each → concatenate → upload ────────────────
+        this.stage.set('compressing');
+        this.progress.set(0);
+
+        const compressedBlobs: Blob[] = [];
+        let totalOriginalSize = 0;
+
+        // Compress each file sequentially (0% – 60% of total progress)
+        for (let i = 0; i < files.length; i++) {
+          this.statusMessage.set(`Compressing file ${i + 1} of ${files.length}...`);
+
+          const compressionResult = await this.audioCompression.compress(
+            files[i],
+            (fileProgress: number) => {
+              const overallProgress = Math.round(((i + fileProgress / 100) / files.length) * 60);
+              this.progress.set(overallProgress);
+            }
+          );
+
+          compressedBlobs.push(compressionResult.blob);
+          totalOriginalSize += compressionResult.originalSize;
         }
-      );
 
-      // Upload complete, batch job submitted successfully - set to 100%
-      this.progress.set(100);
-      this.statusMessage.set('Upload complete! Processing audio...');
+        // Concatenate compressed MP3 blobs
+        this.statusMessage.set('Merging audio files...');
+        this.progress.set(60);
+        const concatenatedBlob = new Blob(compressedBlobs, { type: 'audio/mpeg' });
+        const fileName = `${(event.sessionName || files[0].name).replace(/\.[^.]+$/, '')}.mp3`;
 
-      // Wait a moment to show 100% completion
-      await new Promise(resolve => setTimeout(resolve, 800));
+        // Upload + transcribe (60% – 100%)
+        this.stage.set('uploading');
+        const result = await this.completeProcessingService.uploadAndTranscribe(
+          campaignId,
+          sessionDraft.id,
+          concatenatedBlob,
+          fileName,
+          { originalSize: totalOriginalSize, compressedSize: concatenatedBlob.size },
+          {
+            sessionTitle: event.sessionName || 'Untitled Session',
+            sessionDate: event.sessionDate,
+          },
+          (uploadProgress: number) => {
+            const overallProgress = Math.round(60 + (uploadProgress / 100) * 40);
+            this.progress.set(overallProgress);
+            this.statusMessage.set(`Uploading to cloud... ${Math.round(uploadProgress)}%`);
+          }
+        );
 
-      // Navigate to the new session
-      this.selectSession({ id: result.sessionId } as AudioSessionRecord);
+        this.progress.set(100);
+        this.statusMessage.set('Upload complete! Processing audio...');
+        await new Promise(resolve => setTimeout(resolve, 800));
+        this.selectSession({ id: result.sessionId } as AudioSessionRecord);
+      }
     } catch (error) {
       console.error('Error starting complete processing:', error);
       this.stage.set('failed');
