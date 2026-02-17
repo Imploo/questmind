@@ -22,7 +22,7 @@ interface SessionWithPodcasts {
   imports: [CommonModule, CampaignSelectorComponent],
   template: `
     <div class="max-w-5xl mx-auto">
-      <div class="mb-6">
+      <div class="mb-6 hidden sm:block">
         <app-campaign-selector />
       </div>
 

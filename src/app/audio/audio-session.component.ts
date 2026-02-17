@@ -30,7 +30,7 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (authService.isAuthenticated()) {
-      <div class="mb-6">
+      <div class="mb-6 hidden sm:block">
         <app-campaign-selector />
       </div>
     }
@@ -61,7 +61,7 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
     } @else {
       <div class="flex flex-col lg:flex-row gap-6">
         <!-- Mobile: Toggle button at top -->
-        <div class="lg:hidden mb-4">
+        <div class="lg:hidden">
           <button
             type="button"
             (click)="mobileDrawerOpen.set(true)"
@@ -185,7 +185,7 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
 
         <!-- Right panel: Session details (scrolls naturally with page) -->
         <main class="flex-1 min-w-0">
-          <div class="grid gap-6">
+          <div class="grid">
             @if (currentSession()) {
               <!-- Progress card (only shown when session is processing) -->
               <app-session-progress-card

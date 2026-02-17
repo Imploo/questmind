@@ -18,22 +18,20 @@ import { NavItem } from '../nav-item.model';
       align-items: center;
       justify-content: center;
       position: fixed;
-      top: 12px;
-      left: 12px;
+      top: 8px;
+      left: 8px;
       z-index: 50;
       width: 40px;
       height: 40px;
       border-radius: 10px;
-      background: rgba(255,255,255,0.2);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border: 1px solid rgba(255,255,255,0.25);
+      background: transparent;
+      border: none;
       cursor: pointer;
       color: white;
     }
 
     .hamburger-btn:hover {
-      background: rgba(255,255,255,0.3);
+      background: rgba(255,255,255,0.15);
     }
 
     .backdrop {

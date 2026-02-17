@@ -16,32 +16,35 @@ import { Campaign } from './campaign.models';
     @if (!isCollapsed()) {
       <div class="flex items-center justify-center gap-2">
 
-        <!-- Settings button (left) -->
-        <button
-          (click)="openManageCampaign()"
-          [disabled]="!selectedCampaign()"
-          class="w-9 h-9 flex items-center justify-center rounded-full bg-white shadow-sm border border-gray-200 text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
-          title="Campaign instellingen"
-        >
-          <lucide-icon name="settings" class="w-4 h-4" />
-        </button>
-
         <!-- Campaign pill -->
         <div class="relative flex-1 min-w-0 max-w-[50vw] md:max-w-80">
-          <button
-            (click)="toggleDropdown()"
-            class="flex items-center gap-2 w-full px-4 py-2.5 bg-white rounded-full shadow-sm border border-gray-200 hover:bg-gray-50 transition-all text-left"
+          <div
+            class="flex items-center w-full bg-white rounded-full shadow-sm border border-gray-200 text-left"
           >
-            <lucide-icon name="book-open" class="w-4 h-4 text-gray-400 flex-shrink-0" />
-            <span class="flex-1 text-sm font-medium text-gray-800 truncate">
-              {{ selectedCampaign()?.name || 'Selecteer een campaign' }}
-            </span>
-            <lucide-icon
-              name="chevron-down"
-              class="w-4 h-4 text-gray-400 flex-shrink-0 transition-transform duration-200"
-              [style.transform]="showDropdown() ? 'rotate(180deg)' : 'rotate(0deg)'"
-            />
-          </button>
+            <!-- Settings cogwheel inside pill -->
+            <button
+              (click)="openManageCampaign(); $event.stopPropagation()"
+              [disabled]="!selectedCampaign()"
+              class="flex items-center justify-center w-9 h-9 flex-shrink-0 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Campaign instellingen"
+            >
+              <lucide-icon name="settings" class="w-4 h-4" />
+            </button>
+            <!-- Campaign name + dropdown toggle -->
+            <button
+              (click)="toggleDropdown()"
+              class="flex items-center flex-1 min-w-0 pr-3 pl-1 py-2.5 hover:bg-gray-50 rounded-r-full transition-all"
+            >
+              <span class="flex-1 text-sm font-medium text-gray-800 truncate text-center">
+                {{ selectedCampaign()?.name || 'Selecteer een campaign' }}
+              </span>
+              <lucide-icon
+                name="chevron-down"
+                class="w-4 h-4 text-gray-400 flex-shrink-0 transition-transform duration-200"
+                [style.transform]="showDropdown() ? 'rotate(180deg)' : 'rotate(0deg)'"
+              />
+            </button>
+          </div>
 
           <!-- Backdrop -->
           @if (showDropdown()) {
@@ -68,18 +71,16 @@ import { Campaign } from './campaign.models';
               @if (campaigns().length === 0) {
                 <div class="px-4 py-3 text-sm text-gray-400">Geen campaigns gevonden</div>
               }
+              <button
+                (click)="showCreateCampaign.set(true); showDropdown.set(false)"
+                class="w-full px-4 py-3 text-left text-sm transition-colors flex items-center gap-2 hover:bg-gray-50 text-blue-600 border-t border-gray-100"
+              >
+                <lucide-icon name="plus" class="w-4 h-4 flex-shrink-0" />
+                <span>Nieuwe campaign</span>
+              </button>
             </div>
           }
         </div>
-
-        <!-- New campaign button (right) -->
-        <button
-          (click)="showCreateCampaign.set(true)"
-          class="w-9 h-9 flex items-center justify-center rounded-full bg-white shadow-sm border border-gray-200 text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all flex-shrink-0"
-          title="Nieuwe campaign aanmaken"
-        >
-          <lucide-icon name="plus" class="w-4 h-4" />
-        </button>
       </div>
 
       @if (errorMessage()) {
