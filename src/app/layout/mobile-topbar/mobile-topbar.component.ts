@@ -1,4 +1,7 @@
-import { Component, ChangeDetectionStrategy } from '@angular/core';
+import { Component, ChangeDetectionStrategy, computed, inject } from '@angular/core';
+import { Router, NavigationEnd } from '@angular/router';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { filter, map, startWith } from 'rxjs/operators';
 import { CampaignSelectorComponent } from '../../campaign/campaign-selector.component';
 
 @Component({
@@ -35,9 +38,26 @@ import { CampaignSelectorComponent } from '../../campaign/campaign-selector.comp
     }
   `],
   template: `
-    <div class="topbar-content">
-      <app-campaign-selector [isCollapsed]="false" />
-    </div>
+    @if (onCampaignRoute()) {
+      <div class="topbar-content">
+        <app-campaign-selector [isCollapsed]="false" />
+      </div>
+    }
   `
 })
-export class MobileTopbarComponent {}
+export class MobileTopbarComponent {
+  private readonly router = inject(Router);
+
+  private readonly currentUrl = toSignal(
+    this.router.events.pipe(
+      filter(event => event instanceof NavigationEnd),
+      map(() => this.router.url),
+      startWith(this.router.url)
+    )
+  );
+
+  readonly onCampaignRoute = computed(() => {
+    const url = this.currentUrl() ?? '';
+    return url.startsWith('/campaign/');
+  });
+}

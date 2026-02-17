@@ -1,7 +1,6 @@
 import { Component, inject, signal, ChangeDetectionStrategy } from '@angular/core';
 import { Router } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
-import { MatButtonModule } from '@angular/material/button';
 import { CharacterService } from '../../../../core/services/character.service';
 import { CharacterVersionService } from '../../../../core/services/character-version.service';
 import { Character } from '../../../../core/models/schemas/character.schema';
@@ -19,7 +18,7 @@ interface CharacterSummary {
 @Component({
   selector: 'app-character-list-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MatCardModule, MatButtonModule],
+  imports: [MatCardModule],
   template: `
     <div class="min-h-full bg-base-200 p-8">
       <div class="max-w-6xl mx-auto">
@@ -30,19 +29,18 @@ interface CharacterSummary {
             <p class="text-base-content/60 mt-1">Select a character to view or edit</p>
           </div>
           <button
-            mat-raised-button
-            color="primary"
             (click)="onCreateCharacter()"
             [disabled]="creating()"
+            class="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-gray-700 font-medium text-sm rounded-full shadow-sm border border-gray-200 hover:bg-gray-50 hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             @if (creating()) {
               <span class="loading loading-spinner loading-sm"></span>
             } @else {
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
               </svg>
             }
-            New Character
+            Create
           </button>
         </div>
 
@@ -98,7 +96,13 @@ interface CharacterSummary {
               </svg>
               <h2 class="text-xl font-bold mb-2">No characters yet</h2>
               <p class="mb-6">Create your first character to get started!</p>
-              <button mat-raised-button color="primary" (click)="onCreateCharacter()">
+              <button
+                (click)="onCreateCharacter()"
+                class="inline-flex items-center gap-2 px-6 py-3 bg-white text-gray-700 font-medium text-sm rounded-full shadow-sm border border-gray-200 hover:bg-gray-50 hover:shadow-md transition-all"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                </svg>
                 Create Character
               </button>
             </div>
