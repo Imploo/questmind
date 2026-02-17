@@ -286,7 +286,6 @@ async function processTranscriptionAsync(
     // 6. Update Firestore with raw story
     await sessionRef.update({
       rawStory,
-      'transcription.rawTranscript': rawStory,
       transcriptionCompletedAt: FieldValue.serverTimestamp(),
       'transcriptionFast.status': 'completed',
       'transcriptionFast.processingTimeMs': processingTimeMs,
