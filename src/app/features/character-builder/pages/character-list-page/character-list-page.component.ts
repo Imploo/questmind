@@ -56,7 +56,7 @@ interface CharacterSummary {
             <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
               @for (char of characterSummaries(); track char.id) {
                 <div
-                  class="aspect-square rounded-2xl overflow-hidden cursor-pointer shadow-md hover:shadow-xl transition-all duration-200 hover:-translate-y-1 hover:scale-[1.02] relative group"
+                  class="border border-white/20 aspect-square rounded-2xl overflow-hidden cursor-pointer shadow-md hover:shadow-xl transition-all duration-200 hover:-translate-y-1 hover:scale-[1.02] relative group"
                   (click)="onSelectCharacter(char.id)"
                 >
                   @if (char.imageUrl) {
@@ -66,24 +66,20 @@ interface CharacterSummary {
                       [alt]="char.name"
                       class="absolute inset-0 w-full h-full object-cover"
                     />
-                    <div class="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent"></div>
+                    <div class="absolute inset-0 bg-white/20"></div>
                   } @else {
                     <!-- Glassy tile without image -->
                     <div class="absolute inset-0 bg-base-300/40 backdrop-blur-md border border-white/20"></div>
                     <div class="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent"></div>
                   }
 
+                  <!-- Bottom 1/3 overlay for contrast -->
+                  <div class="absolute bottom-0 left-0 right-0 h-1/3 bg-black/40 backdrop-blur-[2px]"></div>
+
                   <!-- Content overlay — pinned to bottom -->
                   <div class="absolute bottom-0 left-0 right-0 px-2.5 pb-2">
-                    <p class="text-[12px] font-medium leading-none"
-                      [class.text-white/80]="char.imageUrl"
-                      [class.text-base-content/70]="!char.imageUrl"
-                      [class.drop-shadow-sm]="char.imageUrl"
-                    >{{ char.name }}</p>
-                    <p class="text-[10px] mt-0.5 leading-none"
-                      [class.text-white/50]="char.imageUrl"
-                      [class.text-base-content/40]="!char.imageUrl"
-                    >{{ char.race }} {{ char.class }}</p>
+                    <p class="text-[12px] font-medium leading-none !mb-2 text-white/80 drop-shadow-sm">{{ char.name }}</p>
+                    <p class="text-[10px] leading-none !mb-2 text-white/50">{{ char.race }} {{ char.class }}</p>
                   </div>
                 </div>
               }
