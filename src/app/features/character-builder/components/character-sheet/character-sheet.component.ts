@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input, output, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { HttpClient } from '@angular/common/http';
 import { httpsCallable } from 'firebase/functions';
 import { DndCharacter } from '../../../../shared/models/dnd-character.model';
@@ -17,7 +18,7 @@ export interface SpellResolvedEvent {
 @Component({
   selector: 'app-character-sheet',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule, CharacterImageGalleryComponent],
+  imports: [CommonModule, MatProgressBarModule, CharacterImageGalleryComponent],
   template: `
     <div class="p-2 max-w-4xl mx-auto space-y-8">
       <!-- Header -->
@@ -184,7 +185,7 @@ export interface SpellResolvedEvent {
                           @if (expandedSpells().has($index)) {
                             <div class="ml-5 mt-2 text-xs opacity-70">
                               @if (loadingSpells().has($index)) {
-                                <span class="loading loading-dots loading-xs"></span>
+                                <mat-progress-bar mode="indeterminate"></mat-progress-bar>
                               } @else if (spell.description) {
                                 <div class="whitespace-pre-line">{{ spell.description }}</div>
                                 @if (spell.usage) {

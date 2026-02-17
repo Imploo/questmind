@@ -50,7 +50,7 @@ Fields:
 Return only valid JSON like: {"description": "...", "usage": "Casting Time: 1 action\\nRange: 60 feet\\nComponents: V, S\\nDuration: Instantaneous"}`,
         config: {
           responseMimeType: 'application/json',
-          maxOutputTokens: 1024,
+          maxOutputTokens: 4096,
         },
       });
 
