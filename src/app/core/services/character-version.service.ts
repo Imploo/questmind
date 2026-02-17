@@ -170,6 +170,26 @@ export class CharacterVersionService {
     await updateDoc(versionRef, { 'character.spellcasting.spells': updated });
   }
 
+  async patchFeatureDescription(
+    characterId: string,
+    activeVersionId: string,
+    featureName: string,
+    description: string
+  ): Promise<void> {
+    if (!this.db) return;
+    const versionRef = doc(this.db, 'characters', characterId, 'versions', activeVersionId);
+    const snapshot = await getDoc(versionRef);
+    if (!snapshot.exists()) return;
+    const data = snapshot.data() as CharacterVersion;
+    const features = data.character.featuresAndTraits ?? [];
+    const updated = features.map(feature => {
+      if (typeof feature === 'string') return feature;
+      if (feature.name.toLowerCase() === featureName.toLowerCase()) return { ...feature, description };
+      return feature;
+    });
+    await updateDoc(versionRef, { 'character.featuresAndTraits': updated });
+  }
+
   watchLatestVersion(characterId: string): Observable<CharacterVersion | null> {
     return new Observable(subscriber => {
       if (!this.db) {

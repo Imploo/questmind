@@ -47,3 +47,6 @@ export { generateImage } from './generate-image';
 
 // Spell description resolution for lazy loading
 export { resolveSpell } from './resolve-spell';
+
+// Feature/trait description resolution for lazy loading
+export { resolveFeature } from './resolve-feature';

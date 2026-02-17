@@ -8,11 +8,17 @@ import { CharacterImage } from '../../../../core/models/schemas/character-image.
 import { CharacterImageGalleryComponent } from '../character-image-gallery/character-image-gallery.component';
 import { FirebaseService } from '../../../../core/firebase.service';
 import { lookupSpellFromJson, SpellDetails } from '../../../../shared/utils/spell-lookup';
+import { lookupFeatureFromJson, FeatureDetails } from '../../../../shared/utils/feature-lookup';
 
 export interface SpellResolvedEvent {
   spellName: string;
   description: string;
   usage: string;
+}
+
+export interface FeatureResolvedEvent {
+  featureName: string;
+  description: string;
 }
 
 @Component({
@@ -326,19 +332,46 @@ export interface SpellResolvedEvent {
           <div class="card bg-base-100 shadow-sm border border-base-200">
             <div class="card-body p-4">
               <h3 class="card-title text-sm uppercase tracking-wider border-b pb-2 mb-2">Features & Traits</h3>
-              <div class="space-y-3">
+              <div class="space-y-2">
                 @for (feature of character().featuresAndTraits; track $index) {
-                  <div>
+                  <div class="pb-2 last:pb-0">
                     @if (isString(feature)) {
                       <div class="font-bold text-sm">{{ feature }}</div>
                     } @else {
-                      <div class="font-bold text-sm">{{ feature.name }}</div>
-                      @if (feature.description) {
-                        <p class="text-xs opacity-70">{{ feature.description }}</p>
-                      }
-                      @if (feature.source) {
-                        <span class="badge badge-xs badge-ghost mt-1">{{ feature.source }}</span>
-                      }
+                      <div>
+                        <div
+                          class="flex items-center justify-between cursor-pointer hover:bg-base-200 -mx-2 px-2 py-1 rounded transition-colors"
+                          (click)="toggleFeature($index, feature)"
+                        >
+                          <div class="flex items-center gap-2 flex-1">
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              class="h-3 w-3 transition-transform"
+                              [class.rotate-90]="expandedFeatures().has($index)"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                            </svg>
+                            <span class="font-bold text-sm">{{ feature.name }}</span>
+                          </div>
+                          @if (feature.source) {
+                            <span class="badge badge-xs badge-ghost shrink-0">{{ feature.source }}</span>
+                          }
+                        </div>
+                        @if (expandedFeatures().has($index)) {
+                          <div class="ml-5 mt-2 text-xs opacity-70">
+                            @if (loadingFeatures().has($index)) {
+                              <mat-progress-bar mode="indeterminate"></mat-progress-bar>
+                            } @else if (feature.description) {
+                              <div class="whitespace-pre-line">{{ feature.description }}</div>
+                            } @else {
+                              <span class="italic opacity-50">No description available</span>
+                            }
+                          </div>
+                        }
+                      </div>
                     }
                   </div>
                 } @empty {
@@ -461,9 +494,12 @@ export class CharacterSheetComponent {
   viewHistory = output<void>();
   deleteImage = output<CharacterImage>();
   spellResolved = output<SpellResolvedEvent>();
+  featureResolved = output<FeatureResolvedEvent>();
 
   expandedSpells = signal<Set<number>>(new Set());
   loadingSpells = signal<Set<number>>(new Set());
+  expandedFeatures = signal<Set<number>>(new Set());
+  loadingFeatures = signal<Set<number>>(new Set());
 
   private readonly http = inject(HttpClient);
   private readonly firebase = inject(FirebaseService);
@@ -510,6 +546,57 @@ export class CharacterSheetComponent {
       console.error('Failed to resolve spell details:', e);
     } finally {
       this.loadingSpells.update(s => {
+        const n = new Set(s);
+        n.delete(index);
+        return n;
+      });
+    }
+  }
+
+  async toggleFeature(
+    index: number,
+    feature: string | { name: string; description?: string; source?: string }
+  ): Promise<void> {
+    const isExpanding = !this.expandedFeatures().has(index);
+    this.expandedFeatures.update(set => {
+      const s = new Set(set);
+      if (isExpanding) {
+        s.add(index);
+      } else {
+        s.delete(index);
+      }
+      return s;
+    });
+
+    if (!isExpanding || typeof feature === 'string' || feature.description) return;
+
+    this.loadingFeatures.update(s => new Set([...s, index]));
+    try {
+      // 1. Try static ClassFeature.json first
+      const local: FeatureDetails | null = await lookupFeatureFromJson(this.http, feature.name);
+      if (local) {
+        this.featureResolved.emit({ featureName: feature.name, ...local });
+        return;
+      }
+
+      // 2. Fallback: resolveFeature Cloud Function
+      const fn = httpsCallable<unknown, { description: string }>(
+        this.firebase.requireFunctions(),
+        'resolveFeature'
+      );
+      const character = this.character();
+      const result = await fn({
+        characterId: this.characterId(),
+        featureName: feature.name,
+        featureSource: feature.source,
+        characterClass: character.class,
+        characterRace: character.race,
+      });
+      this.featureResolved.emit({ featureName: feature.name, ...result.data });
+    } catch (e) {
+      console.error('Failed to resolve feature details:', e);
+    } finally {
+      this.loadingFeatures.update(s => {
         const n = new Set(s);
         n.delete(index);
         return n;
