@@ -2,17 +2,22 @@ import { Component, inject, ChangeDetectionStrategy } from '@angular/core';
 import { ActivatedRoute, RouterOutlet } from '@angular/router';
 import { CampaignContextService } from './campaign/campaign-context.service';
 import { NavRailComponent } from './layout/nav-rail/nav-rail.component';
+import { MobileTopbarComponent } from './layout/mobile-topbar/mobile-topbar.component';
 import { AuthService } from './auth/auth.service';
 
 @Component({
   selector: 'app-shell',
-  imports: [RouterOutlet, NavRailComponent],
+  imports: [RouterOutlet, NavRailComponent, MobileTopbarComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <main class="w-full min-h-screen bg-gradient-to-br from-primary to-secondary">
       <app-nav-rail />
 
-      <div [class]="authService.isAuthenticated() ? 'sm:ml-20 min-h-screen p-4' : 'min-h-screen p-4'">
+      @if (authService.isAuthenticated()) {
+        <app-mobile-topbar />
+      }
+
+      <div [class]="authService.isAuthenticated() ? 'sm:ml-20 min-h-screen p-4 pt-16 sm:pt-4' : 'min-h-screen p-4'">
         <section>
           <router-outlet />
         </section>
