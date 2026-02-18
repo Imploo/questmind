@@ -107,6 +107,12 @@ export interface AISettings {
     storyGeneration?: AIFeatureConfig;
     podcastScript?: AIFeatureConfig;
     podcastVoices?: PodcastVoiceSettings;
+    characterChat?: AIFeatureConfig;
+    characterChatText?: AIFeatureConfig;
+    characterDraft?: AIFeatureConfig;
+    spellResolution?: AIFeatureConfig;
+    featureResolution?: AIFeatureConfig;
+    imageGeneration?: { model: string };
   };
   // Legacy support
   modelConfig?: {

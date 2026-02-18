@@ -11,8 +11,9 @@ import { PODCAST_SCRIPT_GENERATOR_PROMPT } from './prompts/podcast-script-genera
 import { ensureAuthForTesting } from './utils/emulator-helpers';
 import { ProgressTrackerService } from './services/progress-tracker.service';
 import { wrapCallable } from './utils/sentry-error-handler';
+import { getAiFeatureConfig, getPodcastVoiceConfig } from './utils/ai-settings';
 
-const HOST_VOICES: Record<'host1' | 'host2', string> = {
+const DEFAULT_HOST_VOICES: Record<'host1' | 'host2', string> = {
   host1: process.env.ELEVENLABS_HOST1_VOICE || 'tvFp0BgJPrEXGoDhDIA4', // Thomas
   host2: process.env.ELEVENLABS_HOST2_VOICE || '7qdUFMklKPaaAVMsBTBt', // Roos
 };
@@ -213,14 +214,16 @@ async function generatePodcastInBackground(
         campaignId, sessionId, 'generating-podcast-script', 10, 'Generating podcast script...'
       );
 
+      const scriptConfig = await getAiFeatureConfig('podcastScript');
+
       const aiClient = new OpenAI({
         baseURL: process.env.AZURE_FOUNDRY_ENDPOINT!,
         apiKey: process.env.AZURE_FOUNDRY_API_KEY!,
       });
 
       const scriptResponse = await aiClient.chat.completions.create({
-        model: 'Mistral-Large-3',
-        max_tokens: 4096,
+        model: scriptConfig.model,
+        max_tokens: scriptConfig.maxOutputTokens,
         messages: [
           { role: 'system', content: PODCAST_SCRIPT_GENERATOR_PROMPT },
           {
@@ -280,10 +283,16 @@ async function generatePodcastInBackground(
       throw new Error('ElevenLabs API key is not configured');
     }
 
+    const voiceConfig = await getPodcastVoiceConfig();
+    const hostVoices: Record<'host1' | 'host2', string> = {
+      host1: voiceConfig.host1VoiceId || DEFAULT_HOST_VOICES.host1,
+      host2: voiceConfig.host2VoiceId || DEFAULT_HOST_VOICES.host2,
+    };
+
     const elevenlabs = new ElevenLabsClient({ apiKey });
     const dialogueInputs = finalScript.segments.map(seg => ({
       text: seg.text,
-      voiceId: HOST_VOICES[seg.speaker]
+      voiceId: hostVoices[seg.speaker]
     }));
 
     logger.debug(`Generating podcast audio via ElevenLabs text-to-dialogue (${finalScript.segments.length} segments)`);

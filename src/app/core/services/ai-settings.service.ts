@@ -14,17 +14,23 @@ export interface AiImageConfig {
   model: string;
 }
 
+export interface PodcastVoiceSettings {
+  host1VoiceId: string;
+  host2VoiceId: string;
+}
+
 export interface AiSettings {
   features: {
-    transcription: AiModelConfig;
-    storyGeneration: AiModelConfig;
-    podcastScript: AiModelConfig;
-    characterChat: AiModelConfig;
-    imageGeneration: AiImageConfig;
-    podcastVoices: {
-      host1VoiceId: string;
-      host2VoiceId: string;
-    };
+    transcription?: AiModelConfig;
+    storyGeneration?: AiModelConfig;
+    podcastScript?: AiModelConfig;
+    characterChat?: AiModelConfig;
+    characterChatText?: AiModelConfig;
+    characterDraft?: AiModelConfig;
+    spellResolution?: AiModelConfig;
+    featureResolution?: AiModelConfig;
+    imageGeneration?: AiImageConfig;
+    podcastVoices?: PodcastVoiceSettings;
   };
 }
 

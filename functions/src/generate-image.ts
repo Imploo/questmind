@@ -1,5 +1,6 @@
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { wrapCallable } from './utils/sentry-error-handler';
+import { getAiImageConfig } from './utils/ai-settings';
 import { SHARED_CORS } from './index';
 import { getStorage } from 'firebase-admin/storage';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
@@ -35,11 +36,14 @@ export const generateImage = onCall(
   wrapCallable<GenerateImageRequest, GenerateImageResponse>(
     'generateImage',
     async (request): Promise<GenerateImageResponse> => {
-      const { chatRequest, model, characterId } = request.data;
+      const { chatRequest, model: requestModel, characterId } = request.data;
 
-      if (!chatRequest || !model || !characterId) {
-        throw new HttpsError('invalid-argument', 'Missing required fields: chatRequest, model, characterId');
+      if (!chatRequest || !characterId) {
+        throw new HttpsError('invalid-argument', 'Missing required fields: chatRequest, characterId');
       }
+
+      const imageConfig = await getAiImageConfig();
+      const model = requestModel || imageConfig.model;
 
       const apiKey = process.env.FAL_API_KEY;
       if (!apiKey) {
