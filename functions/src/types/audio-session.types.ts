@@ -174,3 +174,9 @@ export interface RegenerateStoryRequest {
   enableKankaContext?: boolean;
   userCorrections?: string;
 }
+
+export interface PreviousStory {
+  title: string;
+  sessionDate: string;
+  content: string;
+}

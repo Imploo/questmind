@@ -536,5 +536,21 @@ Start here for immediate impact with minimal risk:
 
 ---
 
-**Last Updated:** 2026-02-17
+## 📖 Story Generation Enhancements
+
+| Ticket | Title | Priority | Status | Effort | Dependencies |
+|--------|-------|----------|--------|--------|--------------|
+| [#55](./55-previous-stories-as-context.md) | Vorige Stories als Context bij Story Generatie (Flashbacks & Herinneringen) | Medium | Todo | 2-3 days | - |
+
+**Key Improvements:**
+- **Ticket 55**: Eerdere sessie-stories meesturen als context bij story generatie
+  - Alle eerdere stories (op basis van `sessionDate`) ophalen en meesturen naar de AI
+  - AI kan verwijzen naar eerdere gebeurtenissen als flashback of herinnering ("Weet je nog toen...")
+  - Chronologische sortering, alleen sessies met ingevulde `sessionDate` en voltooide story
+  - Token management: limiet op aantal stories of totaal karakters
+  - Geen regressie bij sessies zonder eerdere stories of zonder `sessionDate`
+
+---
+
+**Last Updated:** 2026-02-18
 **Status:** Planning Complete, Ready to Begin
