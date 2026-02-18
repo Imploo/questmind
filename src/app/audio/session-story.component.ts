@@ -1,7 +1,6 @@
 import { Component, EventEmitter, Input, OnChanges, Output, SimpleChanges, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { marked } from 'marked';
 import { PodcastVersion } from './services/audio-session.models';
 import { FormattingService } from '../shared/formatting.service';
@@ -9,7 +8,7 @@ import { FormattingService } from '../shared/formatting.service';
 @Component({
   selector: 'app-session-story',
   standalone: true,
-  imports: [CommonModule, MatProgressBarModule],
+  imports: [CommonModule],
   template: `
     <div class="border border-gray-200 rounded-xl bg-white shadow-sm overflow-hidden relative">
       <!-- Background Job Loader Overlay -->
@@ -96,92 +95,84 @@ import { FormattingService } from '../shared/formatting.service';
       <div class="p-6">
         <!-- Story Tab -->
         @if (activeTab() === 'story') {
-          @if (story.trim().length || isRegenerating) {
+          @if (story.trim().length) {
             <div class="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
               <div class="space-y-4">
-                @if (isRegenerating) {
-                  <h4 class="text-base font-semibold m-0">Regenerating Story</h4>
-                  <div class="border border-gray-200 rounded-lg p-8 flex flex-col items-center justify-center min-h-[220px]">
-                    <mat-progress-bar mode="indeterminate" class="w-full max-w-xs"></mat-progress-bar>
-                    <p class="text-sm text-gray-500 m-0 mt-4">{{ regenerationMessage || 'Regenerating story...' }}</p>
-                  </div>
-                } @else {
-                  <div class="flex items-center justify-between">
-                    <h4 class="text-base font-semibold m-0">Generated Story</h4>
-                    <button
-                      type="button"
-                      class="px-3 py-2 text-xs font-semibold rounded-lg bg-primary text-white hover:bg-primary-dark disabled:bg-gray-300"
-                      (click)="regenerate.emit()"
-                      [disabled]="isBusy || !canRegenerate"
-                    >
-                      Regenerate Story
-                    </button>
-                  </div>
+                <div class="flex items-center justify-between">
+                  <h4 class="text-base font-semibold m-0">Generated Story</h4>
+                  <button
+                    type="button"
+                    class="px-3 py-2 text-xs font-semibold rounded-lg bg-primary text-white hover:bg-primary-dark disabled:bg-gray-300"
+                    (click)="regenerate.emit()"
+                    [disabled]="isBusy || !canRegenerate"
+                  >
+                    Regenerate Story
+                  </button>
+                </div>
 
-                  <div class="border border-gray-200 rounded-lg p-4">
-                    @if (isEditing()) {
-                      <textarea
-                        class="w-full min-h-[220px] border border-gray-200 rounded-lg p-3 text-sm focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none"
-                        [value]="draft()"
-                        (input)="onDraftInput($event)"
-                        [disabled]="isBusy || !canEditStory"
-                      ></textarea>
-                      <div class="mt-3 flex justify-end gap-2">
-                        <button
-                          type="button"
-                          class="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:text-gray-800"
-                          (click)="resetDraft()"
-                        [disabled]="isBusy || !canEditStory"
-                        >
-                          Reset
-                        </button>
-                        <button
-                          type="button"
-                          class="px-3 py-2 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-gray-300"
-                          (click)="saveDraft()"
-                        [disabled]="isBusy || !canEditStory"
-                        >
-                          Save Story
-                        </button>
-                      </div>
-                    } @else {
-                      <div class="prose prose-gray max-w-none" [innerHTML]="renderedStory()"></div>
-                    }
-                  </div>
-
-                  <div class="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      class="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:text-gray-800"
-                      (click)="downloadMarkdown()"
-                    >
-                      Download Markdown
-                    </button>
-                    <button
-                      type="button"
-                      class="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:text-gray-800"
-                      (click)="downloadPdf()"
-                    >
-                      Export PDF
-                    </button>
-                  </div>
-
-                  @if (transcript) {
-                    <div class="border-t border-gray-100 pt-4">
+                <div class="border border-gray-200 rounded-lg p-4">
+                  @if (isEditing()) {
+                    <textarea
+                      class="w-full min-h-[220px] border border-gray-200 rounded-lg p-3 text-sm focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none"
+                      [value]="draft()"
+                      (input)="onDraftInput($event)"
+                      [disabled]="isBusy || !canEditStory"
+                    ></textarea>
+                    <div class="mt-3 flex justify-end gap-2">
                       <button
                         type="button"
-                        class="text-sm font-semibold text-primary hover:underline"
-                        (click)="toggleTranscript()"
+                        class="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:text-gray-800"
+                        (click)="resetDraft()"
+                      [disabled]="isBusy || !canEditStory"
                       >
-                        {{ showTranscript() ? 'Hide transcript' : 'Show transcript preview' }}
+                        Reset
                       </button>
-                      @if (showTranscript()) {
-                        <pre class="mt-3 p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-600 whitespace-pre-wrap">
-{{ transcript }}
-                        </pre>
-                      }
+                      <button
+                        type="button"
+                        class="px-3 py-2 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-gray-300"
+                        (click)="saveDraft()"
+                      [disabled]="isBusy || !canEditStory"
+                      >
+                        Save Story
+                      </button>
                     </div>
+                  } @else {
+                    <div class="prose prose-gray max-w-none" [innerHTML]="renderedStory()"></div>
                   }
+                </div>
+
+                <div class="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    class="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:text-gray-800"
+                    (click)="downloadMarkdown()"
+                  >
+                    Download Markdown
+                  </button>
+                  <button
+                    type="button"
+                    class="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:text-gray-800"
+                    (click)="downloadPdf()"
+                  >
+                    Export PDF
+                  </button>
+                </div>
+
+                @if (transcript) {
+                  <div class="border-t border-gray-100 pt-4">
+                    <button
+                      type="button"
+                      class="text-sm font-semibold text-primary hover:underline"
+                      (click)="toggleTranscript()"
+                    >
+                      {{ showTranscript() ? 'Hide transcript' : 'Show transcript preview' }}
+                    </button>
+                    @if (showTranscript()) {
+                      <pre class="mt-3 p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-600 whitespace-pre-wrap">
+{{ transcript }}
+                      </pre>
+                    }
+                  </div>
                 }
               </div>
 
@@ -378,10 +369,6 @@ export class SessionStoryComponent implements OnChanges {
   @Input() podcastGenerationProgressPercent = 0;
   @Input() podcastError = '';
   @Input() canGeneratePodcast = false;
-
-  // Regeneration state
-  @Input() isRegenerating = false;
-  @Input() regenerationMessage = '';
 
   // Background job tracking
   @Input() hasActiveBackgroundJob = false;

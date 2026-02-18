@@ -212,8 +212,6 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
                 [podcastGenerationProgressPercent]="podcastGenerationProgressPercent()"
                 [podcastError]="podcastError()"
                 [canGeneratePodcast]="canGeneratePodcast()"
-                [isRegenerating]="isRegenerating()"
-                [regenerationMessage]="statusMessage()"
                 [hasActiveBackgroundJob]="hasActiveBackgroundJob()"
                 [backgroundJobMessage]="backgroundJobMessage()"
                 (storyUpdated)="saveStoryEdits($event)"
@@ -294,7 +292,6 @@ export class AudioSessionComponent implements OnDestroy {
     }
     return '';
   });
-  isRegenerating = computed(() => this.stage() === 'generating');
   canRegenerateStory = computed(() => this.isSessionOwner());
   canGeneratePodcast = computed(() => this.isSessionOwner());
   canEditStory = computed(() => this.isSessionOwner());
