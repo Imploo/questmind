@@ -55,6 +55,14 @@
       "collectionGroup": "audioSessions",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "sessionDate", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "audioSessions",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "campaignId", "order": "ASCENDING" },
         { "fieldPath": "updatedAt", "order": "DESCENDING" }
       ]

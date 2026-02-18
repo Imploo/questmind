@@ -7,7 +7,10 @@ import {generateStoryFromTranscription} from '../story/story-generator.service';
 import {
   AISettings,
   KankaSearchResult,
+  PreviousStory,
 } from '../types/audio-session.types';
+
+const MAX_PREVIOUS_STORIES_CHARS = 100_000;
 
 export interface StoryGenerationWorkerPayload extends WorkerPayload {
   campaignId: string;
@@ -15,6 +18,51 @@ export interface StoryGenerationWorkerPayload extends WorkerPayload {
   transcriptionText: string;
   enableKankaContext?: boolean;
   userCorrections?: string;
+}
+
+/**
+ * Fetches previous completed stories from the same campaign,
+ * sorted chronologically, within the character limit.
+ */
+async function fetchPreviousStories(
+  campaignId: string,
+  currentSessionDate: string
+): Promise<PreviousStory[]> {
+  const db = getFirestore();
+
+  const previousSessionsSnap = await db
+    .collection('campaigns')
+    .doc(campaignId)
+    .collection('audioSessions')
+    .where('sessionDate', '<', currentSessionDate)
+    .where('status', '==', 'completed')
+    .orderBy('sessionDate', 'asc')
+    .select('title', 'sessionDate', 'content')
+    .get();
+
+  const allStories: PreviousStory[] = previousSessionsSnap.docs
+    .filter(doc => doc.data().content && doc.data().sessionDate)
+    .map(doc => ({
+      title: doc.data().title || 'Untitled Session',
+      sessionDate: doc.data().sessionDate,
+      content: doc.data().content,
+    }));
+
+  // Select most recent stories that fit within the character limit
+  const selected: PreviousStory[] = [];
+  let totalChars = 0;
+
+  // Loop from newest to oldest
+  for (let i = allStories.length - 1; i >= 0; i--) {
+    const storyChars = allStories[i].content.length;
+    if (totalChars + storyChars > MAX_PREVIOUS_STORIES_CHARS) {
+      break;
+    }
+    selected.unshift(allStories[i]);
+    totalChars += storyChars;
+  }
+
+  return selected;
 }
 
 /**
@@ -77,14 +125,24 @@ export const storyGenerationWorkerHandler = async (data: WorkerPayload) => {
         maxOutputTokens: 32000,
       };
 
-      // Load Kanka context if enabled
+      // Load session data for Kanka context and sessionDate
+      const sessionSnap = await sessionRef.get();
+      const sessionData = sessionSnap.data();
+
       let kankaContext: KankaSearchResult | undefined;
       if (enableKankaContext) {
-        const sessionSnap = await sessionRef.get();
-        const sessionData = sessionSnap.data();
         kankaContext = sessionData?.kankaSearchResult as
           | KankaSearchResult
           | undefined;
+      }
+
+      // Fetch previous stories if current session has a sessionDate
+      let previousStories: PreviousStory[] | undefined;
+      const currentSessionDate = sessionData?.sessionDate as string | undefined;
+      if (currentSessionDate) {
+        logger.debug(`[StoryGenerationWorker] Fetching previous stories for campaign ${campaignId}...`);
+        previousStories = await fetchPreviousStories(campaignId, currentSessionDate);
+        logger.debug(`[StoryGenerationWorker] Found ${previousStories.length} previous stories`);
       }
 
       // Update progress: Generating story (85%)
@@ -103,7 +161,8 @@ export const storyGenerationWorkerHandler = async (data: WorkerPayload) => {
         transcriptionText,
         storyConfig,
         kankaContext,
-        userCorrections
+        userCorrections,
+        previousStories
       );
 
       logger.debug(

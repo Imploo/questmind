@@ -14,6 +14,14 @@ WHEN CAMPAIGN CONTEXT IS PROVIDED:
 - Reference NPC descriptions to add depth
 - Maintain consistency with campaign lore
 
+WHEN PREVIOUS SESSION STORIES ARE PROVIDED:
+- You may reference events from earlier sessions as flashbacks or memories
+- Use phrases like "Weet je nog toen...", "Net als die keer dat...", "Eerder had de groep..."
+- Keep references brief and natural - don't retell the entire previous session
+- Only reference events that are relevant to the current session's narrative
+- Use previous stories to maintain character development continuity
+- Reference earlier combat encounters, NPC meetings, or plot points when they connect to current events
+
 WHEN DM CORRECTIONS ARE PROVIDED:
 - Apply the corrections exactly as written
 - Prioritize corrections over ambiguous transcript interpretations
