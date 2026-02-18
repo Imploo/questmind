@@ -2,6 +2,7 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { GoogleGenAI } from '@google/genai';
 import { getFirestore } from 'firebase-admin/firestore';
 import { wrapCallable } from './utils/sentry-error-handler';
+import { getAiFeatureConfig } from './utils/ai-settings';
 import { SHARED_CORS } from './index';
 
 interface ResolveFeatureRequest {
@@ -36,6 +37,7 @@ export const resolveFeature = onCall(
       }
 
       const ai = new GoogleGenAI({ apiKey });
+      const config = await getAiFeatureConfig('featureResolution');
 
       const contextParts: string[] = [];
       if (featureSource) contextParts.push(`source: ${featureSource}`);
@@ -44,7 +46,7 @@ export const resolveFeature = onCall(
       const contextText = contextParts.length > 0 ? ` (${contextParts.join(', ')})` : '';
 
       const result = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: config.model,
         contents: `Return a JSON object (no markdown) for the D&D 5e feature/trait "${featureName}"${contextText}.
 Fields:
 - "description": full feature text from the rules, including any mechanical effects and level-based improvements
@@ -52,7 +54,7 @@ Fields:
 Return only valid JSON like: {"description": "..."}`,
         config: {
           responseMimeType: 'application/json',
-          maxOutputTokens: 4096,
+          maxOutputTokens: config.maxOutputTokens,
         },
       });
 

@@ -552,5 +552,22 @@ Start here for immediate impact with minimal risk:
 
 ---
 
+## 🎛️ AI Admin Panel
+
+| Ticket | Title | Priority | Status | Effort | Dependencies |
+|--------|-------|----------|--------|--------|--------------|
+| [#56](./56-unified-ai-admin-panel.md) | Unified AI Admin Panel voor alle AI Features | High | Todo | 1-2 weken | - |
+
+**Key Improvements:**
+- **Ticket 56**: Centraal admin panel voor alle AI-instellingen
+  - Eenduidig overzicht van alle 9 AI-features met configureerbare parameters
+  - Per feature: model, temperature, topP, topK, maxOutputTokens, provider-specifieke opties
+  - Alle Cloud Functions lezen config uit Firestore i.p.v. hardcoded waarden
+  - Real-time opslaan via Firestore `settings/ai` document
+  - Gedeelde backend config-helper met fallback defaults
+  - Validatie en toegangsbeheer (admin-only)
+
+---
+
 **Last Updated:** 2026-02-18
 **Status:** Planning Complete, Ready to Begin

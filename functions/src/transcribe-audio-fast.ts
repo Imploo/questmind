@@ -2,8 +2,8 @@ import * as logger from './utils/logger';
 import { GoogleGenAI } from '@google/genai';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
-import { AIFeatureConfig, AISettings } from './types/audio-session.types';
 import { ProgressTrackerService } from './services/progress-tracker.service';
+import { getAiFeatureConfig } from './utils/ai-settings';
 import { WorkerQueueService } from './services/worker-queue.service';
 import { buildRawStoryPrompt } from './audio/transcription-prompt';
 import { fetchKankaContextForTranscription } from './services/kanka.service';
@@ -168,23 +168,8 @@ async function processTranscriptionAsync(
     logger.debug(`[Fast Transcription] Starting for session ${sessionId}`);
 
     // 1. Get AI settings
-    const settingsSnap = await db.doc('settings/ai').get();
-    const aiSettings = settingsSnap.data() as AISettings | undefined;
-
-    if (!aiSettings) {
-      throw new Error('AI settings not configured in database');
-    }
-
-    const transcriptionConfig: AIFeatureConfig = aiSettings.features
-      ?.transcription ?? {
-      model: aiSettings.defaultModel,
-      temperature: 0.1,
-      topP: 1,
-      topK: 40,
-      maxOutputTokens: 128000,
-    };
-
-    const model = resolveModel(aiSettings, transcriptionConfig.model);
+    const transcriptionConfig = await getAiFeatureConfig('transcription');
+    const model = transcriptionConfig.model;
     const mimeType = resolveMimeType(audioFileName);
 
     logger.debug(`[Fast Transcription] Using model: ${model}`);
@@ -336,15 +321,6 @@ async function processTranscriptionAsync(
       'transcriptionFast.failedAt': FieldValue.serverTimestamp(),
     });
   }
-}
-
-function resolveModel(settings: AISettings, requestedModel?: string): string {
-  const availableModels = settings.availableModels ?? [];
-  const fallback = settings.defaultModel || 'gemini-2.0-flash-exp';
-  if (requestedModel && availableModels.length > 0) {
-    return availableModels.includes(requestedModel) ? requestedModel : fallback;
-  }
-  return requestedModel || fallback;
 }
 
 function resolveMimeType(audioFileName: string): string {

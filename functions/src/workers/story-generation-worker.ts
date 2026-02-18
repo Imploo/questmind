@@ -5,10 +5,10 @@ import {ProgressTrackerService} from '../services/progress-tracker.service';
 import {WorkerQueueService, WorkerPayload} from '../services/worker-queue.service';
 import {generateStoryFromTranscription} from '../story/story-generator.service';
 import {
-  AISettings,
   KankaSearchResult,
   PreviousStory,
 } from '../types/audio-session.types';
+import {getAiFeatureConfig} from '../utils/ai-settings';
 
 const MAX_PREVIOUS_STORIES_CHARS = 100_000;
 
@@ -110,20 +110,7 @@ export const storyGenerationWorkerHandler = async (data: WorkerPayload) => {
       );
 
       // Load AI settings
-      const settingsSnap = await db.doc('settings/ai').get();
-      const aiSettings = settingsSnap.data() as AISettings | undefined;
-
-      if (!aiSettings) {
-        throw new Error('AI settings not configured in database');
-      }
-
-      const storyConfig = aiSettings.features?.storyGeneration || {
-        model: aiSettings.defaultModel,
-        temperature: 0.8,
-        topP: 0.95,
-        topK: 40,
-        maxOutputTokens: 32000,
-      };
+      const storyConfig = await getAiFeatureConfig('storyGeneration');
 
       // Load session data for Kanka context and sessionDate
       const sessionSnap = await sessionRef.get();
