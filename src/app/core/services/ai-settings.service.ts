@@ -38,6 +38,8 @@ export interface AiSettings {
 })
 export class AiSettingsService {
   private readonly repo = inject(AiSettingsRepository);
+  private readonly data = this.repo.get;
+  private readonly errorSignal = this.repo.error;
 
   // Default fallback values
   private readonly defaultCharacterChatConfig: AiModelConfig = {
@@ -56,7 +58,7 @@ export class AiSettingsService {
    * Get character chat config (with fallback to defaults)
    */
   getCharacterChatConfig(): AiModelConfig {
-    const settings = this.repo.get() as AiSettings | null;
+    const settings = this.data() as AiSettings | null;
     return settings?.features?.characterChat ?? this.defaultCharacterChatConfig;
   }
 
@@ -64,7 +66,7 @@ export class AiSettingsService {
    * Get image generation config (with fallback to defaults)
    */
   getImageGenerationConfig(): AiImageConfig {
-    const settings = this.repo.get() as AiSettings | null;
+    const settings = this.data() as AiSettings | null;
     return settings?.features?.imageGeneration ?? this.defaultImageGenerationConfig;
   }
 
@@ -72,7 +74,7 @@ export class AiSettingsService {
    * Get all settings (readonly signal)
    */
   getSettings() {
-    return computed(() => this.repo.get() as unknown as AiSettings | null);
+    return computed(() => this.data() as unknown as AiSettings | null);
   }
 
   /**
@@ -87,7 +89,7 @@ export class AiSettingsService {
    */
   getError() {
     return computed(() => {
-      const error = this.repo.error();
+      const error = this.errorSignal();
       return error?.message ?? null;
     });
   }

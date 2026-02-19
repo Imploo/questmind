@@ -1,10 +1,11 @@
-import { Injectable, computed, effect, inject, signal, Injector, runInInjectionContext } from '@angular/core';
+import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import type { User } from 'firebase/auth';
 import { AuthService } from '../auth/auth.service';
 import { Campaign, UserProfile } from './campaign.models';
 import { CampaignService } from './campaign.service';
 import { UserProfileService } from './user-profile.service';
 import { UserProfileRepository } from '../shared/repository/user-profile.repository';
+import { UserProfileRepositoryFactory } from '../shared/repository/user-profile.repository';
 import * as logger from '../shared/logger';
 
 @Injectable({ providedIn: 'root' })
@@ -12,8 +13,8 @@ export class CampaignContextService {
   private readonly authService = inject(AuthService);
   private readonly campaignService = inject(CampaignService);
   private readonly userProfileService = inject(UserProfileService);
-  private readonly injector = inject(Injector);
-  private profileRepo: UserProfileRepository | null = null;
+  private readonly profileRepoFactory = inject(UserProfileRepositoryFactory);
+  private readonly profileRepo = signal<UserProfileRepository | null>(null);
   private activeUserId: string | null = null;
 
   campaigns = signal<Campaign[]>([]);
@@ -31,10 +32,31 @@ export class CampaignContextService {
   constructor() {
     effect(() => {
       const user = this.authService.currentUser();
-      if (user?.uid) {
-        this.setupProfileListener(user);
-      } else {
-        this.clear();
+      untracked(() => {
+        if (user?.uid) {
+          this.setupProfileListener(user);
+        } else {
+          this.clear();
+        }
+      });
+    });
+
+    // Sync profile repo data
+    effect(() => {
+      const repo = this.profileRepo();
+      if (!repo) return;
+
+      const profile = repo.get() as UserProfile | null;
+      if (!profile) {
+        const user = untracked(() => this.authService.currentUser());
+        if (user) {
+          void this.loadForUser(user);
+        }
+        return;
+      }
+      const user = untracked(() => this.authService.currentUser());
+      if (user) {
+        void this.loadCampaignsFromProfile(user, profile);
       }
     });
   }
@@ -76,21 +98,7 @@ export class CampaignContextService {
 
     this.activeUserId = user.uid;
     this.cleanupProfileRepo();
-
-    runInInjectionContext(this.injector, () => {
-      this.profileRepo = new UserProfileRepository(user.uid);
-
-      const profileSignal = this.profileRepo.get;
-      effect(() => {
-        const profile = profileSignal() as UserProfile | null;
-        if (!profile) {
-          // Profile doesn't exist yet, create it
-          void this.loadForUser(user);
-          return;
-        }
-        void this.loadCampaignsFromProfile(user, profile);
-      });
-    });
+    this.profileRepo.set(this.profileRepoFactory.create(user.uid));
   }
 
   private async loadForUser(user: User): Promise<void> {
@@ -159,8 +167,8 @@ export class CampaignContextService {
   }
 
   private cleanupProfileRepo(): void {
-    this.profileRepo?.destroy();
-    this.profileRepo = null;
+    this.profileRepo()?.destroy();
+    this.profileRepo.set(null);
   }
 
   private clear(): void {

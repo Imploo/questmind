@@ -1,4 +1,4 @@
-import { Injectable, inject, Injector, runInInjectionContext } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { doc, deleteDoc } from 'firebase/firestore';
 import { ref, deleteObject } from 'firebase/storage';
 import { AuthService } from '../../auth/auth.service';
@@ -11,19 +11,13 @@ export class CharacterImageService {
   private readonly authService = inject(AuthService);
   private readonly firebase = inject(FirebaseService);
   private readonly imageRepoFactory = inject(CharacterImageRepositoryFactory);
-  private readonly injector = inject(Injector);
 
   async getImages(characterId: string): Promise<CharacterImage[]> {
-    return new Promise<CharacterImage[]>((resolve) => {
-      runInInjectionContext(this.injector, () => {
-        const repo = this.imageRepoFactory.create(characterId);
-        void repo.waitForData().then(() => {
-          const result = [...repo.get() as unknown as CharacterImage[]];
-          repo.destroy();
-          resolve(result);
-        });
-      });
-    });
+    const repo = this.imageRepoFactory.create(characterId);
+    await repo.waitForData();
+    const result = [...repo.get() as unknown as CharacterImage[]];
+    repo.destroy();
+    return result;
   }
 
   async deleteImage(image: CharacterImage): Promise<void> {

@@ -1,4 +1,4 @@
-import { Injectable, inject, computed } from '@angular/core';
+import { Injectable, inject, signal, computed } from '@angular/core';
 import {
   collection,
   doc,
@@ -6,8 +6,6 @@ import {
   updateDoc,
   Timestamp,
 } from 'firebase/firestore';
-import { toObservable } from '@angular/core/rxjs-interop';
-import { Observable } from 'rxjs';
 import { AuthService } from '../../auth/auth.service';
 import { FirebaseService } from '../firebase.service';
 import { Character } from '../models/schemas/character.schema';
@@ -21,10 +19,15 @@ export class CharacterService {
   private readonly firebase = inject(FirebaseService);
   private readonly characterVersionService = inject(CharacterVersionService);
   private readonly characterRepo = inject(CharacterRepository);
+  readonly characters = this.characterRepo.get;
 
-  get characters() {
-    return this.characterRepo.get;
-  }
+  readonly activeCharacterId = signal<string | null>(null);
+  readonly activeCharacter = computed(() => {
+    const id = this.activeCharacterId();
+    if (!id) return null;
+    const chars = this.characters() as unknown as (Character & Record<string, unknown>)[];
+    return chars.find(c => c.id === id) as Character | null ?? null;
+  });
 
   async createCharacter(name: string, initialData: DndCharacter): Promise<string> {
     const user = this.authService.currentUser();
@@ -59,20 +62,12 @@ export class CharacterService {
 
   async getCharacters(): Promise<Character[]> {
     await this.characterRepo.waitForData();
-    return this.characterRepo.get() as Character[];
+    return this.characters() as Character[];
   }
 
   async getCharacter(characterId: string): Promise<Character | null> {
     await this.characterRepo.waitForData();
     return await this.characterRepo.getByKey(characterId) as Character | null;
-  }
-
-  watchCharacter(characterId: string): Observable<Character | null> {
-    const charSignal = computed(() => {
-      const characters = this.characterRepo.get() as unknown as (Character & Record<string, unknown>)[];
-      return characters.find(c => c.id === characterId) as Character | null ?? null;
-    });
-    return toObservable(charSignal);
   }
 
   async updateCharacter(characterId: string, updates: Partial<Pick<Character, 'name' | 'campaignId'>>): Promise<void> {

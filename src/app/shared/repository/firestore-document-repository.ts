@@ -1,17 +1,16 @@
-import { inject, Signal, signal } from '@angular/core';
+import { Signal, signal } from '@angular/core';
 import {
   doc,
   DocumentData,
   DocumentReference,
+  Firestore,
   FirestoreError,
   onSnapshot,
   setDoc,
   Unsubscribe,
 } from 'firebase/firestore';
-import { FirebaseService } from '../../core/firebase.service';
 
 export abstract class FirestoreDocumentRepository<T extends Record<string, unknown>> {
-  private readonly firestore = inject(FirebaseService).requireFirestore();
   private readonly docRef: DocumentReference<DocumentData>;
 
   private readonly _data = signal<T | null>(null);
@@ -22,7 +21,10 @@ export abstract class FirestoreDocumentRepository<T extends Record<string, unkno
   private _initialized = false;
   private _initResolvers: (() => void)[] = [];
 
-  protected constructor(private readonly documentPath: string) {
+  protected constructor(
+    private readonly firestore: Firestore,
+    private readonly documentPath: string,
+  ) {
     this.docRef = doc(this.firestore, this.documentPath);
   }
 

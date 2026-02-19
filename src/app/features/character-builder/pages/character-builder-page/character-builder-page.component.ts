@@ -3,7 +3,6 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { Subscription } from 'rxjs';
 import { AuthService } from '../../../../auth/auth.service';
 import { CharacterService } from '../../../../core/services/character.service';
 import { CharacterVersionService } from '../../../../core/services/character-version.service';
@@ -161,8 +160,8 @@ export class CharacterBuilderPageComponent {
     return user.uid === character.userId;
   });
 
-  // Latest version from Firestore real-time listener (replaces activeVersion)
-  latestVersion = signal<CharacterVersion | null>(null);
+  // Latest version from Firestore real-time listener
+  latestVersion = this.characterVersionService.latestVersion;
 
   // Draft detection: true when the latest version is a draft
   isDraft = computed(() => this.latestVersion()?.isDraft === true);
@@ -176,9 +175,6 @@ export class CharacterBuilderPageComponent {
 
   isGenerating = computed(() => this.selectedCharacter()?.isGenerating === true);
 
-  private versionSubscription: Subscription | null = null;
-  private characterSubscription: Subscription | null = null;
-
   constructor() {
     this.updateLayoutWidth();
     // Load characters
@@ -188,36 +184,25 @@ export class CharacterBuilderPageComponent {
     this.route.paramMap.subscribe(params => {
       const id = params.get('characterId');
 
-      // Clean up previous subscriptions
-      this.versionSubscription?.unsubscribe();
-      this.versionSubscription = null;
-      this.characterSubscription?.unsubscribe();
-      this.characterSubscription = null;
-
       if (id) {
         this.selectedCharacterId.set(id);
+        this.characterService.activeCharacterId.set(id);
+        this.characterVersionService.activeCharacterId.set(id);
         this.loadCharacterData(id);
-
-        // Start real-time listener for latest version
-        this.versionSubscription = this.characterVersionService
-          .watchLatestVersion(id)
-          .subscribe(version => {
-            this.latestVersion.set(version);
-          });
-
-        // Start real-time listener for character document (isGenerating flag)
-        this.characterSubscription = this.characterService
-          .watchCharacter(id)
-          .subscribe(character => {
-            if (character) {
-              this.characters.update(list =>
-                list.map(c => c.id === character.id ? character : c)
-              );
-            }
-          });
       } else {
         this.selectedCharacterId.set(null);
-        this.latestVersion.set(null);
+        this.characterService.activeCharacterId.set(null);
+        this.characterVersionService.activeCharacterId.set(null);
+      }
+    });
+
+    // Sync real-time character updates (e.g. isGenerating flag) to local list
+    effect(() => {
+      const character = this.characterService.activeCharacter();
+      if (character) {
+        this.characters.update(list =>
+          list.map(c => c.id === character.id ? character : c)
+        );
       }
     });
 
@@ -239,10 +224,10 @@ export class CharacterBuilderPageComponent {
       }
     });
 
-    // Clean up subscriptions on destroy
+    // Clean up service state on destroy
     this.destroyRef.onDestroy(() => {
-      this.versionSubscription?.unsubscribe();
-      this.characterSubscription?.unsubscribe();
+      this.characterService.activeCharacterId.set(null);
+      this.characterVersionService.activeCharacterId.set(null);
     });
   }
 

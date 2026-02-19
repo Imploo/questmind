@@ -1,4 +1,4 @@
-import { Injectable, signal, effect, inject, Injector, runInInjectionContext, Signal } from '@angular/core';
+import { Injectable, computed, effect, inject, resource } from '@angular/core';
 import {
   doc,
   setDoc,
@@ -12,44 +12,52 @@ import {
   AudioSessionRecord,
   AudioUpload
 } from './audio-session.models';
-import { AudioSessionRepository, AudioSessionRepositoryFactory } from '../../shared/repository/audio-session.repository';
+import { AudioSessionRepositoryFactory } from '../../shared/repository/audio-session.repository';
+
+type SessionRecord = AudioSessionRecord & Record<string, unknown>;
 
 @Injectable({
   providedIn: 'root'
 })
 export class AudioSessionStateService {
-  readonly sessions: Signal<(AudioSessionRecord & Record<string, unknown>)[]>;
-  private readonly _sessions = signal<(AudioSessionRecord & Record<string, unknown>)[]>([]);
   private readonly firebase = inject(FirebaseService);
-  private activeUserId: string | null = null;
-  private activeCampaignId: string | null = null;
-  private sessionRepo: AudioSessionRepository | null = null;
-
   private readonly authService = inject(AuthService);
   private readonly campaignContext = inject(CampaignContextService);
   private readonly sessionRepoFactory = inject(AudioSessionRepositoryFactory);
-  private readonly injector = inject(Injector);
 
-  constructor() {
-    this.sessions = this._sessions.asReadonly();
-
-    effect(() => {
+  private readonly sessionRepo = resource({
+    params: () => {
       const user = this.authService.currentUser();
       const campaignId = this.campaignContext.selectedCampaignId();
-      if (user?.uid && campaignId) {
-        this.setActiveContext(user.uid, campaignId);
-      } else {
-        this.clearSessions();
+      if (!user?.uid || !campaignId) return undefined;
+      return { userId: user.uid, campaignId };
+    },
+    loader: async ({ params }) => {
+      const repo = this.sessionRepoFactory.create(params.campaignId);
+      await repo.waitForData();
+      return repo;
+    },
+  });
+
+  readonly sessions = computed<SessionRecord[]>(() => {
+    const repo = this.sessionRepo.value();
+    return repo ? repo.get() : [];
+  });
+
+  constructor() {
+    effect((onCleanup) => {
+      const repo = this.sessionRepo.value();
+      if (repo) {
+        onCleanup(() => repo.destroy());
       }
     });
   }
 
   getSession(id: string): AudioSessionRecord | undefined {
-    return this._sessions().find(session => session.id === id) as AudioSessionRecord | undefined;
+    return this.sessions().find(session => session.id === id) as AudioSessionRecord | undefined;
   }
 
   createSessionDraft(upload: AudioUpload): AudioSessionRecord {
-    this.setActiveContext(upload.userId, upload.campaignId);
     const now = new Date().toISOString();
     const id = this.generateId();
     const title = upload.sessionName?.trim() || this.defaultTitle(upload.file.name);
@@ -67,7 +75,6 @@ export class AudioSessionStateService {
       updatedAt: now,
       status: 'uploading'
     };
-    this.upsertSession(record);
     this.writeSession(record, upload.campaignId);
     return record;
   }
@@ -79,91 +86,20 @@ export class AudioSessionStateService {
   }
 
   async persistSessionPatch(id: string, patch: Partial<AudioSessionRecord>): Promise<void> {
-    const { updatedAt } = this.applySessionPatch(id, patch) || {};
-
-    if (!updatedAt) {
+    const exists = this.sessions().some(session => session.id === id);
+    if (!exists) {
       return;
     }
 
+    const updatedAt = new Date().toISOString();
     const db = this.firebase.firestore;
-    if (!db || !this.activeCampaignId) {
+    const campaignId = this.campaignContext.selectedCampaignId();
+    if (!db || !campaignId) {
       throw new Error('No active campaign set for audio sessions.');
     }
 
-    const docRef = doc(db, 'campaigns', this.activeCampaignId, 'audioSessions', id);
+    const docRef = doc(db, 'campaigns', campaignId, 'audioSessions', id);
     await updateDoc(docRef, { ...patch, updatedAt });
-  }
-
-  private setActiveContext(userId: string, campaignId: string): void {
-    if (!userId || !campaignId) {
-      return;
-    }
-    if (this.activeUserId === userId && this.activeCampaignId === campaignId) {
-      return;
-    }
-    this.activeUserId = userId;
-    this.activeCampaignId = campaignId;
-
-    // Cleanup old repo
-    this.sessionRepo?.destroy();
-
-    const db = this.firebase.firestore;
-    if (!db) {
-      console.error('Firebase is not configured. Cannot load sessions.');
-      return;
-    }
-
-    // Create new repo for this campaign
-    runInInjectionContext(this.injector, () => {
-      this.sessionRepo = this.sessionRepoFactory.create(campaignId);
-
-      // Sync repo data to service signal
-      const repoSignal = this.sessionRepo.get;
-      effect(() => {
-        this._sessions.set(repoSignal());
-      });
-    });
-  }
-
-  private clearSessions(): void {
-    this.sessionRepo?.destroy();
-    this.sessionRepo = null;
-    this._sessions.set([]);
-    this.activeUserId = null;
-    this.activeCampaignId = null;
-  }
-
-  private upsertSession(record: AudioSessionRecord): void {
-    const sessions = this._sessions();
-    const index = sessions.findIndex(session => session.id === record.id);
-    const next = [...sessions];
-    if (index === -1) {
-      next.unshift(record as AudioSessionRecord & Record<string, unknown>);
-    } else {
-      next[index] = record as AudioSessionRecord & Record<string, unknown>;
-    }
-    this._sessions.set(next);
-  }
-
-  private applySessionPatch(
-    id: string,
-    patch: Partial<AudioSessionRecord>
-  ): { updatedAt: string } | null {
-    const sessions = this._sessions();
-    const index = sessions.findIndex(session => session.id === id);
-    if (index === -1) {
-      return null;
-    }
-    const updatedAt = new Date().toISOString();
-    const updated = {
-      ...sessions[index],
-      ...patch,
-      updatedAt
-    };
-    const next = [...sessions];
-    next[index] = updated;
-    this._sessions.set(next);
-    return { updatedAt };
   }
 
   private defaultTitle(fileName: string): string {

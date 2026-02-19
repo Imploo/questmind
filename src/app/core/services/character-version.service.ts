@@ -1,6 +1,4 @@
-import { Injectable, inject, computed } from '@angular/core';
-import { Observable } from 'rxjs';
-import { toObservable } from '@angular/core/rxjs-interop';
+import { Injectable, inject, signal, effect, untracked } from '@angular/core';
 import {
   collection,
   doc,
@@ -36,6 +34,29 @@ export class CharacterVersionService {
   private readonly authService = inject(AuthService);
   private readonly firebase = inject(FirebaseService);
   private readonly versionRepoFactory = inject(CharacterVersionRepositoryFactory);
+
+  readonly activeCharacterId = signal<string | null>(null);
+  private readonly activeRepo = signal<CharacterVersionRepository | null>(null);
+  private readonly _latestVersion = signal<CharacterVersion | null>(null);
+  readonly latestVersion = this._latestVersion.asReadonly();
+
+  constructor() {
+    effect(() => {
+      const id = this.activeCharacterId();
+      untracked(() => this.updateActiveRepo(id));
+    });
+
+    // Sync active repo data to latestVersion signal
+    effect(() => {
+      const repo = this.activeRepo();
+      if (repo) {
+        const versions = repo.get() as unknown as (CharacterVersion & Record<string, unknown>)[];
+        this._latestVersion.set(versions[0] as CharacterVersion | null ?? null);
+      } else {
+        this._latestVersion.set(null);
+      }
+    });
+  }
 
   createRepository(characterId: string): CharacterVersionRepository {
     return this.versionRepoFactory.create(characterId);
@@ -176,13 +197,15 @@ export class CharacterVersionService {
     await updateDoc(versionRef, { 'character.featuresAndTraits': updated });
   }
 
-  watchLatestVersion(characterId: string): Observable<CharacterVersion | null> {
-    const repo = this.versionRepoFactory.create(characterId);
-    const latestSignal = computed(() => {
-      const versions = repo.get() as unknown as (CharacterVersion & Record<string, unknown>)[];
-      return versions[0] as CharacterVersion | null ?? null;
-    });
-    return toObservable(latestSignal);
+  private updateActiveRepo(characterId: string | null): void {
+    this.activeRepo()?.destroy();
+    this.activeRepo.set(null);
+
+    if (!characterId) {
+      return;
+    }
+
+    this.activeRepo.set(this.versionRepoFactory.create(characterId));
   }
 
   async commitDraft(characterId: string, draftVersionId: string): Promise<void> {
