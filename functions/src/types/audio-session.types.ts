@@ -48,11 +48,21 @@ export interface KankaOrganisation {
   entry_parsed?: string;
 }
 
+export interface KankaJournal {
+  id: number;
+  name: string;
+  entry_parsed?: string;
+  date?: string;
+  type?: string;
+  created_at?: string;
+}
+
 export interface KankaSearchResult {
   characters?: KankaCharacter[];
   locations?: KankaLocation[];
   quests?: KankaQuest[];
   organisations?: KankaOrganisation[];
+  journals?: KankaJournal[];
 }
 
 export type RetranscribeStatus =

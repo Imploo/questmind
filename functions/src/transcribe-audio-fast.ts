@@ -196,10 +196,13 @@ async function processTranscriptionAsync(
     logger.debug(`[Fast Transcription] Using model: ${model}`);
 
     // 2. Fetch Kanka context if enabled
+    const sessionSnap = await sessionRef.get();
+    const sessionDate = sessionSnap.data()?.sessionDate as string | undefined;
     const kankaContext = await fetchKankaContextForTranscription(
       campaignId,
       sessionId,
-      enableKankaContext
+      enableKankaContext,
+      sessionDate
     );
 
     // 3. Call Gemini API with the Files API URI
