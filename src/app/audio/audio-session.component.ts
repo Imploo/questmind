@@ -415,8 +415,10 @@ export class AudioSessionComponent implements OnDestroy {
         const sessionToSelect = sessions.find(s => s.id === sessionIdFromRoute);
         if (sessionToSelect && currentId !== sessionIdFromRoute) {
           this.selectSessionWithoutNavigation(sessionToSelect);
-          return;
         }
+        // Always return when route has a session ID to avoid overriding
+        // with sessions[0] while the target session is still loading
+        return;
       }
 
       // Otherwise, select the first session if none is selected
