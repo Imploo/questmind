@@ -7,9 +7,10 @@
 
 import * as logger from '../utils/logger';
 import { getFirestore } from 'firebase-admin/firestore';
-import { KankaSearchResult } from '../types/audio-session.types';
+import { subMonths, addMonths, parseISO, isWithinInterval, isValid } from 'date-fns';
+import { KankaJournal, KankaSearchResult } from '../types/audio-session.types';
 
-export type KankaEntityType = 'characters' | 'locations' | 'quests' | 'organisations';
+export type KankaEntityType = 'characters' | 'locations' | 'quests' | 'organisations' | 'journals';
 
 export interface KankaEntity {
   id: number;
@@ -25,7 +26,7 @@ export interface KankaApiResponse<T> {
   meta?: unknown;
 }
 
-const DEFAULT_TYPES: KankaEntityType[] = ['characters', 'locations', 'quests', 'organisations'];
+const DEFAULT_TYPES: KankaEntityType[] = ['characters', 'locations', 'quests', 'organisations', 'journals'];
 const KANKA_API_BASE = 'https://api.kanka.io/1.0';
 
 /**
@@ -39,13 +40,15 @@ const KANKA_API_BASE = 'https://api.kanka.io/1.0';
  * @param campaignId - The campaign ID
  * @param sessionId - The audio session ID
  * @param enableKankaContext - Whether Kanka is enabled for this transcription
+ * @param sessionDate - Optional session date (ISO string) for journal date filtering
  * @returns KankaSearchResult if fetched, undefined if not enabled
  * @throws Error if Kanka is enabled but cannot fetch data
  */
 export async function fetchKankaContextForTranscription(
   campaignId: string,
   sessionId: string,
-  enableKankaContext: boolean
+  enableKankaContext: boolean,
+  sessionDate?: string
 ): Promise<KankaSearchResult | undefined> {
   if (!enableKankaContext) {
     return undefined;
@@ -82,6 +85,16 @@ export async function fetchKankaContextForTranscription(
   const kankaService = new KankaService(kankaToken);
   const kankaContext = await kankaService.getAllEntities(kankaCampaignId);
 
+  // Filter journals by session date range
+  if (sessionDate && kankaContext.journals?.length) {
+    kankaContext.journals = filterJournalsBySessionDate(kankaContext.journals, sessionDate);
+    logger.debug(`[Kanka] Filtered journals to ${kankaContext.journals.length} entries within date range`);
+  } else if (!sessionDate) {
+    // No session date: skip journals entirely
+    kankaContext.journals = [];
+    logger.debug('[Kanka] No sessionDate provided, skipping journals');
+  }
+
   // Store in session for story generation
   await sessionRef.update({
     kankaSearchResult: kankaContext,
@@ -117,13 +130,14 @@ export class KankaService {
       locations: [],
       quests: [],
       organisations: [],
+      journals: [],
     };
 
     // Fetch all entity types in parallel
     const fetchPromises = types.map(async (entityType) => {
       try {
         const entities = await this.fetchEntitiesByType(kankaCampaignId, entityType);
-        result[entityType] = entities;
+        result[entityType] = entities as never[];
       } catch (error) {
         console.error(`[Kanka] Failed to fetch ${entityType}:`, error);
         // Continue with empty array for this type
@@ -187,12 +201,13 @@ export class KankaService {
       locations: [],
       quests: [],
       organisations: [],
+      journals: [],
     };
 
     const fetchPromises = types.map(async (entityType) => {
       try {
         const entities = await this.searchByType(kankaCampaignId, entityType, query);
-        result[entityType] = entities;
+        result[entityType] = entities as never[];
       } catch (error) {
         console.error(`[Kanka] Failed to search ${entityType}:`, error);
         result[entityType] = [];
@@ -241,3 +256,28 @@ export class KankaService {
     }
   }
 }
+
+/**
+ * Filter journals by session date range: sessionDate - 2 months to sessionDate + 1 month.
+ * Journals without a parseable date fall back to created_at.
+ * Journals with neither a valid date nor created_at are excluded.
+ */
+function filterJournalsBySessionDate(
+  journals: KankaJournal[],
+  sessionDate: string
+): KankaJournal[] {
+  const session = parseISO(sessionDate);
+  if (!isValid(session)) return [];
+
+  const from = subMonths(session, 2);
+  const to = addMonths(session, 1);
+  const interval = { start: from, end: to };
+
+  return journals.filter(j => {
+    if (!j.created_at) return false;
+    const createdAt = parseISO(j.created_at);
+    if (!isValid(createdAt)) return false;
+    return isWithinInterval(createdAt, interval);
+  });
+}
+
