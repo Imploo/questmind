@@ -8,6 +8,7 @@ import {
   KankaSearchResult,
   PreviousStory,
 } from '../types/audio-session.types';
+import {fetchKankaContextForTranscription} from '../services/kanka.service';
 import {getAiFeatureConfig} from '../utils/ai-settings';
 
 const MAX_PREVIOUS_STORIES_CHARS = 100_000;
@@ -16,6 +17,9 @@ export interface StoryGenerationWorkerPayload extends WorkerPayload {
   campaignId: string;
   sessionId: string;
   transcriptionText: string;
+  /** Pre-fetched Kanka context (e.g. from transcription function). Takes priority over enableKankaContext. */
+  kankaContext?: KankaSearchResult;
+  /** When true and no kankaContext provided, the worker fetches fresh context from Kanka API. */
   enableKankaContext?: boolean;
   userCorrections?: string;
 }
@@ -73,6 +77,7 @@ export const storyGenerationWorkerHandler = async (data: WorkerPayload) => {
       campaignId,
       sessionId,
       transcriptionText,
+      kankaContext: providedKankaContext,
       enableKankaContext,
       userCorrections,
     } = data as StoryGenerationWorkerPayload;
@@ -100,27 +105,34 @@ export const storyGenerationWorkerHandler = async (data: WorkerPayload) => {
       .doc(sessionId);
 
     try {
-      // Update progress: Starting story generation (80%)
+      // Update progress: Starting story generation (80-100% range)
       await ProgressTrackerService.updateProgress(
         campaignId,
         sessionId,
         'generating-story',
-        80,
+        82,
         'Loading AI settings for story generation...'
       );
 
       // Load AI settings
       const storyConfig = await getAiFeatureConfig('storyGeneration');
 
-      // Load session data for Kanka context and sessionDate
+      // Load session data for sessionDate
       const sessionSnap = await sessionRef.get();
       const sessionData = sessionSnap.data();
 
-      let kankaContext: KankaSearchResult | undefined;
-      if (enableKankaContext) {
-        kankaContext = sessionData?.kankaSearchResult as
-          | KankaSearchResult
-          | undefined;
+      // Resolve Kanka context:
+      // 1. Use pre-fetched context from payload (e.g. from transcription function)
+      // 2. If enableKankaContext is set (e.g. from frontend), fetch fresh context from Kanka API
+      let kankaContext: KankaSearchResult | undefined = providedKankaContext;
+      if (!kankaContext && enableKankaContext) {
+        const sessionDate = sessionData?.sessionDate as string | undefined;
+        kankaContext = await fetchKankaContextForTranscription(
+          campaignId,
+          sessionId,
+          true,
+          sessionDate
+        );
       }
 
       // Fetch previous stories if current session has a sessionDate
@@ -132,12 +144,12 @@ export const storyGenerationWorkerHandler = async (data: WorkerPayload) => {
         logger.debug(`[StoryGenerationWorker] Found ${previousStories.length} previous stories`);
       }
 
-      // Update progress: Generating story (85%)
+      // Update progress: Generating story (90%)
       await ProgressTrackerService.updateProgress(
         campaignId,
         sessionId,
         'generating-story',
-        85,
+        90,
         'Generating story from transcription...'
       );
 

@@ -35,10 +35,9 @@ const KANKA_API_BASE = 'https://api.kanka.io/1.0';
  * This is a convenience method that handles:
  * 1. Reading campaign settings from Firestore
  * 2. Fetching Kanka entities if enabled
- * 3. Storing results in session document
  *
  * @param campaignId - The campaign ID
- * @param sessionId - The audio session ID
+ * @param sessionId - The audio session ID (used for logging)
  * @param enableKankaContext - Whether Kanka is enabled for this transcription
  * @param sessionDate - Optional session date (ISO string) for journal date filtering
  * @returns KankaSearchResult if fetched, undefined if not enabled
@@ -56,11 +55,6 @@ export async function fetchKankaContextForTranscription(
 
   const db = getFirestore();
   const campaignRef = db.collection('campaigns').doc(campaignId);
-  const sessionRef = db
-    .collection('campaigns')
-    .doc(campaignId)
-    .collection('audioSessions')
-    .doc(sessionId);
 
   // Get campaign settings
   const campaignSnap = await campaignRef.get();
@@ -81,7 +75,7 @@ export async function fetchKankaContextForTranscription(
   }
 
   // Fetch entities
-  logger.debug(`[Kanka] Fetching entities for campaign ${kankaCampaignId}...`);
+  logger.debug(`[Kanka] Fetching entities for campaign ${kankaCampaignId} (session ${sessionId})...`);
   const kankaService = new KankaService(kankaToken);
   const kankaContext = await kankaService.getAllEntities(kankaCampaignId);
 
@@ -95,12 +89,7 @@ export async function fetchKankaContextForTranscription(
     logger.debug('[Kanka] No sessionDate provided, skipping journals');
   }
 
-  // Store in session for story generation
-  await sessionRef.update({
-    kankaSearchResult: kankaContext,
-  });
-
-  logger.debug('[Kanka] Entities fetched and stored successfully');
+  logger.debug('[Kanka] Entities fetched successfully');
   return kankaContext;
 }
 

@@ -3,11 +3,11 @@ import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { AudioUploadComponent, UploadRequestEvent } from './audio-upload.component';
 import { AudioSessionStateService } from './services/audio-session-state.service';
-import { AudioCompleteProcessingService, UploadStage } from './services/audio-complete-processing.service';
+import { AudioCompleteProcessingService } from './services/audio-complete-processing.service';
 import { AudioCompressionService } from './services/audio-compression.service';
 import { AuthService } from '../auth/auth.service';
 import { CampaignContextService } from '../campaign/campaign-context.service';
-import { AudioUpload, AudioSessionRecord } from './services/audio-session.models';
+import { AudioUpload, AudioSessionRecord, SessionProgress } from './services/audio-session.models';
 
 @Component({
   selector: 'app-audio-upload-page',
@@ -139,9 +139,9 @@ import { AudioUpload, AudioSessionRecord } from './services/audio-session.models
           [userId]="userId()"
           [campaignId]="campaignId()"
           [canUpload]="canUploadAudio()"
-          [stage]="stage()"
-          [progress]="progress()"
-          [statusMessage]="statusMessage()"
+          stage="idle"
+          [progress]="0"
+          statusMessage=""
           [wakeLockSupported]="wakeLockSupported()"
           (uploadRequested)="startCompleteProcessing($event)"
         />
@@ -158,9 +158,9 @@ export class AudioUploadPageComponent implements OnInit, OnDestroy {
   private authService = inject(AuthService);
   private campaignContextService = inject(CampaignContextService);
   private wakeLockSentinel: WakeLockSentinel | null = null;
-  private keepAwakeDuringUpload = false;
+  private processingInBackground = false;
   private readonly visibilityHandler = () => {
-    if (document.visibilityState === 'visible' && this.keepAwakeDuringUpload) {
+    if (document.visibilityState === 'visible' && this.processingInBackground) {
       void this.requestWakeLock();
     }
   };
@@ -168,10 +168,7 @@ export class AudioUploadPageComponent implements OnInit, OnDestroy {
   userId = computed(() => this.authService.currentUser()?.uid ?? null);
   campaignId = computed(() => this.campaignContextService.selectedCampaignId());
 
-  stage = signal<'idle' | 'compressing' | 'uploading' | 'transcribing' | 'generating' | 'completed' | 'failed'>('idle');
-  progress = signal(0);
-  statusMessage = signal('');
-  isBusy = computed(() => this.stage() !== 'idle' && this.stage() !== 'completed' && this.stage() !== 'failed');
+  isBusy = signal(false);
   wakeLockSupported = computed(() => typeof navigator !== 'undefined' && 'wakeLock' in navigator);
 
   canUploadAudio = computed(() => {
@@ -206,7 +203,10 @@ export class AudioUploadPageComponent implements OnInit, OnDestroy {
     if (typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', this.visibilityHandler);
     }
-    void this.releaseWakeLock();
+    // Only release wake lock if not processing in background
+    if (!this.processingInBackground) {
+      void this.releaseWakeLock();
+    }
   }
 
   async startCompleteProcessing(event: UploadRequestEvent): Promise<void> {
@@ -218,118 +218,137 @@ export class AudioUploadPageComponent implements OnInit, OnDestroy {
       return;
     }
 
-    this.keepAwakeDuringUpload = event.keepAwake ?? true;
-    if (this.keepAwakeDuringUpload) {
+    this.isBusy.set(true);
+
+    // Create session draft
+    const upload: AudioUpload = {
+      file: event.files[0],
+      sessionName: event.sessionName,
+      sessionDate: event.sessionDate,
+      userId,
+      campaignId
+    };
+    const sessionDraft = this.sessionStateService.createSessionDraft(upload);
+
+    // Write initial progress to Firestore
+    this.sessionStateService.updateSession(sessionDraft.id, {
+      status: 'processing',
+      progress: {
+        stage: 'compressing',
+        progress: 0,
+        message: 'Starting compression...',
+        startedAt: new Date(),
+        updatedAt: new Date(),
+      } as SessionProgress,
+    });
+
+    // Navigate to session page immediately
+    this.navigateToSession(sessionDraft.id);
+
+    // Acquire wake lock for background processing
+    this.processingInBackground = event.keepAwake ?? true;
+    if (this.processingInBackground) {
       void this.requestWakeLock();
     }
 
+    // Fire-and-forget processing
+    void this.processInBackground(campaignId, sessionDraft.id, event).finally(() => {
+      if (this.processingInBackground) {
+        void this.releaseWakeLock();
+        this.processingInBackground = false;
+      }
+    });
+  }
+
+  /**
+   * Runs compression + upload in the background after navigation.
+   * Both AudioCompressionService and AudioCompleteProcessingService are
+   * root-level services that survive component destruction.
+   */
+  private async processInBackground(
+    campaignId: string,
+    sessionId: string,
+    event: UploadRequestEvent,
+  ): Promise<void> {
     try {
       const files = event.files;
 
-      // Create session draft using the first file's name for metadata
-      const upload: AudioUpload = {
-        file: files[0],
-        sessionName: event.sessionName,
-        sessionDate: event.sessionDate,
-        userId,
-        campaignId
-      };
-      const sessionDraft = this.sessionStateService.createSessionDraft(upload);
-
       if (files.length === 1) {
-        // ── Single file: existing flow ──────────────────────────────────────
-        this.stage.set('compressing');
-        this.progress.set(0);
-        this.statusMessage.set('Compressing audio...');
-
-        const result = await this.completeProcessingService.startCompleteProcessing(
+        await this.completeProcessingService.startCompleteProcessing(
           campaignId,
-          sessionDraft.id,
+          sessionId,
           files[0],
           {
             sessionTitle: event.sessionName || 'Untitled Session',
             sessionDate: event.sessionDate,
           },
-          (stage: UploadStage, stageProgress: number) => {
-            this.progress.set(stageProgress);
-            if (stage === 'compressing') {
-              this.stage.set('compressing');
-              this.statusMessage.set(`Compressing audio... ${Math.round(stageProgress)}%`);
-            } else {
-              this.stage.set('uploading');
-              this.statusMessage.set(`Uploading to cloud... ${Math.round(stageProgress)}%`);
-            }
-          }
         );
-
-        this.progress.set(100);
-        this.statusMessage.set('Upload complete! Processing audio...');
-        await new Promise(resolve => setTimeout(resolve, 800));
-        this.selectSession({ id: result.sessionId } as AudioSessionRecord);
       } else {
-        // ── Multi file: compress each → concatenate → upload ────────────────
-        this.stage.set('compressing');
-        this.progress.set(0);
-
-        const compressedBlobs: Blob[] = [];
-        let totalOriginalSize = 0;
-
-        // Compress each file sequentially (0% – 60% of total progress)
-        for (let i = 0; i < files.length; i++) {
-          this.statusMessage.set(`Compressing file ${i + 1} of ${files.length}...`);
-
-          const compressionResult = await this.audioCompression.compress(
-            files[i],
-            (fileProgress: number) => {
-              const overallProgress = Math.round(((i + fileProgress / 100) / files.length) * 60);
-              this.progress.set(overallProgress);
-            }
-          );
-
-          compressedBlobs.push(compressionResult.blob);
-          totalOriginalSize += compressionResult.originalSize;
-        }
-
-        // Concatenate compressed MP3 blobs
-        this.statusMessage.set('Merging audio files...');
-        this.progress.set(60);
-        const concatenatedBlob = new Blob(compressedBlobs, { type: 'audio/mpeg' });
-        const fileName = `${(event.sessionName || files[0].name).replace(/\.[^.]+$/, '')}.mp3`;
-
-        // Upload + transcribe (60% – 100%)
-        this.stage.set('uploading');
-        const result = await this.completeProcessingService.uploadAndTranscribe(
-          campaignId,
-          sessionDraft.id,
-          concatenatedBlob,
-          fileName,
-          { originalSize: totalOriginalSize, compressedSize: concatenatedBlob.size },
-          {
-            sessionTitle: event.sessionName || 'Untitled Session',
-            sessionDate: event.sessionDate,
-          },
-          (uploadProgress: number) => {
-            const overallProgress = Math.round(60 + (uploadProgress / 100) * 40);
-            this.progress.set(overallProgress);
-            this.statusMessage.set(`Uploading to cloud... ${Math.round(uploadProgress)}%`);
-          }
-        );
-
-        this.progress.set(100);
-        this.statusMessage.set('Upload complete! Processing audio...');
-        await new Promise(resolve => setTimeout(resolve, 800));
-        this.selectSession({ id: result.sessionId } as AudioSessionRecord);
+        await this.processMultipleFiles(campaignId, sessionId, files, event);
       }
     } catch (error) {
-      console.error('Error starting complete processing:', error);
-      this.stage.set('failed');
-      this.statusMessage.set('Upload failed. Please try again.');
-    } finally {
-      if (this.keepAwakeDuringUpload) {
-        await this.releaseWakeLock();
-      }
-      this.keepAwakeDuringUpload = false;
+      console.error('Error in background processing:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Upload failed';
+      await this.completeProcessingService.writeFailure(campaignId, sessionId, errorMessage);
     }
+  }
+
+  /**
+   * Multi-file path: compress each file, concatenate, then upload.
+   * Compression progress is written to Firestore (throttled every 2s).
+   */
+  private async processMultipleFiles(
+    campaignId: string,
+    sessionId: string,
+    files: File[],
+    event: UploadRequestEvent,
+  ): Promise<void> {
+    const compressedBlobs: Blob[] = [];
+    let totalOriginalSize = 0;
+    let lastFirestoreWrite = 0;
+
+    // Compress each file sequentially (0–60% of total progress)
+    for (let i = 0; i < files.length; i++) {
+      const compressionResult = await this.audioCompression.compress(
+        files[i],
+        (fileProgress: number) => {
+          const overallProgress = Math.round(((i + fileProgress / 100) / files.length) * 60);
+          // Throttled Firestore write (every 2s)
+          const now = Date.now();
+          if (now - lastFirestoreWrite >= 2000 || (fileProgress >= 100 && i === files.length - 1)) {
+            lastFirestoreWrite = now;
+            this.sessionStateService.updateSession(sessionId, {
+              progress: {
+                stage: 'compressing',
+                progress: overallProgress,
+                message: `Compressing file ${i + 1} of ${files.length}... ${Math.round(fileProgress)}%`,
+                updatedAt: new Date(),
+              } as SessionProgress,
+            });
+          }
+        }
+      );
+
+      compressedBlobs.push(compressionResult.blob);
+      totalOriginalSize += compressionResult.originalSize;
+    }
+
+    // Concatenate compressed MP3 blobs
+    const concatenatedBlob = new Blob(compressedBlobs, { type: 'audio/mpeg' });
+    const fileName = `${(event.sessionName || files[0].name).replace(/\.[^.]+$/, '')}.mp3`;
+
+    // Upload + transcribe (uploadAndTranscribe writes 60–70% progress to Firestore)
+    await this.completeProcessingService.uploadAndTranscribe(
+      campaignId,
+      sessionId,
+      concatenatedBlob,
+      fileName,
+      { originalSize: totalOriginalSize, compressedSize: concatenatedBlob.size },
+      {
+        sessionTitle: event.sessionName || 'Untitled Session',
+        sessionDate: event.sessionDate,
+      },
+    );
   }
 
   private async requestWakeLock(): Promise<void> {
@@ -362,9 +381,13 @@ export class AudioUploadPageComponent implements OnInit, OnDestroy {
   }
 
   selectSession(session: AudioSessionRecord): void {
+    this.navigateToSession(session.id);
+  }
+
+  private navigateToSession(sessionId: string): void {
     const campaignId = this.campaignId();
     const basePath = campaignId ? `/campaign/${campaignId}/audio` : '/audio';
-    void this.router.navigate([basePath, session.id]);
+    void this.router.navigate([basePath, sessionId]);
   }
 
   goBack(): void {

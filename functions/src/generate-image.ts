@@ -113,7 +113,7 @@ export const generateImage = onCall(
 
       const result = await fal.subscribe(model, {
         input: {
-          prompt,
+          prompt: `Photorealistic image. ${prompt}`,
           image_size: 'landscape_4_3',
         },
       });

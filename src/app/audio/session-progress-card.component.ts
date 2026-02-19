@@ -154,6 +154,7 @@ export class SessionProgressCardComponent {
 
     const iconMap: Record<SessionProgressStage, string> = {
       'idle': '⏸️',
+      'compressing': '🗜️',
       'uploading': '📤',
       'transcribing': '🎙️',
       'batch-submitted': '📋',
@@ -176,6 +177,7 @@ export class SessionProgressCardComponent {
 
     const titleMap: Record<SessionProgressStage, string> = {
       'idle': 'Idle',
+      'compressing': 'Compressing Audio',
       'uploading': 'Uploading File',
       'transcribing': 'Transcribing Audio',
       'batch-submitted': 'Transcription Queued',
