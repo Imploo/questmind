@@ -33,7 +33,7 @@ service firebase.storage {
                        || request.resource.contentType == 'audio/m4a');
     }
 
-    // Generated character images — owner can delete, authenticated users can read
+    // Generated character images — owner can delete, anyone can read via download token
     match /images/{characterId}/{filename} {
       allow read: if true;
       allow delete: if request.auth != null &&

@@ -14,7 +14,8 @@ import { ImageLightboxComponent } from './image-lightbox.component';
   host: {
     '[class.flex]': 'true',
     '[class.flex-col]': 'true',
-    '[class.h-full]': 'true'
+    '[class.h-full]': 'true',
+    '(document:click)': 'onDocumentClick()'
   },
   template: `
     @if (lightboxUrl()) {
@@ -97,18 +98,46 @@ import { ImageLightboxComponent } from './image-lightbox.component';
           </div>
         }
         <div class="flex gap-2 p-4" [class.pt-2]="isImageMode()">
-          <input
-            #messageInput
-            type="text"
-            [(ngModel)]="newMessage"
-            (keyup.enter)="sendMessage()"
-            [disabled]="isLoading()"
-            placeholder="Type a message..."
-            class="flex-1 px-3 py-2 text-sm border rounded-lg outline-none transition-all duration-200 disabled:bg-gray-100 disabled:cursor-not-allowed"
+          <div class="relative flex-1 flex items-center border rounded-lg transition-all duration-200"
             [class]="isImageMode()
-              ? 'border-purple-400 focus:border-purple-500 focus:ring-2 focus:ring-purple-200'
-              : 'border-gray-200 focus:border-primary focus:ring-2 focus:ring-primary/10'"
-          />
+              ? 'border-purple-400 focus-within:border-purple-500 focus-within:ring-2 focus-within:ring-purple-200'
+              : 'border-gray-200 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/10'"
+            [class.bg-gray-100]="isLoading()"
+          >
+            <div class="relative">
+              <button
+                type="button"
+                (click)="toggleActionMenu($event)"
+                [disabled]="isLoading()"
+                class="flex items-center justify-center w-8 h-8 ml-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <svg class="w-4 h-4 transition-transform duration-150" [class.rotate-45]="showActionMenu()" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"/>
+                </svg>
+              </button>
+              @if (showActionMenu()) {
+                <div class="absolute bottom-full left-0 mb-2 w-52 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden z-10">
+                  <button
+                    type="button"
+                    (click)="insertAction('maak afbeelding')"
+                    class="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-left text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <span class="text-base">🎨</span>
+                    <span>Genereer afbeelding</span>
+                  </button>
+                </div>
+              }
+            </div>
+            <input
+              #messageInput
+              type="text"
+              [(ngModel)]="newMessage"
+              (keyup.enter)="sendMessage()"
+              [disabled]="isLoading()"
+              placeholder="Type a message..."
+              class="flex-1 px-2 py-2 text-sm bg-transparent border-none outline-none disabled:cursor-not-allowed"
+            />
+          </div>
           <button
             (click)="sendMessage()"
             [disabled]="isLoading() || !newMessage().trim()"
@@ -144,6 +173,7 @@ export class ChatComponent {
   isImageMode = computed(() => this.chatService.isImageGenerationRequest(this.newMessage()));
 
   lightboxUrl = signal<string | null>(null);
+  showActionMenu = signal(false);
 
   private chatService = inject(ChatService);
   private sanitizer = inject(DomSanitizer);
@@ -252,6 +282,21 @@ export class ChatComponent {
       return;
     }
     this.newMessage.update(current => `${current}${text}`);
+  }
+
+  toggleActionMenu(event: Event): void {
+    event.stopPropagation();
+    this.showActionMenu.update(v => !v);
+  }
+
+  onDocumentClick(): void {
+    this.showActionMenu.set(false);
+  }
+
+  insertAction(text: string): void {
+    this.newMessage.set(text);
+    this.showActionMenu.set(false);
+    this.messageInput()?.nativeElement.focus();
   }
 
   clearError(): void {

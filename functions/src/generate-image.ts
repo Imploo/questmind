@@ -1,11 +1,12 @@
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { wrapCallable } from './utils/sentry-error-handler';
-import { getAiImageConfig } from './utils/ai-settings';
+import { getAiImageConfig, getAiFeatureConfig } from './utils/ai-settings';
 import { SHARED_CORS } from './index';
 import { getStorage } from 'firebase-admin/storage';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { randomUUID } from 'crypto';
 import { fal } from '@fal-ai/client';
+import { GoogleGenAI } from '@google/genai';
 
 export interface ChatHistoryMessage {
     role: 'user' | 'assistant';
@@ -21,6 +22,7 @@ interface GenerateImageRequest {
     chatRequest: CharacterChatRequest;
     model: string;
     characterId?: string;
+    referenceImageStoragePath?: string;
 }
 
 export interface GenerateImageResponse {
@@ -31,12 +33,12 @@ export interface GenerateImageResponse {
 export const generateImage = onCall(
   {
     cors: SHARED_CORS,
-    secrets: ['FAL_API_KEY'],
+    secrets: ['FAL_API_KEY', 'GOOGLE_AI_API_KEY'],
   },
   wrapCallable<GenerateImageRequest, GenerateImageResponse>(
     'generateImage',
     async (request): Promise<GenerateImageResponse> => {
-      const { chatRequest, model: requestModel, characterId } = request.data;
+      const { chatRequest, model: requestModel, characterId, referenceImageStoragePath } = request.data;
 
       if (!chatRequest || !characterId) {
         throw new HttpsError('invalid-argument', 'Missing required fields: chatRequest, characterId');
@@ -45,14 +47,69 @@ export const generateImage = onCall(
       const imageConfig = await getAiImageConfig();
       const model = requestModel || imageConfig.model;
 
-      const apiKey = process.env.FAL_API_KEY;
-      if (!apiKey) {
+      const falApiKey = process.env.FAL_API_KEY;
+      if (!falApiKey) {
         throw new HttpsError('failed-precondition', 'FAL API key not configured');
       }
 
-      const prompt = chatRequest.systemPrompt + '\n' + chatRequest.chatHistory.map(chat => `[${chat.role}]: ${chat.content}\n`).join('');
+      const googleApiKey = process.env.GOOGLE_AI_API_KEY;
+      if (!googleApiKey) {
+        throw new HttpsError('failed-precondition', 'Google AI API key not configured');
+      }
 
-      fal.config({ credentials: apiKey });
+      // Use Gemini to convert character context + conversation into a descriptive image prompt
+      const rawContext = chatRequest.chatHistory.map(chat => `[${chat.role}]: ${chat.content}`).join('\n');
+      const promptConfig = await getAiFeatureConfig('imagePromptGeneration');
+
+      // Build multimodal content: text context + optional reference image
+      const contentParts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [
+        { text: rawContext },
+      ];
+
+      let referenceStyleInstruction = '';
+
+      if (referenceImageStoragePath) {
+        try {
+          const storage = getStorage().bucket();
+          const [imageBuffer] = await storage.file(referenceImageStoragePath).download();
+          const extension = referenceImageStoragePath.split('.').pop()?.toLowerCase() || 'jpg';
+          const mimeType = extension === 'png' ? 'image/png' : 'image/jpeg';
+          contentParts.push({
+            inlineData: { mimeType, data: imageBuffer.toString('base64') },
+          });
+          referenceStyleInstruction =
+            '\n\nA reference image of a previous portrait of this character is included. '
+            + 'Analyze its visual style (lighting, color palette, art style, composition) and incorporate similar style elements into your prompt. '
+            + 'However, follow the user\'s instructions for the new scene, pose, or expression. '
+            + 'Do NOT describe the reference image literally — use it only for style inspiration.';
+        } catch (err) {
+          console.warn('Failed to load reference image, proceeding without it:', err);
+        }
+      }
+
+      const ai = new GoogleGenAI({ apiKey: googleApiKey });
+      const geminiResult = await ai.models.generateContent({
+        model: promptConfig.model,
+        contents: contentParts,
+        config: {
+          systemInstruction: chatRequest.systemPrompt
+            + '\n\nGenerate a single, detailed image prompt in English (max 1000 words) describing the character portrait. '
+            + 'Focus on physical appearance, clothing, equipment, expression, and setting. '
+            + 'Do NOT include any instructions, metadata, or formatting — only the image description.'
+            + referenceStyleInstruction,
+          temperature: promptConfig.temperature,
+          topP: promptConfig.topP,
+          topK: promptConfig.topK,
+          maxOutputTokens: promptConfig.maxOutputTokens,
+        },
+      });
+
+      const prompt = geminiResult.text?.trim();
+      if (!prompt) {
+        throw new HttpsError('internal', 'Failed to generate image description from character context');
+      }
+
+      fal.config({ credentials: falApiKey });
 
       const result = await fal.subscribe(model, {
         input: {
@@ -92,19 +149,10 @@ export const generateImage = onCall(
       const file = storage.file(storagePath);
 
       await file.save(imageBuffer, {
-        metadata: {
-          contentType: mimeType,
-        },
-        public: false,
+        metadata: { contentType: mimeType },
       });
 
-      // Generate signed URL valid for 7 days
-      const [signedUrl] = await file.getSignedUrl({
-        action: 'read',
-        expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
-      });
-
-      // Save image metadata to Firestore if characterId is provided
+      // Save image metadata to Firestore (frontend constructs display URL from storagePath)
       if (characterId && request.auth) {
         const db = getFirestore();
         const imageRef = db
@@ -116,15 +164,17 @@ export const generateImage = onCall(
         await imageRef.set({
           id: imageRef.id,
           characterId,
-          url: signedUrl,
           mimeType,
           storagePath,
           createdAt: FieldValue.serverTimestamp(),
         });
       }
 
+      // Return download URL for immediate display in chat
+      const downloadUrl = `https://firebasestorage.googleapis.com/v0/b/${storage.name}/o/${encodeURIComponent(storagePath)}?alt=media`;
+
       return {
-        imageUrl: signedUrl,
+        imageUrl: downloadUrl,
         mimeType,
       };
     }

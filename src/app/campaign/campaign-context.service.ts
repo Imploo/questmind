@@ -1,11 +1,10 @@
-import { Injectable, computed, effect, inject, signal } from '@angular/core';
+import { Injectable, computed, effect, inject, resource, signal, untracked } from '@angular/core';
 import type { User } from 'firebase/auth';
-import { doc, onSnapshot, type Firestore } from 'firebase/firestore';
 import { AuthService } from '../auth/auth.service';
 import { Campaign, UserProfile } from './campaign.models';
 import { CampaignService } from './campaign.service';
 import { UserProfileService } from './user-profile.service';
-import { FirebaseService } from '../core/firebase.service';
+import { UserProfileRepositoryFactory } from '../shared/repository/user-profile.repository';
 import * as logger from '../shared/logger';
 
 @Injectable({ providedIn: 'root' })
@@ -13,10 +12,20 @@ export class CampaignContextService {
   private readonly authService = inject(AuthService);
   private readonly campaignService = inject(CampaignService);
   private readonly userProfileService = inject(UserProfileService);
-  private readonly firebase = inject(FirebaseService);
-  private readonly db: Firestore | null;
-  private profileUnsubscribe?: () => void;
-  private activeUserId: string | null = null;
+  private readonly profileRepoFactory = inject(UserProfileRepositoryFactory);
+
+  private readonly profileResource = resource({
+    params: () => {
+      const user = this.authService.currentUser();
+      if (!user?.uid) return undefined;
+      return { userId: user.uid };
+    },
+    loader: async ({ params }) => {
+      const repo = this.profileRepoFactory.create(params.userId);
+      await repo.waitForData();
+      return repo;
+    },
+  });
 
   campaigns = signal<Campaign[]>([]);
   selectedCampaignId = signal<string | null>(null);
@@ -31,22 +40,51 @@ export class CampaignContextService {
   });
 
   constructor() {
-    this.db = this.firebase.firestore;
+    // Cleanup repo on resource change
+    effect((onCleanup) => {
+      const repo = this.profileResource.value();
+      if (repo) {
+        onCleanup(() => repo.destroy());
+      }
+    });
 
+    // Clear state when user logs out
     effect(() => {
       const user = this.authService.currentUser();
-      if (user?.uid) {
-        this.setupProfileListener(user);
-      } else {
-        this.clear();
+      if (!user) {
+        untracked(() => {
+          this.campaigns.set([]);
+          this.selectedCampaignId.set(null);
+          this.isLoading.set(false);
+          this.error.set(null);
+        });
       }
+    });
+
+    // React to profile data changes and load campaigns
+    effect(() => {
+      const repo = this.profileResource.value();
+      if (!repo) return;
+
+      const profile = repo.get() as UserProfile | null;
+      const user = untracked(() => this.authService.currentUser());
+      if (!user) return;
+
+      if (!profile) {
+        void this.loadForUser(user);
+        return;
+      }
+      void this.loadCampaignsFromProfile(user, profile);
     });
   }
 
   async refreshCampaigns(): Promise<void> {
     const user = this.authService.currentUser();
     if (!user) {
-      this.clear();
+      this.campaigns.set([]);
+      this.selectedCampaignId.set(null);
+      this.isLoading.set(false);
+      this.error.set(null);
       return;
     }
     await this.loadForUser(user);
@@ -66,46 +104,6 @@ export class CampaignContextService {
     if (!campaign || !userId) return false;
     if (campaign.ownerId === userId) return true;
     return campaign.settings?.allowMembersToCreateSessions ?? true;
-  }
-
-  private setupProfileListener(user: User): void {
-    if (!user?.uid) {
-      return;
-    }
-
-    // Don't re-setup if same user
-    if (this.activeUserId === user.uid) {
-      return;
-    }
-
-    this.activeUserId = user.uid;
-    this.profileUnsubscribe?.();
-
-    if (!this.db) {
-      console.error('Firestore not configured. Cannot listen to profile changes.');
-      void this.loadForUser(user);
-      return;
-    }
-
-    const userRef = doc(this.db, 'users', user.uid);
-    this.profileUnsubscribe = onSnapshot(
-      userRef,
-      async (snapshot) => {
-        if (!snapshot.exists()) {
-          // Profile doesn't exist yet, create it
-          await this.loadForUser(user);
-          return;
-        }
-
-        const profile = snapshot.data() as UserProfile;
-        await this.loadCampaignsFromProfile(user, profile);
-      },
-      (error) => {
-        console.error('Failed to listen to user profile changes:', error);
-        this.error.set(error?.message || 'Failed to load campaigns');
-        this.isLoading.set(false);
-      }
-    );
   }
 
   private async loadForUser(user: User): Promise<void> {
@@ -171,15 +169,5 @@ export class CampaignContextService {
     } finally {
       this.isLoading.set(false);
     }
-  }
-
-  private clear(): void {
-    this.profileUnsubscribe?.();
-    this.profileUnsubscribe = undefined;
-    this.activeUserId = null;
-    this.campaigns.set([]);
-    this.selectedCampaignId.set(null);
-    this.isLoading.set(false);
-    this.error.set(null);
   }
 }

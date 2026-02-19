@@ -122,6 +122,7 @@ export interface AISettings {
     characterDraft?: AIFeatureConfig;
     spellResolution?: AIFeatureConfig;
     featureResolution?: AIFeatureConfig;
+    imagePromptGeneration?: AIFeatureConfig;
     imageGeneration?: { model: string };
   };
   // Legacy support

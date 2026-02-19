@@ -1,86 +1,58 @@
-import { Injectable, signal, computed, effect } from '@angular/core';
-import { inject } from '@angular/core';
-import { doc, getDoc } from 'firebase/firestore';
-import { FirebaseService } from './firebase.service';
+import { Injectable, computed, effect, inject, resource } from '@angular/core';
 import { AuthService } from '../auth/auth.service';
 import type { UserProfile } from './models/user.model';
-import * as logger from '../shared/logger';
+import { UserProfileRepositoryFactory } from '../shared/repository/user-profile.repository';
 
 @Injectable({ providedIn: 'root' })
 export class UserService {
-  private readonly firebaseService = inject(FirebaseService);
   private readonly authService = inject(AuthService);
+  private readonly profileRepoFactory = inject(UserProfileRepositoryFactory);
 
-  private readonly userProfile = signal<UserProfile | null>(null);
-  private readonly loading = signal<boolean>(false);
-  private readonly error = signal<string | null>(null);
+  private readonly profileResource = resource({
+    params: () => {
+      const user = this.authService.currentUser();
+      if (!user?.uid) return undefined;
+      return { userId: user.uid };
+    },
+    loader: async ({ params }) => {
+      const repo = this.profileRepoFactory.create(params.userId);
+      await repo.waitForData();
+      return repo;
+    },
+  });
 
-  // Public read-only signals
-  readonly profile = this.userProfile.asReadonly();
-  readonly isAdmin = computed(() => this.userProfile()?.admin === true);
-  readonly isLoading = this.loading.asReadonly();
-  readonly userError = this.error.asReadonly();
+  readonly profile = computed<UserProfile | null>(() => {
+    const repo = this.profileResource.value();
+    if (!repo) return null;
+    const data = repo.get() as UserProfile | null;
+    if (data) return data;
+    // Fallback: create basic profile from auth user when doc doesn't exist yet
+    const user = this.authService.currentUser();
+    if (user) {
+      return {
+        uid: user.uid,
+        email: user.email ?? null,
+        displayName: user.displayName ?? null,
+        admin: false
+      };
+    }
+    return null;
+  });
+
+  readonly isAdmin = computed(() => this.profile()?.admin === true);
+  readonly isLoading = this.profileResource.isLoading;
 
   constructor() {
-    // Automatically fetch user profile when auth state changes
-    effect(() => {
-      const user = this.authService.currentUser();
-      if (user) {
-        void this.fetchUserProfile(user.uid);
-      } else {
-        this.userProfile.set(null);
-        this.error.set(null);
+    effect((onCleanup) => {
+      const repo = this.profileResource.value();
+      if (repo) {
+        onCleanup(() => repo.destroy());
       }
     });
   }
 
-  private async fetchUserProfile(uid: string): Promise<void> {
-    this.loading.set(true);
-    this.error.set(null);
-
-    try {
-      const firestore = this.firebaseService.requireFirestore();
-      const userDoc = doc(firestore, 'users', uid);
-      const snapshot = await getDoc(userDoc);
-
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        const profile = {
-          uid,
-          email: data['email'] ?? null,
-          displayName: data['displayName'] ?? null,
-          admin: data['admin'] === true,
-          campaigns: data['campaigns'] ?? [],
-          createdAt: data['createdAt']?.toDate ? data['createdAt'].toDate() : data['createdAt'],
-          updatedAt: data['updatedAt']?.toDate ? data['updatedAt'].toDate() : data['updatedAt']
-        };
-        this.userProfile.set(profile);
-      } else {
-        logger.warn('User document does not exist in Firestore for uid:', uid);
-        // User document doesn't exist yet - create basic profile
-        this.userProfile.set({
-          uid,
-          email: this.authService.currentUser()?.email ?? null,
-          displayName: this.authService.currentUser()?.displayName ?? null,
-          admin: false
-        });
-      }
-    } catch (err) {
-      console.error('Error fetching user profile:', err);
-      this.error.set(err instanceof Error ? err.message : 'Failed to fetch user profile');
-      this.userProfile.set(null);
-    } finally {
-      this.loading.set(false);
-    }
-  }
-
-  /**
-   * Manually refresh the user profile from Firestore
-   */
   async refreshProfile(): Promise<void> {
-    const user = this.authService.currentUser();
-    if (user) {
-      await this.fetchUserProfile(user.uid);
-    }
+    // With real-time listener via repository, data auto-refreshes
+    // This method is kept for API compatibility
   }
 }

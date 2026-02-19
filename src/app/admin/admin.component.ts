@@ -1,9 +1,8 @@
 import { ChangeDetectionStrategy, Component, signal, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { FirebaseService } from '../core/firebase.service';
 import { UserService } from '../core/user.service';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { AiSettingsRepository } from '../shared/repository/ai-settings.repository';
 import { type AiSettings, type AiModelConfig, type AiImageConfig, type PodcastVoiceSettings } from '../core/services/ai-settings.service';
 
 type FeatureFormType = 'standard' | 'imageOnly' | 'voicesOnly';
@@ -250,7 +249,7 @@ interface FeatureDefinition {
   `
 })
 export class AdminComponent implements OnInit {
-  private readonly firebaseService = inject(FirebaseService);
+  private readonly aiSettingsRepo = inject(AiSettingsRepository);
   readonly userService = inject(UserService);
 
   readonly featureDefinitions: readonly FeatureDefinition[] = [
@@ -289,6 +288,15 @@ export class AdminComponent implements OnInit {
       providerColor: 'bg-blue-100 text-blue-700',
       formType: 'standard',
       description: 'Feature/trait beschrijvingen met mechanische effecten'
+    },
+    {
+      key: 'imagePromptGeneration',
+      label: 'Image Prompt (LLM)',
+      icon: '🖼️',
+      provider: 'Gemini',
+      providerColor: 'bg-blue-100 text-blue-700',
+      formType: 'standard',
+      description: 'Genereert beschrijvende image prompt uit karakter context'
     },
     {
       key: 'imageGeneration',
@@ -342,6 +350,7 @@ export class AdminComponent implements OnInit {
     characterDraft: { model: 'gemini-3-flash-preview', temperature: 0.1, topP: 0.95, topK: 40, maxOutputTokens: 8192 },
     spellResolution: { model: 'gemini-3-flash-preview', temperature: 0.3, topP: 0.95, topK: 40, maxOutputTokens: 4096 },
     featureResolution: { model: 'gemini-3-flash-preview', temperature: 0.3, topP: 0.95, topK: 40, maxOutputTokens: 4096 },
+    imagePromptGeneration: { model: 'gemini-2.5-flash', temperature: 0.7, topP: 0.95, topK: 40, maxOutputTokens: 1024 },
     imageGeneration: { model: 'fal-ai/flux/schnell' },
     transcription: { model: 'gemini-2.0-flash-exp', temperature: 0.1, topP: 1, topK: 40, maxOutputTokens: 128000 },
     storyGeneration: { model: 'gemini-2.0-flash-exp', temperature: 0.8, topP: 0.95, topK: 40, maxOutputTokens: 32000 },
@@ -401,12 +410,9 @@ export class AdminComponent implements OnInit {
     this.settingsError.set(null);
 
     try {
-      const firestore = this.firebaseService.requireFirestore();
-      const settingsDoc = doc(firestore, 'settings/ai');
-      const snapshot = await getDoc(settingsDoc);
-
-      const data = snapshot.exists() ? snapshot.data() as AiSettings : {} as AiSettings;
-      this.aiSettings.set(this.normalizeSettings(data));
+      await this.aiSettingsRepo.waitForData();
+      const data = this.aiSettingsRepo.get() as unknown as AiSettings | null;
+      this.aiSettings.set(this.normalizeSettings(data ?? {} as AiSettings));
     } catch (error) {
       console.error('Error loading AI settings:', error);
       this.settingsError.set(
@@ -424,9 +430,7 @@ export class AdminComponent implements OnInit {
     this.saveIndicator.set('saving');
 
     try {
-      const firestore = this.firebaseService.requireFirestore();
-      const settingsDoc = doc(firestore, 'settings/ai');
-      await setDoc(settingsDoc, settings, { merge: true });
+      await this.aiSettingsRepo.update(settings as AiSettings & Record<string, unknown>);
 
       this.saveIndicator.set('saved');
       setTimeout(() => this.saveIndicator.set('idle'), 2000);

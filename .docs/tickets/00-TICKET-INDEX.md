@@ -541,6 +541,7 @@ Start here for immediate impact with minimal risk:
 | Ticket | Title | Priority | Status | Effort | Dependencies |
 |--------|-------|----------|--------|--------|--------------|
 | [#55](./55-previous-stories-as-context.md) | Vorige Stories als Context bij Story Generatie (Flashbacks & Herinneringen) | Medium | Todo | 2-3 days | - |
+| [#58](./58-kanka-journals-as-context.md) | Kanka Journals Ophalen en Meesturen als Context | Medium | Todo | 3-4 uur | #42 |
 
 **Key Improvements:**
 - **Ticket 55**: Eerdere sessie-stories meesturen als context bij story generatie
@@ -549,6 +550,15 @@ Start here for immediate impact with minimal risk:
   - Chronologische sortering, alleen sessies met ingevulde `sessionDate` en voltooide story
   - Token management: limiet op aantal stories of totaal karakters
   - Geen regressie bij sessies zonder eerdere stories of zonder `sessionDate`
+
+- **Ticket 58**: Kanka journals ophalen en meesturen als context
+  - Journals ophalen via `GET /campaigns/{id}/journals` (parallel met bestaande entity types)
+  - Naam, datum en inhoud (`entry_parsed`) meesturen (niet alleen namen zoals bij andere entiteiten)
+  - Context voor zowel transcriptie (raw story) als story polishing
+  - AI gebruikt journal-inhoud om gesproken verhalen te matchen met bekende lore
+  - Datum-filtering: alleen journals binnen `sessionDate - 2 maanden` t/m `sessionDate + 1 maand`
+  - Token-limiet op journal content om prompt-grootte te beheersen
+  - Geen bron van het verhaal, puur referentie-context
 
 ---
 
@@ -569,5 +579,22 @@ Start here for immediate impact with minimal risk:
 
 ---
 
-**Last Updated:** 2026-02-18
+## 🗄️ Centrale Data Layer
+
+| Ticket | Title | Priority | Status | Effort | Dependencies |
+|--------|-------|----------|--------|--------|--------------|
+| [#57](./57-centralize-firestore-data-layer.md) | Centraliseer Firestore Data Layer via FirestoreRepository | High | Todo | 1-2 weken | - |
+
+**Key Improvements:**
+- **Ticket 57**: Alle directe Firestore calls vervangen door repository classes
+  - 7 concrete repository classes die `FirestoreRepository` extenden (1 per collectie)
+  - Nieuwe `FirestoreDocumentRepository` base class voor single-document access
+  - Alle data retrieval via `onSnapshot` (real-time signals) — geen `getDoc`/`getDocs` meer
+  - 15 bestanden ontdaan van directe `firebase/firestore` imports
+  - Centrale error handling en loading states per collectie
+  - Vervangt/concretiseert ticket #28 (Repository Pattern)
+
+---
+
+**Last Updated:** 2026-02-19
 **Status:** Planning Complete, Ready to Begin

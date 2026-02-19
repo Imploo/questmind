@@ -11,6 +11,7 @@ import {
   type ChatHistoryMessage,
 } from '../shared/utils/build-character-context';
 import { AiSettingsService } from '../core/services/ai-settings.service';
+import { CharacterImageService } from '../core/services/character-image.service';
 import { FirebaseService } from '../core/firebase.service';
 
 export type { ChatHistoryMessage };
@@ -27,6 +28,7 @@ interface GenerateImageRequest {
   chatRequest: ImageChatRequest;
   model: string;
   characterId: string;
+  referenceImageStoragePath?: string;
 }
 
 interface GenerateImageResponse {
@@ -53,6 +55,7 @@ export interface Message {
 export class ChatService {
   private readonly firebase = inject(FirebaseService);
   private readonly aiSettingsService = inject(AiSettingsService);
+  private readonly characterImageService = inject(CharacterImageService);
 
   private messages = signal<Message[]>([]);
   private conversationHistory: ChatHistoryMessage[] = [];
@@ -142,10 +145,13 @@ export class ChatService {
 
     const chatRequest = buildImageChatRequest(this.currentCharacter, IMAGE_GENERATION_SYSTEM_PROMPT, userPrompt, this.conversationHistory);
 
+    const latestImage = this.characterImageService.images()[0];
+
     const payload: GenerateImageRequest = {
       chatRequest,
       model: imageConfig.model,
       characterId: this.characterId,
+      ...(latestImage?.storagePath && { referenceImageStoragePath: latestImage.storagePath }),
     };
 
     return from(generateImage(payload)).pipe(

@@ -1,24 +1,10 @@
-import { Injectable, inject } from '@angular/core';
-import { Observable } from 'rxjs';
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  deleteDoc,
-  query,
-  setDoc,
-  updateDoc,
-  onSnapshot,
-  orderBy,
-  limit,
-  Timestamp,
-  type Firestore
-} from 'firebase/firestore';
+import { Injectable, inject, signal, computed, effect, resource } from '@angular/core';
+import { Timestamp } from 'firebase/firestore';
 import { AuthService } from '../../auth/auth.service';
-import { FirebaseService } from '../firebase.service';
 import { CharacterVersion } from '../models/schemas/character.schema';
 import { DndCharacter } from '../../shared/models/dnd-character.model';
+import { CharacterVersionRepositoryFactory } from '../../shared/repository/character-version.repository';
+import { CharacterRepository } from '../../shared/repository/character.repository';
 
 function stripUndefined(obj: unknown): unknown {
   if (obj === null || obj === undefined) return obj;
@@ -36,20 +22,47 @@ function stripUndefined(obj: unknown): unknown {
   return obj;
 }
 
+type VersionRecord = CharacterVersion & Record<string, unknown>;
+
 @Injectable({ providedIn: 'root' })
 export class CharacterVersionService {
   private readonly authService = inject(AuthService);
-  private readonly firebase = inject(FirebaseService);
-  private readonly db: Firestore | null;
+  private readonly versionRepoFactory = inject(CharacterVersionRepositoryFactory);
+  private readonly characterRepo = inject(CharacterRepository);
+
+  readonly activeCharacterId = signal<string | null>(null);
+
+  private readonly activeRepoResource = resource({
+    params: () => {
+      const id = this.activeCharacterId();
+      if (!id) return undefined;
+      return { characterId: id };
+    },
+    loader: async ({ params }) => {
+      const repo = this.versionRepoFactory.create(params.characterId);
+      await repo.waitForData();
+      return repo;
+    },
+  });
+
+  readonly latestVersion = computed<CharacterVersion | null>(() => {
+    const repo = this.activeRepoResource.value();
+    if (!repo) return null;
+    const versions = repo.get() as unknown as CharacterVersion[];
+    return versions[0] ?? null;
+  });
 
   constructor() {
-    this.db = this.firebase.firestore;
+    effect((onCleanup) => {
+      const repo = this.activeRepoResource.value();
+      if (repo) {
+        onCleanup(() => repo.destroy());
+      }
+    });
   }
 
   async createInitialVersion(characterId: string, characterData: DndCharacter, preGeneratedVersionId?: string): Promise<string> {
-    if (!this.db) throw new Error('Firestore is not configured');
-
-    const versionId = preGeneratedVersionId ?? doc(collection(this.db, 'characters', characterId, 'versions')).id;
+    const versionId = preGeneratedVersionId ?? crypto.randomUUID();
     const now = Timestamp.now();
 
     const version: CharacterVersion = {
@@ -61,8 +74,8 @@ export class CharacterVersionService {
       createdAt: now,
     };
 
-    const versionRef = doc(this.db, 'characters', characterId, 'versions', versionId);
-    await setDoc(versionRef, stripUndefined(version) as CharacterVersion);
+    const repo = this.versionRepoFactory.create(characterId);
+    await repo.update(stripUndefined(version) as VersionRecord);
 
     return versionId;
   }
@@ -76,19 +89,14 @@ export class CharacterVersionService {
   ): Promise<string> {
     const user = this.authService.currentUser();
     if (!user) throw new Error('User not authenticated');
-    if (!this.db) throw new Error('Firestore is not configured');
 
-    const versionsRef = collection(this.db, 'characters', characterId, 'versions');
-    const q = query(versionsRef, orderBy('versionNumber', 'desc'));
-    const snapshot = await getDocs(q);
+    const repo = this.versionRepoFactory.create(characterId);
+    await repo.waitForData();
+    const versions = repo.get() as unknown as VersionRecord[];
+    const latest = versions[0];
+    const nextVersionNumber = latest ? latest.versionNumber + 1 : 1;
 
-    let nextVersionNumber = 1;
-    if (!snapshot.empty) {
-      const latestVersion = snapshot.docs[0].data() as CharacterVersion;
-      nextVersionNumber = latestVersion.versionNumber + 1;
-    }
-
-    const versionId = doc(versionsRef).id;
+    const versionId = crypto.randomUUID();
     const now = Timestamp.now();
 
     const version: CharacterVersion = {
@@ -104,11 +112,10 @@ export class CharacterVersionService {
       version.restoredFromVersionId = restoredFromVersionId;
     }
 
-    const versionRef = doc(this.db, 'characters', characterId, 'versions', versionId);
-    await setDoc(versionRef, stripUndefined(version) as CharacterVersion);
+    await repo.update(stripUndefined(version) as VersionRecord);
+    repo.destroy();
 
-    const characterRef = doc(this.db, 'characters', characterId);
-    await updateDoc(characterRef, {
+    await this.characterRepo.patch(characterId, {
       activeVersionId: versionId,
       updatedAt: now
     });
@@ -117,26 +124,19 @@ export class CharacterVersionService {
   }
 
   async getVersions(characterId: string): Promise<CharacterVersion[]> {
-    if (!this.db) return [];
-
-    const versionsRef = collection(this.db, 'characters', characterId, 'versions');
-    const q = query(versionsRef, orderBy('versionNumber', 'desc'));
-    const snapshot = await getDocs(q);
-
-    return snapshot.docs.map(doc => doc.data() as CharacterVersion);
+    const repo = this.versionRepoFactory.create(characterId);
+    await repo.waitForData();
+    const versions = [...repo.get() as unknown as CharacterVersion[]];
+    repo.destroy();
+    return versions;
   }
 
   async getVersion(characterId: string, versionId: string): Promise<CharacterVersion | null> {
-    if (!this.db) return null;
-
-    const versionRef = doc(this.db, 'characters', characterId, 'versions', versionId);
-    const snapshot = await getDoc(versionRef);
-
-    if (!snapshot.exists()) return null;
-
-    const data = snapshot.data() as CharacterVersion;
-
-    return data;
+    const repo = this.versionRepoFactory.create(characterId);
+    await repo.waitForData();
+    const version = await repo.getByKey(versionId) as CharacterVersion | null;
+    repo.destroy();
+    return version;
   }
 
   async restoreVersion(characterId: string, versionToRestore: CharacterVersion): Promise<string> {
@@ -156,18 +156,21 @@ export class CharacterVersionService {
     description: string,
     usage: string
   ): Promise<void> {
-    if (!this.db) return;
-    const versionRef = doc(this.db, 'characters', characterId, 'versions', activeVersionId);
-    const snapshot = await getDoc(versionRef);
-    if (!snapshot.exists()) return;
-    const data = snapshot.data() as CharacterVersion;
-    const spells = data.character.spellcasting?.spells ?? [];
+    const repo = this.versionRepoFactory.create(characterId);
+    await repo.waitForData();
+    const version = await repo.getByKey(activeVersionId) as CharacterVersion | null;
+    if (!version) {
+      repo.destroy();
+      return;
+    }
+    const spells = version.character.spellcasting?.spells ?? [];
     const updated = spells.map(spell => {
       if (typeof spell === 'string') return spell;
       if (spell.name.toLowerCase() === spellName.toLowerCase()) return { ...spell, description, usage };
       return spell;
     });
-    await updateDoc(versionRef, { 'character.spellcasting.spells': updated });
+    await repo.patch(activeVersionId, { 'character.spellcasting.spells': updated });
+    repo.destroy();
   }
 
   async patchFeatureDescription(
@@ -176,58 +179,35 @@ export class CharacterVersionService {
     featureName: string,
     description: string
   ): Promise<void> {
-    if (!this.db) return;
-    const versionRef = doc(this.db, 'characters', characterId, 'versions', activeVersionId);
-    const snapshot = await getDoc(versionRef);
-    if (!snapshot.exists()) return;
-    const data = snapshot.data() as CharacterVersion;
-    const features = data.character.featuresAndTraits ?? [];
+    const repo = this.versionRepoFactory.create(characterId);
+    await repo.waitForData();
+    const version = await repo.getByKey(activeVersionId) as CharacterVersion | null;
+    if (!version) {
+      repo.destroy();
+      return;
+    }
+    const features = version.character.featuresAndTraits ?? [];
     const updated = features.map(feature => {
       if (typeof feature === 'string') return feature;
       if (feature.name.toLowerCase() === featureName.toLowerCase()) return { ...feature, description };
       return feature;
     });
-    await updateDoc(versionRef, { 'character.featuresAndTraits': updated });
-  }
-
-  watchLatestVersion(characterId: string): Observable<CharacterVersion | null> {
-    return new Observable(subscriber => {
-      if (!this.db) {
-        subscriber.next(null);
-        subscriber.complete();
-        return;
-      }
-
-      const versionsRef = collection(this.db, 'characters', characterId, 'versions');
-      const q = query(versionsRef, orderBy('versionNumber', 'desc'), limit(1));
-
-      const unsubscribe = onSnapshot(q, snapshot => {
-        if (snapshot.empty) {
-          subscriber.next(null);
-        } else {
-          subscriber.next(snapshot.docs[0].data() as CharacterVersion);
-        }
-      }, error => {
-        subscriber.error(error);
-      });
-
-      return unsubscribe;
-    });
+    await repo.patch(activeVersionId, { 'character.featuresAndTraits': updated });
+    repo.destroy();
   }
 
   async commitDraft(characterId: string, draftVersionId: string): Promise<void> {
-    if (!this.db) throw new Error('Firestore is not configured');
-    const draftRef = doc(this.db, 'characters', characterId, 'versions', draftVersionId);
-    await updateDoc(draftRef, { isDraft: false });
-    await updateDoc(doc(this.db, 'characters', characterId), {
+    const repo = this.versionRepoFactory.create(characterId);
+    await repo.patch(draftVersionId, { isDraft: false });
+
+    await this.characterRepo.patch(characterId, {
       activeVersionId: draftVersionId,
       updatedAt: Timestamp.now(),
     });
   }
 
   async dismissDraft(characterId: string, draftVersionId: string): Promise<void> {
-    if (!this.db) throw new Error('Firestore is not configured');
-    const draftRef = doc(this.db, 'characters', characterId, 'versions', draftVersionId);
-    await deleteDoc(draftRef);
+    const repo = this.versionRepoFactory.create(characterId);
+    await repo.delete(draftVersionId);
   }
 }
