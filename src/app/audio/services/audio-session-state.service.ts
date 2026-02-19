@@ -1,13 +1,7 @@
 import { Injectable, computed, effect, inject, resource } from '@angular/core';
-import {
-  doc,
-  setDoc,
-  updateDoc,
-} from 'firebase/firestore';
 
 import { AuthService } from '../../auth/auth.service';
 import { CampaignContextService } from '../../campaign/campaign-context.service';
-import { FirebaseService } from '../../core/firebase.service';
 import {
   AudioSessionRecord,
   AudioUpload
@@ -20,7 +14,6 @@ type SessionRecord = AudioSessionRecord & Record<string, unknown>;
   providedIn: 'root'
 })
 export class AudioSessionStateService {
-  private readonly firebase = inject(FirebaseService);
   private readonly authService = inject(AuthService);
   private readonly campaignContext = inject(CampaignContextService);
   private readonly sessionRepoFactory = inject(AudioSessionRepositoryFactory);
@@ -75,7 +68,7 @@ export class AudioSessionStateService {
       updatedAt: now,
       status: 'uploading'
     };
-    this.writeSession(record, upload.campaignId);
+    this.writeSession(record);
     return record;
   }
 
@@ -91,15 +84,13 @@ export class AudioSessionStateService {
       return;
     }
 
-    const updatedAt = new Date().toISOString();
-    const db = this.firebase.firestore;
-    const campaignId = this.campaignContext.selectedCampaignId();
-    if (!db || !campaignId) {
+    const repo = this.sessionRepo.value();
+    if (!repo) {
       throw new Error('No active campaign set for audio sessions.');
     }
 
-    const docRef = doc(db, 'campaigns', campaignId, 'audioSessions', id);
-    await updateDoc(docRef, { ...patch, updatedAt });
+    const updatedAt = new Date().toISOString();
+    await repo.patch(id as SessionRecord['id'], { ...patch, updatedAt });
   }
 
   private defaultTitle(fileName: string): string {
@@ -107,14 +98,13 @@ export class AudioSessionStateService {
     return `Session: ${base}`;
   }
 
-  private writeSession(record: AudioSessionRecord, campaignId: string): void {
-    const db = this.firebase.firestore;
-    if (!db) {
-      console.error('Firebase is not configured. Cannot save sessions.');
+  private writeSession(record: AudioSessionRecord): void {
+    const repo = this.sessionRepo.value();
+    if (!repo) {
+      console.error('Repository not available. Cannot save sessions.');
       return;
     }
-    const docRef = doc(db, 'campaigns', campaignId, 'audioSessions', record.id);
-    void setDoc(docRef, record, { merge: true }).catch(error => {
+    void repo.update(record as SessionRecord).catch(error => {
       console.error('Failed to save audio session to Firestore.', error);
     });
   }

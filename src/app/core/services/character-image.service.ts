@@ -1,5 +1,4 @@
 import { Injectable, inject } from '@angular/core';
-import { doc, deleteDoc } from 'firebase/firestore';
 import { ref, deleteObject } from 'firebase/storage';
 import { AuthService } from '../../auth/auth.service';
 import { FirebaseService } from '../firebase.service';
@@ -30,9 +29,8 @@ export class CharacterImageService {
       await deleteObject(storageRef);
     }
 
-    // Delete metadata from Firestore
-    const firestore = this.firebase.requireFirestore();
-    const imageRef = doc(firestore, 'characters', image.characterId, 'images', image.id);
-    await deleteDoc(imageRef);
+    // Delete metadata from Firestore via repository
+    const repo = this.imageRepoFactory.create(image.characterId);
+    await repo.delete(image.id);
   }
 }

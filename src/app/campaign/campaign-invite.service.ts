@@ -6,10 +6,10 @@ import {
   where,
   type Firestore,
 } from 'firebase/firestore';
-import { FirebaseService } from '../../core/firebase.service';
+import { FirebaseService } from '../core/firebase.service';
 
 @Injectable({ providedIn: 'root' })
-export class CampaignRepository {
+export class CampaignInviteService {
   private readonly db: Firestore | null;
 
   constructor() {

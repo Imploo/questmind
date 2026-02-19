@@ -15,6 +15,7 @@ import {
   QueryConstraint,
   setDoc,
   Unsubscribe,
+  updateDoc,
   writeBatch,
 } from 'firebase/firestore';
 
@@ -80,6 +81,11 @@ export abstract class FirestoreRepository<
       batch.set(docRef, item, { merge: true });
     });
     await batch.commit();
+  }
+
+  public async patch(key: T[K], data: Record<string, unknown>): Promise<void> {
+    const docRef = this.getDocRef(key as string);
+    await updateDoc(docRef, data);
   }
 
   public async delete(key: T[K]): Promise<void> {

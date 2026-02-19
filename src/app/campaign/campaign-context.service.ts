@@ -1,10 +1,9 @@
-import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
+import { Injectable, computed, effect, inject, resource, signal, untracked } from '@angular/core';
 import type { User } from 'firebase/auth';
 import { AuthService } from '../auth/auth.service';
 import { Campaign, UserProfile } from './campaign.models';
 import { CampaignService } from './campaign.service';
 import { UserProfileService } from './user-profile.service';
-import { UserProfileRepository } from '../shared/repository/user-profile.repository';
 import { UserProfileRepositoryFactory } from '../shared/repository/user-profile.repository';
 import * as logger from '../shared/logger';
 
@@ -14,8 +13,19 @@ export class CampaignContextService {
   private readonly campaignService = inject(CampaignService);
   private readonly userProfileService = inject(UserProfileService);
   private readonly profileRepoFactory = inject(UserProfileRepositoryFactory);
-  private readonly profileRepo = signal<UserProfileRepository | null>(null);
-  private activeUserId: string | null = null;
+
+  private readonly profileResource = resource({
+    params: () => {
+      const user = this.authService.currentUser();
+      if (!user?.uid) return undefined;
+      return { userId: user.uid };
+    },
+    loader: async ({ params }) => {
+      const repo = this.profileRepoFactory.create(params.userId);
+      await repo.waitForData();
+      return repo;
+    },
+  });
 
   campaigns = signal<Campaign[]>([]);
   selectedCampaignId = signal<string | null>(null);
@@ -30,41 +40,51 @@ export class CampaignContextService {
   });
 
   constructor() {
-    effect(() => {
-      const user = this.authService.currentUser();
-      untracked(() => {
-        if (user?.uid) {
-          this.setupProfileListener(user);
-        } else {
-          this.clear();
-        }
-      });
+    // Cleanup repo on resource change
+    effect((onCleanup) => {
+      const repo = this.profileResource.value();
+      if (repo) {
+        onCleanup(() => repo.destroy());
+      }
     });
 
-    // Sync profile repo data
+    // Clear state when user logs out
     effect(() => {
-      const repo = this.profileRepo();
+      const user = this.authService.currentUser();
+      if (!user) {
+        untracked(() => {
+          this.campaigns.set([]);
+          this.selectedCampaignId.set(null);
+          this.isLoading.set(false);
+          this.error.set(null);
+        });
+      }
+    });
+
+    // React to profile data changes and load campaigns
+    effect(() => {
+      const repo = this.profileResource.value();
       if (!repo) return;
 
       const profile = repo.get() as UserProfile | null;
+      const user = untracked(() => this.authService.currentUser());
+      if (!user) return;
+
       if (!profile) {
-        const user = untracked(() => this.authService.currentUser());
-        if (user) {
-          void this.loadForUser(user);
-        }
+        void this.loadForUser(user);
         return;
       }
-      const user = untracked(() => this.authService.currentUser());
-      if (user) {
-        void this.loadCampaignsFromProfile(user, profile);
-      }
+      void this.loadCampaignsFromProfile(user, profile);
     });
   }
 
   async refreshCampaigns(): Promise<void> {
     const user = this.authService.currentUser();
     if (!user) {
-      this.clear();
+      this.campaigns.set([]);
+      this.selectedCampaignId.set(null);
+      this.isLoading.set(false);
+      this.error.set(null);
       return;
     }
     await this.loadForUser(user);
@@ -84,21 +104,6 @@ export class CampaignContextService {
     if (!campaign || !userId) return false;
     if (campaign.ownerId === userId) return true;
     return campaign.settings?.allowMembersToCreateSessions ?? true;
-  }
-
-  private setupProfileListener(user: User): void {
-    if (!user?.uid) {
-      return;
-    }
-
-    // Don't re-setup if same user
-    if (this.activeUserId === user.uid) {
-      return;
-    }
-
-    this.activeUserId = user.uid;
-    this.cleanupProfileRepo();
-    this.profileRepo.set(this.profileRepoFactory.create(user.uid));
   }
 
   private async loadForUser(user: User): Promise<void> {
@@ -164,19 +169,5 @@ export class CampaignContextService {
     } finally {
       this.isLoading.set(false);
     }
-  }
-
-  private cleanupProfileRepo(): void {
-    this.profileRepo()?.destroy();
-    this.profileRepo.set(null);
-  }
-
-  private clear(): void {
-    this.cleanupProfileRepo();
-    this.activeUserId = null;
-    this.campaigns.set([]);
-    this.selectedCampaignId.set(null);
-    this.isLoading.set(false);
-    this.error.set(null);
   }
 }

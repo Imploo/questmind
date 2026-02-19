@@ -8,6 +8,7 @@ import {
   onSnapshot,
   setDoc,
   Unsubscribe,
+  updateDoc,
 } from 'firebase/firestore';
 
 export abstract class FirestoreDocumentRepository<T extends Record<string, unknown>> {
@@ -45,6 +46,10 @@ export abstract class FirestoreDocumentRepository<T extends Record<string, unkno
 
   public async update(data: Partial<T>): Promise<void> {
     await setDoc(this.docRef, data, { merge: true });
+  }
+
+  public async patch(data: Record<string, unknown>): Promise<void> {
+    await updateDoc(this.docRef, data);
   }
 
   public destroy(): void {

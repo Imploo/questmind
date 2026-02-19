@@ -1,13 +1,6 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
-import {
-  collection,
-  doc,
-  setDoc,
-  updateDoc,
-  Timestamp,
-} from 'firebase/firestore';
+import { Timestamp } from 'firebase/firestore';
 import { AuthService } from '../../auth/auth.service';
-import { FirebaseService } from '../firebase.service';
 import { Character } from '../models/schemas/character.schema';
 import { DndCharacter } from '../../shared/models/dnd-character.model';
 import { CharacterVersionService } from './character-version.service';
@@ -16,7 +9,6 @@ import { CharacterRepository } from '../../shared/repository/character.repositor
 @Injectable({ providedIn: 'root' })
 export class CharacterService {
   private readonly authService = inject(AuthService);
-  private readonly firebase = inject(FirebaseService);
   private readonly characterVersionService = inject(CharacterVersionService);
   private readonly characterRepo = inject(CharacterRepository);
   readonly characters = this.characterRepo.get;
@@ -33,9 +25,8 @@ export class CharacterService {
     const user = this.authService.currentUser();
     if (!user) throw new Error('User not authenticated');
 
-    const db = this.firebase.requireFirestore();
-    const characterId = doc(collection(db, 'characters')).id;
-    const versionId = doc(collection(db, 'characters', characterId, 'versions')).id;
+    const characterId = crypto.randomUUID();
+    const versionId = crypto.randomUUID();
     const now = Timestamp.now();
 
     const character: Character = {
@@ -48,8 +39,7 @@ export class CharacterService {
       updatedAt: now,
     };
 
-    const characterRef = doc(db, 'characters', characterId);
-    await setDoc(characterRef, character);
+    await this.characterRepo.update(character as Character & Record<string, unknown>);
 
     await this.characterVersionService.createInitialVersion(
       characterId,
@@ -74,9 +64,7 @@ export class CharacterService {
     const user = this.authService.currentUser();
     if (!user) return;
 
-    const db = this.firebase.requireFirestore();
-    const characterRef = doc(db, 'characters', characterId);
-    await updateDoc(characterRef, {
+    await this.characterRepo.patch(characterId, {
       ...updates,
       updatedAt: Timestamp.now()
     });
