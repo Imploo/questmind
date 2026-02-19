@@ -2,6 +2,7 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { GoogleGenAI } from '@google/genai';
 import { getFirestore } from 'firebase-admin/firestore';
 import { wrapCallable } from './utils/sentry-error-handler';
+import { getAiFeatureConfig } from './utils/ai-settings';
 import { SHARED_CORS } from './index';
 
 interface ResolveSpellRequest {
@@ -36,12 +37,13 @@ export const resolveSpell = onCall(
       }
 
       const ai = new GoogleGenAI({ apiKey });
+      const config = await getAiFeatureConfig('spellResolution');
 
       const levelText = spellLevel === 0 ? 'cantrip' : spellLevel !== undefined ? `level ${spellLevel} spell` : 'spell';
       const schoolText = spellSchool ? ` (${spellSchool})` : '';
 
       const result = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: config.model,
         contents: `Return a JSON object (no markdown) for the D&D 5e spell "${spellName}" (${levelText}${schoolText}).
 Fields:
 - "description": full spell text from the rules, include "At Higher Levels." section if applicable
@@ -50,7 +52,7 @@ Fields:
 Return only valid JSON like: {"description": "...", "usage": "Casting Time: 1 action\\nRange: 60 feet\\nComponents: V, S\\nDuration: Instantaneous"}`,
         config: {
           responseMimeType: 'application/json',
-          maxOutputTokens: 4096,
+          maxOutputTokens: config.maxOutputTokens,
         },
       });
 

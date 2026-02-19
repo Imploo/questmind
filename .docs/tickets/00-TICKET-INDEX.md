@@ -511,21 +511,63 @@ Start here for immediate impact with minimal risk:
 
 ---
 
-## 🎵 Audio Upload Improvements
+## 🎵 Audio Upload & Transcription Pipeline
 
 | Ticket | Title | Priority | Status | Effort | Dependencies |
 |--------|-------|----------|--------|--------|--------------|
 | [#53](./53-multi-file-audio-upload.md) | Multi-File Audio Upload (Concatenate & Upload) | Medium | Todo | 2-3 days | - |
+| [#54](./54-refactor-transcription-to-raw-story.md) | Refactor Transcription Pipeline naar Raw Story + Polished Story | High | Todo | 3-5 days | - |
 
 **Key Improvements:**
-- **Ticket 53**: Meerdere audiobestanden van dezelfde sessie samenvoegen en als één bestand uploaden
+- **Ticket 53**: Meerdere audiobestanden van dezelfde sessie samenvoegen en als een bestand uploaden
   - Multi-file selectie via file picker en drag-and-drop
-  - Elk bestand individueel comprimeren, daarna MP3-blobs concateneren tot één bestand
+  - Elk bestand individueel comprimeren, daarna MP3-blobs concateneren
   - Geconcateneerd bestand gaat door bestaande upload pipeline (geen backend wijzigingen)
-  - Volgorde-beheer in de UI (pijltjes omhoog/omlaag)
   - Bij 1 bestand: identiek gedrag aan huidige flow (geen regressie)
+  - Code geimplementeerd, nog niet gecommit
+
+- **Ticket 54**: Transcriptie-pipeline vervangen door raw story aanpak
+  - Audio -> ruw uitgebreid verhaal (plain text, geen JSON/timestamps) -> gepolijst verhaal
+  - Lost max output token limiet op: plain text is 40-60% minder tokens dan JSON segments
+  - Ruw verhaal bevat alle details (namen, acties, combat, NPC interacties)
+  - Correcties worden toegepast bij polijsten: ruw verhaal + corrections -> nieuw gepolijst verhaal
+  - Geen audio herverwerking nodig bij regeneratie
+  - Geen migratie nodig voor bestaande sessies
 
 ---
 
-**Last Updated:** 2026-02-17
+## 📖 Story Generation Enhancements
+
+| Ticket | Title | Priority | Status | Effort | Dependencies |
+|--------|-------|----------|--------|--------|--------------|
+| [#55](./55-previous-stories-as-context.md) | Vorige Stories als Context bij Story Generatie (Flashbacks & Herinneringen) | Medium | Todo | 2-3 days | - |
+
+**Key Improvements:**
+- **Ticket 55**: Eerdere sessie-stories meesturen als context bij story generatie
+  - Alle eerdere stories (op basis van `sessionDate`) ophalen en meesturen naar de AI
+  - AI kan verwijzen naar eerdere gebeurtenissen als flashback of herinnering ("Weet je nog toen...")
+  - Chronologische sortering, alleen sessies met ingevulde `sessionDate` en voltooide story
+  - Token management: limiet op aantal stories of totaal karakters
+  - Geen regressie bij sessies zonder eerdere stories of zonder `sessionDate`
+
+---
+
+## 🎛️ AI Admin Panel
+
+| Ticket | Title | Priority | Status | Effort | Dependencies |
+|--------|-------|----------|--------|--------|--------------|
+| [#56](./56-unified-ai-admin-panel.md) | Unified AI Admin Panel voor alle AI Features | High | Todo | 1-2 weken | - |
+
+**Key Improvements:**
+- **Ticket 56**: Centraal admin panel voor alle AI-instellingen
+  - Eenduidig overzicht van alle 9 AI-features met configureerbare parameters
+  - Per feature: model, temperature, topP, topK, maxOutputTokens, provider-specifieke opties
+  - Alle Cloud Functions lezen config uit Firestore i.p.v. hardcoded waarden
+  - Real-time opslaan via Firestore `settings/ai` document
+  - Gedeelde backend config-helper met fallback defaults
+  - Validatie en toegangsbeheer (admin-only)
+
+---
+
+**Last Updated:** 2026-02-18
 **Status:** Planning Complete, Ready to Begin

@@ -1,24 +1,24 @@
 import * as logger from '../utils/logger';
 import { GoogleGenAI } from '@google/genai';
-import { AIFeatureConfig, KankaSearchResult } from '../types/audio-session.types';
+import { AIFeatureConfig, KankaSearchResult, PreviousStory } from '../types/audio-session.types';
 import { SESSION_STORY_GENERATOR_PROMPT } from '../prompts/session-story-generator.prompt';
 
 /**
- * Generates a story from transcription using AI
+ * Generates a polished story from a raw story narrative
  *
- * @param transcription - Full transcription text with timestamps
- * @param sessionTitle - Title of the session for context
- * @param sessionDate - Date of the session (optional)
+ * @param rawStory - Raw story narrative from transcription
  * @param config - AI model configuration
  * @param kankaContext - Optional campaign context for accuracy
  * @param userCorrections - Optional DM corrections to apply
+ * @param previousStories - Optional previous session stories for flashbacks/memories
  * @returns Generated story content
  */
 export async function generateStoryFromTranscription(
-  transcription: string,
+  rawStory: string,
   config: AIFeatureConfig,
   kankaContext?: KankaSearchResult,
-  userCorrections?: string
+  userCorrections?: string,
+  previousStories?: PreviousStory[]
 ): Promise<string> {
   const googleAiKey = process.env.GOOGLE_AI_API_KEY;
   if (!googleAiKey) {
@@ -29,7 +29,7 @@ export async function generateStoryFromTranscription(
 
   logger.debug(`Generating story with ${config.model}...`);
 
-  const storyPrompt = buildStoryPrompt(transcription, kankaContext, userCorrections);
+  const storyPrompt = buildStoryPrompt(rawStory, kankaContext, userCorrections, previousStories);
 
   const storyResponse = await googleAi.models.generateContent({
     model: config.model,
@@ -57,9 +57,10 @@ export async function generateStoryFromTranscription(
  * Builds story generation prompt with context and corrections
  */
 function buildStoryPrompt(
-  transcription: string,
+  rawStory: string,
   kankaContext?: KankaSearchResult,
-  userCorrections?: string
+  userCorrections?: string,
+  previousStories?: PreviousStory[]
 ): string {
   let prompt = SESSION_STORY_GENERATOR_PROMPT;
 
@@ -68,11 +69,23 @@ function buildStoryPrompt(
     prompt += `\n\n${contextPrompt}`;
   }
 
+  if (previousStories && previousStories.length > 0) {
+    const storySummaries = previousStories
+      .map(s => `### ${s.title} (${s.sessionDate})\n${s.content}`)
+      .join('\n\n---\n\n');
+
+    prompt += `\n\nPREVIOUS SESSION STORIES (for reference and flashbacks):
+The following are recaps of earlier sessions in chronological order.
+You may subtly reference these events as flashbacks, memories, or callbacks when relevant to the current session.
+
+${storySummaries}`;
+  }
+
   if (userCorrections && userCorrections.trim().length > 0) {
     prompt += `\n\nDM CORRECTIONS:\n${userCorrections}`;
   }
 
-  prompt += `\n\nSESSION TRANSCRIPT:\n${transcription}`;
+  prompt += `\n\nRAW SESSION STORY:\n${rawStory}`;
 
   return prompt;
 }

@@ -1,12 +1,16 @@
 import { Component, EventEmitter, Input, Output, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { AudioUpload } from './services/audio-session.models';
 
 type Stage = 'idle' | 'compressing' | 'uploading' | 'transcribing' | 'generating' | 'completed' | 'failed';
 
 // Export for external use
-export interface UploadRequestEvent extends AudioUpload {
+export interface UploadRequestEvent {
+  files: File[];
+  sessionName?: string;
+  sessionDate?: string;
+  userId: string;
+  campaignId: string;
   keepAwake?: boolean;
 }
 
@@ -19,7 +23,7 @@ export interface UploadRequestEvent extends AudioUpload {
       <div class="flex items-center justify-between mb-4">
         <div>
           <h3 class="text-lg font-semibold m-0">Upload Session Audio</h3>
-          <p class="text-sm text-gray-500 m-0">MP3, WAV, M4A, or OGG up to 500MB.</p>
+          <p class="text-sm text-gray-500 m-0">MP3, WAV, M4A, or OGG up to 500MB. Select multiple files to merge.</p>
         </div>
         <span class="text-xs px-2 py-1 rounded-full" [class]="badgeClass()">
           {{ stageLabel() }}
@@ -52,12 +56,13 @@ export interface UploadRequestEvent extends AudioUpload {
           type="file"
           class="hidden"
           #fileInput
+          multiple
           accept=".mp3,.wav,.m4a,.ogg,audio/*"
           (change)="onFileSelected($event)"
           [disabled]="isBusy || !canUpload"
         />
         <p class="text-sm text-gray-600 m-0">
-          Drag and drop your audio file here, or
+          Drag and drop your audio files here, or
           <button
             type="button"
             class="text-primary font-semibold hover:underline"
@@ -108,11 +113,42 @@ export interface UploadRequestEvent extends AudioUpload {
         </div>
       </div>
 
-      @if (selectedFile()) {
-        <div class="mt-4 p-3 bg-blue-50 border border-blue-100 rounded-lg text-sm">
-          <p class="m-0 text-blue-900">
-            <strong>{{ selectedFile()!.name }}</strong> ({{ formatFileSize(selectedFile()!.size) }})
-          </p>
+      @if (selectedFiles().length > 0) {
+        <div class="mt-4 space-y-2">
+          @for (file of selectedFiles(); track $index; let i = $index) {
+            <div class="p-3 bg-blue-50 border border-blue-100 rounded-lg text-sm flex items-center gap-2">
+              @if (selectedFiles().length > 1) {
+                <div class="flex flex-col gap-0.5">
+                  <button
+                    type="button"
+                    (click)="moveFile(i, -1)"
+                    [disabled]="i === 0 || isBusy"
+                    class="text-blue-400 hover:text-blue-600 disabled:opacity-30 text-xs leading-none p-0.5"
+                  >&#9650;</button>
+                  <button
+                    type="button"
+                    (click)="moveFile(i, 1)"
+                    [disabled]="i === selectedFiles().length - 1 || isBusy"
+                    class="text-blue-400 hover:text-blue-600 disabled:opacity-30 text-xs leading-none p-0.5"
+                  >&#9660;</button>
+                </div>
+              }
+              <p class="m-0 text-blue-900 flex-1 truncate">
+                <strong>{{ file.name }}</strong> ({{ formatFileSize(file.size) }})
+              </p>
+              <button
+                type="button"
+                (click)="removeFile(i)"
+                [disabled]="isBusy"
+                class="text-blue-400 hover:text-blue-600 disabled:opacity-30 text-lg leading-none px-1"
+              >&times;</button>
+            </div>
+          }
+          @if (selectedFiles().length > 1) {
+            <p class="text-xs text-gray-500 m-0 px-1">
+              {{ selectedFiles().length }} files — {{ formatFileSize(totalSize()) }} total — will be merged into one recording
+            </p>
+          }
         </div>
       }
 
@@ -123,12 +159,12 @@ export interface UploadRequestEvent extends AudioUpload {
       }
 
       <div class="mt-4 flex gap-2 justify-end">
-        @if (selectedFile()) {
+        @if (selectedFiles().length > 0) {
           <button
             type="button"
             class="px-4 py-2 rounded-lg font-semibold transition-colors"
             [class]="'bg-gray-100 text-gray-900 hover:bg-gray-200'"
-            (click)="selectedFile.set(null); sessionName = ''; sessionDate = ''"
+            (click)="clearAll()"
             [disabled]="isBusy"
           >
             Clear
@@ -138,14 +174,14 @@ export interface UploadRequestEvent extends AudioUpload {
           type="button"
           class="px-4 py-2 rounded-lg font-semibold transition-colors"
           [class]="
-            selectedFile() && !isBusy
+            selectedFiles().length > 0 && !isBusy
               ? 'bg-primary text-white hover:opacity-90'
               : 'bg-gray-100 text-gray-400 cursor-not-allowed'
           "
-          (click)="uploadFile()"
-          [disabled]="!selectedFile() || isBusy || !canUpload"
+          (click)="uploadFiles()"
+          [disabled]="selectedFiles().length === 0 || isBusy || !canUpload"
         >
-          {{ isBusy ? 'Uploading...' : 'Upload & Process' }}
+          {{ isBusy ? 'Processing...' : (selectedFiles().length > 1 ? 'Merge & Upload' : 'Upload & Process') }}
         </button>
       </div>
     </div>
@@ -162,12 +198,14 @@ export class AudioUploadComponent {
   @Input() wakeLockSupported = true;
   @Output() uploadRequested = new EventEmitter<UploadRequestEvent>();
 
-  selectedFile = signal<File | null>(null);
+  selectedFiles = signal<File[]>([]);
   sessionName = '';
   sessionDate = '';
   dragActive = signal(false);
   error = signal('');
   keepAwake = signal(true);
+
+  totalSize = computed(() => this.selectedFiles().reduce((sum, f) => sum + f.size, 0));
 
   badgeClass = computed(() => {
     const stageMap: Record<Stage, string> = {
@@ -214,42 +252,65 @@ export class AudioUploadComponent {
 
     const files = event.dataTransfer?.files;
     if (files && files.length > 0) {
-      this.setFile(files[0]);
+      this.addFiles(Array.from(files));
     }
   }
 
   onFileSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
     if (input.files && input.files.length > 0) {
-      this.setFile(input.files[0]);
+      this.addFiles(Array.from(input.files));
     }
   }
 
-  uploadFile(): void {
-    const file = this.selectedFile();
-    if (!file || !this.userId || !this.campaignId || this.isBusy || !this.canUpload) {
+  addFiles(files: File[]): void {
+    for (const file of files) {
+      const errorMessage = this.validateFile(file);
+      if (errorMessage) {
+        this.error.set(`${file.name}: ${errorMessage}`);
+        return;
+      }
+    }
+    this.error.set('');
+    const allFiles = [...this.selectedFiles(), ...files]
+      .sort((a, b) => a.name.localeCompare(b.name));
+    this.selectedFiles.set(allFiles);
+  }
+
+  removeFile(index: number): void {
+    this.selectedFiles.update(files => files.filter((_, i) => i !== index));
+  }
+
+  moveFile(index: number, direction: -1 | 1): void {
+    const newIndex = index + direction;
+    this.selectedFiles.update(files => {
+      if (newIndex < 0 || newIndex >= files.length) return files;
+      const updated = [...files];
+      [updated[index], updated[newIndex]] = [updated[newIndex], updated[index]];
+      return updated;
+    });
+  }
+
+  clearAll(): void {
+    this.selectedFiles.set([]);
+    this.sessionName = '';
+    this.sessionDate = '';
+  }
+
+  uploadFiles(): void {
+    const files = this.selectedFiles();
+    if (files.length === 0 || !this.userId || !this.campaignId || this.isBusy || !this.canUpload) {
       return;
     }
     this.error.set('');
     this.uploadRequested.emit({
-      file,
+      files,
       sessionName: this.sessionName,
       sessionDate: this.sessionDate,
       userId: this.userId,
       campaignId: this.campaignId,
       keepAwake: this.keepAwake()
     });
-  }
-
-  setFile(file: File): void {
-    const errorMessage = this.validateFile(file);
-    if (errorMessage) {
-      this.error.set(errorMessage);
-      this.selectedFile.set(null);
-      return;
-    }
-    this.error.set('');
-    this.selectedFile.set(file);
   }
 
   validateFile(file: File): string | null {

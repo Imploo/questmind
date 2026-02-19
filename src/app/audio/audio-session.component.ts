@@ -199,7 +199,7 @@ type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' 
                 [title]="currentSession()?.title || 'Session Story'"
                 [subtitle]="formatSubtitle(currentSession())"
                 [story]="currentSession()?.content || ''"
-                [transcript]="currentSession()?.transcription?.rawTranscript || ''"
+                [transcript]="currentSession()?.rawStory || currentSession()?.transcription?.rawTranscript || ''"
                 [isBusy]="isBusy()"
                 [canRegenerate]="canRegenerateStory()"
                 [canEditStory]="canEditStory()"
@@ -445,7 +445,7 @@ export class AudioSessionComponent implements OnDestroy {
       return;
     }
     const session = this.currentSession();
-    if (!session?.transcription) {
+    if (!session?.rawStory && !session?.transcription) {
       return;
     }
 

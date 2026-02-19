@@ -4,6 +4,7 @@ import { GoogleGenAI } from '@google/genai';
 import { DndCharacterSchema, DndCharacter } from './schemas/dnd-character.schema';
 import { CHARACTER_JSON_GENERATOR_PROMPT } from './prompts/character-json-generator.prompt';
 import { captureFunctionError } from './utils/sentry-error-handler';
+import { getAiFeatureConfig } from './utils/ai-settings';
 
 interface ChatHistoryMessage {
   role: 'user' | 'assistant';
@@ -30,6 +31,7 @@ export async function executeGenerateCharacterDraft(payload: GenerateCharacterDr
   }
 
   const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_AI_API_KEY! });
+  const config = await getAiFeatureConfig('characterDraft');
 
   // AI 2: JSON generator — build messages with full context
   const conversationParts = [
@@ -40,13 +42,13 @@ export async function executeGenerateCharacterDraft(payload: GenerateCharacterDr
   ].join('\n\n');
 
   const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
+    model: config.model,
     contents: conversationParts,
     config: {
       systemInstruction: CHARACTER_JSON_GENERATOR_PROMPT,
       responseMimeType: 'application/json',
-      maxOutputTokens: 8192,
-      temperature: 0.1,
+      maxOutputTokens: config.maxOutputTokens,
+      temperature: config.temperature,
     },
   });
 

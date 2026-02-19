@@ -2,10 +2,10 @@ import * as logger from './utils/logger';
 import { GoogleGenAI } from '@google/genai';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
-import { AIFeatureConfig, AISettings, TranscriptionSegment } from './types/audio-session.types';
 import { ProgressTrackerService } from './services/progress-tracker.service';
+import { getAiFeatureConfig } from './utils/ai-settings';
 import { WorkerQueueService } from './services/worker-queue.service';
-import { buildTranscriptionPrompt } from './audio/transcription-prompt';
+import { buildRawStoryPrompt } from './audio/transcription-prompt';
 import { fetchKankaContextForTranscription } from './services/kanka.service';
 import { wrapCallable } from './utils/sentry-error-handler';
 
@@ -16,12 +16,6 @@ export interface TranscribeAudioFastRequest {
   audioFileName: string;
   audioFileSize?: number;
   userCorrections?: string;
-}
-
-interface TranscriptionResponsePayload {
-  segments?: TranscriptionSegment[];
-  error?: string;
-  message?: string;
 }
 
 interface GeminiFileStateResponse {
@@ -174,23 +168,8 @@ async function processTranscriptionAsync(
     logger.debug(`[Fast Transcription] Starting for session ${sessionId}`);
 
     // 1. Get AI settings
-    const settingsSnap = await db.doc('settings/ai').get();
-    const aiSettings = settingsSnap.data() as AISettings | undefined;
-
-    if (!aiSettings) {
-      throw new Error('AI settings not configured in database');
-    }
-
-    const transcriptionConfig: AIFeatureConfig = aiSettings.features
-      ?.transcription ?? {
-      model: aiSettings.defaultModel,
-      temperature: 0.1,
-      topP: 1,
-      topK: 40,
-      maxOutputTokens: 128000,
-    };
-
-    const model = resolveModel(aiSettings, transcriptionConfig.model);
+    const transcriptionConfig = await getAiFeatureConfig('transcription');
+    const model = transcriptionConfig.model;
     const mimeType = resolveMimeType(audioFileName);
 
     logger.debug(`[Fast Transcription] Using model: ${model}`);
@@ -208,7 +187,7 @@ async function processTranscriptionAsync(
     // 3. Call Gemini API with the Files API URI
     const googleAi = new GoogleGenAI({ apiKey: process.env.GOOGLE_AI_API_KEY! });
 
-    const prompt = buildTranscriptionPrompt(kankaContext);
+    const prompt = buildRawStoryPrompt(kankaContext);
 
     // Gemini Files can take a short time to become ACTIVE after upload finalize.
     await waitForGeminiFileToBecomeActive(fileUri, process.env.GOOGLE_AI_API_KEY!);
@@ -271,44 +250,30 @@ async function processTranscriptionAsync(
       logger.warn('[Fast Transcription] Response was truncated — output hit maxOutputTokens limit. Transcription may be incomplete.');
     }
 
-    logger.debug(`[Fast Transcription] Received response, parsing...`);
+    logger.debug(`[Fast Transcription] Received response, processing...`);
 
-    // 5. Parse JSON response
-    const transcriptionPayload = parseTranscriptionPayload(text);
+    // 5. Process raw story response
+    const rawStory = text.trim();
 
-    if (transcriptionPayload.error) {
-      throw new Error(
-        transcriptionPayload.message || transcriptionPayload.error
-      );
+    // Check for error prefixes
+    if (rawStory.startsWith('ERROR:')) {
+      throw new Error(rawStory);
     }
 
-    if (!transcriptionPayload.segments || transcriptionPayload.segments.length === 0) {
-      throw new Error('No transcription segments found in audio');
+    // Validate minimum length
+    if (rawStory.length < 50) {
+      throw new Error(`Raw story too short (${rawStory.length} chars), likely invalid`);
     }
 
     const processingTimeMs = Date.now() - startTime;
 
     logger.debug(
-      `[Fast Transcription] Found ${transcriptionPayload.segments.length} segments in ${processingTimeMs}ms`
+      `[Fast Transcription] Raw story: ${rawStory.length} characters in ${processingTimeMs}ms`
     );
 
-    // 6. Format transcription with timestamps
-    const timestamps = transcriptionPayload.segments.map(segment => ({
-      time: Math.max(0, Math.round(segment.timeSeconds)),
-      text: segment.speaker
-        ? `${segment.speaker}: ${segment.text}`
-        : segment.text,
-    }));
-
-    const transcriptionText = timestamps
-      .map(entry => `[${formatTimestamp(entry.time)}] ${entry.text}`)
-      .join('\n\n');
-
-    // 7. Update Firestore with transcription
+    // 6. Update Firestore with raw story
     await sessionRef.update({
-      'transcription.rawTranscript': transcriptionText,
-      'transcription.timestamps': timestamps,
-      'transcription.segments': transcriptionPayload.segments,
+      rawStory,
       transcriptionCompletedAt: FieldValue.serverTimestamp(),
       'transcriptionFast.status': 'completed',
       'transcriptionFast.processingTimeMs': processingTimeMs,
@@ -327,14 +292,14 @@ async function processTranscriptionAsync(
 
     logger.debug(`[Fast Transcription] Triggering story generation worker...`);
 
-    // 8. Trigger story generation worker
+    // 7. Trigger story generation worker
     const { storyGenerationWorkerHandler } = await import(
       './workers/story-generation-worker'
     );
     await WorkerQueueService.triggerWorker(storyGenerationWorkerHandler, {
       campaignId,
       sessionId,
-      transcriptionText,
+      transcriptionText: rawStory,
       enableKankaContext,
       userCorrections,
     });
@@ -361,15 +326,6 @@ async function processTranscriptionAsync(
   }
 }
 
-function resolveModel(settings: AISettings, requestedModel?: string): string {
-  const availableModels = settings.availableModels ?? [];
-  const fallback = settings.defaultModel || 'gemini-2.0-flash-exp';
-  if (requestedModel && availableModels.length > 0) {
-    return availableModels.includes(requestedModel) ? requestedModel : fallback;
-  }
-  return requestedModel || fallback;
-}
-
 function resolveMimeType(audioFileName: string): string {
   const extension = audioFileName.split('.').pop()?.toLowerCase();
   switch (extension) {
@@ -388,70 +344,6 @@ function resolveMimeType(audioFileName: string): string {
     default:
       return 'audio/mpeg';
   }
-}
-
-function parseTranscriptionPayload(rawText: string): TranscriptionResponsePayload {
-  try {
-    // Strip markdown code blocks if present (```json ... ``` or ``` ... ```)
-    let cleanedText = rawText.trim();
-
-    // Remove ```json or ``` at the start
-    if (cleanedText.startsWith('```json')) {
-      cleanedText = cleanedText.slice(7); // Remove ```json
-    } else if (cleanedText.startsWith('```')) {
-      cleanedText = cleanedText.slice(3); // Remove ```
-    }
-
-    // Remove ``` at the end
-    if (cleanedText.endsWith('```')) {
-      cleanedText = cleanedText.slice(0, -3);
-    }
-
-    cleanedText = cleanedText.trim();
-
-    const parsed = JSON.parse(cleanedText);
-
-    // If parsed is an array, wrap it in the expected format
-    if (Array.isArray(parsed)) {
-      return { segments: parsed as TranscriptionSegment[] };
-    }
-
-    // If parsed is an object with segments, return it
-    if (parsed && typeof parsed === 'object') {
-      return parsed as TranscriptionResponsePayload;
-    }
-  } catch (error) {
-    console.error('[parseTranscriptionPayload] JSON parse error:', error);
-    console.error(
-      '[parseTranscriptionPayload] Raw text (first 200 chars):',
-      rawText.substring(0, 200)
-    );
-    return {
-      error: 'INVALID_JSON',
-      message: `Transcription response was not valid JSON: ${
-        error instanceof Error ? error.message : 'unknown error'
-      }`,
-    };
-  }
-
-  return {
-    error: 'INVALID_RESPONSE',
-    message: 'Transcription response could not be parsed',
-  };
-}
-
-function formatTimestamp(seconds: number): string {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = Math.floor(seconds % 60);
-
-  if (hours > 0) {
-    return `${hours}:${minutes.toString().padStart(2, '0')}:${secs
-      .toString()
-      .padStart(2, '0')}`;
-  }
-
-  return `${minutes}:${secs.toString().padStart(2, '0')}`;
 }
 
 async function waitForGeminiFileToBecomeActive(

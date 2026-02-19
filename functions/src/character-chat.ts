@@ -3,6 +3,7 @@ import { getFunctions } from 'firebase-admin/functions';
 import { getFirestore } from 'firebase-admin/firestore';
 import { Anthropic, RateLimitError } from '@anthropic-ai/sdk';
 import { wrapCallable } from './utils/sentry-error-handler';
+import { getAiFeatureConfig } from './utils/ai-settings';
 import { SHARED_CORS } from './index';
 import { CHARACTER_RESPONDER_PROMPT } from './prompts/character-responder.prompt';
 import { DndCharacter } from './schemas/dnd-character.schema';
@@ -45,6 +46,7 @@ export const characterChat = onCall(
       }
 
       const client = new Anthropic({ apiKey });
+      const config = await getAiFeatureConfig('characterChatText');
 
       // AI 1: Text responder — build messages with character context
       const characterPreamble: { role: 'user' | 'assistant'; content: string }[] = [
@@ -54,8 +56,8 @@ export const characterChat = onCall(
 
       try {
         const response = await client.messages.create({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 512,
+          model: config.model,
+          max_tokens: config.maxOutputTokens,
           system: CHARACTER_RESPONDER_PROMPT,
           messages: [
             ...characterPreamble,

@@ -117,6 +117,12 @@ export interface AISettings {
     storyGeneration?: AIFeatureConfig;
     podcastScript?: AIFeatureConfig;
     podcastVoices?: PodcastVoiceSettings;
+    characterChat?: AIFeatureConfig;
+    characterChatText?: AIFeatureConfig;
+    characterDraft?: AIFeatureConfig;
+    spellResolution?: AIFeatureConfig;
+    featureResolution?: AIFeatureConfig;
+    imageGeneration?: { model: string };
   };
   // Legacy support
   modelConfig?: {
@@ -183,4 +189,10 @@ export interface RegenerateStoryRequest {
   sessionId: string;
   enableKankaContext?: boolean;
   userCorrections?: string;
+}
+
+export interface PreviousStory {
+  title: string;
+  sessionDate: string;
+  content: string;
 }
