@@ -22,6 +22,7 @@ interface GenerateImageRequest {
     chatRequest: CharacterChatRequest;
     model: string;
     characterId?: string;
+    referenceImageStoragePath?: string;
 }
 
 export interface GenerateImageResponse {
@@ -37,7 +38,7 @@ export const generateImage = onCall(
   wrapCallable<GenerateImageRequest, GenerateImageResponse>(
     'generateImage',
     async (request): Promise<GenerateImageResponse> => {
-      const { chatRequest, model: requestModel, characterId } = request.data;
+      const { chatRequest, model: requestModel, characterId, referenceImageStoragePath } = request.data;
 
       if (!chatRequest || !characterId) {
         throw new HttpsError('invalid-argument', 'Missing required fields: chatRequest, characterId');
@@ -60,15 +61,42 @@ export const generateImage = onCall(
       const rawContext = chatRequest.chatHistory.map(chat => `[${chat.role}]: ${chat.content}`).join('\n');
       const promptConfig = await getAiFeatureConfig('imagePromptGeneration');
 
+      // Build multimodal content: text context + optional reference image
+      const contentParts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [
+        { text: rawContext },
+      ];
+
+      let referenceStyleInstruction = '';
+
+      if (referenceImageStoragePath) {
+        try {
+          const storage = getStorage().bucket();
+          const [imageBuffer] = await storage.file(referenceImageStoragePath).download();
+          const extension = referenceImageStoragePath.split('.').pop()?.toLowerCase() || 'jpg';
+          const mimeType = extension === 'png' ? 'image/png' : 'image/jpeg';
+          contentParts.push({
+            inlineData: { mimeType, data: imageBuffer.toString('base64') },
+          });
+          referenceStyleInstruction =
+            '\n\nA reference image of a previous portrait of this character is included. '
+            + 'Analyze its visual style (lighting, color palette, art style, composition) and incorporate similar style elements into your prompt. '
+            + 'However, follow the user\'s instructions for the new scene, pose, or expression. '
+            + 'Do NOT describe the reference image literally — use it only for style inspiration.';
+        } catch (err) {
+          console.warn('Failed to load reference image, proceeding without it:', err);
+        }
+      }
+
       const ai = new GoogleGenAI({ apiKey: googleApiKey });
       const geminiResult = await ai.models.generateContent({
         model: promptConfig.model,
-        contents: rawContext,
+        contents: contentParts,
         config: {
           systemInstruction: chatRequest.systemPrompt
-            + '\n\nGenerate a single, concise image prompt in English (max 200 words) describing the character portrait. '
+            + '\n\nGenerate a single, detailed image prompt in English (max 1000 words) describing the character portrait. '
             + 'Focus on physical appearance, clothing, equipment, expression, and setting. '
-            + 'Do NOT include any instructions, metadata, or formatting — only the image description.',
+            + 'Do NOT include any instructions, metadata, or formatting — only the image description.'
+            + referenceStyleInstruction,
           temperature: promptConfig.temperature,
           topP: promptConfig.topP,
           topK: promptConfig.topK,
