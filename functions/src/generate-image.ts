@@ -1,11 +1,12 @@
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { wrapCallable } from './utils/sentry-error-handler';
-import { getAiImageConfig } from './utils/ai-settings';
+import { getAiImageConfig, getAiFeatureConfig } from './utils/ai-settings';
 import { SHARED_CORS } from './index';
 import { getStorage } from 'firebase-admin/storage';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { randomUUID } from 'crypto';
 import { fal } from '@fal-ai/client';
+import { GoogleGenAI } from '@google/genai';
 
 export interface ChatHistoryMessage {
     role: 'user' | 'assistant';
@@ -31,7 +32,7 @@ export interface GenerateImageResponse {
 export const generateImage = onCall(
   {
     cors: SHARED_CORS,
-    secrets: ['FAL_API_KEY'],
+    secrets: ['FAL_API_KEY', 'GOOGLE_AI_API_KEY'],
   },
   wrapCallable<GenerateImageRequest, GenerateImageResponse>(
     'generateImage',
@@ -45,14 +46,42 @@ export const generateImage = onCall(
       const imageConfig = await getAiImageConfig();
       const model = requestModel || imageConfig.model;
 
-      const apiKey = process.env.FAL_API_KEY;
-      if (!apiKey) {
+      const falApiKey = process.env.FAL_API_KEY;
+      if (!falApiKey) {
         throw new HttpsError('failed-precondition', 'FAL API key not configured');
       }
 
-      const prompt = chatRequest.systemPrompt + '\n' + chatRequest.chatHistory.map(chat => `[${chat.role}]: ${chat.content}\n`).join('');
+      const googleApiKey = process.env.GOOGLE_AI_API_KEY;
+      if (!googleApiKey) {
+        throw new HttpsError('failed-precondition', 'Google AI API key not configured');
+      }
 
-      fal.config({ credentials: apiKey });
+      // Use Gemini to convert character context + conversation into a descriptive image prompt
+      const rawContext = chatRequest.chatHistory.map(chat => `[${chat.role}]: ${chat.content}`).join('\n');
+      const promptConfig = await getAiFeatureConfig('imagePromptGeneration');
+
+      const ai = new GoogleGenAI({ apiKey: googleApiKey });
+      const geminiResult = await ai.models.generateContent({
+        model: promptConfig.model,
+        contents: rawContext,
+        config: {
+          systemInstruction: chatRequest.systemPrompt
+            + '\n\nGenerate a single, concise image prompt in English (max 200 words) describing the character portrait. '
+            + 'Focus on physical appearance, clothing, equipment, expression, and setting. '
+            + 'Do NOT include any instructions, metadata, or formatting — only the image description.',
+          temperature: promptConfig.temperature,
+          topP: promptConfig.topP,
+          topK: promptConfig.topK,
+          maxOutputTokens: promptConfig.maxOutputTokens,
+        },
+      });
+
+      const prompt = geminiResult.text?.trim();
+      if (!prompt) {
+        throw new HttpsError('internal', 'Failed to generate image description from character context');
+      }
+
+      fal.config({ credentials: falApiKey });
 
       const result = await fal.subscribe(model, {
         input: {

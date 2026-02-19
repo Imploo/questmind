@@ -28,6 +28,7 @@ export interface AiSettings {
     characterDraft?: AiModelConfig;
     spellResolution?: AiModelConfig;
     featureResolution?: AiModelConfig;
+    imagePromptGeneration?: AiModelConfig;
     imageGeneration?: AiImageConfig;
     podcastVoices?: PodcastVoiceSettings;
   };
