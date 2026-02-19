@@ -92,19 +92,10 @@ export const generateImage = onCall(
       const file = storage.file(storagePath);
 
       await file.save(imageBuffer, {
-        metadata: {
-          contentType: mimeType,
-        },
-        public: false,
+        metadata: { contentType: mimeType },
       });
 
-      // Generate signed URL valid for 7 days
-      const [signedUrl] = await file.getSignedUrl({
-        action: 'read',
-        expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
-      });
-
-      // Save image metadata to Firestore if characterId is provided
+      // Save image metadata to Firestore (frontend constructs display URL from storagePath)
       if (characterId && request.auth) {
         const db = getFirestore();
         const imageRef = db
@@ -116,15 +107,17 @@ export const generateImage = onCall(
         await imageRef.set({
           id: imageRef.id,
           characterId,
-          url: signedUrl,
           mimeType,
           storagePath,
           createdAt: FieldValue.serverTimestamp(),
         });
       }
 
+      // Return download URL for immediate display in chat
+      const downloadUrl = `https://firebasestorage.googleapis.com/v0/b/${storage.name}/o/${encodeURIComponent(storagePath)}?alt=media`;
+
       return {
-        imageUrl: signedUrl,
+        imageUrl: downloadUrl,
         mimeType,
       };
     }

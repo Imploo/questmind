@@ -16,7 +16,19 @@ export class CharacterImageService {
     await repo.waitForData();
     const result = [...repo.get() as unknown as CharacterImage[]];
     repo.destroy();
-    return result;
+
+    return result.map(image => ({
+      ...image,
+      url: this.resolveImageUrl(image),
+    }));
+  }
+
+  /** Builds a permanent download URL from storagePath. */
+  private resolveImageUrl(image: CharacterImage): string {
+    const bucket = this.firebase.app?.options?.storageBucket;
+    if (!bucket) return image.url ?? '';
+
+    return `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(image.storagePath)}?alt=media`;
   }
 
   async deleteImage(image: CharacterImage): Promise<void> {

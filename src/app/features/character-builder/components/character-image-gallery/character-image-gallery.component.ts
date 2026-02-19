@@ -27,11 +27,12 @@ import { ToastService } from '../../../../shared/services/toast.service';
           </div>
         } @else {
           <div class="grid grid-cols-2 gap-3">
-            @for (image of images(); track image.url) {
+            @for (image of images(); track image.id) {
               <div class="rounded-lg border border-base-300 hover:border-primary transition-all duration-200 shadow-sm hover:shadow-md overflow-hidden">
                 <div
                   class="relative group cursor-pointer overflow-hidden"
-                  (click)="openLightbox(image.url)"
+                  [class.pointer-events-none]="!image.url"
+                  (click)="image.url ? openLightbox(image.url) : null"
                 >
                   <img
                     [src]="image.url"

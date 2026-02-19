@@ -7,9 +7,9 @@ const TimestampSchema = z.custom<Timestamp>((val) => val instanceof Timestamp ||
 export const CharacterImageSchema = z.object({
   id: z.string(),
   characterId: z.string(),
-  url: z.string(),
+  url: z.string().optional(),
   mimeType: z.string(),
-  storagePath: z.string().optional(),
+  storagePath: z.string(),
   versionId: z.string().optional(), // Optional: link to the version when it was created
   createdAt: TimestampSchema,
 });
