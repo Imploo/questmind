@@ -1,4 +1,4 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, signal, computed, effect, resource } from '@angular/core';
 import { ref, deleteObject } from 'firebase/storage';
 import { AuthService } from '../../auth/auth.service';
 import { FirebaseService } from '../firebase.service';
@@ -11,6 +11,42 @@ export class CharacterImageService {
   private readonly firebase = inject(FirebaseService);
   private readonly imageRepoFactory = inject(CharacterImageRepositoryFactory);
 
+  readonly activeCharacterId = signal<string | null>(null);
+
+  private readonly activeRepoResource = resource({
+    params: () => {
+      const id = this.activeCharacterId();
+      if (!id) return undefined;
+      return { characterId: id };
+    },
+    loader: async ({ params }) => {
+      const repo = this.imageRepoFactory.create(params.characterId);
+      await repo.waitForData();
+      return repo;
+    },
+  });
+
+  /** Live signal of character images with resolved URLs. */
+  readonly images = computed<CharacterImage[]>(() => {
+    const repo = this.activeRepoResource.value();
+    if (!repo) return [];
+    const rawImages = repo.get() as unknown as CharacterImage[];
+    return rawImages.map(image => ({
+      ...image,
+      url: this.resolveImageUrl(image),
+    }));
+  });
+
+  constructor() {
+    effect((onCleanup) => {
+      const repo = this.activeRepoResource.value();
+      if (repo) {
+        onCleanup(() => repo.destroy());
+      }
+    });
+  }
+
+  /** One-shot fetch of images for a given character (e.g. for list thumbnails). */
   async getImages(characterId: string): Promise<CharacterImage[]> {
     const repo = this.imageRepoFactory.create(characterId);
     await repo.waitForData();

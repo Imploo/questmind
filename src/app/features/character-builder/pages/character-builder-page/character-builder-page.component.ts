@@ -146,7 +146,7 @@ export class CharacterBuilderPageComponent {
   // State
   characters = signal<Character[]>([]);
   selectedCharacterId = signal<string | null>(null);
-  characterImages = signal<CharacterImage[]>([]);
+  characterImages = this.characterImageService.images;
 
   selectedCharacter = computed(() =>
     this.characters().find(c => c.id === this.selectedCharacterId())
@@ -188,11 +188,13 @@ export class CharacterBuilderPageComponent {
         this.selectedCharacterId.set(id);
         this.characterService.activeCharacterId.set(id);
         this.characterVersionService.activeCharacterId.set(id);
+        this.characterImageService.activeCharacterId.set(id);
         this.loadCharacterData(id);
       } else {
         this.selectedCharacterId.set(null);
         this.characterService.activeCharacterId.set(null);
         this.characterVersionService.activeCharacterId.set(null);
+        this.characterImageService.activeCharacterId.set(null);
       }
     });
 
@@ -228,6 +230,7 @@ export class CharacterBuilderPageComponent {
     this.destroyRef.onDestroy(() => {
       this.characterService.activeCharacterId.set(null);
       this.characterVersionService.activeCharacterId.set(null);
+      this.characterImageService.activeCharacterId.set(null);
     });
   }
 
@@ -255,9 +258,6 @@ export class CharacterBuilderPageComponent {
         this.characters.update(list => [...list, fetched]);
       }
     }
-
-    const images = await this.characterImageService.getImages(characterId);
-    this.characterImages.set(images);
   }
 
   onSelectCharacter(id: string) {
@@ -390,7 +390,6 @@ export class CharacterBuilderPageComponent {
 
   async onDeleteImage(image: CharacterImage): Promise<void> {
     await this.characterImageService.deleteImage(image);
-    this.characterImages.update(list => list.filter(i => i.id !== image.id));
   }
 
   async onSpellResolved(event: SpellResolvedEvent): Promise<void> {
