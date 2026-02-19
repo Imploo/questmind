@@ -57,7 +57,7 @@ export class WorkerQueueService {
       {
         timeoutSeconds: 1200, // 20 minutes default
         memory: '2GiB',
-        secrets: ['GOOGLE_AI_API_KEY'], // Add secrets for all workers
+        secrets: ['GOOGLE_AI_API_KEY', 'KANKA_API_TOKEN'],
       },
       async (
         request: CallableRequest
