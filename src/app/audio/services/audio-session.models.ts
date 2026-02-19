@@ -125,6 +125,7 @@ export interface PodcastVersion {
  */
 export type SessionProgressStage =
   | 'idle'
+  | 'compressing'           // Client-side audio compression
   | 'uploading'
   | 'transcribing'          // Fast transcription
   | 'batch-submitted'       // Batch transcription submitted

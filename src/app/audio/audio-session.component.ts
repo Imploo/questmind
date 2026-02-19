@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { Router, ActivatedRoute } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { AudioSessionStateService } from './services/audio-session-state.service';
-import { AudioBackendOperationsService, RegenerateStoryProgress } from './services/audio-backend-operations.service';
+import { AudioBackendOperationsService } from './services/audio-backend-operations.service';
 import { PodcastAudioService, PodcastProgress } from './services/podcast-audio.service';
 import { AuthService } from '../auth/auth.service';
 import { FormattingService } from '../shared/formatting.service';
@@ -19,10 +19,7 @@ import { SessionStoryComponent } from './session-story.component';
 import { SessionProgressCardComponent } from './session-progress-card.component';
 import { CampaignSelectorComponent } from '../campaign/campaign-selector.component';
 import { httpsCallable, Functions } from 'firebase/functions';
-import { doc, onSnapshot, Unsubscribe } from 'firebase/firestore';
 import { FirebaseService } from '../core/firebase.service';
-
-type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' | 'failed';
 
 @Component({
   selector: 'app-audio-session',
@@ -266,6 +263,16 @@ export class AudioSessionComponent implements OnDestroy {
   userCorrections = signal<string>('');
   correctionsSaveStatus = signal<'idle' | 'saving' | 'saved'>('idle');
 
+  // Session selection: selectedSessionId drives currentSession computed
+  private selectedSessionId = signal<string | null>(null);
+
+  // Reactive currentSession: automatically updates when Firestore data changes
+  currentSession = computed(() => {
+    const id = this.selectedSessionId();
+    if (!id) return null;
+    return this.sessions().find(s => s.id === id) ?? null;
+  });
+
   // Podcast state
   podcasts = computed(() => this.currentSession()?.podcasts || []);
   isSessionOwner = computed(() => {
@@ -301,20 +308,14 @@ export class AudioSessionComponent implements OnDestroy {
   podcastGenerationProgress = signal<string>('');
   podcastGenerationProgressPercent = signal<number>(0);
   podcastError = signal<string>('');
-  private progressUnsubscribe?: () => void;
-  private stageTimerSub?: Subscription;
+  private podcastProgressUnsubscribe?: () => void;
   private correctionsSaveTimer?: ReturnType<typeof setTimeout>;
   private correctionsStatusTimer?: ReturnType<typeof setTimeout>;
   private activeCorrectionsSessionId: string | null = null;
   private routeParamsSub?: Subscription;
 
-  stage = signal<Stage>('idle');
-  progress = signal<number>(0);
-  statusMessage = signal<string>('Waiting for upload.');
-  currentSession = signal<AudioSessionRecord | null>(null);
-
   sessions: Signal<AudioSessionRecord[]> = signal<AudioSessionRecord[]>([]);
-  
+
   // Sorted sessions by date (newest first)
   sortedSessions = computed(() => {
     const sessions = this.sessions();
@@ -365,6 +366,12 @@ export class AudioSessionComponent implements OnDestroy {
     return null;
   });
 
+  // Derived from displayProgress — replaces the old stage-based isBusy() method
+  isBusy = computed(() => {
+    const p = this.displayProgress();
+    return !!p && !['idle', 'completed', 'failed'].includes(p.stage);
+  });
+
   private readonly sessionStateService = inject(AudioSessionStateService);
   private readonly backendOperations = inject(AudioBackendOperationsService);
   private readonly podcastAudioService = inject(PodcastAudioService);
@@ -382,10 +389,10 @@ export class AudioSessionComponent implements OnDestroy {
     this.routeParamsSub = this.route.paramMap.subscribe(params => {
       const sessionIdFromRoute = params.get('sessionId');
       const sessions = this.sortedSessions();
-      
+
       if (sessionIdFromRoute && sessions.length > 0) {
         const sessionToSelect = sessions.find(s => s.id === sessionIdFromRoute);
-        if (sessionToSelect && this.currentSession()?.id !== sessionIdFromRoute) {
+        if (sessionToSelect && this.selectedSessionId() !== sessionIdFromRoute) {
           this.selectSessionWithoutNavigation(sessionToSelect);
         }
       }
@@ -393,28 +400,27 @@ export class AudioSessionComponent implements OnDestroy {
 
     effect(() => {
       const sessions = this.sortedSessions();
-      const current = this.currentSession();
+      const currentId = this.selectedSessionId();
       const sessionIdFromRoute = this.route.snapshot.paramMap.get('sessionId');
-      
+
       if (sessions.length === 0) {
-        if (current) {
-          this.currentSession.set(null);
-          this.resetProgress();
+        if (currentId) {
+          this.selectedSessionId.set(null);
         }
         return;
       }
-      
+
       // If there's a session ID in the route, try to select it
       if (sessionIdFromRoute) {
         const sessionToSelect = sessions.find(s => s.id === sessionIdFromRoute);
-        if (sessionToSelect && current?.id !== sessionIdFromRoute) {
+        if (sessionToSelect && currentId !== sessionIdFromRoute) {
           this.selectSessionWithoutNavigation(sessionToSelect);
           return;
         }
       }
-      
+
       // Otherwise, select the first session if none is selected
-      if (!current || !sessions.some(session => session.id === current.id)) {
+      if (!currentId || !sessions.some(session => session.id === currentId)) {
         this.selectSession(sessions[0]);
       }
     });
@@ -453,51 +459,26 @@ export class AudioSessionComponent implements OnDestroy {
       return;
     }
 
-    this.resetProgress();
-    this.stage.set('generating');
-    this.statusMessage.set('Starting story regeneration...');
-
     try {
-      // Start listening to progress BEFORE starting processing
-      this.cleanupProgressListener();
-      this.progressUnsubscribe = this.backendOperations.listenToRegenerateStoryProgress(
-        campaignId,
-        session.id,
-        (progress: RegenerateStoryProgress) => {
-          // Update UI based on status
-          this.progress.set(progress.progress);
-          this.statusMessage.set(progress.message);
-
-          if (progress.error) {
-            this.failSession(progress.error);
-            this.cleanupProgressListener();
-            return;
-          }
-
-          // Map backend status to frontend stage
-          switch (progress.status) {
-            case 'loading_context':
-            case 'generating_story':
-              this.stage.set('generating');
-              break;
-            case 'completed':
-              this.stage.set('completed');
-              this.cleanupProgressListener();
-              this.refreshSessions();
-              break;
-            case 'failed':
-              this.failSession(progress.error || 'Story regeneration failed');
-              this.cleanupProgressListener();
-              break;
-          }
-        }
-      );
+      // Write initial progress to Firestore — displayProgress() picks it up reactively
+      await this.sessionStateService.persistSessionPatch(session.id, {
+        status: 'processing',
+        progress: {
+          stage: 'generating-story',
+          progress: 0,
+          message: 'Starting story regeneration...',
+          startedAt: new Date(),
+          updatedAt: new Date()
+        } as SessionProgress
+      });
 
       // Start processing (fire-and-forget)
+      const kankaEnabled = this.campaignContext.selectedCampaign()?.settings?.kankaEnabled ?? false;
       await this.backendOperations.regenerateStory(
         campaignId,
         session.id,
         {
+          enableKankaContext: kankaEnabled,
           userCorrections: this.userCorrections()
         }
       );
@@ -505,7 +486,6 @@ export class AudioSessionComponent implements OnDestroy {
     } catch (error: unknown) {
       console.error('Failed to start story regeneration:', error);
       this.failSession((error as Error)?.message || 'Failed to start story regeneration');
-      this.cleanupProgressListener();
     }
   }
 
@@ -518,7 +498,6 @@ export class AudioSessionComponent implements OnDestroy {
       return;
     }
     this.sessionStateService.updateSession(session.id, { content: content, status: 'completed' });
-    this.refreshSessions();
   }
 
   selectSession(session: AudioSessionRecord): void {
@@ -537,26 +516,9 @@ export class AudioSessionComponent implements OnDestroy {
   }
 
   private selectSessionWithoutNavigation(session: AudioSessionRecord): void {
-    this.currentSession.set(session);
+    this.selectedSessionId.set(session.id);
     this.userCorrections.set(session.userCorrections ?? '');
     this.correctionsSaveStatus.set('idle');
-    switch (session.status) {
-      case 'completed':
-        this.stage.set('completed');
-        this.progress.set(100);
-        this.statusMessage.set('Story ready.');
-        break;
-      case 'failed':
-        this.stage.set('failed');
-        this.progress.set(0);
-        this.statusMessage.set('Session failed. You can retry.');
-        break;
-      default:
-        this.stage.set('idle');
-        this.progress.set(0);
-        this.statusMessage.set('Loaded session from history.');
-        break;
-    }
   }
 
   formatSubtitle(session: AudioSessionRecord | null): string {
@@ -616,8 +578,8 @@ export class AudioSessionComponent implements OnDestroy {
   }
 
   /**
-   * Call the transcribeAudioFast Cloud Function
-   * Handles progress tracking via Firestore subscription
+   * Call the transcribeAudioFast Cloud Function.
+   * Writes initial progress to Firestore; further updates come reactively via sessions().
    */
   private async callTranscribeAudioFast(
     campaignId: string,
@@ -633,14 +595,17 @@ export class AudioSessionComponent implements OnDestroy {
         audioFileName
       });
 
-      // Start listening to progress BEFORE calling the function
-      this.cleanupProgressListener();
-      this.progressUnsubscribe = this.listenToSessionProgress(campaignId, sessionId);
-
-      // Reset local progress state
-      this.resetProgress();
-      this.stage.set('transcribing');
-      this.statusMessage.set('Starting fast transcription...');
+      // Write initial progress to Firestore
+      await this.sessionStateService.persistSessionPatch(sessionId, {
+        status: 'processing',
+        progress: {
+          stage: 'transcribing',
+          progress: 70,
+          message: 'Starting fast transcription...',
+          startedAt: new Date(),
+          updatedAt: new Date()
+        } as SessionProgress
+      });
 
       // Call the Cloud Function
       const transcribeAudioFast = httpsCallable<
@@ -665,107 +630,45 @@ export class AudioSessionComponent implements OnDestroy {
 
       if (result.data.success) {
         logger.info('[TranscribeFast] Function call successful:', result.data.message);
-        // Progress updates will come via Firestore subscription
+        // Progress updates come reactively via Firestore → sessions() → displayProgress()
       } else {
         logger.error('[TranscribeFast] Function returned error:', result.data.message);
         this.failSession(result.data.message);
-        this.cleanupProgressListener();
       }
     } catch (error: unknown) {
       logger.error('[TranscribeFast] Failed to call transcribeAudioFast:', error);
       this.failSession((error as Error)?.message || 'Failed to start transcription');
-      this.cleanupProgressListener();
     }
   }
 
-  /**
-   * Listen to session progress updates from Firestore
-   */
-  private listenToSessionProgress(campaignId: string, sessionId: string): Unsubscribe {
-    const firestore = this.firebaseService.requireFirestore();
-    const sessionRef = doc(
-      firestore,
-      `campaigns/${campaignId}/audioSessions/${sessionId}`
-    );
-
-    return onSnapshot(sessionRef, (snapshot) => {
-      if (!snapshot.exists()) {
-        logger.warn('[Progress] Session document not found');
-        return;
-      }
-
-      const data = snapshot.data();
-      const progress = data['progress'] as SessionProgress | undefined;
-
-      if (!progress) {
-        return;
-      }
-
-      logger.debug('[Progress] Received update:', progress);
-
-      // Update local progress state
-      this.progress.set(progress.progress);
-      this.statusMessage.set(progress.message);
-
-      // Handle errors
-      if (progress.error) {
-        this.failSession(progress.error);
-        this.cleanupProgressListener();
-        return;
-      }
-
-      // Map progress stage to local stage
-      switch (progress.stage) {
-        case 'transcribing':
-        case 'retranscribing':
-          this.stage.set('transcribing');
-          break;
-        case 'generating-story':
-        case 'regenerating-story':
-          this.stage.set('generating');
-          break;
-        case 'completed':
-          this.stage.set('completed');
-          this.cleanupProgressListener();
-          this.refreshSessions();
-          break;
-        case 'failed':
-          this.failSession(progress.error || 'Transcription failed');
-          this.cleanupProgressListener();
-          break;
-      }
-    });
-  }
-
   ngOnDestroy(): void {
-    this.cleanupProgressListener();
-    this.stageTimerSub?.unsubscribe();
+    this.cleanupPodcastProgressListener();
     this.routeParamsSub?.unsubscribe();
     this.clearCorrectionsTimers();
   }
 
-  private cleanupProgressListener(): void {
-    if (this.progressUnsubscribe) {
-      this.progressUnsubscribe();
-      this.progressUnsubscribe = undefined;
+  private cleanupPodcastProgressListener(): void {
+    if (this.podcastProgressUnsubscribe) {
+      this.podcastProgressUnsubscribe();
+      this.podcastProgressUnsubscribe = undefined;
     }
   }
 
   private failSession(message: string): void {
     const session = this.currentSession();
     if (session) {
-      this.sessionStateService.updateSession(session.id, { status: 'failed' });
+      this.sessionStateService.updateSession(session.id, {
+        status: 'failed',
+        progress: {
+          stage: 'failed',
+          progress: 0,
+          message: `Failed: ${message}`,
+          error: message,
+          startedAt: new Date(),
+          updatedAt: new Date()
+        } as SessionProgress
+      });
     }
-    this.stageTimerSub?.unsubscribe();
-    this.stage.set('failed');
-    this.statusMessage.set(message);
-    this.refreshSessions();
-  }
-
-  private resetProgress(): void {
-    this.progress.set(0);
-    this.stage.set('idle');
-    this.statusMessage.set('Waiting for upload.');
   }
 
   onCorrectionsInput(corrections: string): void {
@@ -797,20 +700,6 @@ export class AudioSessionComponent implements OnDestroy {
       console.error('Failed to save corrections:', error);
       this.correctionsSaveStatus.set('idle');
     }
-  }
-
-  private refreshSessions(): void {
-    const current = this.currentSession();
-    if (current) {
-      const updated = this.sessionStateService.getSession(current.id);
-      if (updated) {
-        this.currentSession.set(updated);
-      }
-    }
-  }
-
-  isBusy(): boolean {
-    return ['uploading', 'transcribing', 'generating'].includes(this.stage());
   }
 
   private clearCorrectionsTimers(): void {
@@ -869,7 +758,7 @@ export class AudioSessionComponent implements OnDestroy {
         version
       );
 
-      this.progressUnsubscribe = unsubscribe;
+      this.podcastProgressUnsubscribe = unsubscribe;
 
       // Step 2: Create effect to watch progress
       const progressEffect = runInInjectionContext(this.injector, () => effect(() => {
@@ -886,9 +775,8 @@ export class AudioSessionComponent implements OnDestroy {
           if (currentProgress.status === 'completed' || currentProgress.status === 'failed') {
             setTimeout(() => {
               this.isGeneratingPodcast.set(false);
-              this.cleanupProgressListener();
+              this.cleanupPodcastProgressListener();
               progressEffect.destroy();
-              this.refreshSessions();
             }, 3000);
           }
         }
@@ -910,7 +798,7 @@ export class AudioSessionComponent implements OnDestroy {
       this.podcastGenerationProgress.set('');
       this.podcastGenerationProgressPercent.set(0);
       this.isGeneratingPodcast.set(false);
-      this.cleanupProgressListener();
+      this.cleanupPodcastProgressListener();
     }
   }
 

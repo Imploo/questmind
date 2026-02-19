@@ -1,6 +1,6 @@
 import {inject, Injectable} from '@angular/core';
 import {type Functions, httpsCallable} from 'firebase/functions';
-import {doc, type Firestore, updateDoc} from 'firebase/firestore';
+import {doc, type DocumentReference, type Firestore, updateDoc} from 'firebase/firestore';
 import {Auth, getIdToken} from 'firebase/auth';
 import {FirebaseService} from '../../core/firebase.service';
 import {AudioCompressionService} from './audio-compression.service';
@@ -43,6 +43,11 @@ export class AudioCompleteProcessingService {
    * 1. Compress audio in the browser (Web Audio API + lamejs MP3 @ 16 kbps)
    * 2. POST compressed file to uploadAudioToGemini Cloud Function → Gemini Files API → fileUri
    * 3. Call transcribeAudioFast with the fileUri
+   *
+   * Unified progress ranges:
+   *   Compressing: 0–60%
+   *   Uploading:  60–70%
+   *   (Transcribing 70-80% and Generating Story 80-100% are handled by backend)
    */
   async startCompleteProcessing(
     campaignId: string,
@@ -51,12 +56,28 @@ export class AudioCompleteProcessingService {
     options: StartProcessingOptions,
     onProgress?: (stage: UploadStage, progress: number) => void
   ): Promise<ProcessingResult> {
+    const sessionRef = doc(
+      this.firestore,
+      `campaigns/${campaignId}/audioSessions/${sessionId}`
+    );
+
     // ── 1. Compress audio in the browser ────────────────────────────────────
     logger.info('[AudioCompleteProcessing] Compressing audio before upload...');
 
+    let lastFirestoreWrite = 0;
     const compressionResult = await this.audioCompression.compress(
       audioFile,
-      (compressionProgress) => onProgress?.('compressing', compressionProgress),
+      (compressionProgress) => {
+        onProgress?.('compressing', compressionProgress);
+        // Throttled Firestore write (every 2s)
+        const now = Date.now();
+        if (now - lastFirestoreWrite >= 2000 || compressionProgress >= 100) {
+          lastFirestoreWrite = now;
+          const overallProgress = Math.round(compressionProgress * 0.6);
+          this.writeProgress(sessionRef, 'compressing', overallProgress,
+            `Compressing audio... ${Math.round(compressionProgress)}%`);
+        }
+      },
     );
 
     if (compressionResult.skipped) {
@@ -161,14 +182,36 @@ export class AudioCompleteProcessingService {
   }
 
   /**
+   * Write a failure to Firestore progress field.
+   */
+  async writeFailure(campaignId: string, sessionId: string, error: string): Promise<void> {
+    const sessionRef = doc(
+      this.firestore,
+      `campaigns/${campaignId}/audioSessions/${sessionId}`
+    );
+    await updateDoc(sessionRef, {
+      progress: {
+        stage: 'failed',
+        progress: 0,
+        message: `Failed: ${error}`,
+        error,
+        updatedAt: new Date(),
+      },
+      status: 'failed',
+    });
+  }
+
+  /**
    * POST the compressed audio blob to the uploadAudioToGemini Cloud Function,
    * which proxies it to the Gemini Files API and returns a fileUri.
+   *
+   * Upload progress maps to 60–70% of unified progress range.
    */
   private async uploadToGemini(
     blob: Blob,
     mimeType: string,
     fileName: string,
-    sessionRef: ReturnType<typeof doc>,
+    sessionRef: DocumentReference,
     onProgress?: (progress: number) => void,
   ): Promise<string> {
     const token = await getIdToken(this.auth.currentUser!);
@@ -184,16 +227,12 @@ export class AudioCompleteProcessingService {
 
       xhr.upload.addEventListener('progress', (event) => {
         if (event.lengthComputable) {
-          const progress = Math.round((event.loaded / event.total) * 90);
-          onProgress?.(progress);
-          void updateDoc(sessionRef, {
-            progress: {
-              stage: 'uploading',
-              progress,
-              message: `Uploading audio... ${progress}%`,
-              updatedAt: new Date(),
-            },
-          });
+          const uploadPercent = Math.round((event.loaded / event.total) * 100);
+          onProgress?.(uploadPercent);
+          // Map upload 0-100% to unified 60-70%
+          const overallProgress = 60 + Math.round((event.loaded / event.total) * 10);
+          this.writeProgress(sessionRef, 'uploading', overallProgress,
+            `Uploading audio... ${uploadPercent}%`);
         }
       });
 
@@ -215,6 +254,22 @@ export class AudioCompleteProcessingService {
       xhr.addEventListener('abort', () => reject(new Error('Upload aborted')));
 
       xhr.send(blob);
+    });
+  }
+
+  private writeProgress(
+    sessionRef: DocumentReference,
+    stage: string,
+    progress: number,
+    message: string,
+  ): void {
+    void updateDoc(sessionRef, {
+      progress: {
+        stage,
+        progress,
+        message,
+        updatedAt: new Date(),
+      },
     });
   }
 }

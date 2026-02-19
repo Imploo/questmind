@@ -80,12 +80,12 @@ export const transcribeAudioFast = onCall(
       );
     }
 
-    // Update progress to transcribing (fire-and-forget starts here)
+    // Update progress to transcribing (70-80% range)
     await ProgressTrackerService.updateProgress(
       campaignId,
       sessionId,
       'transcribing',
-      40,
+      70,
       'Fast transcription started...'
     );
 
@@ -292,7 +292,7 @@ async function processTranscriptionAsync(
 
     logger.debug(`[Fast Transcription] Triggering story generation worker...`);
 
-    // 7. Trigger story generation worker
+    // 7. Trigger story generation worker (pass pre-fetched Kanka context so it doesn't need to re-fetch)
     const { storyGenerationWorkerHandler } = await import(
       './workers/story-generation-worker'
     );
@@ -300,7 +300,7 @@ async function processTranscriptionAsync(
       campaignId,
       sessionId,
       transcriptionText: rawStory,
-      enableKankaContext,
+      kankaContext,
       userCorrections,
     });
 

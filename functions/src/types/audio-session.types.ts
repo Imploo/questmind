@@ -141,6 +141,7 @@ export interface AISettings {
  */
 export type SessionProgressStage =
   | 'idle'
+  | 'compressing'
   | 'uploading'
   | 'transcribing'
   | 'retranscribing'
