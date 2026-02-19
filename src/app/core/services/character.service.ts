@@ -1,47 +1,40 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, computed } from '@angular/core';
 import {
   collection,
   doc,
-  getDoc,
-  getDocs,
-  query,
-  where,
   setDoc,
   updateDoc,
-  onSnapshot,
   Timestamp,
-  type Firestore,
-  orderBy
 } from 'firebase/firestore';
+import { toObservable } from '@angular/core/rxjs-interop';
 import { Observable } from 'rxjs';
 import { AuthService } from '../../auth/auth.service';
 import { FirebaseService } from '../firebase.service';
 import { Character } from '../models/schemas/character.schema';
 import { DndCharacter } from '../../shared/models/dnd-character.model';
 import { CharacterVersionService } from './character-version.service';
+import { CharacterRepository } from '../../shared/repository/character.repository';
 
 @Injectable({ providedIn: 'root' })
 export class CharacterService {
   private readonly authService = inject(AuthService);
   private readonly firebase = inject(FirebaseService);
   private readonly characterVersionService = inject(CharacterVersionService);
-  private readonly db: Firestore | null;
+  private readonly characterRepo = inject(CharacterRepository);
 
-  constructor() {
-    this.db = this.firebase.firestore;
+  get characters() {
+    return this.characterRepo.get;
   }
 
   async createCharacter(name: string, initialData: DndCharacter): Promise<string> {
     const user = this.authService.currentUser();
     if (!user) throw new Error('User not authenticated');
-    if (!this.db) throw new Error('Firestore is not configured');
 
-    const characterId = doc(collection(this.db, 'characters')).id;
-    const versionId = doc(collection(this.db, 'characters', characterId, 'versions')).id;
+    const db = this.firebase.requireFirestore();
+    const characterId = doc(collection(db, 'characters')).id;
+    const versionId = doc(collection(db, 'characters', characterId, 'versions')).id;
     const now = Timestamp.now();
 
-    // Create the character document first so Firestore rules can verify
-    // ownership when the initial version subcollection document is written.
     const character: Character = {
       id: characterId,
       userId: user.uid,
@@ -52,7 +45,7 @@ export class CharacterService {
       updatedAt: now,
     };
 
-    const characterRef = doc(this.db, 'characters', characterId);
+    const characterRef = doc(db, 'characters', characterId);
     await setDoc(characterRef, character);
 
     await this.characterVersionService.createInitialVersion(
@@ -65,33 +58,29 @@ export class CharacterService {
   }
 
   async getCharacters(): Promise<Character[]> {
-    const user = this.authService.currentUser();
-    if (!user || !this.db) return [];
-
-    const q = query(
-      collection(this.db, 'characters'),
-      where('userId', '==', user.uid),
-      orderBy('updatedAt', 'desc')
-    );
-    const snapshot = await getDocs(q);
-
-    return snapshot.docs.map(d => d.data() as Character);
+    await this.characterRepo.waitForData();
+    return this.characterRepo.get() as Character[];
   }
 
   async getCharacter(characterId: string): Promise<Character | null> {
-    if (!this.db) return null;
+    await this.characterRepo.waitForData();
+    return await this.characterRepo.getByKey(characterId) as Character | null;
+  }
 
-    const characterRef = doc(this.db, 'characters', characterId);
-    const snapshot = await getDoc(characterRef);
-
-    return snapshot.exists() ? (snapshot.data() as Character) : null;
+  watchCharacter(characterId: string): Observable<Character | null> {
+    const charSignal = computed(() => {
+      const characters = this.characterRepo.get() as unknown as (Character & Record<string, unknown>)[];
+      return characters.find(c => c.id === characterId) as Character | null ?? null;
+    });
+    return toObservable(charSignal);
   }
 
   async updateCharacter(characterId: string, updates: Partial<Pick<Character, 'name' | 'campaignId'>>): Promise<void> {
     const user = this.authService.currentUser();
-    if (!user || !this.db) return;
+    if (!user) return;
 
-    const characterRef = doc(this.db, 'characters', characterId);
+    const db = this.firebase.requireFirestore();
+    const characterRef = doc(db, 'characters', characterId);
     await updateDoc(characterRef, {
       ...updates,
       updatedAt: Timestamp.now()
@@ -104,25 +93,5 @@ export class CharacterService {
 
   async unlinkCampaign(characterId: string): Promise<void> {
     await this.updateCharacter(characterId, { campaignId: null });
-  }
-
-  watchCharacter(characterId: string): Observable<Character | null> {
-    return new Observable(subscriber => {
-      if (!this.db) {
-        subscriber.next(null);
-        subscriber.complete();
-        return;
-      }
-
-      const characterRef = doc(this.db, 'characters', characterId);
-
-      const unsubscribe = onSnapshot(characterRef, snapshot => {
-        subscriber.next(snapshot.exists() ? (snapshot.data() as Character) : null);
-      }, error => {
-        subscriber.error(error);
-      });
-
-      return unsubscribe;
-    });
   }
 }

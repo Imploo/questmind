@@ -1,4 +1,4 @@
-import { Component, OnDestroy, effect, signal, computed, inject, Injector, runInInjectionContext, ChangeDetectionStrategy } from '@angular/core';
+import { Component, OnDestroy, effect, signal, computed, inject, Injector, runInInjectionContext, ChangeDetectionStrategy, Signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, ActivatedRoute } from '@angular/router';
 import { Subscription } from 'rxjs';
@@ -19,7 +19,7 @@ import { SessionStoryComponent } from './session-story.component';
 import { SessionProgressCardComponent } from './session-progress-card.component';
 import { CampaignSelectorComponent } from '../campaign/campaign-selector.component';
 import { httpsCallable, Functions } from 'firebase/functions';
-import { doc, onSnapshot, Unsubscribe, Firestore } from 'firebase/firestore';
+import { doc, onSnapshot, Unsubscribe } from 'firebase/firestore';
 import { FirebaseService } from '../core/firebase.service';
 
 type Stage = 'idle' | 'uploading' | 'transcribing' | 'generating' | 'completed' | 'failed';
@@ -313,7 +313,7 @@ export class AudioSessionComponent implements OnDestroy {
   statusMessage = signal<string>('Waiting for upload.');
   currentSession = signal<AudioSessionRecord | null>(null);
 
-  sessions = signal<AudioSessionRecord[]>([]);
+  sessions: Signal<AudioSessionRecord[]> = signal<AudioSessionRecord[]>([]);
   
   // Sorted sessions by date (newest first)
   sortedSessions = computed(() => {
@@ -373,11 +373,9 @@ export class AudioSessionComponent implements OnDestroy {
   readonly formatting = inject(FormattingService);
   private readonly firebaseService = inject(FirebaseService);
   private functions: Functions;
-  private firestore: Firestore;
 
   constructor() {
     this.functions = this.firebaseService.requireFunctions();
-    this.firestore = this.firebaseService.requireFirestore();
     this.sessions = this.sessionStateService.sessions;
 
     // Subscribe to route params to handle session selection from URL
@@ -684,8 +682,9 @@ export class AudioSessionComponent implements OnDestroy {
    * Listen to session progress updates from Firestore
    */
   private listenToSessionProgress(campaignId: string, sessionId: string): Unsubscribe {
+    const firestore = this.firebaseService.requireFirestore();
     const sessionRef = doc(
-      this.firestore,
+      firestore,
       `campaigns/${campaignId}/audioSessions/${sessionId}`
     );
 

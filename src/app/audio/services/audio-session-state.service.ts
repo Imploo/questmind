@@ -1,13 +1,8 @@
-import { Injectable, signal, effect, inject } from '@angular/core';
+import { Injectable, signal, effect, inject, Injector, runInInjectionContext, Signal } from '@angular/core';
 import {
-  collection,
   doc,
-  onSnapshot,
-  orderBy,
-  query,
   setDoc,
   updateDoc,
-  type Firestore
 } from 'firebase/firestore';
 
 import { AuthService } from '../../auth/auth.service';
@@ -17,23 +12,26 @@ import {
   AudioSessionRecord,
   AudioUpload
 } from './audio-session.models';
+import { AudioSessionRepository, AudioSessionRepositoryFactory } from '../../shared/repository/audio-session.repository';
 
 @Injectable({
   providedIn: 'root'
 })
 export class AudioSessionStateService {
-  readonly sessions = signal<AudioSessionRecord[]>([]);
-  private readonly db: Firestore | null;
+  readonly sessions: Signal<(AudioSessionRecord & Record<string, unknown>)[]>;
+  private readonly _sessions = signal<(AudioSessionRecord & Record<string, unknown>)[]>([]);
+  private readonly firebase = inject(FirebaseService);
   private activeUserId: string | null = null;
   private activeCampaignId: string | null = null;
-  private sessionsUnsubscribe?: () => void;
+  private sessionRepo: AudioSessionRepository | null = null;
 
   private readonly authService = inject(AuthService);
   private readonly campaignContext = inject(CampaignContextService);
-  private readonly firebase = inject(FirebaseService);
+  private readonly sessionRepoFactory = inject(AudioSessionRepositoryFactory);
+  private readonly injector = inject(Injector);
 
   constructor() {
-    this.db = this.firebase.firestore;
+    this.sessions = this._sessions.asReadonly();
 
     effect(() => {
       const user = this.authService.currentUser();
@@ -47,7 +45,7 @@ export class AudioSessionStateService {
   }
 
   getSession(id: string): AudioSessionRecord | undefined {
-    return this.sessions().find(session => session.id === id);
+    return this._sessions().find(session => session.id === id) as AudioSessionRecord | undefined;
   }
 
   createSessionDraft(upload: AudioUpload): AudioSessionRecord {
@@ -87,11 +85,12 @@ export class AudioSessionStateService {
       return;
     }
 
-    if (!this.db || !this.activeCampaignId) {
+    const db = this.firebase.firestore;
+    if (!db || !this.activeCampaignId) {
       throw new Error('No active campaign set for audio sessions.');
     }
 
-    const docRef = doc(this.db, 'campaigns', this.activeCampaignId, 'audioSessions', id);
+    const docRef = doc(db, 'campaigns', this.activeCampaignId, 'audioSessions', id);
     await updateDoc(docRef, { ...patch, updatedAt });
   }
 
@@ -104,52 +103,53 @@ export class AudioSessionStateService {
     }
     this.activeUserId = userId;
     this.activeCampaignId = campaignId;
-    this.sessionsUnsubscribe?.();
-    if (!this.db) {
+
+    // Cleanup old repo
+    this.sessionRepo?.destroy();
+
+    const db = this.firebase.firestore;
+    if (!db) {
       console.error('Firebase is not configured. Cannot load sessions.');
       return;
     }
-    const sessionsRef = collection(this.db, 'campaigns', campaignId, 'audioSessions');
-    const sessionsQuery = query(sessionsRef, orderBy('createdAt', 'desc'));
-    this.sessionsUnsubscribe = onSnapshot(
-      sessionsQuery,
-      snapshot => {
-        const records = snapshot.docs.map(docSnap => {
-          const data = docSnap.data() as Omit<AudioSessionRecord, 'id'>;
-          return { id: docSnap.id, ...data };
-        });
-        this.sessions.set(records);
-      },
-      error => {
-        console.error('Failed to load audio sessions from Firestore.', error);
-      }
-    );
+
+    // Create new repo for this campaign
+    runInInjectionContext(this.injector, () => {
+      this.sessionRepo = this.sessionRepoFactory.create(campaignId);
+
+      // Sync repo data to service signal
+      const repoSignal = this.sessionRepo.get;
+      effect(() => {
+        this._sessions.set(repoSignal());
+      });
+    });
   }
 
   private clearSessions(): void {
-    this.sessionsUnsubscribe?.();
-    this.sessions.set([]);
+    this.sessionRepo?.destroy();
+    this.sessionRepo = null;
+    this._sessions.set([]);
     this.activeUserId = null;
     this.activeCampaignId = null;
   }
 
   private upsertSession(record: AudioSessionRecord): void {
-    const sessions = this.sessions();
+    const sessions = this._sessions();
     const index = sessions.findIndex(session => session.id === record.id);
     const next = [...sessions];
     if (index === -1) {
-      next.unshift(record);
+      next.unshift(record as AudioSessionRecord & Record<string, unknown>);
     } else {
-      next[index] = record;
+      next[index] = record as AudioSessionRecord & Record<string, unknown>;
     }
-    this.sessions.set(next);
+    this._sessions.set(next);
   }
 
   private applySessionPatch(
     id: string,
     patch: Partial<AudioSessionRecord>
   ): { updatedAt: string } | null {
-    const sessions = this.sessions();
+    const sessions = this._sessions();
     const index = sessions.findIndex(session => session.id === id);
     if (index === -1) {
       return null;
@@ -162,7 +162,7 @@ export class AudioSessionStateService {
     };
     const next = [...sessions];
     next[index] = updated;
-    this.sessions.set(next);
+    this._sessions.set(next);
     return { updatedAt };
   }
 
@@ -172,11 +172,12 @@ export class AudioSessionStateService {
   }
 
   private writeSession(record: AudioSessionRecord, campaignId: string): void {
-    if (!this.db) {
+    const db = this.firebase.firestore;
+    if (!db) {
       console.error('Firebase is not configured. Cannot save sessions.');
       return;
     }
-    const docRef = doc(this.db, 'campaigns', campaignId, 'audioSessions', record.id);
+    const docRef = doc(db, 'campaigns', campaignId, 'audioSessions', record.id);
     void setDoc(docRef, record, { merge: true }).catch(error => {
       console.error('Failed to save audio session to Firestore.', error);
     });

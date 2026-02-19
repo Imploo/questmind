@@ -1,9 +1,8 @@
 import { ChangeDetectionStrategy, Component, signal, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { FirebaseService } from '../core/firebase.service';
 import { UserService } from '../core/user.service';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { AiSettingsRepository } from '../shared/repository/ai-settings.repository';
 import { type AiSettings, type AiModelConfig, type AiImageConfig, type PodcastVoiceSettings } from '../core/services/ai-settings.service';
 
 type FeatureFormType = 'standard' | 'imageOnly' | 'voicesOnly';
@@ -250,7 +249,7 @@ interface FeatureDefinition {
   `
 })
 export class AdminComponent implements OnInit {
-  private readonly firebaseService = inject(FirebaseService);
+  private readonly aiSettingsRepo = inject(AiSettingsRepository);
   readonly userService = inject(UserService);
 
   readonly featureDefinitions: readonly FeatureDefinition[] = [
@@ -401,12 +400,9 @@ export class AdminComponent implements OnInit {
     this.settingsError.set(null);
 
     try {
-      const firestore = this.firebaseService.requireFirestore();
-      const settingsDoc = doc(firestore, 'settings/ai');
-      const snapshot = await getDoc(settingsDoc);
-
-      const data = snapshot.exists() ? snapshot.data() as AiSettings : {} as AiSettings;
-      this.aiSettings.set(this.normalizeSettings(data));
+      await this.aiSettingsRepo.waitForData();
+      const data = this.aiSettingsRepo.get() as unknown as AiSettings | null;
+      this.aiSettings.set(this.normalizeSettings(data ?? {} as AiSettings));
     } catch (error) {
       console.error('Error loading AI settings:', error);
       this.settingsError.set(
@@ -424,9 +420,7 @@ export class AdminComponent implements OnInit {
     this.saveIndicator.set('saving');
 
     try {
-      const firestore = this.firebaseService.requireFirestore();
-      const settingsDoc = doc(firestore, 'settings/ai');
-      await setDoc(settingsDoc, settings, { merge: true });
+      await this.aiSettingsRepo.update(settings as AiSettings & Record<string, unknown>);
 
       this.saveIndicator.set('saved');
       setTimeout(() => this.saveIndicator.set('idle'), 2000);

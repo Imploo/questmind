@@ -1,41 +1,34 @@
-import { Injectable, inject } from '@angular/core';
-import {
-  collection,
-  doc,
-  getDocs,
-  query,
-  orderBy,
-  type Firestore,
-  deleteDoc
-} from 'firebase/firestore';
+import { Injectable, inject, Injector, runInInjectionContext } from '@angular/core';
+import { doc, deleteDoc } from 'firebase/firestore';
 import { ref, deleteObject } from 'firebase/storage';
 import { AuthService } from '../../auth/auth.service';
 import { FirebaseService } from '../firebase.service';
 import { CharacterImage } from '../models/schemas/character-image.schema';
+import { CharacterImageRepositoryFactory } from '../../shared/repository/character-image.repository';
 
 @Injectable({ providedIn: 'root' })
 export class CharacterImageService {
   private readonly authService = inject(AuthService);
   private readonly firebase = inject(FirebaseService);
-  private readonly db: Firestore | null;
-
-  constructor() {
-    this.db = this.firebase.firestore;
-  }
+  private readonly imageRepoFactory = inject(CharacterImageRepositoryFactory);
+  private readonly injector = inject(Injector);
 
   async getImages(characterId: string): Promise<CharacterImage[]> {
-    if (!this.db) return [];
-
-    const imagesRef = collection(this.db, 'characters', characterId, 'images');
-    const q = query(imagesRef, orderBy('createdAt', 'desc'));
-    const snapshot = await getDocs(q);
-
-    return snapshot.docs.map(doc => doc.data() as CharacterImage);
+    return new Promise<CharacterImage[]>((resolve) => {
+      runInInjectionContext(this.injector, () => {
+        const repo = this.imageRepoFactory.create(characterId);
+        void repo.waitForData().then(() => {
+          const result = [...repo.get() as unknown as CharacterImage[]];
+          repo.destroy();
+          resolve(result);
+        });
+      });
+    });
   }
 
   async deleteImage(image: CharacterImage): Promise<void> {
     const user = this.authService.currentUser();
-    if (!user || !this.db) return;
+    if (!user) return;
 
     // Delete from Cloud Storage if we have the storage path
     if (image.storagePath && this.firebase.storage) {
@@ -44,7 +37,8 @@ export class CharacterImageService {
     }
 
     // Delete metadata from Firestore
-    const imageRef = doc(this.db, 'characters', image.characterId, 'images', image.id);
+    const firestore = this.firebase.requireFirestore();
+    const imageRef = doc(firestore, 'characters', image.characterId, 'images', image.id);
     await deleteDoc(imageRef);
   }
 }

@@ -110,6 +110,10 @@ export abstract class FirestoreRepository<
     this._initialized = false;
   }
 
+  public waitForData(): Promise<void> {
+    return this.waitForInitialization();
+  }
+
   protected waitForInitialization(): Promise<void> {
     this.ensureListening();
     if (this._initialized) {

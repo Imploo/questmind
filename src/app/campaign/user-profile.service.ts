@@ -4,7 +4,6 @@ import {
   getDoc,
   setDoc,
   updateDoc,
-  type Firestore
 } from 'firebase/firestore';
 import type { User } from 'firebase/auth';
 import { UserProfile } from './campaign.models';
@@ -13,27 +12,24 @@ import { FirebaseService } from '../core/firebase.service';
 @Injectable({ providedIn: 'root' })
 export class UserProfileService {
   private readonly firebase = inject(FirebaseService);
-  private readonly db: Firestore | null;
-
-  constructor() {
-    this.db = this.firebase.firestore;
-  }
 
   async getProfile(userId: string): Promise<UserProfile | null> {
-    if (!this.db) {
+    const db = this.firebase.firestore;
+    if (!db) {
       return null;
     }
-    const userRef = doc(this.db, 'users', userId);
+    const userRef = doc(db, 'users', userId);
     const snapshot = await getDoc(userRef);
     return snapshot.exists() ? (snapshot.data() as UserProfile) : null;
   }
 
   async ensureProfile(user: User): Promise<UserProfile> {
-    if (!this.db) {
+    const db = this.firebase.firestore;
+    if (!db) {
       throw new Error('Firestore is not configured. Cannot ensure user profile.');
     }
 
-    const userRef = doc(this.db, 'users', user.uid);
+    const userRef = doc(db, 'users', user.uid);
     const snapshot = await getDoc(userRef);
     if (snapshot.exists()) {
       const existing = snapshot.data() as UserProfile;
@@ -72,8 +68,9 @@ export class UserProfileService {
   }
 
   async addCampaign(userId: string, campaignId: string): Promise<void> {
-    if (!this.db) return;
-    const userRef = doc(this.db, 'users', userId);
+    const db = this.firebase.firestore;
+    if (!db) return;
+    const userRef = doc(db, 'users', userId);
     const snapshot = await getDoc(userRef);
     if (!snapshot.exists()) {
       await setDoc(userRef, {
@@ -95,8 +92,9 @@ export class UserProfileService {
   }
 
   async removeCampaign(userId: string, campaignId: string): Promise<void> {
-    if (!this.db) return;
-    const userRef = doc(this.db, 'users', userId);
+    const db = this.firebase.firestore;
+    if (!db) return;
+    const userRef = doc(db, 'users', userId);
     const snapshot = await getDoc(userRef);
     if (!snapshot.exists()) return;
     const data = snapshot.data() as UserProfile;
@@ -108,8 +106,9 @@ export class UserProfileService {
   }
 
   async setDefaultCampaign(userId: string, campaignId: string | null): Promise<void> {
-    if (!this.db) return;
-    const userRef = doc(this.db, 'users', userId);
+    const db = this.firebase.firestore;
+    if (!db) return;
+    const userRef = doc(db, 'users', userId);
     await updateDoc(userRef, {
       defaultCampaignId: campaignId,
       updatedAt: new Date()

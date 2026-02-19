@@ -1,13 +1,12 @@
 import { Component, signal, inject, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { collection, getDocs, QueryDocumentSnapshot } from 'firebase/firestore';
 import { AuthService } from '../auth/auth.service';
 import { PodcastAudioService } from './services/podcast-audio.service';
-import { PodcastVersion } from './services/audio-session.models';
+import { PodcastVersion, AudioSessionRecord } from './services/audio-session.models';
 import { CampaignContextService } from '../campaign/campaign-context.service';
 import { CampaignSelectorComponent } from '../campaign/campaign-selector.component';
 import { FormattingService } from '../shared/formatting.service';
-import { FirebaseService } from '../core/firebase.service';
+import { AudioSessionStateService } from './services/audio-session-state.service';
 
 interface SessionWithPodcasts {
   sessionId: string;
@@ -160,81 +159,62 @@ export class PodcastLibraryComponent {
   private readonly authService = inject(AuthService);
   private readonly podcastAudioService = inject(PodcastAudioService);
   private readonly campaignContext = inject(CampaignContextService);
-  private readonly firebase = inject(FirebaseService);
+  private readonly sessionStateService = inject(AudioSessionStateService);
   public readonly formatting = inject(FormattingService);
 
-  loading = signal(true);
+  loading = signal(false);
   sessions = signal<SessionWithPodcasts[]>([]);
   errorMessage = signal<string>('');
   campaignId = this.campaignContext.selectedCampaignId;
 
   constructor() {
-    // Set up effect to reload podcasts when campaign changes
+    // Use AudioSessionStateService's real-time data to build podcast list
     effect(() => {
-      this.campaignContext.selectedCampaignId();
-      void this.loadPodcasts();
+      const campaignId = this.campaignContext.selectedCampaignId();
+      if (!campaignId || !this.authService.currentUser()?.uid) {
+        this.sessions.set([]);
+        return;
+      }
+
+      const allSessions = this.sessionStateService.sessions() as AudioSessionRecord[];
+      this.buildPodcastList(allSessions);
     });
   }
 
-  private async loadPodcasts() {
-    const userId = this.authService.currentUser()?.uid;
-    const campaignId = this.campaignContext.selectedCampaignId();
-    this.loading.set(true);
-    if (!userId) {
-      this.loading.set(false);
-      return;
+  private buildPodcastList(allSessions: AudioSessionRecord[]): void {
+    const sessions: SessionWithPodcasts[] = [];
+
+    for (const session of allSessions) {
+      const podcasts = session.podcasts;
+      if (podcasts && Array.isArray(podcasts) && podcasts.length > 0) {
+        sessions.push({
+          sessionId: session.id,
+          sessionTitle: session.title || 'Untitled Session',
+          sessionDate: session.sessionDate || 'Unknown',
+          podcasts: podcasts.map((p) => {
+            const toDate = (val: unknown): Date =>
+              val && typeof val === 'object' && 'toDate' in val
+                ? (val as { toDate: () => Date }).toDate()
+                : new Date(val as string);
+            return {
+              ...p,
+              createdAt: toDate(p.createdAt),
+              scriptGeneratedAt: toDate(p.scriptGeneratedAt),
+              audioGeneratedAt: p.audioGeneratedAt ? toDate(p.audioGeneratedAt) : undefined
+            };
+          })
+        });
+      }
     }
-    if (!campaignId) {
-      this.sessions.set([]);
-      this.loading.set(false);
-      return;
-    }
 
-    try {
-      const firestore = this.firebase.requireFirestore();
-      const sessionsRef = collection(firestore, 'campaigns', campaignId, 'audioSessions');
-      const snapshot = await getDocs(sessionsRef);
-      const sessions: SessionWithPodcasts[] = [];
+    // Sort by date (most recent first)
+    sessions.sort((a, b) => {
+      const dateA = new Date(a.sessionDate).getTime();
+      const dateB = new Date(b.sessionDate).getTime();
+      return dateB - dateA;
+    });
 
-      snapshot.forEach((doc: QueryDocumentSnapshot) => {
-        const data = doc.data();
-        const podcasts = data['podcasts'];
-
-        // Only include sessions that have at least one podcast
-        if (podcasts && Array.isArray(podcasts) && podcasts.length > 0) {
-          sessions.push({
-            sessionId: doc.id,
-            sessionTitle: data['title'] || 'Untitled Session',
-            sessionDate: data['sessionDate'] || 'Unknown',
-            podcasts: podcasts.map((p: Record<string, unknown>) => {
-              const toDate = (val: unknown): Date =>
-                val && typeof val === 'object' && 'toDate' in val
-                  ? (val as { toDate: () => Date }).toDate()
-                  : new Date(val as string);
-              return {
-                ...(p as unknown as PodcastVersion),
-                createdAt: toDate(p['createdAt']),
-                scriptGeneratedAt: toDate(p['scriptGeneratedAt']),
-                audioGeneratedAt: p['audioGeneratedAt'] ? toDate(p['audioGeneratedAt']) : undefined
-              };
-            })
-          });
-        }
-      });
-
-      // Sort by date (most recent first)
-      sessions.sort((a, b) => {
-        const dateA = new Date(a.sessionDate).getTime();
-        const dateB = new Date(b.sessionDate).getTime();
-        return dateB - dateA;
-      });
-
-      this.sessions.set(sessions);
-    } catch (error) {
-      console.error('Failed to load podcasts:', error);
-    } finally {
-      this.loading.set(false);
-    }
+    this.sessions.set(sessions);
   }
 
   downloadPodcast(podcast: PodcastVersion, sessionTitle: string): void {

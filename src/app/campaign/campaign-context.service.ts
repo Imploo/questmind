@@ -1,11 +1,10 @@
-import { Injectable, computed, effect, inject, signal } from '@angular/core';
+import { Injectable, computed, effect, inject, signal, Injector, runInInjectionContext } from '@angular/core';
 import type { User } from 'firebase/auth';
-import { doc, onSnapshot, type Firestore } from 'firebase/firestore';
 import { AuthService } from '../auth/auth.service';
 import { Campaign, UserProfile } from './campaign.models';
 import { CampaignService } from './campaign.service';
 import { UserProfileService } from './user-profile.service';
-import { FirebaseService } from '../core/firebase.service';
+import { UserProfileRepository } from '../shared/repository/user-profile.repository';
 import * as logger from '../shared/logger';
 
 @Injectable({ providedIn: 'root' })
@@ -13,9 +12,8 @@ export class CampaignContextService {
   private readonly authService = inject(AuthService);
   private readonly campaignService = inject(CampaignService);
   private readonly userProfileService = inject(UserProfileService);
-  private readonly firebase = inject(FirebaseService);
-  private readonly db: Firestore | null;
-  private profileUnsubscribe?: () => void;
+  private readonly injector = inject(Injector);
+  private profileRepo: UserProfileRepository | null = null;
   private activeUserId: string | null = null;
 
   campaigns = signal<Campaign[]>([]);
@@ -31,8 +29,6 @@ export class CampaignContextService {
   });
 
   constructor() {
-    this.db = this.firebase.firestore;
-
     effect(() => {
       const user = this.authService.currentUser();
       if (user?.uid) {
@@ -79,33 +75,22 @@ export class CampaignContextService {
     }
 
     this.activeUserId = user.uid;
-    this.profileUnsubscribe?.();
+    this.cleanupProfileRepo();
 
-    if (!this.db) {
-      console.error('Firestore not configured. Cannot listen to profile changes.');
-      void this.loadForUser(user);
-      return;
-    }
+    runInInjectionContext(this.injector, () => {
+      this.profileRepo = new UserProfileRepository(user.uid);
 
-    const userRef = doc(this.db, 'users', user.uid);
-    this.profileUnsubscribe = onSnapshot(
-      userRef,
-      async (snapshot) => {
-        if (!snapshot.exists()) {
+      const profileSignal = this.profileRepo.get;
+      effect(() => {
+        const profile = profileSignal() as UserProfile | null;
+        if (!profile) {
           // Profile doesn't exist yet, create it
-          await this.loadForUser(user);
+          void this.loadForUser(user);
           return;
         }
-
-        const profile = snapshot.data() as UserProfile;
-        await this.loadCampaignsFromProfile(user, profile);
-      },
-      (error) => {
-        console.error('Failed to listen to user profile changes:', error);
-        this.error.set(error?.message || 'Failed to load campaigns');
-        this.isLoading.set(false);
-      }
-    );
+        void this.loadCampaignsFromProfile(user, profile);
+      });
+    });
   }
 
   private async loadForUser(user: User): Promise<void> {
@@ -173,9 +158,13 @@ export class CampaignContextService {
     }
   }
 
+  private cleanupProfileRepo(): void {
+    this.profileRepo?.destroy();
+    this.profileRepo = null;
+  }
+
   private clear(): void {
-    this.profileUnsubscribe?.();
-    this.profileUnsubscribe = undefined;
+    this.cleanupProfileRepo();
     this.activeUserId = null;
     this.campaigns.set([]);
     this.selectedCampaignId.set(null);

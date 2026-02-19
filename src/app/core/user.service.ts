@@ -1,86 +1,77 @@
-import { Injectable, signal, computed, effect } from '@angular/core';
+import { Injectable, signal, computed, effect, Injector, runInInjectionContext } from '@angular/core';
 import { inject } from '@angular/core';
-import { doc, getDoc } from 'firebase/firestore';
-import { FirebaseService } from './firebase.service';
 import { AuthService } from '../auth/auth.service';
 import type { UserProfile } from './models/user.model';
-import * as logger from '../shared/logger';
+import { UserProfileRepository } from '../shared/repository/user-profile.repository';
 
 @Injectable({ providedIn: 'root' })
 export class UserService {
-  private readonly firebaseService = inject(FirebaseService);
   private readonly authService = inject(AuthService);
+  private readonly injector = inject(Injector);
+
+  private profileRepo: UserProfileRepository | null = null;
 
   private readonly userProfile = signal<UserProfile | null>(null);
   private readonly loading = signal<boolean>(false);
-  private readonly error = signal<string | null>(null);
 
   // Public read-only signals
   readonly profile = this.userProfile.asReadonly();
   readonly isAdmin = computed(() => this.userProfile()?.admin === true);
   readonly isLoading = this.loading.asReadonly();
-  readonly userError = this.error.asReadonly();
 
   constructor() {
-    // Automatically fetch user profile when auth state changes
     effect(() => {
       const user = this.authService.currentUser();
       if (user) {
-        void this.fetchUserProfile(user.uid);
+        this.setupProfileRepo(user.uid);
       } else {
+        this.cleanupProfileRepo();
         this.userProfile.set(null);
-        this.error.set(null);
       }
     });
   }
 
-  private async fetchUserProfile(uid: string): Promise<void> {
-    this.loading.set(true);
-    this.error.set(null);
-
-    try {
-      const firestore = this.firebaseService.requireFirestore();
-      const userDoc = doc(firestore, 'users', uid);
-      const snapshot = await getDoc(userDoc);
-
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        const profile = {
-          uid,
-          email: data['email'] ?? null,
-          displayName: data['displayName'] ?? null,
-          admin: data['admin'] === true,
-          campaigns: data['campaigns'] ?? [],
-          createdAt: data['createdAt']?.toDate ? data['createdAt'].toDate() : data['createdAt'],
-          updatedAt: data['updatedAt']?.toDate ? data['updatedAt'].toDate() : data['updatedAt']
-        };
-        this.userProfile.set(profile);
-      } else {
-        logger.warn('User document does not exist in Firestore for uid:', uid);
-        // User document doesn't exist yet - create basic profile
-        this.userProfile.set({
-          uid,
-          email: this.authService.currentUser()?.email ?? null,
-          displayName: this.authService.currentUser()?.displayName ?? null,
-          admin: false
-        });
-      }
-    } catch (err) {
-      console.error('Error fetching user profile:', err);
-      this.error.set(err instanceof Error ? err.message : 'Failed to fetch user profile');
-      this.userProfile.set(null);
-    } finally {
-      this.loading.set(false);
+  private setupProfileRepo(uid: string): void {
+    // Don't re-setup for same user
+    if (this.profileRepo) {
+      return;
     }
+
+    this.loading.set(true);
+
+    runInInjectionContext(this.injector, () => {
+      this.profileRepo = new UserProfileRepository(uid);
+
+      // Create an effect to sync repo data to the service signal
+      const profileSignal = this.profileRepo.get;
+      effect(() => {
+        const profileData = profileSignal();
+        if (profileData) {
+          this.userProfile.set(profileData as UserProfile);
+        } else {
+          // User document doesn't exist yet - create basic profile
+          const currentUser = this.authService.currentUser();
+          if (currentUser) {
+            this.userProfile.set({
+              uid,
+              email: currentUser.email ?? null,
+              displayName: currentUser.displayName ?? null,
+              admin: false
+            });
+          }
+        }
+        this.loading.set(false);
+      });
+    });
   }
 
-  /**
-   * Manually refresh the user profile from Firestore
-   */
+  private cleanupProfileRepo(): void {
+    this.profileRepo?.destroy();
+    this.profileRepo = null;
+  }
+
   async refreshProfile(): Promise<void> {
-    const user = this.authService.currentUser();
-    if (user) {
-      await this.fetchUserProfile(user.uid);
-    }
+    // With real-time listener via repository, data auto-refreshes
+    // This method is kept for API compatibility
   }
 }

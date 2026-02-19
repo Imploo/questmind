@@ -1,5 +1,5 @@
 import { Injectable, signal, Signal, inject } from '@angular/core';
-import { doc, onSnapshot, DocumentSnapshot, type Firestore } from 'firebase/firestore';
+import { doc, onSnapshot, DocumentSnapshot } from 'firebase/firestore';
 import { httpsCallable, type Functions } from 'firebase/functions';
 import { FirebaseService } from '../../core/firebase.service';
 import { PodcastVersion } from './audio-session.models';
@@ -31,12 +31,10 @@ export interface PodcastProgress {
 })
 export class PodcastAudioService {
   private readonly firebase = inject(FirebaseService);
-  private readonly firestore: Firestore;
   private readonly functions: Functions;
   private currentAudio: HTMLAudioElement | null = null;
 
   constructor() {
-    this.firestore = this.firebase.requireFirestore();
     this.functions = this.firebase.requireFunctions();
   }
 
@@ -48,9 +46,9 @@ export class PodcastAudioService {
     campaignId: string,
     sessionId: string,
     version: number,
-    story: string,           // NEW: Story for script generation
-    sessionTitle: string,    // NEW: Session title
-    sessionDate?: string     // NEW: Optional session date
+    story: string,
+    sessionTitle: string,
+    sessionDate?: string
   ): Promise<void> {
     try {
       const generateAudio = httpsCallable<
@@ -95,13 +93,13 @@ export class PodcastAudioService {
     version: number
   ): { progress: Signal<PodcastProgress | null>; unsubscribe: () => void } {
     const progressSignal = signal<PodcastProgress | null>(null);
+    const firestore = this.firebase.requireFirestore();
 
     const sessionRef = doc(
-      this.firestore,
+      firestore,
       `campaigns/${campaignId}/audioSessions/${sessionId}`
     );
 
-    // Listen to Firestore changes
     const unsubscribe = onSnapshot(
       sessionRef,
       (snapshot: DocumentSnapshot) => {

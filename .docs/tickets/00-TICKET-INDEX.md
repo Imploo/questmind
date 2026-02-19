@@ -569,5 +569,22 @@ Start here for immediate impact with minimal risk:
 
 ---
 
-**Last Updated:** 2026-02-18
+## 🗄️ Centrale Data Layer
+
+| Ticket | Title | Priority | Status | Effort | Dependencies |
+|--------|-------|----------|--------|--------|--------------|
+| [#57](./57-centralize-firestore-data-layer.md) | Centraliseer Firestore Data Layer via FirestoreRepository | High | Todo | 1-2 weken | - |
+
+**Key Improvements:**
+- **Ticket 57**: Alle directe Firestore calls vervangen door repository classes
+  - 7 concrete repository classes die `FirestoreRepository` extenden (1 per collectie)
+  - Nieuwe `FirestoreDocumentRepository` base class voor single-document access
+  - Alle data retrieval via `onSnapshot` (real-time signals) — geen `getDoc`/`getDocs` meer
+  - 15 bestanden ontdaan van directe `firebase/firestore` imports
+  - Centrale error handling en loading states per collectie
+  - Vervangt/concretiseert ticket #28 (Repository Pattern)
+
+---
+
+**Last Updated:** 2026-02-19
 **Status:** Planning Complete, Ready to Begin

@@ -1,8 +1,9 @@
 import { Injectable, inject } from '@angular/core';
 import { httpsCallable, type Functions } from 'firebase/functions';
-import { doc, onSnapshot, getDoc, type Firestore, type Unsubscribe, type DocumentSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, type Unsubscribe, type DocumentSnapshot } from 'firebase/firestore';
 import { FirebaseService } from '../../core/firebase.service';
 import { UnifiedProgress } from './audio-session.models';
+import { AudioSessionStateService } from './audio-session-state.service';
 
 export interface RetranscribeOptions {
   enableKankaContext?: boolean;
@@ -65,55 +66,43 @@ export interface RegenerateStoryProgress {
 @Injectable({ providedIn: 'root' })
 export class AudioBackendOperationsService {
   private readonly firebase = inject(FirebaseService);
+  private readonly sessionStateService = inject(AudioSessionStateService);
   private functions: Functions;
-  private firestore: Firestore;
 
   constructor() {
     this.functions = this.firebase.requireFunctions();
-    this.firestore = this.firebase.requireFirestore();
   }
 
   /**
    * Retranscribe audio from existing session using batch transcription
-   *
-   * @param campaignId - Campaign ID
-   * @param sessionId - Session ID
-   * @param options - Retranscription options
-   * @returns Promise that resolves when the function is called (not when processing completes)
    */
   async retranscribeAudio(
     campaignId: string,
     sessionId: string,
     options: RetranscribeOptions = {}
   ): Promise<void> {
-    // Get existing session data to retrieve storage URL
-    const sessionRef = doc(
-      this.firestore,
-      `campaigns/${campaignId}/audioSessions/${sessionId}`
-    );
-
-    const sessionSnap = await getDoc(sessionRef);
-    if (!sessionSnap.exists()) {
+    const session = this.sessionStateService.getSession(sessionId);
+    if (!session) {
       throw new Error('Session not found');
     }
 
-    const sessionData = sessionSnap.data();
-    const storageUrl = sessionData['storageMetadata']?.['downloadUrl'];
-    const audioFileName = sessionData['audioFileName'] || 'audio.wav';
+    const sessionData = session as unknown as Record<string, unknown>;
+    const storageMetadata = sessionData['storageMetadata'] as Record<string, unknown> | undefined;
+    const downloadUrl = storageMetadata?.['downloadUrl'] as string | undefined;
+    const audioFileName = session.audioFileName || 'audio.wav';
 
-    if (!storageUrl) {
+    if (!downloadUrl) {
       throw new Error('No audio file found for this session');
     }
 
-    // Trigger batch transcription for retranscription
     const transcribeAudioBatch = httpsCallable(this.functions, 'transcribeAudioBatch');
 
     await transcribeAudioBatch({
       campaignId,
       sessionId,
-      storageUrl,
+      storageUrl: downloadUrl,
       audioFileName,
-      audioFileSize: sessionData['storageMetadata']?.['fileSize'],
+      audioFileSize: storageMetadata?.['fileSize'],
       enableKankaContext: options.enableKankaContext,
       userCorrections: options.userCorrections
     });
@@ -122,19 +111,15 @@ export class AudioBackendOperationsService {
   /**
    * @deprecated Use SessionProgressCardComponent instead (Ticket #43)
    * Listen to retranscribe progress updates (uses unified progress)
-   *
-   * @param campaignId - Campaign ID
-   * @param sessionId - Session ID
-   * @param callback - Function to call when progress updates
-   * @returns Unsubscribe function
    */
   listenToRetranscribeProgress(
     campaignId: string,
     sessionId: string,
     callback: (progress: RetranscribeProgress) => void
   ): Unsubscribe {
+    const firestore = this.firebase.requireFirestore();
     const sessionRef = doc(
-      this.firestore,
+      firestore,
       `campaigns/${campaignId}/audioSessions/${sessionId}`
     );
 
@@ -142,7 +127,6 @@ export class AudioBackendOperationsService {
       if (snapshot.exists()) {
         const data = snapshot.data();
 
-        // Use new unified progress if available
         if (data['progress']) {
           const unifiedProgress = data['progress'] as UnifiedProgress;
 
@@ -153,7 +137,6 @@ export class AudioBackendOperationsService {
             error: unifiedProgress.failure?.error
           });
         } else {
-          // Fallback to legacy fields
           callback({
             status: data['retranscribeStatus'] || 'loading_context',
             progress: data['retranscribeProgress'] || 0,
@@ -165,9 +148,6 @@ export class AudioBackendOperationsService {
     });
   }
 
-  /**
-   * Map unified stage to retranscribe status
-   */
   private mapStageToRetranscribeStatus(stage: string): RetranscribeStatus {
     const stageMap: Record<string, RetranscribeStatus> = {
       'submitted': 'loading_context',
@@ -184,36 +164,23 @@ export class AudioBackendOperationsService {
 
   /**
    * Regenerate story from existing transcription using new worker
-   *
-   * @param campaignId - Campaign ID
-   * @param sessionId - Session ID
-   * @param options - Story regeneration options
-   * @returns Promise that resolves when the function is called (not when processing completes)
    */
   async regenerateStory(
     campaignId: string,
     sessionId: string,
     options: RegenerateStoryOptions = {}
   ): Promise<void> {
-    // Get existing transcription from session
-    const sessionRef = doc(
-      this.firestore,
-      `campaigns/${campaignId}/audioSessions/${sessionId}`
-    );
-
-    const sessionSnap = await getDoc(sessionRef);
-    if (!sessionSnap.exists()) {
+    const session = this.sessionStateService.getSession(sessionId);
+    if (!session) {
       throw new Error('Session not found');
     }
 
-    const sessionData = sessionSnap.data();
-    const transcriptionText = sessionData['rawStory'] || sessionData['transcription']?.['rawTranscript'];
+    const transcriptionText = session.rawStory || session.transcription?.rawTranscript;
 
     if (!transcriptionText) {
       throw new Error('No transcription found for this session');
     }
 
-    // Trigger storyGenerationWorker directly (skips download/chunk/transcribe)
     const storyGenerationWorker = httpsCallable(this.functions, 'storyGenerationWorker');
 
     await storyGenerationWorker({
@@ -228,19 +195,15 @@ export class AudioBackendOperationsService {
   /**
    * @deprecated Use SessionProgressCardComponent instead (Ticket #43)
    * Listen to regenerate story progress updates (uses unified progress)
-   *
-   * @param campaignId - Campaign ID
-   * @param sessionId - Session ID
-   * @param callback - Function to call when progress updates
-   * @returns Unsubscribe function
    */
   listenToRegenerateStoryProgress(
     campaignId: string,
     sessionId: string,
     callback: (progress: RegenerateStoryProgress) => void
   ): Unsubscribe {
+    const firestore = this.firebase.requireFirestore();
     const sessionRef = doc(
-      this.firestore,
+      firestore,
       `campaigns/${campaignId}/audioSessions/${sessionId}`
     );
 
@@ -248,7 +211,6 @@ export class AudioBackendOperationsService {
       if (snapshot.exists()) {
         const data = snapshot.data();
 
-        // Use new unified progress if available
         if (data['progress']) {
           const unifiedProgress = data['progress'] as UnifiedProgress;
 
@@ -259,7 +221,6 @@ export class AudioBackendOperationsService {
             error: unifiedProgress.failure?.error
           });
         } else {
-          // Fallback to legacy fields
           callback({
             status: data['regenerateStoryStatus'] || 'loading_context',
             progress: data['regenerateStoryProgress'] || 0,
@@ -271,9 +232,6 @@ export class AudioBackendOperationsService {
     });
   }
 
-  /**
-   * Map unified stage to regenerate story status
-   */
   private mapStageToRegenerateStatus(stage: string): RegenerateStoryStatus {
     const stageMap: Record<string, RegenerateStoryStatus> = {
       'generating-story': 'generating_story',
@@ -284,9 +242,6 @@ export class AudioBackendOperationsService {
     return stageMap[stage] || 'loading_context';
   }
 
-  /**
-   * Get default message for a stage
-   */
   private getDefaultMessage(stage: string): string {
     const messages: Record<string, string> = {
       'downloading': 'Downloading audio...',

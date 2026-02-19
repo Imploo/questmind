@@ -1,6 +1,5 @@
-import { Injectable, inject, signal, OnDestroy } from '@angular/core';
-import { doc, getDoc, onSnapshot, type Firestore, type Unsubscribe } from 'firebase/firestore';
-import { FirebaseService } from '../firebase.service';
+import { Injectable, inject, computed } from '@angular/core';
+import { AiSettingsRepository } from '../../shared/repository/ai-settings.repository';
 
 export interface AiModelConfig {
   model: string;
@@ -37,15 +36,8 @@ export interface AiSettings {
 @Injectable({
   providedIn: 'root'
 })
-export class AiSettingsService implements OnDestroy {
-  private readonly firebase = inject(FirebaseService);
-  private readonly db: Firestore | null;
-  private unsubscribe: Unsubscribe | null = null;
-
-  // Cached settings
-  private settings = signal<AiSettings | null>(null);
-  private loading = signal<boolean>(false);
-  private error = signal<string | null>(null);
+export class AiSettingsService {
+  private readonly repo = inject(AiSettingsRepository);
 
   // Default fallback values
   private readonly defaultCharacterChatConfig: AiModelConfig = {
@@ -60,18 +52,11 @@ export class AiSettingsService implements OnDestroy {
     model: 'fal-ai/flux/schnell'
   };
 
-  constructor() {
-    this.db = this.firebase.firestore;
-    if (this.db) {
-      this.subscribeToSettings();
-    }
-  }
-
   /**
    * Get character chat config (with fallback to defaults)
    */
   getCharacterChatConfig(): AiModelConfig {
-    const settings = this.settings();
+    const settings = this.repo.get() as AiSettings | null;
     return settings?.features?.characterChat ?? this.defaultCharacterChatConfig;
   }
 
@@ -79,7 +64,7 @@ export class AiSettingsService implements OnDestroy {
    * Get image generation config (with fallback to defaults)
    */
   getImageGenerationConfig(): AiImageConfig {
-    const settings = this.settings();
+    const settings = this.repo.get() as AiSettings | null;
     return settings?.features?.imageGeneration ?? this.defaultImageGenerationConfig;
   }
 
@@ -87,89 +72,23 @@ export class AiSettingsService implements OnDestroy {
    * Get all settings (readonly signal)
    */
   getSettings() {
-    return this.settings.asReadonly();
+    return computed(() => this.repo.get() as unknown as AiSettings | null);
   }
 
   /**
    * Get loading state
    */
   isLoading() {
-    return this.loading.asReadonly();
+    return this.repo.loading;
   }
 
   /**
    * Get error state
    */
   getError() {
-    return this.error.asReadonly();
-  }
-
-  /**
-   * Subscribe to settings document in Firestore (real-time updates)
-   */
-  private subscribeToSettings(): void {
-    if (!this.db) return;
-
-    this.loading.set(true);
-    this.error.set(null);
-
-    const settingsDoc = doc(this.db, 'settings/ai');
-
-    this.unsubscribe = onSnapshot(
-      settingsDoc,
-      (snapshot) => {
-        if (snapshot.exists()) {
-          this.settings.set(snapshot.data() as AiSettings);
-          this.error.set(null);
-        } else {
-          console.warn('AI settings document not found, using defaults');
-          this.error.set('Settings document not found');
-        }
-        this.loading.set(false);
-      },
-      (err) => {
-        console.error('Error loading AI settings:', err);
-        this.error.set(err.message || 'Failed to load settings');
-        this.loading.set(false);
-      }
-    );
-  }
-
-  /**
-   * Manually reload settings (one-time fetch)
-   */
-  async reloadSettings(): Promise<void> {
-    if (!this.db) return;
-
-    this.loading.set(true);
-    this.error.set(null);
-
-    try {
-      const settingsDoc = doc(this.db, 'settings/ai');
-      const snapshot = await getDoc(settingsDoc);
-
-      if (snapshot.exists()) {
-        this.settings.set(snapshot.data() as AiSettings);
-        this.error.set(null);
-      } else {
-        console.warn('AI settings document not found, using defaults');
-        this.error.set('Settings document not found');
-      }
-    } catch (err) {
-      console.error('Error loading AI settings:', err);
-      this.error.set(err instanceof Error ? err.message : 'Failed to load settings');
-    } finally {
-      this.loading.set(false);
-    }
-  }
-
-  /**
-   * Cleanup subscription on service destroy
-   */
-  ngOnDestroy(): void {
-    if (this.unsubscribe) {
-      this.unsubscribe();
-      this.unsubscribe = null;
-    }
+    return computed(() => {
+      const error = this.repo.error();
+      return error?.message ?? null;
+    });
   }
 }
