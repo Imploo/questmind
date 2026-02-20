@@ -7,7 +7,7 @@
 
 import * as logger from '../utils/logger';
 import { getFirestore } from 'firebase-admin/firestore';
-import { subMonths, addMonths, parseISO, isWithinInterval, isValid } from 'date-fns';
+import { subWeeks, addWeeks, parseISO, isWithinInterval, isValid } from 'date-fns';
 import { KankaJournal, KankaSearchResult } from '../types/audio-session.types';
 
 export type KankaEntityType = 'characters' | 'locations' | 'quests' | 'organisations' | 'journals';
@@ -247,7 +247,7 @@ export class KankaService {
 }
 
 /**
- * Filter journals by session date range: sessionDate - 2 months to sessionDate + 1 month.
+ * Filter journals by session date range: sessionDate - 6 weeks to sessionDate + 3 weeks.
  * Journals without a parseable date fall back to created_at.
  * Journals with neither a valid date nor created_at are excluded.
  */
@@ -258,8 +258,8 @@ function filterJournalsBySessionDate(
   const session = parseISO(sessionDate);
   if (!isValid(session)) return [];
 
-  const from = subMonths(session, 2);
-  const to = addMonths(session, 1);
+  const from = subWeeks(session, 6);
+  const to = addWeeks(session, 3);
   const interval = { start: from, end: to };
 
   return journals.filter(j => {

@@ -98,7 +98,7 @@ function buildKankaContextPrompt(context: KankaSearchResult): string {
 
   const addSection = (
     label: string,
-    entities: Array<{ name: string; entry?: string; entry_parsed?: string }> | undefined
+    entities: { name: string; entry?: string; entry_parsed?: string }[] | undefined
   ) => {
     if (!entities?.length) {
       return;
