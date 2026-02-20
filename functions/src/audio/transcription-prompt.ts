@@ -22,7 +22,7 @@ function buildKankaContextPrompt(context: KankaSearchResult): string {
   const addSection = (
     label: string,
     entities:
-      | Array<{name: string; entry?: string; entry_parsed?: string}>
+      | {name: string; entry?: string; entry_parsed?: string}[]
       | undefined
   ) => {
     if (!entities?.length) {
@@ -41,19 +41,6 @@ function buildKankaContextPrompt(context: KankaSearchResult): string {
   addSection('Locations', context.locations);
   addSection('Quests', context.quests);
   addSection('Organisations', context.organisations);
-
-  if (context.journals?.length) {
-    const journalEntries = context.journals
-      .filter(j => j.name && j.entry_parsed)
-      .map(j => {
-        const date = j.date ? ` (${j.date})` : '';
-        return `- ${j.name}${date}: ${j.entry_parsed}`;
-      })
-      .join('\n');
-    if (journalEntries) {
-      sections.push(`Journals:\n${journalEntries}`);
-    }
-  }
 
   if (sections.length === 0) {
     return '';

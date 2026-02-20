@@ -7,10 +7,9 @@
 
 import * as logger from '../utils/logger';
 import { getFirestore } from 'firebase-admin/firestore';
-import { subWeeks, addWeeks, parseISO, isWithinInterval, isValid } from 'date-fns';
-import { KankaJournal, KankaSearchResult } from '../types/audio-session.types';
+import { KankaSearchResult } from '../types/audio-session.types';
 
-export type KankaEntityType = 'characters' | 'locations' | 'quests' | 'organisations' | 'journals';
+export type KankaEntityType = 'characters' | 'locations' | 'quests' | 'organisations';
 
 export interface KankaEntity {
   id: number;
@@ -26,7 +25,7 @@ export interface KankaApiResponse<T> {
   meta?: unknown;
 }
 
-const DEFAULT_TYPES: KankaEntityType[] = ['characters', 'locations', 'quests', 'organisations', 'journals'];
+const DEFAULT_TYPES: KankaEntityType[] = ['characters', 'locations', 'quests', 'organisations'];
 const KANKA_API_BASE = 'https://api.kanka.io/1.0';
 
 /**
@@ -46,8 +45,7 @@ const KANKA_API_BASE = 'https://api.kanka.io/1.0';
 export async function fetchKankaContextForTranscription(
   campaignId: string,
   sessionId: string,
-  enableKankaContext: boolean,
-  sessionDate?: string
+  enableKankaContext: boolean
 ): Promise<KankaSearchResult | undefined> {
   if (!enableKankaContext) {
     return undefined;
@@ -79,16 +77,6 @@ export async function fetchKankaContextForTranscription(
   const kankaService = new KankaService(kankaToken);
   const kankaContext = await kankaService.getAllEntities(kankaCampaignId);
 
-  // Filter journals by session date range
-  if (sessionDate && kankaContext.journals?.length) {
-    kankaContext.journals = filterJournalsBySessionDate(kankaContext.journals, sessionDate);
-    logger.debug(`[Kanka] Filtered journals to ${kankaContext.journals.length} entries within date range`);
-  } else if (!sessionDate) {
-    // No session date: skip journals entirely
-    kankaContext.journals = [];
-    logger.debug('[Kanka] No sessionDate provided, skipping journals');
-  }
-
   logger.debug('[Kanka] Entities fetched successfully');
   return kankaContext;
 }
@@ -119,7 +107,6 @@ export class KankaService {
       locations: [],
       quests: [],
       organisations: [],
-      journals: [],
     };
 
     // Fetch all entity types in parallel
@@ -190,7 +177,6 @@ export class KankaService {
       locations: [],
       quests: [],
       organisations: [],
-      journals: [],
     };
 
     const fetchPromises = types.map(async (entityType) => {
@@ -246,27 +232,4 @@ export class KankaService {
   }
 }
 
-/**
- * Filter journals by session date range: sessionDate - 6 weeks to sessionDate + 3 weeks.
- * Journals without a parseable date fall back to created_at.
- * Journals with neither a valid date nor created_at are excluded.
- */
-function filterJournalsBySessionDate(
-  journals: KankaJournal[],
-  sessionDate: string
-): KankaJournal[] {
-  const session = parseISO(sessionDate);
-  if (!isValid(session)) return [];
-
-  const from = subWeeks(session, 6);
-  const to = addWeeks(session, 3);
-  const interval = { start: from, end: to };
-
-  return journals.filter(j => {
-    if (!j.created_at) return false;
-    const createdAt = parseISO(j.created_at);
-    if (!isValid(createdAt)) return false;
-    return isWithinInterval(createdAt, interval);
-  });
-}
 

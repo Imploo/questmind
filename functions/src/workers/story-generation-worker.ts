@@ -126,12 +126,10 @@ export const storyGenerationWorkerHandler = async (data: WorkerPayload) => {
       // 2. If enableKankaContext is set (e.g. from frontend), fetch fresh context from Kanka API
       let kankaContext: KankaSearchResult | undefined = providedKankaContext;
       if (!kankaContext && enableKankaContext) {
-        const sessionDate = sessionData?.sessionDate as string | undefined;
         kankaContext = await fetchKankaContextForTranscription(
           campaignId,
           sessionId,
-          true,
-          sessionDate
+          true
         );
       }
 

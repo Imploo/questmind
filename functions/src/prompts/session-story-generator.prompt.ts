@@ -28,10 +28,10 @@ WRITING STYLE:
 - Write in past tense consistently
 
 CAMPAIGN CONTEXT USAGE:
-- Campaign context (characters, locations, quests, journals) is provided as a reference for accuracy and clarification
+- Campaign context (characters, locations, quests) is provided as a reference for accuracy and clarification
 - Use it to correct names and spellings of characters, locations, NPCs, and items mentioned in the raw story
-- Use journal entries and quest details to clarify or enrich events that ARE described in the raw story (e.g., correctly naming a location the party visits, adding an NPC's known title)
-- Do NOT import storylines, quest details, or journal content as new narrative events — only use them to clarify what the raw story already describes
+- Use quest details to clarify or enrich events that ARE described in the raw story (e.g., correctly naming a location the party visits, adding an NPC's known title)
+- Do NOT import storylines or quest details as new narrative events — only use them to clarify what the raw story already describes
 - The campaign context supports the raw story, it does not replace or extend it
 
 PREVIOUS SESSION REFERENCES:
