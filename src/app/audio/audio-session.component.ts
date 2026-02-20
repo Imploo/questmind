@@ -15,7 +15,7 @@ import {
   PodcastVersion,
   SessionProgress
 } from './services/audio-session.models';
-import { SessionStoryComponent } from './session-story.component';
+import { SessionStoryComponent, SessionMetaUpdate } from './session-story.component';
 import { SessionProgressCardComponent } from './session-progress-card.component';
 import { CampaignSelectorComponent } from '../campaign/campaign-selector.component';
 import { httpsCallable, Functions } from 'firebase/functions';
@@ -195,6 +195,7 @@ import { FirebaseService } from '../core/firebase.service';
               <app-session-story
                 [title]="currentSession()?.title || 'Session Story'"
                 [subtitle]="formatSubtitle(currentSession())"
+                [sessionDate]="currentSession()?.sessionDate || ''"
                 [story]="currentSession()?.content || ''"
                 [transcript]="currentSession()?.rawStory || currentSession()?.transcription?.rawTranscript || ''"
                 [isBusy]="isBusy()"
@@ -216,6 +217,8 @@ import { FirebaseService } from '../core/firebase.service';
                 (correctionsChanged)="onCorrectionsInput($event)"
                 (generatePodcast)="generatePodcast()"
                 (downloadPodcast)="downloadPodcast($event)"
+                (metaUpdated)="saveSessionMeta($event)"
+                (deleteSession)="deleteCurrentSession()"
               ></app-session-story>
             }
 
@@ -500,6 +503,36 @@ export class AudioSessionComponent implements OnDestroy {
       return;
     }
     this.sessionStateService.updateSession(session.id, { content: content, status: 'completed' });
+  }
+
+  saveSessionMeta(meta: SessionMetaUpdate): void {
+    if (!this.isSessionOwner()) {
+      return;
+    }
+    const session = this.currentSession();
+    if (!session) {
+      return;
+    }
+    this.sessionStateService.updateSession(session.id, {
+      title: meta.title,
+      sessionDate: meta.sessionDate
+    });
+  }
+
+  async deleteCurrentSession(): Promise<void> {
+    if (!this.isSessionOwner()) {
+      return;
+    }
+    const session = this.currentSession();
+    if (!session) {
+      return;
+    }
+    try {
+      await this.sessionStateService.deleteSession(session.id);
+      this.selectedSessionId.set(null);
+    } catch (error) {
+      console.error('Failed to delete session:', error);
+    }
   }
 
   selectSession(session: AudioSessionRecord): void {

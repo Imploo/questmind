@@ -78,6 +78,14 @@ export class AudioSessionStateService {
     });
   }
 
+  async deleteSession(id: string): Promise<void> {
+    const repo = this.sessionRepo.value();
+    if (!repo) {
+      throw new Error('No active campaign set for audio sessions.');
+    }
+    await repo.delete(id as SessionRecord['id']);
+  }
+
   async persistSessionPatch(id: string, patch: Partial<AudioSessionRecord>): Promise<void> {
     const exists = this.sessions().some(session => session.id === id);
     if (!exists) {
