@@ -4,6 +4,12 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { marked } from 'marked';
 import { PodcastVersion } from './services/audio-session.models';
 import { FormattingService } from '../shared/formatting.service';
+import { ToastService } from '../shared/services/toast.service';
+
+export interface SessionMetaUpdate {
+  title: string;
+  sessionDate: string;
+}
 
 @Component({
   selector: 'app-session-story',
@@ -31,22 +37,65 @@ import { FormattingService } from '../shared/formatting.service';
       <!-- Card Header -->
       <div class="p-6 pb-0">
         <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between mb-4">
-          <div>
-            <h3 class="text-lg font-semibold m-0">{{ title }}</h3>
-            <p class="text-sm text-gray-500 m-0">{{ subtitle }}</p>
-          </div>
-          <div class="flex gap-2">
-            @if (activeTab() === 'story') {
+          @if (isEditingMeta()) {
+            <div class="flex-1 flex flex-col gap-2">
+              <input
+                type="text"
+                class="w-full px-3 py-2 text-lg font-semibold border border-gray-300 rounded-lg focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none"
+                [value]="titleDraft()"
+                (input)="onTitleDraftInput($event)"
+                placeholder="Session title"
+              />
+              <input
+                type="date"
+                class="w-48 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none"
+                [value]="dateDraft()"
+                (input)="onDateDraftInput($event)"
+              />
+            </div>
+            <div class="flex gap-2 self-start">
               <button
                 type="button"
                 class="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:text-gray-800"
-                (click)="toggleEdit()"
-                [disabled]="isBusy || !story.trim().length || !canEditStory"
+                (click)="cancelMetaEdit()"
               >
-                {{ isEditing() ? 'Preview' : 'Edit' }}
+                Cancel
               </button>
-            }
-          </div>
+              <button
+                type="button"
+                class="px-3 py-2 text-xs font-semibold rounded-lg bg-primary text-white hover:bg-primary/90"
+                (click)="saveMetaEdit()"
+              >
+                Save
+              </button>
+            </div>
+          } @else {
+            <div>
+              <h3 class="text-lg font-semibold m-0">{{ title }}</h3>
+              <p class="text-sm text-gray-500 m-0">{{ subtitle }}</p>
+            </div>
+            <div class="flex gap-2">
+              <button
+                type="button"
+                class="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:text-gray-800"
+                (click)="startMetaEdit()"
+                [disabled]="isBusy || !canEditStory"
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                class="px-3 py-2 text-xs font-semibold rounded-lg border border-red-200 text-red-600 hover:bg-red-600 hover:text-white transition-colors"
+                (click)="onDeleteClick()"
+                [disabled]="isBusy || !canEditStory"
+                title="Sessie verwijderen"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                </svg>
+              </button>
+            </div>
+          }
         </div>
 
         <!-- Tabs -->
@@ -100,14 +149,24 @@ import { FormattingService } from '../shared/formatting.service';
               <div class="space-y-4">
                 <div class="flex items-center justify-between">
                   <h4 class="text-base font-semibold m-0">Generated Story</h4>
-                  <button
-                    type="button"
-                    class="px-3 py-2 text-xs font-semibold rounded-lg bg-primary text-white hover:bg-primary-dark disabled:bg-gray-300"
-                    (click)="regenerate.emit()"
-                    [disabled]="isBusy || !canRegenerate"
-                  >
-                    Regenerate Story
-                  </button>
+                  <div class="flex gap-2">
+                    <button
+                      type="button"
+                      class="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:text-gray-800 disabled:opacity-50"
+                      (click)="toggleEdit()"
+                      [disabled]="isBusy || !canEditStory"
+                    >
+                      {{ isEditing() ? 'Preview' : 'Edit' }}
+                    </button>
+                    <button
+                      type="button"
+                      class="px-3 py-2 text-xs font-semibold rounded-lg bg-primary text-white hover:bg-primary-dark disabled:bg-gray-300"
+                      (click)="regenerate.emit()"
+                      [disabled]="isBusy || !canRegenerate"
+                    >
+                      Regenerate Story
+                    </button>
+                  </div>
                 </div>
 
                 <div class="border border-gray-200 rounded-lg p-4">
@@ -349,10 +408,12 @@ import { FormattingService } from '../shared/formatting.service';
 })
 export class SessionStoryComponent implements OnChanges {
   private readonly sanitizer = inject(DomSanitizer);
+  private readonly toastService = inject(ToastService);
   public readonly formatting = inject(FormattingService);
 
   @Input() title = 'Session Story';
   @Input() subtitle = '';
+  @Input() sessionDate = '';
   @Input() story = '';
   @Input() transcript = '';
   @Input() isBusy = false;
@@ -379,9 +440,14 @@ export class SessionStoryComponent implements OnChanges {
   @Output() correctionsChanged = new EventEmitter<string>();
   @Output() generatePodcast = new EventEmitter<void>();
   @Output() downloadPodcast = new EventEmitter<PodcastVersion>();
+  @Output() metaUpdated = new EventEmitter<SessionMetaUpdate>();
+  @Output() deleteSession = new EventEmitter<void>();
 
   activeTab = signal<'story' | 'podcasts'>('story');
   isEditing = signal<boolean>(false);
+  isEditingMeta = signal<boolean>(false);
+  titleDraft = signal<string>('');
+  dateDraft = signal<string>('');
   draft = signal<string>('');
   renderedStory = signal<SafeHtml>('');
   showTranscript = signal<boolean>(false);
@@ -399,6 +465,41 @@ export class SessionStoryComponent implements OnChanges {
       this.draft.set(this.story);
       this.renderedStory.set(this.sanitizer.bypassSecurityTrustHtml(this.convertMarkdown(this.story)));
     }
+  }
+
+  async onDeleteClick(): Promise<void> {
+    const confirmed = await this.toastService.confirm('Sessie verwijderen?');
+    if (confirmed) {
+      this.deleteSession.emit();
+    }
+  }
+
+  startMetaEdit(): void {
+    this.titleDraft.set(this.title);
+    this.dateDraft.set(this.sessionDate);
+    this.isEditingMeta.set(true);
+  }
+
+  cancelMetaEdit(): void {
+    this.isEditingMeta.set(false);
+  }
+
+  saveMetaEdit(): void {
+    this.metaUpdated.emit({
+      title: this.titleDraft().trim() || this.title,
+      sessionDate: this.dateDraft()
+    });
+    this.isEditingMeta.set(false);
+  }
+
+  onTitleDraftInput(event: Event): void {
+    const target = event.target as HTMLInputElement;
+    this.titleDraft.set(target.value);
+  }
+
+  onDateDraftInput(event: Event): void {
+    const target = event.target as HTMLInputElement;
+    this.dateDraft.set(target.value);
   }
 
   toggleEdit(): void {
