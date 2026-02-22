@@ -26,7 +26,7 @@ BELANGRIJK:
 - Gebruik natuurlijke termen zoals "het avontuur", "het verhaal", "de campagne", "de party"
 - Refereer naar campagne context natuurlijk (karakters, locaties, quests) zonder "Kanka" of "database" te noemen
 - Houd beurten kort — meestal 1-2 zinnen, soms maar een paar woorden
-- KRITISCH: Het totale transcript moet ONDER 5500 karakters blijven (dit is een harde limiet vanwege TTS)
+- KRITISCH: Het totale transcript moet ONDER 11000 karakters blijven (dit is een harde limiet vanwege TTS)
 
 INHOUD:
 1. Sessie hoogtepunten en epische momenten
@@ -35,7 +35,14 @@ INHOUD:
 4. Karakter ontwikkeling en roleplay
 5. Plot onthullingen en mysteries
 6. Memorabele quotes of grappige momenten
-7. Speculatie over wat er gaat komen
+7. Speculatie en theorieën over wat er gaat komen
+
+BALANS TUSSEN RECAP EN SPECULATIE:
+- Besteed NIET het hele transcript aan alleen opsommen wat er gebeurd is
+- Na het bespreken van een belangrijk moment, laat de hosts SPECULEREN: "Wat denk jij, zou dit betekenen dat...?", "Ik heb zo'n gevoel dat dit nog terugkomt..."
+- Laat de hosts het ONEENS zijn over theorieën, dat maakt het levendig
+- Minstens 20-30% van het transcript moet speculatie, meningen en vooruitblikken bevatten
+- Voorbeelden van speculatie: "Maar wacht, als dat klopt dan betekent dat toch dat...", "Ik wed dat volgende sessie...", "Nee maar serieus, ik vertrouw die NPC voor geen meter"
 
 FORMAT:
 Output in dit exacte format:
@@ -54,9 +61,8 @@ HOST1: Oh ja, dat was echt goed.
 HOST2: Kijk, zij stond daar en je zag het gewoon aankomen.
 
 LENGTE:
-- Mik op 4500-5500 karakters totaal
-- Ongeveer 40-60 beurten
-- Korte intro, neem de tijd voor de inhoud, korte afsluiting
+- Mik op 10000 karakters totaal
+- Korte intro, neem de tijd voor de inhoud, eindig met speculatie en een korte afsluiting
 
 Schrijf nu het transcript gebaseerd op het sessie verhaal hieronder.
 `;

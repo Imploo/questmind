@@ -1,0 +1,15 @@
+{
+  "servers": [
+    {
+      "extensions": ["ts", "html"],
+      "command": [
+        "node",
+        "node_modules/@angular/language-server/index.js",
+        "--stdio",
+        "--tsProbeLocations", "node_modules",
+        "--ngProbeLocations", "node_modules"
+      ],
+      "rootDir": "."
+    }
+  ]
+}

@@ -329,8 +329,8 @@ export class AdminComponent implements OnInit {
       key: 'podcastScript',
       label: 'Podcast Script',
       icon: '🎙️',
-      provider: 'Mistral',
-      providerColor: 'bg-amber-100 text-amber-700',
+      provider: 'Gemini',
+      providerColor: 'bg-blue-100 text-blue-700',
       formType: 'standard',
       description: 'Converteert verhaal naar twee-host podcast dialoog'
     },
@@ -354,7 +354,7 @@ export class AdminComponent implements OnInit {
     imageGeneration: { model: 'fal-ai/flux/schnell' },
     transcription: { model: 'gemini-2.0-flash-exp', temperature: 0.1, topP: 1, topK: 40, maxOutputTokens: 128000 },
     storyGeneration: { model: 'gemini-2.0-flash-exp', temperature: 0.8, topP: 0.95, topK: 40, maxOutputTokens: 32000 },
-    podcastScript: { model: 'Mistral-Large-3', temperature: 0.9, topP: 0.95, topK: 40, maxOutputTokens: 4096 },
+    podcastScript: { model: 'gemini-2.5-flash', temperature: 0.9, topP: 0.95, topK: 40, maxOutputTokens: 4096 },
     characterChat: { model: 'gemini-2.0-flash-exp', temperature: 0.4, topP: 0.95, topK: 40, maxOutputTokens: 8192 },
     podcastVoices: { host1VoiceId: '', host2VoiceId: '' },
   };

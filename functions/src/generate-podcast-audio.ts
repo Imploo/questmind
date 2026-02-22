@@ -2,16 +2,18 @@ import * as logger from './utils/logger';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
-import OpenAI from 'openai';
+import { GoogleGenAI } from '@google/genai';
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { Readable } from 'stream';
 import { randomUUID } from 'crypto';
+import { Bucket } from '@google-cloud/storage';
 import { SHARED_CORS } from './index';
 import { PODCAST_SCRIPT_GENERATOR_PROMPT } from './prompts/podcast-script-generator.prompt';
 import { ensureAuthForTesting } from './utils/emulator-helpers';
 import { ProgressTrackerService } from './services/progress-tracker.service';
 import { wrapCallable } from './utils/sentry-error-handler';
 import { getAiFeatureConfig, getPodcastVoiceConfig } from './utils/ai-settings';
+import { AIFeatureConfig, PodcastEntry } from './types/audio-session.types';
 
 const DEFAULT_HOST_VOICES: Record<'host1' | 'host2', string> = {
   host1: process.env.ELEVENLABS_HOST1_VOICE || 'tvFp0BgJPrEXGoDhDIA4', // Thomas
@@ -20,9 +22,9 @@ const DEFAULT_HOST_VOICES: Record<'host1' | 'host2', string> = {
 
 async function updatePodcastEntry(
   sessionRef: FirebaseFirestore.DocumentReference,
-  existingPodcasts: any[],
+  existingPodcasts: PodcastEntry[],
   version: number,
-  data: Record<string, unknown>
+  data: Partial<PodcastEntry>
 ) {
   await sessionRef.update({
     podcasts: upsertPodcast(existingPodcasts, { version, ...data }),
@@ -53,7 +55,7 @@ interface PodcastGenerationRequest {
 export const generatePodcastAudio = onCall(
   {
     cors: SHARED_CORS,
-    secrets: ['AZURE_FOUNDRY_API_KEY', 'AZURE_FOUNDRY_ENDPOINT', 'ELEVENLABS_API_KEY'],
+    secrets: ['GOOGLE_AI_API_KEY', 'ELEVENLABS_API_KEY'],
   },
   wrapCallable<PodcastGenerationRequest, unknown>('generatePodcastAudio', async (request) => {
     ensureAuthForTesting(request);
@@ -114,8 +116,8 @@ export const generatePodcastAudio = onCall(
     if (sessionData.ownerId !== auth.uid) {
       throw new HttpsError('permission-denied', 'Only the session owner can generate podcasts.');
     }
-    const existingPodcasts = Array.isArray(sessionData.podcasts) ? sessionData.podcasts : [];
-    const existingEntry = existingPodcasts.find((podcast: any) => podcast?.version === version);
+    const existingPodcasts: PodcastEntry[] = Array.isArray(sessionData.podcasts) ? sessionData.podcasts : [];
+    const existingEntry = existingPodcasts.find(podcast => podcast?.version === version);
 
     const now = new Date();
     const initialPodcastEntry = {
@@ -157,13 +159,13 @@ export const generatePodcastAudio = onCall(
   })
 );
 
-function upsertPodcast(existing: any[], nextEntry: any): any[] {
+function upsertPodcast(existing: PodcastEntry[], nextEntry: Partial<PodcastEntry> & { version: number }): PodcastEntry[] {
   const index = existing.findIndex(podcast => podcast?.version === nextEntry.version);
   if (index === -1) {
-    return [...existing, nextEntry];
+    return [...existing, nextEntry as PodcastEntry];
   }
   const updated = [...existing];
-  updated[index] = { ...existing[index], ...nextEntry };
+  updated[index] = { ...existing[index], ...nextEntry } as PodcastEntry;
   return updated;
 }
 
@@ -201,12 +203,13 @@ async function generatePodcastInBackground(
   sessionTitle: string | undefined,
   sessionDate: string | undefined,
   sessionRef: FirebaseFirestore.DocumentReference,
-  existingPodcasts: any[],
+  existingPodcasts: PodcastEntry[],
   userId: string,
-  storage: any
+  storage: Bucket
 ) {
   try {
     let finalScript: PodcastScript;
+    let scriptConfig: AIFeatureConfig | null = null;
 
     // STEP 1: Generate script if not provided
     if (!script) {
@@ -214,26 +217,33 @@ async function generatePodcastInBackground(
         campaignId, sessionId, 'generating-podcast-script', 10, 'Generating podcast script...'
       );
 
-      const scriptConfig = await getAiFeatureConfig('podcastScript');
+      scriptConfig = await getAiFeatureConfig('podcastScript');
 
-      const aiClient = new OpenAI({
-        baseURL: process.env.AZURE_FOUNDRY_ENDPOINT!,
-        apiKey: process.env.AZURE_FOUNDRY_API_KEY!,
-      });
+      const googleAiKey = process.env.GOOGLE_AI_API_KEY;
+      if (!googleAiKey) {
+        throw new Error('Google AI API key not configured');
+      }
 
-      const scriptResponse = await aiClient.chat.completions.create({
+      const googleAi = new GoogleGenAI({ apiKey: googleAiKey });
+
+      const scriptResponse = await googleAi.models.generateContent({
         model: scriptConfig.model,
-        max_tokens: scriptConfig.maxOutputTokens,
-        messages: [
-          { role: 'system', content: PODCAST_SCRIPT_GENERATOR_PROMPT },
+        contents: [
           {
             role: 'user',
-            content: `SESSION TITLE: ${sessionTitle}\nSESSION DATE: ${sessionDate || 'Unknown'}\n\nSESSION STORY:\n${story}`,
+            parts: [{ text: `SESSION TITLE: ${sessionTitle}\nSESSION DATE: ${sessionDate || 'Unknown'}\n\nSESSION STORY:\n${story}` }],
           },
         ],
+        config: {
+          systemInstruction: PODCAST_SCRIPT_GENERATOR_PROMPT,
+          temperature: scriptConfig.temperature,
+          topP: scriptConfig.topP,
+          topK: scriptConfig.topK,
+          maxOutputTokens: scriptConfig.maxOutputTokens,
+        },
       });
 
-      const scriptText = scriptResponse.choices[0]?.message?.content;
+      const scriptText = scriptResponse.text;
       if (!scriptText) {
         throw new Error('No script generated by AI');
       }
@@ -245,11 +255,11 @@ async function generatePodcastInBackground(
       }
 
       const totalCharacters = finalScript.segments.reduce((sum, seg) => sum + seg.text.length, 0);
-      logger.debug(`Generated script: ${totalCharacters} characters (limit: 6000)`);
+      logger.debug(`Generated script: ${totalCharacters} characters (limit: 10000)`);
 
-      if (totalCharacters > 6000) {
+      if (totalCharacters > 10000) {
         throw new Error(
-          `Script too long (${totalCharacters} chars). Maximum is 6000. Try a shorter story.`
+          `Script too long (${totalCharacters} chars). Maximum is 10000. Try a shorter story.`
         );
       }
 
@@ -258,7 +268,7 @@ async function generatePodcastInBackground(
         script: finalScript,
         scriptGeneratedAt: new Date(),
         duration: finalScript.estimatedDuration,
-        modelUsed: 'Mistral-Large-3'
+        modelUsed: scriptConfig.model
       });
 
       logger.debug(`Script: ${finalScript.segments.length} segments, ~${finalScript.estimatedDuration}s`);
@@ -310,7 +320,7 @@ async function generatePodcastInBackground(
     );
 
     const chunks: Buffer[] = [];
-    const readable = Readable.from(audioStream as any);
+    const readable = Readable.from(audioStream as AsyncIterable<Uint8Array>);
     for await (const chunk of readable) {
       chunks.push(Buffer.from(chunk));
     }
@@ -353,7 +363,7 @@ async function generatePodcastInBackground(
       audioUrl: fileUrl,
       fileSize,
       audioGeneratedAt: new Date(),
-      modelUsed: 'Mistral-Large-3',
+      modelUsed: scriptConfig?.model,
       error: null
     });
 
@@ -361,14 +371,14 @@ async function generatePodcastInBackground(
 
     logger.debug(`Podcast generation completed: ${fileUrl}`);
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error generating podcast:', error);
 
     await updatePodcastEntry(sessionRef, existingPodcasts, version, {
       status: 'failed',
-      error: error?.message || 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error'
     });
 
-    await ProgressTrackerService.markFailed(campaignId, sessionId, 'generating-podcast-audio', error);
+    await ProgressTrackerService.markFailed(campaignId, sessionId, 'generating-podcast-audio', error instanceof Error ? error : new Error(String(error)));
   }
 }

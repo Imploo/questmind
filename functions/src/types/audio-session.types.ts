@@ -156,6 +156,28 @@ export interface SessionProgress {
   updatedAt: Date;                     // Last update timestamp
 }
 
+export type PodcastStatus = 'pending' | 'script_complete' | 'completed' | 'failed';
+
+export interface PodcastEntry {
+  version: number;
+  createdAt?: Date;
+  storyVersion?: number;
+  status: PodcastStatus;
+  progress?: number;
+  progressMessage?: string;
+  script?: {
+    segments: { speaker: 'host1' | 'host2'; text: string }[];
+    estimatedDuration: number;
+  };
+  scriptGeneratedAt?: Date;
+  duration?: number;
+  modelUsed?: string;
+  audioUrl?: string;
+  fileSize?: number;
+  audioGeneratedAt?: Date;
+  error?: string | null;
+}
+
 export interface ProcessAudioSessionRequest {
   campaignId: string;
   sessionId: string;
