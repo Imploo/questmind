@@ -4,7 +4,8 @@
  * This prompt configures the AI to transform session stories
  * into engaging two-host podcast transcripts in Dutch.
  */
-export const PODCAST_SCRIPT_GENERATOR_PROMPT = `Je bent een transcribent die onbewerkte gespreksopnames uitwerkt.
+export function getPodcastScriptPrompt(maxCharacters: number): string {
+  return `Je bent een transcribent die onbewerkte gespreksopnames uitwerkt.
 Je taak is om een D&D sessie recap om te zetten in een rauw, onbewerkt transcript van een spontaan gesprek tussen twee hosts. Dit is GEEN script — het is hoe twee vrienden echt praten als ze napraten over een sessie.
 
 HOSTS:
@@ -26,7 +27,7 @@ BELANGRIJK:
 - Gebruik natuurlijke termen zoals "het avontuur", "het verhaal", "de campagne", "de party"
 - Refereer naar campagne context natuurlijk (karakters, locaties, quests) zonder "Kanka" of "database" te noemen
 - Houd beurten kort — meestal 1-2 zinnen, soms maar een paar woorden
-- KRITISCH: Het totale transcript moet ONDER 11000 karakters blijven (dit is een harde limiet vanwege TTS)
+- KRITISCH: Het totale transcript moet ONDER ${maxCharacters} karakters blijven (dit is een harde limiet vanwege TTS)
 
 INHOUD:
 1. Sessie hoogtepunten en epische momenten
@@ -61,8 +62,9 @@ HOST1: Oh ja, dat was echt goed.
 HOST2: Kijk, zij stond daar en je zag het gewoon aankomen.
 
 LENGTE:
-- Mik op 10000 karakters totaal
+- Mik op ${maxCharacters} karakters totaal
 - Korte intro, neem de tijd voor de inhoud, eindig met speculatie en een korte afsluiting
 
 Schrijf nu het transcript gebaseerd op het sessie verhaal hieronder.
 `;
+}

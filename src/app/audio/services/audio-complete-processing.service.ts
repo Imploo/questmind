@@ -4,7 +4,6 @@ import {doc, type DocumentReference, type Firestore, updateDoc} from 'firebase/f
 import {Auth, getIdToken} from 'firebase/auth';
 import {FirebaseService} from '../../core/firebase.service';
 import {AudioCompressionService} from './audio-compression.service';
-import {environment} from '../../../environments/environment';
 import * as logger from '../../shared/logger';
 
 export interface StartProcessingOptions {
@@ -215,11 +214,12 @@ export class AudioCompleteProcessingService {
     onProgress?: (progress: number) => void,
   ): Promise<string> {
     const token = await getIdToken(this.auth.currentUser!);
+    const uploadUrl = this.firebase.getHttpFunctionUrl('uploadAudioToGemini');
 
     // XHR is used for upload progress tracking (fetch does not support it)
     return new Promise<string>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      xhr.open('POST', environment.uploadAudioUrl);
+      xhr.open('POST', uploadUrl);
       xhr.setRequestHeader('Authorization', `Bearer ${token}`);
       xhr.setRequestHeader('X-Mime-Type', mimeType);
       xhr.setRequestHeader('X-File-Name', encodeURIComponent(fileName));

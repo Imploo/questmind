@@ -6,6 +6,10 @@ import { connectFunctionsEmulator, getFunctions, type Functions } from 'firebase
 import { environment } from '../../environments/environment';
 import { getStorage, type FirebaseStorage } from 'firebase/storage';
 
+const FUNCTIONS_REGION = 'europe-west1';
+const EMULATOR_HOST = 'localhost';
+const EMULATOR_PORT = 5002;
+
 @Injectable({ providedIn: 'root' })
 export class FirebaseService {
   readonly app: FirebaseApp | null;
@@ -19,9 +23,9 @@ export class FirebaseService {
       this.app = getApp();
       this.auth = getAuth(this.app);
       this.firestore = getFirestore(this.app);
-      this.functions = getFunctions(this.app, 'europe-west1');
+      this.functions = getFunctions(this.app, FUNCTIONS_REGION);
       if (environment.useEmulators) {
-        connectFunctionsEmulator(this.functions, 'localhost', 5002);
+        connectFunctionsEmulator(this.functions, EMULATOR_HOST, EMULATOR_PORT);
       }
       this.storage = getStorage(this.app);
     } catch (error) {
@@ -55,4 +59,15 @@ export class FirebaseService {
     return this.functions;
   }
 
+  /**
+   * Build the URL for an HTTP (onRequest) Cloud Function.
+   * Respects emulator configuration automatically.
+   */
+  getHttpFunctionUrl(functionName: string): string {
+    const projectId = this.app!.options.projectId;
+    if (environment.useEmulators) {
+      return `http://${EMULATOR_HOST}:${EMULATOR_PORT}/${projectId}/${FUNCTIONS_REGION}/${functionName}`;
+    }
+    return `https://${FUNCTIONS_REGION}-${projectId}.cloudfunctions.net/${functionName}`;
+  }
 }

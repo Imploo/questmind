@@ -14,6 +14,8 @@ export interface AiImageConfig {
 }
 
 export interface PodcastVoiceSettings {
+  model: string;
+  maxCharacters: number;
   host1VoiceId: string;
   host2VoiceId: string;
 }

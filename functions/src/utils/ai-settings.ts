@@ -13,7 +13,7 @@ const DEFAULT_CONFIGS: Record<string, AIFeatureConfig> = {
 };
 
 const DEFAULT_IMAGE_CONFIG = { model: 'fal-ai/flux/schnell' };
-const DEFAULT_PODCAST_VOICES: PodcastVoiceSettings = { host1VoiceId: '', host2VoiceId: '' };
+const DEFAULT_PODCAST_VOICES: PodcastVoiceSettings = { model: 'eleven_v3', maxCharacters: 5000, host1VoiceId: '', host2VoiceId: '' };
 
 export async function getAiFeatureConfig(featureKey: string): Promise<AIFeatureConfig> {
   const db = getFirestore();

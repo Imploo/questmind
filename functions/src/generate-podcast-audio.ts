@@ -8,7 +8,7 @@ import { Readable } from 'stream';
 import { randomUUID } from 'crypto';
 import { Bucket } from '@google-cloud/storage';
 import { SHARED_CORS } from './index';
-import { PODCAST_SCRIPT_GENERATOR_PROMPT } from './prompts/podcast-script-generator.prompt';
+import { getPodcastScriptPrompt } from './prompts/podcast-script-generator.prompt';
 import { ensureAuthForTesting } from './utils/emulator-helpers';
 import { ProgressTrackerService } from './services/progress-tracker.service';
 import { wrapCallable } from './utils/sentry-error-handler';
@@ -210,6 +210,7 @@ async function generatePodcastInBackground(
   try {
     let finalScript: PodcastScript;
     let scriptConfig: AIFeatureConfig | null = null;
+    const voiceConfig = await getPodcastVoiceConfig();
 
     // STEP 1: Generate script if not provided
     if (!script) {
@@ -235,7 +236,7 @@ async function generatePodcastInBackground(
           },
         ],
         config: {
-          systemInstruction: PODCAST_SCRIPT_GENERATOR_PROMPT,
+          systemInstruction: getPodcastScriptPrompt(voiceConfig.maxCharacters),
           temperature: scriptConfig.temperature,
           topP: scriptConfig.topP,
           topK: scriptConfig.topK,
@@ -255,13 +256,7 @@ async function generatePodcastInBackground(
       }
 
       const totalCharacters = finalScript.segments.reduce((sum, seg) => sum + seg.text.length, 0);
-      logger.debug(`Generated script: ${totalCharacters} characters (limit: 10000)`);
-
-      if (totalCharacters > 10000) {
-        throw new Error(
-          `Script too long (${totalCharacters} chars). Maximum is 10000. Try a shorter story.`
-        );
-      }
+      logger.debug(`Generated script: ${totalCharacters} characters (limit: ${voiceConfig.maxCharacters})`);
 
       await updatePodcastEntry(sessionRef, existingPodcasts, version, {
         status: 'script_complete',
@@ -293,7 +288,6 @@ async function generatePodcastInBackground(
       throw new Error('ElevenLabs API key is not configured');
     }
 
-    const voiceConfig = await getPodcastVoiceConfig();
     const hostVoices: Record<'host1' | 'host2', string> = {
       host1: voiceConfig.host1VoiceId || DEFAULT_HOST_VOICES.host1,
       host2: voiceConfig.host2VoiceId || DEFAULT_HOST_VOICES.host2,
@@ -312,7 +306,8 @@ async function generatePodcastInBackground(
     );
 
     const audioStream = await elevenlabs.textToDialogue.convert({
-      inputs: dialogueInputs
+      inputs: dialogueInputs,
+      modelId: voiceConfig.model || undefined,
     });
 
     await ProgressTrackerService.updateProgress(

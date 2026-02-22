@@ -216,6 +216,32 @@ interface FeatureDefinition {
                 }
                 @case ('voicesOnly') {
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="md:col-span-2">
+                      <label class="block text-sm font-medium text-gray-700 mb-1">Model</label>
+                      <input
+                        type="text"
+                        [ngModel]="getFeatureValue('model')"
+                        (ngModelChange)="setFeatureValue('model', $event)"
+                        [name]="selectedFeature().key + '-model'"
+                        (blur)="onFieldBlur()"
+                        placeholder="e.g. eleven_v3"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                      />
+                    </div>
+                    <div class="md:col-span-2">
+                      <label class="block text-sm font-medium text-gray-700 mb-1">Max Characters</label>
+                      <input
+                        type="number"
+                        [ngModel]="getFeatureValue('maxCharacters')"
+                        (ngModelChange)="setFeatureValue('maxCharacters', $event)"
+                        [name]="selectedFeature().key + '-maxCharacters'"
+                        (blur)="onFieldBlur()"
+                        step="1000"
+                        min="1000"
+                        placeholder="e.g. 5000"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                      />
+                    </div>
                     <div>
                       <label class="block text-sm font-medium text-gray-700 mb-1">Host 1 Voice ID</label>
                       <input
@@ -356,7 +382,7 @@ export class AdminComponent implements OnInit {
     storyGeneration: { model: 'gemini-2.0-flash-exp', temperature: 0.8, topP: 0.95, topK: 40, maxOutputTokens: 32000 },
     podcastScript: { model: 'gemini-2.5-flash', temperature: 0.9, topP: 0.95, topK: 40, maxOutputTokens: 4096 },
     characterChat: { model: 'gemini-2.0-flash-exp', temperature: 0.4, topP: 0.95, topK: 40, maxOutputTokens: 8192 },
-    podcastVoices: { host1VoiceId: '', host2VoiceId: '' },
+    podcastVoices: { model: 'eleven_v3', maxCharacters: 5000, host1VoiceId: '', host2VoiceId: '' },
   };
 
   // State

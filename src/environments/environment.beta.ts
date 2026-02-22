@@ -1,7 +1,6 @@
 export const environment = {
   production: false,
   useEmulators: false,
-  uploadAudioUrl: '/api/uploadAudioToGemini',
   sentry: {
     dsn: '', // Empty in development - errors not sent to Sentry
     environment: 'development',
