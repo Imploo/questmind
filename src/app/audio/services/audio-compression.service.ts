@@ -23,7 +23,7 @@ export interface CompressionResult {
 }
 
 const DEFAULT_OPTIONS: CompressionOptions = {
-  targetBitrate: 16_000,
+  targetBitrate: 32_000,
   targetSampleRate: 16_000,
   channels: 1,
 };
