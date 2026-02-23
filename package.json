@@ -52,6 +52,7 @@
     "firebase": "^12.9.0",
     "lucide-angular": "^0.563.0",
     "marked": "^17.0.1",
+    "pdfmake": "^0.3.5",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",
     "zod": "^4.3.6"
@@ -63,6 +64,7 @@
     "@angular/language-server": "^21.1.5",
     "@sentry/cli": "^3.2.0",
     "@tailwindcss/postcss": "^4.1.18",
+    "@types/pdfmake": "^0.3.1",
     "angular-eslint": "21.2.0",
     "autoprefixer": "^10.4.24",
     "eslint": "^9.39.2",

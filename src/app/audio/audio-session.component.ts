@@ -1,9 +1,10 @@
-import { Component, OnDestroy, effect, signal, computed, inject, Injector, runInInjectionContext, ChangeDetectionStrategy, Signal } from '@angular/core';
+import { Component, effect, signal, computed, inject, ChangeDetectionStrategy, Signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router, ActivatedRoute } from '@angular/router';
 import { AudioSessionStateService } from './services/audio-session-state.service';
 import { AudioBackendOperationsService } from './services/audio-backend-operations.service';
-import { PodcastAudioService, PodcastProgress } from './services/podcast-audio.service';
+import { PodcastGenerationService } from './services/podcast-generation.service';
+import { CorrectionsSaveService } from './services/corrections-save.service';
 import { AuthService } from '../auth/auth.service';
 import { FormattingService } from '../shared/formatting.service';
 import * as logger from '../shared/logger';
@@ -16,13 +17,16 @@ import {
 } from './services/audio-session.models';
 import { SessionStoryComponent, SessionMetaUpdate } from './session-story.component';
 import { SessionProgressCardComponent } from './session-progress-card.component';
+import { SessionListSidebarComponent } from './session-list-sidebar.component';
 import { CampaignSelectorComponent } from '../campaign/campaign-selector.component';
 import { httpsCallable, Functions } from 'firebase/functions';
 import { FirebaseService } from '../core/firebase.service';
+import { ToastService } from '../shared/services/toast.service';
 
 @Component({
   selector: 'app-audio-session',
-  imports: [SessionStoryComponent, SessionProgressCardComponent, CampaignSelectorComponent],
+  imports: [SessionStoryComponent, SessionProgressCardComponent, SessionListSidebarComponent, CampaignSelectorComponent],
+  providers: [PodcastGenerationService, CorrectionsSaveService],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (authService.isAuthenticated()) {
@@ -56,141 +60,25 @@ import { FirebaseService } from '../core/firebase.service';
       </div>
     } @else {
       <div class="flex flex-col lg:flex-row gap-6">
-        <!-- Mobile: Toggle button at top -->
-        <div class="lg:hidden">
-          <button
-            type="button"
-            (click)="mobileDrawerOpen.set(true)"
-            class="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl shadow-sm flex items-center justify-between hover:bg-gray-50 transition-colors"
-          >
-            <div class="flex items-center gap-3">
-              <span class="text-lg">📋</span>
-              <div class="text-left">
-                <p class="m-0 text-sm font-semibold text-gray-700">
-                  {{ currentSession()?.title || 'Select a session' }}
-                </p>
-                <p class="m-0 text-xs text-gray-500">
-                  {{ sortedSessions().length }} session(s) available
-                </p>
-              </div>
-            </div>
-            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
-            </svg>
-          </button>
-        </div>
+        <app-session-list-sidebar
+          [sessions]="sortedSessions()"
+          [currentSessionId]="currentSession()?.id ?? null"
+          [userId]="userId()"
+          [mobileLabel]="currentSession()?.title || 'Select a session'"
+          (sessionSelected)="selectSession($event)"
+          (newRequested)="navigateToNew()"
+        />
 
-        <!-- Mobile backdrop -->
-        @if (mobileDrawerOpen()) {
-          <div
-            class="fixed inset-0 bg-black/50 z-40 lg:hidden"
-            (click)="mobileDrawerOpen.set(false)"
-          ></div>
-        }
-
-        <!-- Left sidebar: Session list (sticky on desktop, drawer on mobile) -->
-        <aside
-          class="flex-shrink-0 lg:w-72 lg:sticky lg:top-4 lg:self-start lg:h-[calc(100vh-8rem)]"
-          [class.fixed]="mobileDrawerOpen()"
-          [class.inset-0]="mobileDrawerOpen()"
-          [class.flex]="mobileDrawerOpen()"
-          [class.items-center]="mobileDrawerOpen()"
-          [class.justify-center]="mobileDrawerOpen()"
-          [class.z-50]="mobileDrawerOpen()"
-          [class.p-4]="mobileDrawerOpen()"
-          [class.hidden]="!mobileDrawerOpen()"
-          [class.lg:block]="true"
-        >
-          <div
-            class="border border-gray-200 rounded-xl bg-white shadow-sm flex flex-col overflow-hidden h-full"
-            [class.w-full]="mobileDrawerOpen()"
-            [class.max-w-md]="mobileDrawerOpen()"
-            [class.max-h-[85vh]]="mobileDrawerOpen()"
-            [class.shadow-2xl]="mobileDrawerOpen()"
-          >
-            <div class="p-4 border-b border-gray-200">
-              <div class="flex items-center justify-between mb-3">
-                <div>
-                  <h3 class="text-sm font-semibold text-gray-700 m-0">Sessions</h3>
-                  <p class="text-xs text-gray-500 m-0 mt-1">{{ sortedSessions().length }} session(s)</p>
-                </div>
-                <!-- Close button for mobile -->
-                <button
-                  type="button"
-                  (click)="mobileDrawerOpen.set(false)"
-                  class="lg:hidden p-1 hover:bg-gray-100 rounded transition-colors"
-                >
-                  <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                  </svg>
-                </button>
-              </div>
-              <!-- New button -->
-              <button
-                type="button"
-                (click)="navigateToNew(); mobileDrawerOpen.set(false)"
-                class="w-full px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 text-sm font-medium"
-              >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
-                </svg>
-                New Session
-              </button>
-            </div>
-            <div class="flex-1 overflow-y-auto">
-              @if (sortedSessions().length === 0) {
-                <div class="p-4 text-center">
-                  <p class="text-sm text-gray-500 m-0">No sessions yet.</p>
-                  <p class="text-xs text-gray-400 m-0 mt-1">Upload audio to begin.</p>
-                </div>
-              } @else {
-                <nav class="p-2 flex flex-col gap-1">
-                  @for (session of sortedSessions(); track session.id) {
-                    <button
-                      type="button"
-                      class="text-left w-full rounded-lg p-3 transition-colors"
-                      [class.bg-primary/10]="currentSession()?.id === session.id"
-                      [class.border-primary]="currentSession()?.id === session.id"
-                      [class.border]="currentSession()?.id === session.id"
-                      [class.hover:bg-gray-50]="currentSession()?.id !== session.id"
-                      (click)="selectSession(session); mobileDrawerOpen.set(false)"
-                    >
-                      <p class="m-0 text-sm font-medium text-gray-800 truncate">{{ session.title }}</p>
-                      <p class="m-0 text-xs text-gray-500 mt-0.5">
-                        {{ session.sessionDate || 'No date' }}
-                      </p>
-                      <div class="flex items-center gap-2 mt-1">
-                        <span
-                          class="inline-block w-2 h-2 rounded-full"
-                          [class.bg-green-500]="session.status === 'completed'"
-                          [class.bg-yellow-500]="session.status === 'processing' || session.status === 'uploading'"
-                          [class.bg-red-500]="session.status === 'failed'"
-                        ></span>
-                        <span class="text-xs text-gray-400">{{ session.status }}</span>
-                        @if (session.ownerId === userId()) {
-                          <span class="text-xs text-primary font-medium ml-auto">You</span>
-                        }
-                      </div>
-                    </button>
-                  }
-                </nav>
-              }
-            </div>
-          </div>
-        </aside>
-
-        <!-- Right panel: Session details (scrolls naturally with page) -->
+        <!-- Right panel: Session details -->
         <main class="flex-1 min-w-0">
           <div class="grid">
             @if (currentSession()) {
-              <!-- Progress card (only shown when session is processing) -->
               <app-session-progress-card
                 [progress]="displayProgress()"
                 (cancelled)="cancelCurrentOperation()"
                 (retry)="retryFailedOperation()"
               />
 
-              <!-- Session story with integrated podcasts tab -->
               <app-session-story
                 [title]="currentSession()?.title || 'Session Story'"
                 [subtitle]="formatSubtitle(currentSession())"
@@ -201,19 +89,19 @@ import { FirebaseService } from '../core/firebase.service';
                 [canRegenerate]="canRegenerateStory()"
                 [canEditStory]="canEditStory()"
                 [canEditCorrections]="canEditCorrections()"
-                [corrections]="userCorrections()"
-                [correctionsStatus]="correctionsSaveStatus()"
+                [corrections]="correctionsSave.corrections()"
+                [correctionsStatus]="correctionsSave.saveStatus()"
                 [podcasts]="podcasts()"
-                [isGeneratingPodcast]="isGeneratingPodcast()"
-                [podcastGenerationProgress]="podcastGenerationProgress()"
-                [podcastGenerationProgressPercent]="podcastGenerationProgressPercent()"
-                [podcastError]="podcastError()"
+                [isGeneratingPodcast]="podcastGen.isGenerating()"
+                [podcastGenerationProgress]="podcastGen.progressMessage()"
+                [podcastGenerationProgressPercent]="podcastGen.progressPercent()"
+                [podcastError]="podcastGen.error()"
                 [canGeneratePodcast]="canGeneratePodcast()"
                 [hasActiveBackgroundJob]="hasActiveBackgroundJob()"
                 [backgroundJobMessage]="backgroundJobMessage()"
                 (storyUpdated)="saveStoryEdits($event)"
                 (regenerate)="regenerateStory()"
-                (correctionsChanged)="onCorrectionsInput($event)"
+                (correctionsChanged)="correctionsSave.onInput($event)"
                 (generatePodcast)="generatePodcast()"
                 (downloadPodcast)="downloadPodcast($event)"
                 (metaUpdated)="saveSessionMeta($event)"
@@ -221,7 +109,6 @@ import { FirebaseService } from '../core/firebase.service';
               ></app-session-story>
             }
 
-            <!-- Empty state when no session selected -->
             @if (!currentSession()) {
               <div class="border border-gray-200 rounded-xl bg-white shadow-sm p-8 text-center">
                 <div class="max-w-md mx-auto">
@@ -254,28 +141,33 @@ import { FirebaseService } from '../core/firebase.service';
     }
   `
 })
-export class AudioSessionComponent implements OnDestroy {
+export class AudioSessionComponent {
   private readonly campaignContext = inject(CampaignContextService);
   private readonly campaignService = inject(CampaignService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
+  private readonly sessionStateService = inject(AudioSessionStateService);
+  private readonly backendOperations = inject(AudioBackendOperationsService);
+  readonly authService = inject(AuthService);
+  readonly formatting = inject(FormattingService);
+  private readonly firebaseService = inject(FirebaseService);
+  private readonly toastService = inject(ToastService);
+  readonly podcastGen = inject(PodcastGenerationService);
+  readonly correctionsSave = inject(CorrectionsSaveService);
+  private functions: Functions;
 
   userId = computed(() => this.authService.currentUser()?.uid || null);
   campaignId = computed(() => this.campaignContext.selectedCampaignId());
-  userCorrections = signal<string>('');
-  correctionsSaveStatus = signal<'idle' | 'saving' | 'saved'>('idle');
 
-  // Session selection: selectedSessionId drives currentSession computed
+  // Session selection
   private selectedSessionId = signal<string | null>(null);
 
-  // Reactive currentSession: automatically updates when Firestore data changes
   currentSession = computed(() => {
     const id = this.selectedSessionId();
     if (!id) return null;
     return this.sessions().find(s => s.id === id) ?? null;
   });
 
-  // Podcast state
   podcasts = computed(() => this.currentSession()?.podcasts || []);
   isSessionOwner = computed(() => {
     const session = this.currentSession();
@@ -301,35 +193,21 @@ export class AudioSessionComponent implements OnDestroy {
     }
     return '';
   });
+
   canRegenerateStory = computed(() => this.isSessionOwner());
   canGeneratePodcast = computed(() => this.isSessionOwner());
   canEditStory = computed(() => this.isSessionOwner());
   canEditCorrections = computed(() => !!this.currentSession());
-  isGeneratingPodcast = signal(false);
-  podcastProgress = signal<PodcastProgress | null>(null);
-  podcastGenerationProgress = signal<string>('');
-  podcastGenerationProgressPercent = signal<number>(0);
-  podcastError = signal<string>('');
-  private podcastProgressUnsubscribe?: () => void;
-  private correctionsSaveTimer?: ReturnType<typeof setTimeout>;
-  private correctionsStatusTimer?: ReturnType<typeof setTimeout>;
-  private activeCorrectionsSessionId: string | null = null;
 
-  sessions: Signal<AudioSessionRecord[]> = signal<AudioSessionRecord[]>([]);
+  sessions: Signal<AudioSessionRecord[]>;
+  sortedSessions: Signal<(AudioSessionRecord & Record<string, unknown>)[]>;
 
-  sortedSessions!: Signal<(AudioSessionRecord & Record<string, unknown>)[]>;
-
-  // Mobile drawer state
-  mobileDrawerOpen = signal(false);
-
-  // Computed progress for display (handles both new and legacy sessions)
+  // Progress display (handles both unified and legacy sessions)
   displayProgress = computed(() => {
     const session = this.currentSession();
     if (!session) return null;
 
-    // If session has new unified progress, use it
     if (session.progress) {
-      // Detect stale progress: active stage with no update for 45+ minutes
       const stage = session.progress.stage;
       const isActiveStage = !['idle', 'completed', 'failed'].includes(stage);
       if (isActiveStage && session.progress.updatedAt) {
@@ -350,7 +228,7 @@ export class AudioSessionComponent implements OnDestroy {
       return session.progress;
     }
 
-    // Otherwise, create synthetic progress from legacy status field
+    // Synthetic progress from legacy status field
     if (session.status === 'failed') {
       return {
         stage: 'failed' as const,
@@ -372,31 +250,20 @@ export class AudioSessionComponent implements OnDestroy {
       };
     }
 
-    // Don't show progress card for completed or idle sessions
     return null;
   });
 
-  // Derived from displayProgress — replaces the old stage-based isBusy() method
   isBusy = computed(() => {
     const p = this.displayProgress();
     return !!p && !['idle', 'completed', 'failed'].includes(p.stage);
   });
-
-  private readonly sessionStateService = inject(AudioSessionStateService);
-  private readonly backendOperations = inject(AudioBackendOperationsService);
-  private readonly podcastAudioService = inject(PodcastAudioService);
-  readonly authService = inject(AuthService);
-  private readonly injector = inject(Injector);
-  readonly formatting = inject(FormattingService);
-  private readonly firebaseService = inject(FirebaseService);
-  private functions: Functions;
 
   constructor() {
     this.functions = this.firebaseService.requireFunctions();
     this.sessions = this.sessionStateService.sessions;
     this.sortedSessions = this.sessionStateService.sortedSessions;
 
-    // Subscribe to route params to handle session selection from URL
+    // Route param sync for session selection
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(params => {
       const sessionIdFromRoute = params.get('sessionId');
       const sessions = this.sortedSessions();
@@ -409,6 +276,7 @@ export class AudioSessionComponent implements OnDestroy {
       }
     });
 
+    // Auto-select session based on route or first available
     effect(() => {
       const sessions = this.sortedSessions();
       const currentId = this.selectedSessionId();
@@ -421,132 +289,29 @@ export class AudioSessionComponent implements OnDestroy {
         return;
       }
 
-      // If there's a session ID in the route, try to select it
       if (sessionIdFromRoute) {
         const sessionToSelect = sessions.find(s => s.id === sessionIdFromRoute);
         if (sessionToSelect && currentId !== sessionIdFromRoute) {
           this.selectSessionWithoutNavigation(sessionToSelect);
         }
-        // Always return when route has a session ID to avoid overriding
-        // with sessions[0] while the target session is still loading
         return;
       }
 
-      // Otherwise, select the first session if none is selected
       if (!currentId || !sessions.some(session => session.id === currentId)) {
         this.selectSession(sessions[0]);
       }
     });
 
+    // Sync corrections service to current session
     effect(() => {
-      const session = this.currentSession();
-      const sessionId = session?.id ?? null;
-      if (sessionId !== this.activeCorrectionsSessionId) {
-        this.activeCorrectionsSessionId = sessionId;
-        this.userCorrections.set(session?.userCorrections ?? '');
-        this.correctionsSaveStatus.set('idle');
-        this.clearCorrectionsTimers();
-        return;
-      }
-      if (this.correctionsSaveStatus() === 'idle') {
-        const corrections = session?.userCorrections ?? '';
-        if (corrections !== this.userCorrections()) {
-          this.userCorrections.set(corrections);
-        }
-      }
+      this.correctionsSave.syncToSession(this.currentSession());
     });
   }
 
-  async regenerateStory(): Promise<void> {
-    if (!this.canRegenerateStory()) {
-      return;
-    }
-    const session = this.currentSession();
-    if (!session?.rawStory && !session?.transcription) {
-      return;
-    }
-
-    const campaignId = session.campaignId;
-    if (!campaignId) {
-      this.failSession('No campaign selected.');
-      return;
-    }
-
-    try {
-      // Write initial progress to Firestore — displayProgress() picks it up reactively
-      await this.sessionStateService.persistSessionPatch(session.id, {
-        status: 'processing',
-        progress: {
-          stage: 'generating-story',
-          progress: 0,
-          message: 'Starting story regeneration...',
-          startedAt: new Date(),
-          updatedAt: new Date()
-        } as SessionProgress
-      });
-
-      // Start processing (fire-and-forget)
-      const kankaEnabled = this.campaignContext.selectedCampaign()?.settings?.kankaEnabled ?? false;
-      await this.backendOperations.regenerateStory(
-        campaignId,
-        session.id,
-        {
-          enableKankaContext: kankaEnabled,
-          userCorrections: this.userCorrections()
-        }
-      );
-
-    } catch (error: unknown) {
-      logger.error('Failed to start story regeneration:', error);
-      this.failSession((error as Error)?.message || 'Failed to start story regeneration');
-    }
-  }
-
-  saveStoryEdits(content: string): void {
-    if (!this.canEditStory()) {
-      return;
-    }
-    const session = this.currentSession();
-    if (!session) {
-      return;
-    }
-    this.sessionStateService.updateSession(session.id, { content: content, status: 'completed' });
-  }
-
-  saveSessionMeta(meta: SessionMetaUpdate): void {
-    if (!this.isSessionOwner()) {
-      return;
-    }
-    const session = this.currentSession();
-    if (!session) {
-      return;
-    }
-    this.sessionStateService.updateSession(session.id, {
-      title: meta.title,
-      sessionDate: meta.sessionDate
-    });
-  }
-
-  async deleteCurrentSession(): Promise<void> {
-    if (!this.isSessionOwner()) {
-      return;
-    }
-    const session = this.currentSession();
-    if (!session) {
-      return;
-    }
-    try {
-      await this.sessionStateService.deleteSession(session.id);
-      this.selectedSessionId.set(null);
-    } catch (error) {
-      logger.error('Failed to delete session:', error);
-    }
-  }
+  // --- Session selection ---
 
   selectSession(session: AudioSessionRecord): void {
     this.selectSessionWithoutNavigation(session);
-
-    // Navigate to the session route
     const campaignId = this.campaignId();
     const basePath = campaignId ? `/campaign/${campaignId}/audio` : '/audio';
     void this.router.navigate([basePath, session.id]);
@@ -560,36 +325,102 @@ export class AudioSessionComponent implements OnDestroy {
 
   private selectSessionWithoutNavigation(session: AudioSessionRecord): void {
     this.selectedSessionId.set(session.id);
-    this.userCorrections.set(session.userCorrections ?? '');
-    this.correctionsSaveStatus.set('idle');
   }
 
   formatSubtitle(session: AudioSessionRecord | null): string {
-    if (!session) {
-      return '';
-    }
+    if (!session) return '';
     return `${session.audioFileName || 'Unknown'} · ${session.sessionDate || 'No date'}`;
   }
 
-  /**
-   * Cancel the current operation (if supported)
-   * Note: Most operations are fire-and-forget, so cancellation may not be possible
-   */
-  cancelCurrentOperation(): void {
+  // --- Story operations ---
+
+  async regenerateStory(): Promise<void> {
+    if (!this.canRegenerateStory()) return;
     const session = this.currentSession();
-    const stage = session?.progress?.stage;
+    if (!session?.rawStory && !session?.transcription) return;
 
-    logger.debug('[Progress] Cancel requested for stage:', stage);
+    const campaignId = session.campaignId;
+    if (!campaignId) {
+      this.failSession('No campaign selected.');
+      return;
+    }
 
-    // Most operations don't support cancellation yet
-    // This is a placeholder for future implementation
-    alert('Operation cancellation is not yet implemented. The operation will complete in the background.');
+    try {
+      await this.sessionStateService.persistSessionPatch(session.id, {
+        status: 'processing',
+        progress: {
+          stage: 'generating-story',
+          progress: 0,
+          message: 'Starting story regeneration...',
+          startedAt: new Date(),
+          updatedAt: new Date()
+        } as SessionProgress
+      });
+
+      const kankaEnabled = this.campaignContext.selectedCampaign()?.settings?.kankaEnabled ?? false;
+      await this.backendOperations.regenerateStory(
+        campaignId,
+        session.id,
+        {
+          enableKankaContext: kankaEnabled,
+          userCorrections: this.correctionsSave.corrections()
+        }
+      );
+    } catch (error: unknown) {
+      logger.error('Failed to start story regeneration:', error);
+      this.failSession((error as Error)?.message || 'Failed to start story regeneration');
+    }
   }
 
-  /**
-   * Retry a failed operation. Handles both transcription and podcast failures,
-   * including stale progress detected by displayProgress().
-   */
+  saveStoryEdits(content: string): void {
+    if (!this.canEditStory()) return;
+    const session = this.currentSession();
+    if (!session) return;
+    this.sessionStateService.updateSession(session.id, { content, status: 'completed' });
+  }
+
+  saveSessionMeta(meta: SessionMetaUpdate): void {
+    if (!this.isSessionOwner()) return;
+    const session = this.currentSession();
+    if (!session) return;
+    this.sessionStateService.updateSession(session.id, {
+      title: meta.title,
+      sessionDate: meta.sessionDate
+    });
+  }
+
+  async deleteCurrentSession(): Promise<void> {
+    if (!this.isSessionOwner()) return;
+    const session = this.currentSession();
+    if (!session) return;
+    try {
+      await this.sessionStateService.deleteSession(session.id);
+      this.selectedSessionId.set(null);
+    } catch (error) {
+      logger.error('Failed to delete session:', error);
+    }
+  }
+
+  // --- Podcast operations ---
+
+  async generatePodcast(): Promise<void> {
+    const session = this.currentSession();
+    if (!session || !this.canGeneratePodcast()) return;
+    await this.podcastGen.generate(session);
+  }
+
+  downloadPodcast(podcast: PodcastVersion): void {
+    this.podcastGen.download(podcast, this.currentSession()?.title || 'podcast');
+  }
+
+  // --- Progress operations ---
+
+  cancelCurrentOperation(): void {
+    const session = this.currentSession();
+    logger.debug('[Progress] Cancel requested for stage:', session?.progress?.stage);
+    this.toastService.show('Operation cancellation is not yet implemented. The operation will complete in the background.', 'warning');
+  }
+
   async retryFailedOperation(): Promise<void> {
     const session = this.currentSession();
     const display = this.displayProgress();
@@ -598,11 +429,9 @@ export class AudioSessionComponent implements OnDestroy {
       return;
     }
 
-    // Determine the original stage (Firestore may still have the active stage for stale-detected failures)
     const originalStage = session?.progress?.stage;
     const podcastStages = ['generating-podcast-script', 'generating-podcast-audio'];
 
-    // Podcast failures: clear progress so the user can re-trigger generation
     if (originalStage && podcastStages.includes(originalStage)) {
       logger.debug('[Retry] Clearing stuck podcast progress for session:', session?.id);
       if (session) {
@@ -622,32 +451,26 @@ export class AudioSessionComponent implements OnDestroy {
 
     logger.debug('[Retry] Retrying failed transcription for session:', session?.id);
 
-    // Check if we have the required data
-    const storageUrl = this.resolveAudioStorageUrl(session);
+    const storageUrl = session?.storageUrl || null;
     if (!storageUrl) {
-      alert('Cannot retry: No audio file found for this session.');
+      this.toastService.show('Cannot retry: No audio file found for this session.', 'error');
       return;
     }
 
     if (!session?.campaignId) {
-      alert('Cannot retry: No campaign selected.');
+      this.toastService.show('Cannot retry: No campaign selected.', 'error');
       return;
     }
 
-    // Call transcribeAudioFast with session parameters
     await this.callTranscribeAudioFast(
       session.campaignId,
       session.id,
       storageUrl,
       session.audioFileName || 'audio.wav',
-      this.userCorrections() || undefined
+      this.correctionsSave.corrections() || undefined
     );
   }
 
-  /**
-   * Call the transcribeAudioFast Cloud Function.
-   * Writes initial progress to Firestore; further updates come reactively via sessions().
-   */
   private async callTranscribeAudioFast(
     campaignId: string,
     sessionId: string,
@@ -662,7 +485,6 @@ export class AudioSessionComponent implements OnDestroy {
         audioFileName
       });
 
-      // Write initial progress to Firestore
       await this.sessionStateService.persistSessionPatch(sessionId, {
         status: 'processing',
         progress: {
@@ -674,7 +496,6 @@ export class AudioSessionComponent implements OnDestroy {
         } as SessionProgress
       });
 
-      // Call the Cloud Function
       const transcribeAudioFast = httpsCallable<
         {
           campaignId: string;
@@ -697,7 +518,6 @@ export class AudioSessionComponent implements OnDestroy {
 
       if (result.data.success) {
         logger.info('[TranscribeFast] Function call successful:', result.data.message);
-        // Progress updates come reactively via Firestore → sessions() → displayProgress()
       } else {
         logger.error('[TranscribeFast] Function returned error:', result.data.message);
         this.failSession(result.data.message);
@@ -705,18 +525,6 @@ export class AudioSessionComponent implements OnDestroy {
     } catch (error: unknown) {
       logger.error('[TranscribeFast] Failed to call transcribeAudioFast:', error);
       this.failSession((error as Error)?.message || 'Failed to start transcription');
-    }
-  }
-
-  ngOnDestroy(): void {
-    this.cleanupPodcastProgressListener();
-    this.clearCorrectionsTimers();
-  }
-
-  private cleanupPodcastProgressListener(): void {
-    if (this.podcastProgressUnsubscribe) {
-      this.podcastProgressUnsubscribe();
-      this.podcastProgressUnsubscribe = undefined;
     }
   }
 
@@ -735,150 +543,5 @@ export class AudioSessionComponent implements OnDestroy {
         } as SessionProgress
       });
     }
-  }
-
-  onCorrectionsInput(corrections: string): void {
-    this.userCorrections.set(corrections);
-    this.correctionsSaveStatus.set('saving');
-    this.clearCorrectionsSaveTimer();
-    this.correctionsSaveTimer = setTimeout(() => {
-      void this.saveCorrections(corrections);
-    }, 500);
-  }
-
-  private async saveCorrections(corrections: string): Promise<void> {
-    const session = this.currentSession();
-    if (!session) {
-      this.correctionsSaveStatus.set('idle');
-      return;
-    }
-    try {
-      await this.sessionStateService.persistSessionPatch(session.id, {
-        userCorrections: corrections,
-        correctionsUpdatedAt: new Date().toISOString()
-      });
-      this.correctionsSaveStatus.set('saved');
-      this.clearCorrectionsStatusTimer();
-      this.correctionsStatusTimer = setTimeout(() => {
-        this.correctionsSaveStatus.set('idle');
-      }, 2000);
-    } catch (error) {
-      logger.error('Failed to save corrections:', error);
-      this.correctionsSaveStatus.set('idle');
-    }
-  }
-
-  private clearCorrectionsTimers(): void {
-    this.clearCorrectionsSaveTimer();
-    this.clearCorrectionsStatusTimer();
-  }
-
-  private clearCorrectionsSaveTimer(): void {
-    if (this.correctionsSaveTimer) {
-      clearTimeout(this.correctionsSaveTimer);
-    }
-  }
-
-  private clearCorrectionsStatusTimer(): void {
-    if (this.correctionsStatusTimer) {
-      clearTimeout(this.correctionsStatusTimer);
-    }
-  }
-
-  private resolveAudioStorageUrl(session: AudioSessionRecord | null): string | null {
-    if (!session) return null;
-
-    // Priority: root-level storageUrl (new), then storageMetadata.downloadUrl (legacy)
-    const url = session.storageUrl || null;
-
-    return url;
-  }
-
-  async generatePodcast(): Promise<void> {
-    const session = this.currentSession();
-    if (!session?.content || !session?.id) {
-      this.podcastError.set('No session story available.');
-      return;
-    }
-    if (!session.campaignId) {
-      this.podcastError.set('No campaign selected.');
-      return;
-    }
-    if (!this.canGeneratePodcast()) {
-      this.podcastError.set('Only session owner can generate podcast.');
-      return;
-    }
-
-    this.isGeneratingPodcast.set(true);
-    this.podcastGenerationProgress.set('Starting podcast generation...');
-    this.podcastGenerationProgressPercent.set(0);
-    this.podcastError.set('');
-
-    try {
-      const version = (session.podcasts?.length || 0) + 1;
-
-      // Step 1: Start listening BEFORE generation
-      const { progress, unsubscribe } = this.podcastAudioService.listenToPodcastProgress(
-        session.campaignId,
-        session.id,
-        version
-      );
-
-      this.podcastProgressUnsubscribe = unsubscribe;
-
-      // Step 2: Create effect to watch progress
-      const progressEffect = runInInjectionContext(this.injector, () => effect(() => {
-        const currentProgress = progress();
-        if (currentProgress) {
-          this.podcastProgress.set(currentProgress);
-          this.podcastGenerationProgress.set(currentProgress.message);
-          this.podcastGenerationProgressPercent.set(currentProgress.progress);
-
-          if (currentProgress.error) {
-            this.podcastError.set(currentProgress.error);
-          }
-
-          if (currentProgress.status === 'completed' || currentProgress.status === 'failed') {
-            setTimeout(() => {
-              this.isGeneratingPodcast.set(false);
-              this.cleanupPodcastProgressListener();
-              progressEffect.destroy();
-            }, 3000);
-          }
-        }
-      }));
-
-      // Step 3: Fire-and-forget — progress is tracked via Firestore listener above
-      this.podcastAudioService.startPodcastGeneration(
-        session.campaignId,
-        session.id,
-        version,
-        session.content,                      // Story
-        session.title || 'Untitled Session',  // Title
-        session.sessionDate                    // Date
-      ).catch(err => {
-        // The callable may time out on the client side, but the Cloud Function
-        // keeps running. Progress tracking via Firestore listener continues.
-        logger.warn('Podcast callable returned error (generation may still be running):', err);
-      });
-
-    } catch (error: unknown) {
-      logger.error('Failed to set up podcast generation:', error);
-      this.podcastError.set((error as Error)?.message || 'Failed to start podcast generation');
-      this.podcastGenerationProgress.set('');
-      this.podcastGenerationProgressPercent.set(0);
-      this.isGeneratingPodcast.set(false);
-      this.cleanupPodcastProgressListener();
-    }
-  }
-
-  downloadPodcast(podcast: PodcastVersion): void {
-    if (!podcast.audioUrl) {
-      this.podcastError.set('Audio not available for download.');
-      return;
-    }
-    const session = this.currentSession();
-    const filename = `${session?.title || 'podcast'}-v${podcast.version}.mp3`;
-    this.podcastAudioService.downloadPodcastMP3(podcast.audioUrl, filename);
   }
 }

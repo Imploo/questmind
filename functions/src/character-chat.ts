@@ -77,7 +77,7 @@ export const characterChat = onCall(
         // Mark character as generating before enqueuing AI 2
         const db = getFirestore();
         db.collection('characters').doc(characterId).update({ isGenerating: true }).catch(err => {
-          console.warn('Failed to set isGenerating flag:', err.message);
+          logger.warn('Failed to set isGenerating flag: ' + err.message);
         });
 
         // Enqueue Cloud Task for AI 2 (generateCharacterDraft)
@@ -85,7 +85,7 @@ export const characterChat = onCall(
         const payload = { characterId, currentCharacter, chatHistory, ai1Response: text };
         const queue = getFunctions().taskQueue('locations/europe-west1/functions/generateCharacterDraft');
         queue.enqueue(payload).catch(err => {
-          console.warn('Cloud Tasks enqueue failed (expected locally), falling back to direct execution:', err.message);
+          logger.warn('Cloud Tasks enqueue failed (expected locally), falling back to direct execution: ' + err.message);
           // Fallback: run directly when Cloud Tasks is unavailable (e.g. local emulator)
           executeGenerateCharacterDraft(payload).catch(directErr => {
             logger.error('Direct generateCharacterDraft execution also failed:', directErr);

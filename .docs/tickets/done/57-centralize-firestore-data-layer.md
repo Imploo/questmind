@@ -3,7 +3,7 @@
 **Created:** 2026-02-19
 **Priority:** High
 **Estimated Effort:** 1-2 weken
-**Status:** Todo
+**Status:** Done
 **Related:** #28 (Repository Pattern — vervangt dit ticket met concrete implementatie)
 
 ---

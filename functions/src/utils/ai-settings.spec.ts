@@ -12,8 +12,10 @@ vi.mock('firebase-admin/firestore', () => ({
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe('ai-settings', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+    const { resetAiSettingsCache } = await import('./ai-settings');
+    resetAiSettingsCache();
   });
 
   describe('getAiFeatureConfig', () => {

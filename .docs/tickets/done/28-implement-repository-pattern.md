@@ -3,6 +3,7 @@
 **Priority:** HIGH
 **Estimated Effort:** 1 week
 **Code Review Issue:** #5, #22, #23
+**Status:** Done
 
 ## Problem
 

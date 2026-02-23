@@ -19,9 +19,9 @@ This index provides a quick reference to all refactoring tickets created from th
 |--------|-------|--------|-------------|--------|
 | [#23](./done/23-extract-shared-formatting-service.md) | Extract Shared Formatting Service | 2 hours | ~50 | #6, #7, #8 |
 | [#24](./done/24-create-firebase-service.md) | Create Centralized Firebase Service | 3 hours | ~30 | #5, #10 |
-| [#25](./25-extract-shared-utilities.md) | Extract Shared Utility Services | 2 hours | ~40 | #9, #20 |
+| [#25](./done/25-extract-shared-utilities.md) | Extract Shared Utility Services | 2 hours | ~40 | #9, #20 | Done |
 | [#26](./26-split-audio-session-component.md) | Split AudioSessionComponent | 1 week | ~400 | #1, #13, #14 |
-| [#27](./27-split-audio-transcription-service.md) | Split AudioTranscriptionService | 1 week | ~390 | #2 |
+| [#27](./done/27-split-audio-transcription-service.md) | Split AudioTranscriptionService | 1 week | ~390 | #2 | Done |
 
 **Total Effort:** 2-3 weeks
 **Total Lines Reduced:** ~910 lines
@@ -34,7 +34,7 @@ This index provides a quick reference to all refactoring tickets created from th
 
 | Ticket | Title | Effort | Impact | Issues |
 |--------|-------|--------|--------|--------|
-| [#28](./28-implement-repository-pattern.md) | Implement Repository Pattern | 1 week | Decouples data access | #5, #22, #23 |
+| [#28](./done/28-implement-repository-pattern.md) | Implement Repository Pattern | 1 week | Decouples data access | #5, #22, #23 | Done |
 | [#29](./29-create-error-handler-service.md) | Create Error Handler Service | 3 days | ~150 lines saved | #3, #11 |
 | [#30](./30-split-audio-session-record-interface.md) | Split AudioSessionRecord Interface | 3 days | Type safety | #4 |
 
@@ -583,7 +583,7 @@ Start here for immediate impact with minimal risk:
 
 | Ticket | Title | Priority | Status | Effort | Dependencies |
 |--------|-------|----------|--------|--------|--------------|
-| [#57](./57-centralize-firestore-data-layer.md) | Centraliseer Firestore Data Layer via FirestoreRepository | High | Todo | 1-2 weken | - |
+| [#57](./done/57-centralize-firestore-data-layer.md) | Centraliseer Firestore Data Layer via FirestoreRepository | High | Done | 1-2 weken | - |
 
 **Key Improvements:**
 - **Ticket 57**: Alle directe Firestore calls vervangen door repository classes
@@ -608,8 +608,8 @@ Start here for immediate impact with minimal risk:
 | [#60](./done/60-replace-console-error-with-proper-logging.md) | Replace console.error with Proper Logging | High | Done | HIGH | 1-2 days |
 | [#61](./done/61-angular-modernization.md) | Angular Modernization: Migrate Legacy Patterns | Medium | Done | HIGH | 2-3 days |
 | [#62](./done/62-typescript-dry-code-quality.md) | TypeScript & DRY Code Quality | Medium | Done | MEDIUM-HIGH | 2-3 days |
-| [#63](./63-establish-test-coverage.md) | Establish Test Coverage Foundation | High | Todo | HIGH | 2-3 weeks |
-| [#64](./64-performance-and-architecture.md) | Performance & Architecture Improvements | Medium | Todo | MEDIUM | 2-3 days |
+| [#63](./done/63-establish-test-coverage.md) | Establish Test Coverage Foundation | High | Done | HIGH | 2-3 weeks |
+| [#64](./done/64-performance-and-architecture.md) | Performance & Architecture Improvements | Medium | Done | MEDIUM | 2-3 days |
 
 **Recommended Order:**
 1. **#59** — Critical security fixes (blocking, 2-3 hours)

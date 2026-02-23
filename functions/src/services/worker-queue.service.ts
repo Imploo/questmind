@@ -28,23 +28,19 @@ export class WorkerQueueService {
     workerHandler: WorkerHandler,
     payload: WorkerPayload
   ): Promise<void> {
-    // Trigger the next worker asynchronously (fire-and-forget)
-    // This allows the current worker to complete immediately
-    setImmediate(async () => {
-      try {
-        await workerHandler(payload);
-      } catch (error) {
-        // Errors are logged but don't affect the caller
-        logger.error(
-          `[WorkerQueue] Error triggering worker for session ${payload.sessionId}:`,
-          error
-        );
-      }
-    });
-
     logger.debug(
       `[WorkerQueue] Triggered worker for session ${payload.sessionId}`
     );
+
+    try {
+      await workerHandler(payload);
+    } catch (error) {
+      // Errors are logged but don't affect the caller
+      logger.error(
+        `[WorkerQueue] Error triggering worker for session ${payload.sessionId}:`,
+        error
+      );
+    }
   }
 
   /**
@@ -69,27 +65,15 @@ export class WorkerQueueService {
         logger.debug(`[${workerName}] Started for session ${sessionId}`);
 
         try {
-          // Execute the worker logic asynchronously
-          // We return immediately but processing continues
-          setImmediate(async () => {
-            try {
-              await handler(data);
-              logger.debug(`[${workerName}] Completed for session ${sessionId}`);
-            } catch (error) {
-              logger.error(
-                `[${workerName}] Error for session ${sessionId}:`,
-                error
-              );
-            }
-          });
+          await handler(data);
+          logger.debug(`[${workerName}] Completed for session ${sessionId}`);
 
-          // Return immediately (fire-and-forget pattern)
           return {
             success: true,
             stage: workerName,
           };
         } catch (error) {
-          logger.error(`[${workerName}] Immediate error:`, error);
+          logger.error(`[${workerName}] Error for session ${sessionId}:`, error);
           throw error;
         }
       }

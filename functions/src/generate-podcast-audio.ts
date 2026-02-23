@@ -320,7 +320,7 @@ async function generatePodcastInBackground(
     );
 
     const chunks: Buffer[] = [];
-    const readable = Readable.from(audioStream as AsyncIterable<Uint8Array>);
+    const readable = Readable.from(audioStream as unknown as AsyncIterable<Uint8Array>);
     for await (const chunk of readable) {
       chunks.push(Buffer.from(chunk));
     }

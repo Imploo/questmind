@@ -1,7 +1,7 @@
 import { Component, computed, inject, signal, ChangeDetectionStrategy, OnInit, OnDestroy } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { AudioUploadComponent, UploadRequestEvent } from './audio-upload.component';
+import { SessionListSidebarComponent } from './session-list-sidebar.component';
 import { AudioSessionStateService } from './services/audio-session-state.service';
 import { AudioCompleteProcessingService } from './services/audio-complete-processing.service';
 import { AudioCompressionService } from './services/audio-compression.service';
@@ -12,121 +12,16 @@ import * as logger from '../shared/logger';
 
 @Component({
   selector: 'app-audio-upload-page',
-  imports: [CommonModule, AudioUploadComponent],
+  imports: [AudioUploadComponent, SessionListSidebarComponent],
   template: `
     <div class="flex flex-col lg:flex-row gap-6">
-      <!-- Mobile: Toggle button at top -->
-      <div class="lg:hidden mb-4">
-        <button
-          type="button"
-          (click)="mobileDrawerOpen.set(true)"
-          class="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl shadow-sm flex items-center justify-between hover:bg-gray-50 transition-colors"
-        >
-          <div class="flex items-center gap-3">
-            <span class="text-lg">📋</span>
-            <div class="text-left">
-              <p class="m-0 text-sm font-semibold text-gray-700">New Audio Session</p>
-              <p class="m-0 text-xs text-gray-500">
-                {{ sortedSessions().length }} session(s) available
-              </p>
-            </div>
-          </div>
-          <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
-          </svg>
-        </button>
-      </div>
-
-      <!-- Mobile backdrop -->
-      @if (mobileDrawerOpen()) {
-        <div
-          class="fixed inset-0 bg-black/50 z-40 lg:hidden"
-          (click)="mobileDrawerOpen.set(false)"
-        ></div>
-      }
-
-      <!-- Left sidebar: Session list (sticky on desktop, drawer on mobile) -->
-      <aside
-        class="flex-shrink-0 lg:w-72 lg:sticky lg:top-4 lg:self-start lg:h-[calc(100vh-8rem)]"
-        [class.fixed]="mobileDrawerOpen()"
-        [class.inset-0]="mobileDrawerOpen()"
-        [class.flex]="mobileDrawerOpen()"
-        [class.items-center]="mobileDrawerOpen()"
-        [class.justify-center]="mobileDrawerOpen()"
-        [class.z-50]="mobileDrawerOpen()"
-        [class.p-4]="mobileDrawerOpen()"
-        [class.hidden]="!mobileDrawerOpen()"
-        [class.lg:block]="true"
-      >
-        <div
-          class="border border-gray-200 rounded-xl bg-white shadow-sm flex flex-col overflow-hidden h-full"
-          [class.w-full]="mobileDrawerOpen()"
-          [class.max-w-md]="mobileDrawerOpen()"
-          [class.max-h-[85vh]]="mobileDrawerOpen()"
-          [class.shadow-2xl]="mobileDrawerOpen()"
-        >
-          <div class="p-4 border-b border-gray-200">
-            <div class="flex items-center justify-between mb-3">
-              <div>
-                <h3 class="text-sm font-semibold text-gray-700 m-0">Sessions</h3>
-                <p class="text-xs text-gray-500 m-0 mt-1">{{ sortedSessions().length }} session(s)</p>
-              </div>
-              <!-- Close button for mobile -->
-              <button
-                type="button"
-                (click)="mobileDrawerOpen.set(false)"
-                class="lg:hidden p-1 hover:bg-gray-100 rounded transition-colors"
-              >
-                <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                </svg>
-              </button>
-            </div>
-            <!-- Active indicator for New -->
-            <div class="w-full px-4 py-2 bg-primary/10 border border-primary rounded-lg flex items-center justify-center gap-2 text-sm font-medium text-primary">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
-              </svg>
-              New Session (Active)
-            </div>
-          </div>
-          <div class="flex-1 overflow-y-auto">
-            @if (sortedSessions().length === 0) {
-              <div class="p-4 text-center">
-                <p class="text-sm text-gray-500 m-0">No sessions yet.</p>
-                <p class="text-xs text-gray-400 m-0 mt-1">This will be your first!</p>
-              </div>
-            } @else {
-              <nav class="p-2 flex flex-col gap-1">
-                @for (session of sortedSessions(); track session.id) {
-                  <button
-                    type="button"
-                    class="text-left w-full rounded-lg p-3 transition-colors hover:bg-gray-50"
-                    (click)="selectSession(session); mobileDrawerOpen.set(false)"
-                  >
-                    <p class="m-0 text-sm font-medium text-gray-800 truncate">{{ session.title }}</p>
-                    <p class="m-0 text-xs text-gray-500 mt-0.5">
-                      {{ session.sessionDate || 'No date' }}
-                    </p>
-                    <div class="flex items-center gap-2 mt-1">
-                      <span
-                        class="inline-block w-2 h-2 rounded-full"
-                        [class.bg-green-500]="session.status === 'completed'"
-                        [class.bg-yellow-500]="session.status === 'processing' || session.status === 'uploading'"
-                        [class.bg-red-500]="session.status === 'failed'"
-                      ></span>
-                      <span class="text-xs text-gray-400">{{ session.status }}</span>
-                      @if (session.ownerId === userId()) {
-                        <span class="text-xs text-primary font-medium ml-auto">You</span>
-                      }
-                    </div>
-                  </button>
-                }
-              </nav>
-            }
-          </div>
-        </div>
-      </aside>
+      <app-session-list-sidebar
+        [sessions]="sortedSessions()"
+        [userId]="userId()"
+        [showNewButton]="false"
+        mobileLabel="New Audio Session"
+        (sessionSelected)="selectSession($event)"
+      />
 
       <!-- Right panel: Upload form -->
       <main class="flex-1 min-w-0">
@@ -183,9 +78,6 @@ export class AudioUploadPageComponent implements OnInit, OnDestroy {
   sessions = this.sessionStateService.sessions;
 
   sortedSessions = this.sessionStateService.sortedSessions;
-
-  // Mobile drawer state
-  mobileDrawerOpen = signal(false);
 
   ngOnInit(): void {
     if (typeof document !== 'undefined') {
@@ -356,7 +248,7 @@ export class AudioUploadPageComponent implements OnInit, OnDestroy {
       });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      console.warn('Failed to acquire wake lock:', message);
+      logger.warn('Failed to acquire wake lock: ' + message);
     }
   }
 
@@ -368,7 +260,7 @@ export class AudioUploadPageComponent implements OnInit, OnDestroy {
       await this.wakeLockSentinel.release();
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      console.warn('Failed to release wake lock:', message);
+      logger.warn('Failed to release wake lock: ' + message);
     } finally {
       this.wakeLockSentinel = null;
     }

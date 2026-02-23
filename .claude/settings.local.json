@@ -64,7 +64,8 @@
       "Bash(firebase functions:log:*)",
       "Bash(gcloud run services get-iam-policy:*)",
       "Bash(gcloud run services add-iam-policy-binding:*)",
-      "mcp__angular-cli__find_examples"
+      "mcp__angular-cli__find_examples",
+      "Bash(npm run test)"
     ]
   },
   "enableAllProjectMcpServers": true,
