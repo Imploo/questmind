@@ -7,11 +7,21 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 async function getCachedAiSettings(): Promise<AISettings | undefined> {
   const now = Date.now();
-  if (!cachedSettings || now - cacheTimestamp > CACHE_TTL_MS) {
+  const cacheExpired = !cachedSettings || now - cacheTimestamp > CACHE_TTL_MS;
+
+  if (cacheExpired) {
     const snap = await getFirestore().doc('settings/ai').get();
     cachedSettings = (snap.data() as AISettings) ?? null;
     cacheTimestamp = now;
   }
+
+  // When cache is disabled, always fetch fresh (but still store for cacheEnabled check)
+  if (cachedSettings && cachedSettings.cacheEnabled === false && !cacheExpired) {
+    const snap = await getFirestore().doc('settings/ai').get();
+    cachedSettings = (snap.data() as AISettings) ?? null;
+    cacheTimestamp = now;
+  }
+
   return cachedSettings ?? undefined;
 }
 
@@ -22,7 +32,7 @@ export function resetAiSettingsCache(): void {
 }
 
 const DEFAULT_CONFIGS: Record<string, AIFeatureConfig> = {
-  characterChatText: { model: 'gemini-3-flash-preview', temperature: 0.7, topP: 0.95, topK: 40, maxOutputTokens: 512 },
+  characterChatText: { model: 'gemini-3-flash-preview', temperature: 0.7, topP: 0.95, topK: 40, maxOutputTokens: 4096 },
   characterDraft: { model: 'gemini-3-flash-preview', temperature: 0.1, topP: 0.95, topK: 40, maxOutputTokens: 8192 },
   spellResolution: { model: 'gemini-3-flash-preview', temperature: 0.3, topP: 0.95, topK: 40, maxOutputTokens: 4096 },
   featureResolution: { model: 'gemini-3-flash-preview', temperature: 0.3, topP: 0.95, topK: 40, maxOutputTokens: 4096 },

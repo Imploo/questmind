@@ -118,7 +118,14 @@ export const characterChat = onCall(
           throw new HttpsError('internal', 'No response from AI model');
         }
 
-        const parsed = JSON.parse(responseText);
+        let parsed: { text: string; shouldUpdateCharacter: boolean };
+        try {
+          parsed = JSON.parse(responseText);
+        } catch {
+          logger.error('Failed to parse AI response as JSON', { responseText: responseText.slice(0, 500) });
+          throw new HttpsError('internal', 'AI model returned invalid JSON. The response may have been truncated.');
+        }
+
         const text: string = parsed.text;
         const shouldUpdateCharacter: boolean = parsed.shouldUpdateCharacter === true;
 
@@ -129,6 +136,9 @@ export const characterChat = onCall(
 
         return { text, shouldUpdateCharacter };
       } catch (error) {
+        if (error instanceof HttpsError) {
+          throw error;
+        }
         if (error instanceof Error && error.message?.includes('429')) {
           throw new HttpsError('resource-exhausted', 'Rate limit exceeded. Please wait a moment before trying again.');
         }

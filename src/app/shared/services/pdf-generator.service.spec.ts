@@ -178,6 +178,7 @@ describe('PdfGeneratorService', () => {
       const mockCreatePdf = vi.fn().mockReturnValue({ download: mockDownload });
 
       vi.doMock('pdfmake/build/pdfmake', () => ({
+        default: { createPdf: mockCreatePdf },
         createPdf: mockCreatePdf,
       }));
 

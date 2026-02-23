@@ -79,7 +79,13 @@ export async function executeGenerateCharacterDraft(payload: GenerateCharacterDr
   }
 
   // Parse and validate JSON
-  const parsed = JSON.parse(text);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    logger.error('Failed to parse character draft JSON', { responseText: text.slice(0, 500) });
+    throw new Error('AI model returned invalid JSON. The response may have been truncated.');
+  }
   const validatedCharacter = DndCharacterSchema.parse(parsed);
 
   // Save as draft version in Firestore

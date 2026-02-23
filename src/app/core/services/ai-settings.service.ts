@@ -21,6 +21,7 @@ export interface PodcastVoiceSettings {
 }
 
 export interface AiSettings {
+  cacheEnabled?: boolean;
   features: {
     transcription?: AiModelConfig;
     storyGeneration?: AiModelConfig;

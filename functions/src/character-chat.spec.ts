@@ -16,7 +16,7 @@ vi.mock('./utils/ai-settings', () => ({
     temperature: 0.7,
     topP: 0.95,
     topK: 40,
-    maxOutputTokens: 512,
+    maxOutputTokens: 4096,
   })),
 }));
 

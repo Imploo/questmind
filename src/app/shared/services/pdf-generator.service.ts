@@ -6,7 +6,8 @@ import type { TDocumentDefinitions, Content, ContentColumns, ContentTable, Table
 export class PdfGeneratorService {
 
   async generateCharacterPdf(character: DndCharacter): Promise<void> {
-    const pdfMake = await import('pdfmake/build/pdfmake');
+    const pdfMakeModule = await import('pdfmake/build/pdfmake');
+    const pdfMake = pdfMakeModule.default || pdfMakeModule;
     const docDefinition = this.buildDocDefinition(character);
     pdfMake.createPdf(docDefinition).download(`${character.name} - Character Sheet.pdf`);
   }

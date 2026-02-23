@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, signal, OnInit, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, signal, computed, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { UserService } from '../core/user.service';
 import { AiSettingsRepository } from '../shared/repository/ai-settings.repository';
@@ -39,24 +39,43 @@ interface FeatureDefinition {
               <h2 class="text-2xl font-bold text-gray-800">AI Settings</h2>
               <p class="text-sm text-gray-500">Configure AI model parameters per feature</p>
             </div>
-            <div class="h-6">
-              @switch (saveIndicator()) {
-                @case ('saving') {
-                  <span class="text-xs text-gray-400 flex items-center gap-1">
-                    <span class="inline-block animate-spin">⏳</span> Saving...
-                  </span>
+            <div class="flex items-center gap-4">
+              <!-- Backend cache toggle -->
+              <label class="flex items-center gap-2 cursor-pointer select-none">
+                <span class="text-xs font-medium text-gray-600">Backend Cache</span>
+                <button
+                  type="button"
+                  (click)="toggleCache()"
+                  class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors"
+                  [class]="cacheEnabled() ? 'bg-green-500' : 'bg-gray-300'"
+                >
+                  <span
+                    class="inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform"
+                    [class]="cacheEnabled() ? 'translate-x-4.5' : 'translate-x-0.5'"
+                  ></span>
+                </button>
+                <span class="text-[10px] text-gray-400">{{ cacheEnabled() ? 'ON' : 'OFF' }}</span>
+              </label>
+
+              <div class="h-6">
+                @switch (saveIndicator()) {
+                  @case ('saving') {
+                    <span class="text-xs text-gray-400 flex items-center gap-1">
+                      <span class="inline-block animate-spin">⏳</span> Saving...
+                    </span>
+                  }
+                  @case ('saved') {
+                    <span class="text-xs text-green-600 flex items-center gap-1">
+                      ✓ Saved
+                    </span>
+                  }
+                  @case ('error') {
+                    <span class="text-xs text-red-500 flex items-center gap-1">
+                      ✕ Save failed
+                    </span>
+                  }
                 }
-                @case ('saved') {
-                  <span class="text-xs text-green-600 flex items-center gap-1">
-                    ✓ Saved
-                  </span>
-                }
-                @case ('error') {
-                  <span class="text-xs text-red-500 flex items-center gap-1">
-                    ✕ Save failed
-                  </span>
-                }
-              }
+              </div>
             </div>
           </div>
         </div>
@@ -374,7 +393,7 @@ export class AdminComponent implements OnInit {
   ];
 
   private readonly defaultConfigs: Record<string, AiModelConfig | AiImageConfig | PodcastVoiceSettings> = {
-    characterChatText: { model: 'claude-haiku-4-5-20251001', temperature: 0.7, topP: 0.95, topK: 40, maxOutputTokens: 512 },
+    characterChatText: { model: 'claude-haiku-4-5-20251001', temperature: 0.7, topP: 0.95, topK: 40, maxOutputTokens: 4096 },
     characterDraft: { model: 'gemini-3-flash-preview', temperature: 0.1, topP: 0.95, topK: 40, maxOutputTokens: 8192 },
     spellResolution: { model: 'gemini-3-flash-preview', temperature: 0.3, topP: 0.95, topK: 40, maxOutputTokens: 4096 },
     featureResolution: { model: 'gemini-3-flash-preview', temperature: 0.3, topP: 0.95, topK: 40, maxOutputTokens: 4096 },
@@ -393,6 +412,7 @@ export class AdminComponent implements OnInit {
   settingsError = signal<string | null>(null);
   selectedFeature = signal<FeatureDefinition>(this.featureDefinitions[0]);
   saveIndicator = signal<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  cacheEnabled = computed(() => this.aiSettings()?.cacheEnabled ?? false);
 
   private saveTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -404,6 +424,14 @@ export class AdminComponent implements OnInit {
 
   selectFeature(feature: FeatureDefinition): void {
     this.selectedFeature.set(feature);
+  }
+
+  toggleCache(): void {
+    this.aiSettings.update(settings => {
+      if (!settings) return settings;
+      return { ...settings, cacheEnabled: !settings.cacheEnabled };
+    });
+    void this.autoSave();
   }
 
   getFeatureValue(field: string): unknown {
