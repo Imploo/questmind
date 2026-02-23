@@ -90,6 +90,14 @@ export const characterChat = onCall(
       }
 
       try {
+        logger.info('characterChat: calling Gemini', {
+          model: config.model,
+          maxOutputTokens: config.maxOutputTokens,
+          hasAttachments: Boolean(attachments?.length),
+          attachmentCount: attachments?.length ?? 0,
+          contentParts: contents.length,
+        });
+
         const response = await ai.models.generateContent({
           model: config.model,
           contents,
@@ -111,10 +119,22 @@ export const characterChat = onCall(
           },
         });
 
+        const finishReason = response.candidates?.[0]?.finishReason;
+        const usageMetadata = response.usageMetadata;
+
+        logger.info('characterChat: Gemini response received', {
+          finishReason,
+          promptTokenCount: usageMetadata?.promptTokenCount,
+          candidatesTokenCount: usageMetadata?.candidatesTokenCount,
+          totalTokenCount: usageMetadata?.totalTokenCount,
+          hasText: response.text != null,
+          textLength: response.text?.length ?? 0,
+        });
+
         const responseText = response.text?.trim() ?? null;
 
         if (!responseText) {
-          logger.error('AI model returned empty response');
+          logger.error('AI model returned empty response', { finishReason });
           throw new HttpsError('internal', 'No response from AI model');
         }
 
@@ -122,7 +142,11 @@ export const characterChat = onCall(
         try {
           parsed = JSON.parse(responseText);
         } catch {
-          logger.error('Failed to parse AI response as JSON', { responseText: responseText.slice(0, 500) });
+          logger.error('Failed to parse AI response as JSON', {
+            responseText: responseText.slice(0, 500),
+            responseLength: responseText.length,
+            finishReason,
+          });
           throw new HttpsError('internal', 'AI model returned invalid JSON. The response may have been truncated.');
         }
 
@@ -142,6 +166,10 @@ export const characterChat = onCall(
         if (error instanceof Error && error.message?.includes('429')) {
           throw new HttpsError('resource-exhausted', 'Rate limit exceeded. Please wait a moment before trying again.');
         }
+        logger.error('characterChat: unexpected error', {
+          errorMessage: error instanceof Error ? error.message : String(error),
+          errorName: error instanceof Error ? error.name : 'unknown',
+        });
         throw error;
       }
     }
