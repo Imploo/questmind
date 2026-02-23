@@ -34,7 +34,8 @@
         "esbenp.prettier-vscode",
         "toba.vsfire",
         "bierner.markdown-mermaid",
-        "bruno-api-client.bruno"
+        "bruno-api-client.bruno",
+        "Anthropic.claude-code"
       ]
     }
   },

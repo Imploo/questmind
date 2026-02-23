@@ -6,6 +6,9 @@ import {FirebaseService} from '../../core/firebase.service';
 import {AudioCompressionService} from './audio-compression.service';
 import * as logger from '../../shared/logger';
 
+/** 25 MB chunk size — 100 × 256 KB, satisfies Gemini's alignment requirement */
+const UPLOAD_CHUNK_SIZE = 25 * 1024 * 1024;
+
 export interface StartProcessingOptions {
   sessionTitle: string;
   sessionDate?: string;
@@ -201,8 +204,12 @@ export class AudioCompleteProcessingService {
   }
 
   /**
-   * POST the compressed audio blob to the uploadAudioToGemini Cloud Function,
-   * which proxies it to the Gemini Files API and returns a fileUri.
+   * Upload audio to Gemini via the uploadAudioToGemini Cloud Function proxy.
+   *
+   * Uses a chunked upload protocol (25 MB per chunk) to stay under the 32 MB
+   * Google Frontend request body limit:
+   *   1. ?action=init   — start a Gemini resumable upload session
+   *   2. ?action=upload  — send each chunk (≤25 MB) to the session
    *
    * Upload progress maps to 60–70% of unified progress range.
    */
@@ -214,23 +221,90 @@ export class AudioCompleteProcessingService {
     onProgress?: (progress: number) => void,
   ): Promise<string> {
     const token = await getIdToken(this.auth.currentUser!);
-    const uploadUrl = this.firebase.getHttpFunctionUrl('uploadAudioToGemini');
+    const functionUrl = this.firebase.getHttpFunctionUrl('uploadAudioToGemini');
 
-    // XHR is used for upload progress tracking (fetch does not support it)
-    return new Promise<string>((resolve, reject) => {
+    // ── Phase 1: Init — start Gemini resumable upload session ─────────────
+    const initResponse = await fetch(`${functionUrl}?action=init`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        mimeType,
+        fileName: encodeURIComponent(fileName),
+        fileSize: blob.size,
+      }),
+    });
+
+    if (!initResponse.ok) {
+      const errorBody = await initResponse.text();
+      throw new Error(`Upload init failed: ${initResponse.status} ${errorBody}`);
+    }
+
+    const { uploadUrl } = (await initResponse.json()) as { uploadUrl: string };
+
+    // ── Phase 2: Upload chunks ───────────────────────────────────────────
+    const totalSize = blob.size;
+    const numChunks = Math.ceil(totalSize / UPLOAD_CHUNK_SIZE);
+    let offset = 0;
+
+    for (let i = 0; i < numChunks; i++) {
+      const end = Math.min(offset + UPLOAD_CHUNK_SIZE, totalSize);
+      const chunk = blob.slice(offset, end);
+      const isFinal = end === totalSize;
+
+      const fileUri = await this.uploadChunk(
+        functionUrl, token, uploadUrl, chunk,
+        offset, isFinal, mimeType, totalSize,
+        sessionRef, onProgress,
+      );
+
+      offset = end;
+
+      if (isFinal) {
+        if (!fileUri) {
+          throw new Error('Final chunk did not return a fileUri');
+        }
+        onProgress?.(100);
+        return fileUri;
+      }
+    }
+
+    throw new Error('Upload completed without receiving fileUri');
+  }
+
+  /**
+   * Send a single chunk via XHR (for upload progress tracking).
+   * Returns the fileUri on the final chunk, null otherwise.
+   */
+  private uploadChunk(
+    functionUrl: string,
+    token: string,
+    uploadUrl: string,
+    chunk: Blob,
+    offset: number,
+    isFinal: boolean,
+    mimeType: string,
+    totalSize: number,
+    sessionRef: DocumentReference,
+    onProgress?: (progress: number) => void,
+  ): Promise<string | null> {
+    return new Promise<string | null>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      xhr.open('POST', uploadUrl);
+      xhr.open('POST', `${functionUrl}?action=upload`);
       xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      xhr.setRequestHeader('X-Upload-Url', uploadUrl);
+      xhr.setRequestHeader('X-Upload-Offset', String(offset));
+      xhr.setRequestHeader('X-Is-Final', String(isFinal));
       xhr.setRequestHeader('X-Mime-Type', mimeType);
-      xhr.setRequestHeader('X-File-Name', encodeURIComponent(fileName));
-      xhr.setRequestHeader('X-File-Size', String(blob.size));
 
       xhr.upload.addEventListener('progress', (event) => {
         if (event.lengthComputable) {
-          const uploadPercent = Math.round((event.loaded / event.total) * 100);
+          const totalSent = offset + event.loaded;
+          const uploadPercent = Math.round((totalSent / totalSize) * 100);
           onProgress?.(uploadPercent);
-          // Map upload 0-100% to unified 60-70%
-          const overallProgress = 60 + Math.round((event.loaded / event.total) * 10);
+          const overallProgress = 60 + Math.round((totalSent / totalSize) * 10);
           this.writeProgress(sessionRef, 'uploading', overallProgress,
             `Uploading audio... ${uploadPercent}%`);
         }
@@ -238,22 +312,21 @@ export class AudioCompleteProcessingService {
 
       xhr.addEventListener('load', () => {
         if (xhr.status >= 200 && xhr.status < 300) {
-          const body = JSON.parse(xhr.responseText) as { fileUri?: string };
-          if (body.fileUri) {
-            onProgress?.(100);
-            resolve(body.fileUri);
+          if (isFinal) {
+            const body = JSON.parse(xhr.responseText) as { fileUri?: string };
+            resolve(body.fileUri ?? null);
           } else {
-            reject(new Error('uploadAudioToGemini did not return a fileUri'));
+            resolve(null);
           }
         } else {
-          reject(new Error(`Upload failed: ${xhr.status} ${xhr.responseText}`));
+          reject(new Error(`Chunk upload failed: ${xhr.status} ${xhr.responseText}`));
         }
       });
 
       xhr.addEventListener('error', () => reject(new Error('Upload network error')));
       xhr.addEventListener('abort', () => reject(new Error('Upload aborted')));
 
-      xhr.send(blob);
+      xhr.send(chunk);
     });
   }
 

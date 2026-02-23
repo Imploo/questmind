@@ -340,6 +340,24 @@ export class AudioSessionComponent implements OnDestroy {
 
     // If session has new unified progress, use it
     if (session.progress) {
+      // Detect stale progress: active stage with no update for 45+ minutes
+      const stage = session.progress.stage;
+      const isActiveStage = !['idle', 'completed', 'failed'].includes(stage);
+      if (isActiveStage && session.progress.updatedAt) {
+        const updatedAt = session.progress.updatedAt instanceof Date
+          ? session.progress.updatedAt
+          : new Date(session.progress.updatedAt);
+        const staleThresholdMs = 45 * 60 * 1000;
+        if (Date.now() - updatedAt.getTime() > staleThresholdMs) {
+          return {
+            ...session.progress,
+            stage: 'failed' as const,
+            progress: 0,
+            message: 'Operation timed out. Click retry to try again.',
+            error: `Operation stalled at "${stage}" (last update: ${updatedAt.toLocaleString()})`,
+          };
+        }
+      }
       return session.progress;
     }
 
@@ -579,16 +597,40 @@ export class AudioSessionComponent implements OnDestroy {
   }
 
   /**
-   * Retry a failed transcription using fast transcription
+   * Retry a failed operation. Handles both transcription and podcast failures,
+   * including stale progress detected by displayProgress().
    */
   async retryFailedOperation(): Promise<void> {
     const session = this.currentSession();
-    if (!session?.progress || session.progress.stage !== 'failed') {
+    const display = this.displayProgress();
+    if (!display || display.stage !== 'failed') {
       logger.warn('[Retry] Cannot retry - session is not in failed state');
       return;
     }
 
-    logger.debug('[Retry] Retrying failed transcription for session:', session.id);
+    // Determine the original stage (Firestore may still have the active stage for stale-detected failures)
+    const originalStage = session?.progress?.stage;
+    const podcastStages = ['generating-podcast-script', 'generating-podcast-audio'];
+
+    // Podcast failures: clear progress so the user can re-trigger generation
+    if (originalStage && podcastStages.includes(originalStage)) {
+      logger.debug('[Retry] Clearing stuck podcast progress for session:', session?.id);
+      if (session) {
+        await this.sessionStateService.persistSessionPatch(session.id, {
+          status: 'completed',
+          progress: {
+            stage: 'completed',
+            progress: 100,
+            message: 'Ready',
+            startedAt: new Date(),
+            updatedAt: new Date()
+          } as SessionProgress
+        });
+      }
+      return;
+    }
+
+    logger.debug('[Retry] Retrying failed transcription for session:', session?.id);
 
     // Check if we have the required data
     const storageUrl = this.resolveAudioStorageUrl(session);
@@ -597,7 +639,7 @@ export class AudioSessionComponent implements OnDestroy {
       return;
     }
 
-    if (!session.campaignId) {
+    if (!session?.campaignId) {
       alert('Cannot retry: No campaign selected.');
       return;
     }
@@ -817,18 +859,22 @@ export class AudioSessionComponent implements OnDestroy {
         }
       }));
 
-      // Step 3: Start generation (fire-and-forget) - now includes script
-      await this.podcastAudioService.startPodcastGeneration(
+      // Step 3: Fire-and-forget — progress is tracked via Firestore listener above
+      this.podcastAudioService.startPodcastGeneration(
         session.campaignId,
         session.id,
         version,
         session.content,                      // Story
         session.title || 'Untitled Session',  // Title
         session.sessionDate                    // Date
-      );
+      ).catch(err => {
+        // The callable may time out on the client side, but the Cloud Function
+        // keeps running. Progress tracking via Firestore listener continues.
+        console.warn('Podcast callable returned error (generation may still be running):', err);
+      });
 
     } catch (error: unknown) {
-      console.error('Failed to start podcast generation:', error);
+      console.error('Failed to set up podcast generation:', error);
       this.podcastError.set((error as Error)?.message || 'Failed to start podcast generation');
       this.podcastGenerationProgress.set('');
       this.podcastGenerationProgressPercent.set(0);

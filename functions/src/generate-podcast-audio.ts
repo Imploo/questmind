@@ -11,7 +11,7 @@ import { SHARED_CORS } from './index';
 import { getPodcastScriptPrompt } from './prompts/podcast-script-generator.prompt';
 import { ensureAuthForTesting } from './utils/emulator-helpers';
 import { ProgressTrackerService } from './services/progress-tracker.service';
-import { wrapCallable } from './utils/sentry-error-handler';
+import { wrapCallable, captureFunctionError } from './utils/sentry-error-handler';
 import { getAiFeatureConfig, getPodcastVoiceConfig } from './utils/ai-settings';
 import { AIFeatureConfig, PodcastEntry } from './types/audio-session.types';
 
@@ -135,26 +135,31 @@ export const generatePodcastAudio = onCall(
       updatedAt: FieldValue.serverTimestamp()
     });
 
-    // RETURN IMMEDIATELY - Generation continues in background
-    generatePodcastInBackground(
-      campaignId,
-      sessionId,
-      version,
-      script,
-      story,
-      sessionTitle,
-      sessionDate,
-      sessionRef,
-      existingPodcasts,
-      auth.uid,
-      storage
-    ).catch(error => {
-      console.error('Background generation failed:', error);
-    });
+    // Await so Firebase keeps the function alive until completion
+    try {
+      await generatePodcastInBackground(
+        campaignId,
+        sessionId,
+        version,
+        script,
+        story,
+        sessionTitle,
+        sessionDate,
+        sessionRef,
+        existingPodcasts,
+        auth.uid,
+        storage
+      );
+    } catch (error) {
+      captureFunctionError('generatePodcastAudio', error instanceof Error ? error : new Error(String(error)), {
+        campaignId, sessionId, version
+      });
+      // Don't throw — errors are already persisted to Firestore by generatePodcastInBackground
+    }
 
     return {
       success: true,
-      message: 'Podcast generation started'
+      message: 'Podcast generation complete'
     };
   })
 );

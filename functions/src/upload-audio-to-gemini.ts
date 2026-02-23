@@ -1,10 +1,11 @@
 import { getAuth } from 'firebase-admin/auth';
 import { onRequest } from 'firebase-functions/v2/https';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { wrapHttp } from './utils/sentry-error-handler';
 import * as logger from './utils/logger';
 
 const MAX_FILE_BYTES = 500 * 1024 * 1024;
+const GEMINI_UPLOAD_URL_PREFIX = 'https://generativelanguage.googleapis.com/';
 
 interface GeminiUploadResponse {
   file?: {
@@ -15,6 +16,12 @@ interface GeminiUploadResponse {
 type RequestInitWithDuplex = RequestInit & {
   duplex: 'half';
 };
+
+interface InitRequestBody {
+  mimeType?: string;
+  fileName?: string;
+  fileSize?: number;
+}
 
 const MIME_TYPE_MAP: Record<string, string> = {
   'audio/x-wav': 'audio/wav',
@@ -61,21 +68,6 @@ function normalizeMimeType(rawMimeType: string | undefined): string | null {
   return SUPPORTED_AUDIO_MIME_TYPES.has(normalized) ? normalized : null;
 }
 
-function parseFileSize(
-  explicitFileSizeHeader: string | undefined,
-  contentLengthHeader: string | undefined
-): number | null {
-  const rawSize = explicitFileSizeHeader ?? contentLengthHeader;
-  if (!rawSize) {
-    return null;
-  }
-  const parsed = Number(rawSize);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return null;
-  }
-  return Math.floor(parsed);
-}
-
 function getUploadBody(req: Request): Request | Buffer {
   if (!req.readableEnded) {
     return req;
@@ -89,19 +81,162 @@ function getUploadBody(req: Request): Request | Buffer {
   throw new Error('Upload request body is empty');
 }
 
-function getBodySize(body: Request | Buffer): number | null {
-  if (Buffer.isBuffer(body)) {
-    return body.length;
+/**
+ * Initiate a Gemini resumable upload session.
+ * Returns the Gemini session URL that the client will use for chunk uploads.
+ */
+async function handleInit(req: Request, res: Response): Promise<void> {
+  const body = (typeof req.body === 'string' ? JSON.parse(req.body) : req.body) as InitRequestBody;
+
+  const mimeType = normalizeMimeType(body.mimeType);
+  if (!mimeType) {
+    res.status(400).json({
+      error: 'Unsupported or missing audio mime type',
+      details: {
+        received: body.mimeType ?? null,
+        supported: Array.from(SUPPORTED_AUDIO_MIME_TYPES),
+      },
+    });
+    return;
   }
-  return null;
+
+  const fileSize = body.fileSize;
+  if (!fileSize || !Number.isFinite(fileSize) || fileSize <= 0) {
+    res.status(400).json({ error: 'Missing or invalid fileSize' });
+    return;
+  }
+
+  if (fileSize > MAX_FILE_BYTES) {
+    res.status(413).json({ error: 'File too large. Maximum is 500MB.' });
+    return;
+  }
+
+  const fileName = body.fileName ? decodeURIComponent(body.fileName) : 'audio-upload';
+
+  const apiKey = process.env.GOOGLE_AI_API_KEY;
+  if (!apiKey) {
+    res.status(500).json({ error: 'Google AI API key not configured' });
+    return;
+  }
+
+  const startUploadResponse = await fetch(
+    `https://generativelanguage.googleapis.com/upload/v1beta/files?uploadType=resumable&key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: {
+        'X-Goog-Upload-Protocol': 'resumable',
+        'X-Goog-Upload-Command': 'start',
+        'X-Goog-Upload-Header-Content-Type': mimeType,
+        'X-Goog-Upload-Header-Content-Length': String(fileSize),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        file: { display_name: fileName },
+      }),
+    }
+  );
+
+  if (!startUploadResponse.ok) {
+    const errorText = await startUploadResponse.text();
+    logger.error('[uploadAudioToGemini:init] Failed to initiate Gemini upload', {
+      status: startUploadResponse.status,
+      errorText,
+    });
+    res.status(502).json({ error: 'Failed to initiate Gemini upload', details: errorText });
+    return;
+  }
+
+  const uploadUrl = startUploadResponse.headers.get('x-goog-upload-url');
+  if (!uploadUrl) {
+    res.status(502).json({ error: 'Gemini did not return an upload URL' });
+    return;
+  }
+
+  res.status(200).json({ uploadUrl });
 }
 
 /**
- * Receives a (browser-compressed) audio file from the frontend and forwards
- * it directly to the Gemini Files API.
+ * Forward a binary chunk to the Gemini resumable upload session.
+ * Intermediate chunks return {ok: true}, the final chunk returns {fileUri}.
+ */
+async function handleUpload(req: Request, res: Response): Promise<void> {
+  const uploadUrl = getSingleHeaderValue(req.headers['x-upload-url']);
+  if (!uploadUrl) {
+    res.status(400).json({ error: 'Missing X-Upload-Url header' });
+    return;
+  }
+
+  // SSRF protection: only allow forwarding to Gemini
+  if (!uploadUrl.startsWith(GEMINI_UPLOAD_URL_PREFIX)) {
+    res.status(400).json({ error: 'Invalid upload URL' });
+    return;
+  }
+
+  const offsetHeader = getSingleHeaderValue(req.headers['x-upload-offset']);
+  const offset = offsetHeader != null ? Number(offsetHeader) : NaN;
+  if (!Number.isFinite(offset) || offset < 0) {
+    res.status(400).json({ error: 'Missing or invalid X-Upload-Offset header' });
+    return;
+  }
+
+  const isFinal = getSingleHeaderValue(req.headers['x-is-final']) === 'true';
+
+  const mimeType = normalizeMimeType(getSingleHeaderValue(req.headers['x-mime-type']));
+  if (!mimeType) {
+    res.status(400).json({ error: 'Missing or invalid X-Mime-Type header' });
+    return;
+  }
+
+  const uploadBody = getUploadBody(req);
+  const command = isFinal ? 'upload, finalize' : 'upload';
+
+  const uploadResponse = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': mimeType,
+      'X-Goog-Upload-Offset': String(offset),
+      'X-Goog-Upload-Command': command,
+    },
+    body: uploadBody as RequestInit['body'],
+    duplex: 'half',
+  } as RequestInitWithDuplex);
+
+  if (!uploadResponse.ok) {
+    const errorText = await uploadResponse.text();
+    logger.error('[uploadAudioToGemini:upload] Failed to upload chunk to Gemini', {
+      status: uploadResponse.status,
+      offset,
+      isFinal,
+      errorText,
+    });
+    res.status(502).json({ error: 'Failed to upload chunk to Gemini', details: errorText });
+    return;
+  }
+
+  if (!isFinal) {
+    res.status(200).json({ ok: true });
+    return;
+  }
+
+  const responseBody = (await uploadResponse.json()) as GeminiUploadResponse;
+  const fileUri = responseBody.file?.uri;
+  if (!fileUri) {
+    res.status(502).json({ error: 'Gemini Files API did not return a file URI' });
+    return;
+  }
+
+  res.status(200).json({ fileUri });
+}
+
+/**
+ * Chunked audio upload proxy to the Gemini Files API.
  *
  * This proxy exists because the Gemini resumable upload endpoint does not
- * include CORS headers, blocking direct browser uploads.
+ * include CORS headers, blocking direct browser uploads. The upload is split
+ * into two phases to stay under the 32 MB Google Frontend request body limit:
+ *
+ *   ?action=init   — Start a Gemini resumable upload session (small JSON body)
+ *   ?action=upload — Forward a binary chunk (≤25 MB) to the Gemini session
  */
 export const uploadAudioToGemini = onRequest(
   {
@@ -121,6 +256,7 @@ export const uploadAudioToGemini = onRequest(
       return;
     }
 
+    // ── Shared auth verification ──────────────────────────────────────────
     const authorizationHeader = getSingleHeaderValue(req.headers.authorization);
     const token = getBearerToken(authorizationHeader);
     if (!token) {
@@ -136,116 +272,21 @@ export const uploadAudioToGemini = onRequest(
       return;
     }
 
-    const fileNameHeader = getSingleHeaderValue(req.headers['x-file-name']);
-    const fileName = fileNameHeader ? decodeURIComponent(fileNameHeader) : 'audio-upload';
-    const mimeTypeHeader = getSingleHeaderValue(req.headers['x-mime-type']);
-    const contentTypeHeader = getSingleHeaderValue(req.headers['content-type']);
-    const mimeType = normalizeMimeType(mimeTypeHeader ?? contentTypeHeader);
-    if (!mimeType) {
-      res.status(400).json({
-        error: 'Unsupported or missing audio mime type',
-        details: {
-          received: mimeTypeHeader ?? contentTypeHeader ?? null,
-          supported: Array.from(SUPPORTED_AUDIO_MIME_TYPES),
-        },
-      });
-      return;
+    // ── Action routing ────────────────────────────────────────────────────
+    const action = req.query['action'] as string | undefined;
+
+    switch (action) {
+      case 'init':
+        await handleInit(req, res);
+        break;
+      case 'upload':
+        await handleUpload(req, res);
+        break;
+      default:
+        res.status(400).json({
+          error: 'Missing or invalid action parameter. Use ?action=init or ?action=upload',
+        });
+        break;
     }
-
-    const headerFileSize = parseFileSize(
-      getSingleHeaderValue(req.headers['x-file-size']),
-      getSingleHeaderValue(req.headers['content-length'])
-    );
-
-    const uploadBody = getUploadBody(req);
-    const bodySize = getBodySize(uploadBody);
-    const fileSize = headerFileSize ?? bodySize;
-    if (!fileSize) {
-      res.status(400).json({
-        error: 'Missing file size. Include X-File-Size header.',
-      });
-      return;
-    }
-
-    if (fileSize > MAX_FILE_BYTES) {
-      res.status(413).json({ error: 'File too large. Maximum is 500MB.' });
-      return;
-    }
-
-    const apiKey = process.env.GOOGLE_AI_API_KEY;
-    if (!apiKey) {
-      res.status(500).json({ error: 'Google AI API key not configured' });
-      return;
-    }
-
-    const startUploadResponse = await fetch(
-      `https://generativelanguage.googleapis.com/upload/v1beta/files?uploadType=resumable&key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: {
-          'X-Goog-Upload-Protocol': 'resumable',
-          'X-Goog-Upload-Command': 'start',
-          'X-Goog-Upload-Header-Content-Type': mimeType,
-          'X-Goog-Upload-Header-Content-Length': String(fileSize),
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          file: { display_name: fileName },
-        }),
-      }
-    );
-
-    if (!startUploadResponse.ok) {
-      const errorText = await startUploadResponse.text();
-      logger.error('[uploadAudioToGemini] Failed to initiate Gemini upload', {
-        status: startUploadResponse.status,
-        errorText,
-      });
-      res.status(502).json({
-        error: 'Failed to initiate Gemini upload',
-        details: errorText,
-      });
-      return;
-    }
-
-    const uploadUrl = startUploadResponse.headers.get('x-goog-upload-url');
-    if (!uploadUrl) {
-      res.status(502).json({ error: 'Gemini did not return an upload URL' });
-      return;
-    }
-
-    const uploadToGeminiResponse = await fetch(uploadUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': mimeType,
-        'X-Goog-Upload-Offset': '0',
-        'X-Goog-Upload-Command': 'upload, finalize',
-      },
-      body: uploadBody as RequestInit['body'],
-      duplex: 'half',
-    } as RequestInitWithDuplex);
-
-    if (!uploadToGeminiResponse.ok) {
-      const errorText = await uploadToGeminiResponse.text();
-      logger.error('[uploadAudioToGemini] Failed to upload to Gemini', {
-        status: uploadToGeminiResponse.status,
-        errorText,
-      });
-      res.status(502).json({
-        error: 'Failed to upload file to Gemini',
-        details: errorText,
-      });
-      return;
-    }
-
-    const uploadResponseBody = (await uploadToGeminiResponse.json()) as GeminiUploadResponse;
-    const fileUri = uploadResponseBody.file?.uri;
-
-    if (!fileUri) {
-      res.status(502).json({ error: 'Gemini Files API did not return a file URI' });
-      return;
-    }
-
-    res.status(200).json({ fileUri });
   })
 );
