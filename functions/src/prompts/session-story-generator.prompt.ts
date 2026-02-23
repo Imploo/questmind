@@ -65,6 +65,6 @@ OUTPUT FORMAT:
 - Organize into logical sections with descriptive Markdown headers (## for main sections)
 - Use Markdown emphasis (*italics* for atmosphere, **bold** for dramatic moments)
 - Each section should cover a distinct scene, encounter, or narrative beat
-- Open with a brief atmospheric introduction that sets the scene
+- Start IMMEDIATELY with the first ## section header — no preamble, no introductory paragraph, no meta-commentary about the format or quality of the text
 - End with a natural conclusion that hints at what lies ahead (if applicable)
 - Aim for a thorough, detailed recap — capture the richness of the session`;
