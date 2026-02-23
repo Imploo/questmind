@@ -57,6 +57,14 @@ export async function executeGenerateCharacterDraft(payload: GenerateCharacterDr
     });
   }
 
+  logger.info('generateCharacterDraft: calling Gemini', {
+    model: config.model,
+    maxOutputTokens: config.maxOutputTokens,
+    hasPdf: Boolean(pdfAttachment),
+    contentPartsCount: contentParts.length,
+    characterId,
+  });
+
   const response = await ai.models.generateContent({
     model: config.model,
     contents: contentParts,
@@ -66,6 +74,18 @@ export async function executeGenerateCharacterDraft(payload: GenerateCharacterDr
       maxOutputTokens: config.maxOutputTokens,
       temperature: config.temperature,
     },
+  });
+
+  const finishReason = response.candidates?.[0]?.finishReason;
+  const usageMetadata = response.usageMetadata;
+
+  logger.info('generateCharacterDraft: Gemini response received', {
+    finishReason,
+    promptTokenCount: usageMetadata?.promptTokenCount,
+    candidatesTokenCount: usageMetadata?.candidatesTokenCount,
+    totalTokenCount: usageMetadata?.totalTokenCount,
+    hasText: response.text != null,
+    textLength: response.text?.length ?? 0,
   });
 
   // Clear the generating flag so the frontend hides the loader
@@ -83,12 +103,19 @@ export async function executeGenerateCharacterDraft(payload: GenerateCharacterDr
   try {
     parsed = JSON.parse(text);
   } catch {
-    logger.error('Failed to parse character draft JSON', { responseText: text.slice(0, 500) });
+    logger.error('Failed to parse character draft JSON', {
+      responseText: text.slice(0, 500),
+      responseLength: text.length,
+      finishReason,
+    });
     throw new Error('AI model returned invalid JSON. The response may have been truncated.');
   }
+
+  logger.info('generateCharacterDraft: JSON parsed successfully, validating schema');
   const validatedCharacter = DndCharacterSchema.parse(parsed);
 
   // Save as draft version in Firestore
+  logger.info('generateCharacterDraft: saving draft version');
   await saveDraftVersion(characterId, validatedCharacter);
 }
 

@@ -7,7 +7,11 @@ export class PdfGeneratorService {
 
   async generateCharacterPdf(character: DndCharacter): Promise<void> {
     const pdfMakeModule = await import('pdfmake/build/pdfmake');
+    const pdfFontsModule: Record<string, unknown> = await import('pdfmake/build/vfs_fonts');
     const pdfMake = pdfMakeModule.default || pdfMakeModule;
+    const pdfFonts = (pdfFontsModule['default'] || pdfFontsModule) as Record<string, unknown>;
+    const vfs = (pdfFonts['pdfMake'] as Record<string, unknown>)?.['vfs'] ?? pdfFonts['vfs'] ?? pdfFonts;
+    (pdfMake as unknown as Record<string, unknown>)['vfs'] = vfs;
     const docDefinition = this.buildDocDefinition(character);
     pdfMake.createPdf(docDefinition).download(`${character.name} - Character Sheet.pdf`);
   }
