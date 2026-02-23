@@ -22,6 +22,10 @@ and
 ```bash
 npm run lint
 ```
+and
+```bash
+npm run test
+```
 
 in parallel with npm subagent runners.
 
@@ -53,8 +57,13 @@ Ask the user when you don't know certain details. It's better to verify than to 
 
 Number the tickets like the existing pattern. Also update 00-TICKET-INDEX.md. Fetch next number from the index file.
 
-### Working on a ticket
-When you finished working on a ticket, move it to the subfolder 'done' and mark the status as Done.
+### Completing a ticket
+**MANDATORY:** When you finish working on a ticket, you MUST do ALL of the following:
+1. Move the ticket file from `.docs/tickets/` to `.docs/tickets/done/`
+2. Update the ticket's **Status** field to `Done`
+3. Update `00-TICKET-INDEX.md`: change the ticket's link path to `./done/` and status to `Done`
+
+This applies whether you just finished the ticket or the user tells you to mark it as done. Never leave a completed ticket in the main tickets folder.
 
 ## Angular Best Practices
 

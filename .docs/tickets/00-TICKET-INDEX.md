@@ -606,7 +606,7 @@ Start here for immediate impact with minimal risk:
 |--------|-------|----------|--------|------------|--------|
 | [#59](./59-critical-security-fixes.md) | Critical Security Fixes (Auth + XSS) | Critical | Todo | HIGH | 2-3 hours |
 | [#60](./done/60-replace-console-error-with-proper-logging.md) | Replace console.error with Proper Logging | High | Done | HIGH | 1-2 days |
-| [#61](./61-angular-modernization.md) | Angular Modernization: Migrate Legacy Patterns | Medium | Todo | HIGH | 2-3 days |
+| [#61](./done/61-angular-modernization.md) | Angular Modernization: Migrate Legacy Patterns | Medium | Done | HIGH | 2-3 days |
 | [#62](./62-typescript-dry-code-quality.md) | TypeScript & DRY Code Quality | Medium | Todo | MEDIUM-HIGH | 2-3 days |
 | [#63](./63-establish-test-coverage.md) | Establish Test Coverage Foundation | High | Todo | HIGH | 2-3 weeks |
 | [#64](./64-performance-and-architecture.md) | Performance & Architecture Improvements | Medium | Todo | MEDIUM | 2-3 days |

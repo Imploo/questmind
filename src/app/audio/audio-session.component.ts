@@ -1,7 +1,6 @@
 import { Component, OnDestroy, effect, signal, computed, inject, Injector, runInInjectionContext, ChangeDetectionStrategy, Signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router, ActivatedRoute } from '@angular/router';
-import { Subscription } from 'rxjs';
 import { AudioSessionStateService } from './services/audio-session-state.service';
 import { AudioBackendOperationsService } from './services/audio-backend-operations.service';
 import { PodcastAudioService, PodcastProgress } from './services/podcast-audio.service';
@@ -23,7 +22,7 @@ import { FirebaseService } from '../core/firebase.service';
 
 @Component({
   selector: 'app-audio-session',
-  imports: [CommonModule, SessionStoryComponent, SessionProgressCardComponent, CampaignSelectorComponent],
+  imports: [SessionStoryComponent, SessionProgressCardComponent, CampaignSelectorComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (authService.isAuthenticated()) {
@@ -315,7 +314,6 @@ export class AudioSessionComponent implements OnDestroy {
   private correctionsSaveTimer?: ReturnType<typeof setTimeout>;
   private correctionsStatusTimer?: ReturnType<typeof setTimeout>;
   private activeCorrectionsSessionId: string | null = null;
-  private routeParamsSub?: Subscription;
 
   sessions: Signal<AudioSessionRecord[]> = signal<AudioSessionRecord[]>([]);
 
@@ -407,7 +405,7 @@ export class AudioSessionComponent implements OnDestroy {
     this.sessions = this.sessionStateService.sessions;
 
     // Subscribe to route params to handle session selection from URL
-    this.routeParamsSub = this.route.paramMap.subscribe(params => {
+    this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(params => {
       const sessionIdFromRoute = params.get('sessionId');
       const sessions = this.sortedSessions();
 
@@ -720,7 +718,6 @@ export class AudioSessionComponent implements OnDestroy {
 
   ngOnDestroy(): void {
     this.cleanupPodcastProgressListener();
-    this.routeParamsSub?.unsubscribe();
     this.clearCorrectionsTimers();
   }
 

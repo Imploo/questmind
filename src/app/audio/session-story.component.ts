@@ -1,5 +1,4 @@
-import { Component, EventEmitter, Input, OnChanges, Output, SecurityContext, SimpleChanges, inject, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component, SecurityContext, effect, inject, input, output, signal } from '@angular/core';
 import { DomSanitizer } from '@angular/platform-browser';
 import { marked } from 'marked';
 import { PodcastVersion } from './services/audio-session.models';
@@ -13,12 +12,11 @@ export interface SessionMetaUpdate {
 
 @Component({
   selector: 'app-session-story',
-  standalone: true,
-  imports: [CommonModule],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="border border-gray-200 rounded-xl bg-white shadow-sm overflow-hidden relative">
       <!-- Background Job Loader Overlay -->
-      @if (hasActiveBackgroundJob) {
+      @if (hasActiveBackgroundJob()) {
         <div class="absolute inset-0 bg-white/80 backdrop-blur-sm z-50 flex items-center justify-center">
           <div class="max-w-md text-center">
             <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
@@ -28,7 +26,7 @@ export interface SessionMetaUpdate {
               </svg>
             </div>
             <h3 class="text-lg font-semibold text-gray-800 mb-2">Processing in Background</h3>
-            <p class="text-sm text-gray-600">{{ backgroundJobMessage }}</p>
+            <p class="text-sm text-gray-600">{{ backgroundJobMessage() }}</p>
             <p class="text-xs text-gray-500 mt-3">This may take a few minutes. You can leave this page and come back later.</p>
           </div>
         </div>
@@ -71,15 +69,15 @@ export interface SessionMetaUpdate {
             </div>
           } @else {
             <div>
-              <h3 class="text-lg font-semibold m-0">{{ title }}</h3>
-              <p class="text-sm text-gray-500 m-0">{{ subtitle }}</p>
+              <h3 class="text-lg font-semibold m-0">{{ title() }}</h3>
+              <p class="text-sm text-gray-500 m-0">{{ subtitle() }}</p>
             </div>
             <div class="flex gap-2">
               <button
                 type="button"
                 class="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:text-gray-800"
                 (click)="startMetaEdit()"
-                [disabled]="isBusy || !canEditStory"
+                [disabled]="isBusy() || !canEditStory()"
               >
                 Edit
               </button>
@@ -87,7 +85,7 @@ export interface SessionMetaUpdate {
                 type="button"
                 class="px-3 py-2 text-xs font-semibold rounded-lg border border-red-200 text-red-600 hover:bg-red-600 hover:text-white transition-colors"
                 (click)="onDeleteClick()"
-                [disabled]="isBusy || !canEditStory"
+                [disabled]="isBusy() || !canEditStory()"
                 title="Sessie verwijderen"
               >
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -128,9 +126,9 @@ export interface SessionMetaUpdate {
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path>
             </svg>
             <span>Podcasts</span>
-            @if (podcasts.length > 0) {
+            @if (podcasts().length > 0) {
               <span class="ml-1 px-2 py-0.5 text-xs bg-purple-100 text-purple-700 rounded-full">
-                {{ podcasts.length }}
+                {{ podcasts().length }}
               </span>
             }
             @if (activeTab() === 'podcasts') {
@@ -144,7 +142,7 @@ export interface SessionMetaUpdate {
       <div class="p-6">
         <!-- Story Tab -->
         @if (activeTab() === 'story') {
-          @if (story.trim().length) {
+          @if (story().trim().length) {
             <div class="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
               <div class="space-y-4">
                 <div class="flex items-center justify-between">
@@ -154,7 +152,7 @@ export interface SessionMetaUpdate {
                       type="button"
                       class="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:text-gray-800 disabled:opacity-50"
                       (click)="toggleEdit()"
-                      [disabled]="isBusy || !canEditStory"
+                      [disabled]="isBusy() || !canEditStory()"
                     >
                       {{ isEditing() ? 'Preview' : 'Edit' }}
                     </button>
@@ -162,7 +160,7 @@ export interface SessionMetaUpdate {
                       type="button"
                       class="px-3 py-2 text-xs font-semibold rounded-lg bg-primary text-white hover:bg-primary-dark disabled:bg-gray-300"
                       (click)="regenerate.emit()"
-                      [disabled]="isBusy || !canRegenerate"
+                      [disabled]="isBusy() || !canRegenerate()"
                     >
                       Regenerate Story
                     </button>
@@ -175,14 +173,14 @@ export interface SessionMetaUpdate {
                       class="w-full min-h-[220px] border border-gray-200 rounded-lg p-3 text-sm focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none"
                       [value]="draft()"
                       (input)="onDraftInput($event)"
-                      [disabled]="isBusy || !canEditStory"
+                      [disabled]="isBusy() || !canEditStory()"
                     ></textarea>
                     <div class="mt-3 flex justify-end gap-2">
                       <button
                         type="button"
                         class="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:text-gray-800"
                         (click)="resetDraft()"
-                      [disabled]="isBusy || !canEditStory"
+                      [disabled]="isBusy() || !canEditStory()"
                       >
                         Reset
                       </button>
@@ -190,7 +188,7 @@ export interface SessionMetaUpdate {
                         type="button"
                         class="px-3 py-2 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-gray-300"
                         (click)="saveDraft()"
-                      [disabled]="isBusy || !canEditStory"
+                      [disabled]="isBusy() || !canEditStory()"
                       >
                         Save Story
                       </button>
@@ -217,7 +215,7 @@ export interface SessionMetaUpdate {
                   </button>
                 </div>
 
-                @if (transcript) {
+                @if (transcript()) {
                   <div class="border-t border-gray-100 pt-4">
                     <button
                       type="button"
@@ -228,7 +226,7 @@ export interface SessionMetaUpdate {
                     </button>
                     @if (showTranscript()) {
                       <pre class="mt-3 p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-600 whitespace-pre-wrap">
-{{ transcript }}
+{{ transcript() }}
                       </pre>
                     }
                   </div>
@@ -238,9 +236,9 @@ export interface SessionMetaUpdate {
               <div class="space-y-4">
                 <div class="flex items-center justify-between">
                   <h4 class="text-base font-semibold m-0">Corrections & Guidance</h4>
-                  @if (correctionsStatus !== 'idle') {
+                  @if (correctionsStatus() !== 'idle') {
                     <span class="text-xs text-gray-500">
-                      {{ correctionsStatus === 'saving' ? 'Saving...' : 'Saved ✓' }}
+                      {{ correctionsStatus() === 'saving' ? 'Saving...' : 'Saved ✓' }}
                     </span>
                   }
                 </div>
@@ -251,9 +249,9 @@ export interface SessionMetaUpdate {
                   </p>
                   <textarea
                     class="w-full min-h-[240px] border border-gray-200 rounded-lg p-3 text-sm focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none resize-vertical font-mono"
-                    [value]="corrections"
+                    [value]="corrections()"
                     (input)="onCorrectionsInput($event)"
-                    [disabled]="isBusy || !canEditCorrections"
+                    [disabled]="isBusy() || !canEditCorrections()"
                     placeholder="Example: When you hear 'corikan', the correct name is 'Khuri-Khan'. The party is in Waterdeep, not Baldur's Gate."
                   ></textarea>
                   <p class="text-xs text-gray-500 m-0">
@@ -281,16 +279,16 @@ export interface SessionMetaUpdate {
               </div>
               <button
                 (click)="generatePodcast.emit()"
-                [disabled]="isGeneratingPodcast || isBusy || !canGeneratePodcast"
+                [disabled]="isGeneratingPodcast() || isBusy() || !canGeneratePodcast()"
                 class="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
               >
-                @if (isGeneratingPodcast) {
+                @if (isGeneratingPodcast()) {
                   <span class="flex items-center gap-2">
                     <svg class="animate-spin h-5 w-5" viewBox="0 0 24 24">
                       <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
                       <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    <span>{{ podcastGenerationProgress }}</span>
+                    <span>{{ podcastGenerationProgress() }}</span>
                   </span>
                 } @else {
                   Genereer Podcast
@@ -298,22 +296,22 @@ export interface SessionMetaUpdate {
               </button>
             </div>
 
-            @if (podcastError) {
+            @if (podcastError()) {
               <div class="p-3 bg-red-50 border border-red-200 rounded-lg">
-                <p class="text-sm text-red-700 m-0">{{ podcastError }}</p>
+                <p class="text-sm text-red-700 m-0">{{ podcastError() }}</p>
               </div>
             }
 
-            @if (isGeneratingPodcast) {
+            @if (isGeneratingPodcast()) {
               <div class="p-4 bg-blue-50 border border-blue-200 rounded-lg">
                 <div class="flex items-center justify-between mb-2">
-                  <span class="text-sm font-medium text-blue-900">{{ podcastGenerationProgress }}</span>
-                  <span class="text-sm text-blue-700">{{ podcastGenerationProgressPercent }}%</span>
+                  <span class="text-sm font-medium text-blue-900">{{ podcastGenerationProgress() }}</span>
+                  <span class="text-sm text-blue-700">{{ podcastGenerationProgressPercent() }}%</span>
                 </div>
                 <div class="w-full bg-blue-200 rounded-full h-2">
                   <div
                     class="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                    [style.width.%]="podcastGenerationProgressPercent"
+                    [style.width.%]="podcastGenerationProgressPercent()"
                   ></div>
                 </div>
                 <p class="text-xs text-blue-600 mt-2">
@@ -322,12 +320,12 @@ export interface SessionMetaUpdate {
               </div>
             }
 
-            @if (podcasts.length > 0) {
+            @if (podcasts().length > 0) {
               <div class="space-y-3">
                 <h5 class="text-sm font-medium text-purple-900 m-0">
-                  Gegenereerde Podcasts ({{ podcasts.length }})
+                  Gegenereerde Podcasts ({{ podcasts().length }})
                 </h5>
-                @for (podcast of podcasts; track podcast.version) {
+                @for (podcast of podcasts(); track podcast.version) {
                   <div class="flex items-center gap-4 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg border border-purple-100 hover:border-purple-300 transition-colors">
                     <div class="flex-shrink-0">
                       <span class="inline-flex items-center justify-center w-10 h-10 bg-purple-600 text-white rounded-full font-semibold text-sm">
@@ -390,7 +388,7 @@ export interface SessionMetaUpdate {
               </div>
             }
 
-            @if (podcasts.length === 0 && !isGeneratingPodcast) {
+            @if (podcasts().length === 0 && !isGeneratingPodcast()) {
               <div class="p-4 bg-white rounded-lg border border-purple-100 text-center">
                 <p class="text-sm text-gray-500 m-0">
                   Nog geen podcasts gegenereerd. Klik op "Genereer Podcast" om te beginnen.
@@ -406,42 +404,42 @@ export interface SessionMetaUpdate {
     </div>
   `
 })
-export class SessionStoryComponent implements OnChanges {
+export class SessionStoryComponent {
   private readonly sanitizer = inject(DomSanitizer);
   private readonly toastService = inject(ToastService);
   public readonly formatting = inject(FormattingService);
 
-  @Input() title = 'Session Story';
-  @Input() subtitle = '';
-  @Input() sessionDate = '';
-  @Input() story = '';
-  @Input() transcript = '';
-  @Input() isBusy = false;
-  @Input() canRegenerate = false;
-  @Input() canEditStory = false;
-  @Input() canEditCorrections = true;
-  @Input() corrections = '';
-  @Input() correctionsStatus: 'idle' | 'saving' | 'saved' = 'idle';
-  
+  title = input('Session Story');
+  subtitle = input('');
+  sessionDate = input('');
+  story = input('');
+  transcript = input('');
+  isBusy = input(false);
+  canRegenerate = input(false);
+  canEditStory = input(false);
+  canEditCorrections = input(true);
+  corrections = input('');
+  correctionsStatus = input<'idle' | 'saving' | 'saved'>('idle');
+
   // Podcast inputs
-  @Input() podcasts: PodcastVersion[] = [];
-  @Input() isGeneratingPodcast = false;
-  @Input() podcastGenerationProgress = '';
-  @Input() podcastGenerationProgressPercent = 0;
-  @Input() podcastError = '';
-  @Input() canGeneratePodcast = false;
+  podcasts = input<PodcastVersion[]>([]);
+  isGeneratingPodcast = input(false);
+  podcastGenerationProgress = input('');
+  podcastGenerationProgressPercent = input(0);
+  podcastError = input('');
+  canGeneratePodcast = input(false);
 
   // Background job tracking
-  @Input() hasActiveBackgroundJob = false;
-  @Input() backgroundJobMessage = '';
-  
-  @Output() storyUpdated = new EventEmitter<string>();
-  @Output() regenerate = new EventEmitter<void>();
-  @Output() correctionsChanged = new EventEmitter<string>();
-  @Output() generatePodcast = new EventEmitter<void>();
-  @Output() downloadPodcast = new EventEmitter<PodcastVersion>();
-  @Output() metaUpdated = new EventEmitter<SessionMetaUpdate>();
-  @Output() deleteSession = new EventEmitter<void>();
+  hasActiveBackgroundJob = input(false);
+  backgroundJobMessage = input('');
+
+  storyUpdated = output<string>();
+  regenerate = output<void>();
+  correctionsChanged = output<string>();
+  generatePodcast = output<void>();
+  downloadPodcast = output<PodcastVersion>();
+  metaUpdated = output<SessionMetaUpdate>();
+  deleteSession = output<void>();
 
   activeTab = signal<'story' | 'podcasts'>('story');
   isEditing = signal<boolean>(false);
@@ -458,13 +456,13 @@ export class SessionStoryComponent implements OnChanges {
       breaks: true,
       gfm: true
     });
-  }
 
-  ngOnChanges(changes: SimpleChanges): void {
-    if (changes['story']) {
-      this.draft.set(this.story);
-      this.renderedStory.set(this.sanitizer.sanitize(SecurityContext.HTML, this.convertMarkdown(this.story)) ?? '');
-    }
+    // React to story input changes (replaces ngOnChanges)
+    effect(() => {
+      const storyValue = this.story();
+      this.draft.set(storyValue);
+      this.renderedStory.set(this.sanitizer.sanitize(SecurityContext.HTML, this.convertMarkdown(storyValue)) ?? '');
+    });
   }
 
   async onDeleteClick(): Promise<void> {
@@ -475,8 +473,8 @@ export class SessionStoryComponent implements OnChanges {
   }
 
   startMetaEdit(): void {
-    this.titleDraft.set(this.title);
-    this.dateDraft.set(this.sessionDate);
+    this.titleDraft.set(this.title());
+    this.dateDraft.set(this.sessionDate());
     this.isEditingMeta.set(true);
   }
 
@@ -486,7 +484,7 @@ export class SessionStoryComponent implements OnChanges {
 
   saveMetaEdit(): void {
     this.metaUpdated.emit({
-      title: this.titleDraft().trim() || this.title,
+      title: this.titleDraft().trim() || this.title(),
       sessionDate: this.dateDraft()
     });
     this.isEditingMeta.set(false);
@@ -503,7 +501,7 @@ export class SessionStoryComponent implements OnChanges {
   }
 
   toggleEdit(): void {
-    if (!this.canEditStory) {
+    if (!this.canEditStory()) {
       return;
     }
     this.isEditing.set(!this.isEditing());
@@ -515,7 +513,7 @@ export class SessionStoryComponent implements OnChanges {
   }
 
   resetDraft(): void {
-    this.draft.set(this.story);
+    this.draft.set(this.story());
   }
 
   saveDraft(): void {
@@ -533,11 +531,11 @@ export class SessionStoryComponent implements OnChanges {
   }
 
   downloadMarkdown(): void {
-    const blob = new Blob([this.story || ''], { type: 'text/markdown' });
+    const blob = new Blob([this.story() || ''], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = `${this.slugify(this.title || 'session-story')}.md`;
+    anchor.download = `${this.slugify(this.title() || 'session-story')}.md`;
     anchor.click();
     URL.revokeObjectURL(url);
   }
@@ -546,14 +544,14 @@ export class SessionStoryComponent implements OnChanges {
     const html = `
       <html>
         <head>
-          <title>${this.title}</title>
+          <title>${this.title()}</title>
           <style>
             body { font-family: Arial, sans-serif; padding: 32px; line-height: 1.6; }
             h1, h2, h3 { margin-top: 24px; }
           </style>
         </head>
         <body>
-          ${this.convertMarkdown(this.story)}
+          ${this.convertMarkdown(this.story())}
         </body>
       </html>
     `;

@@ -1,5 +1,4 @@
 import { ChangeDetectionStrategy, Component, signal, OnInit, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { UserService } from '../core/user.service';
 import { AiSettingsRepository } from '../shared/repository/ai-settings.repository';
@@ -20,7 +19,7 @@ interface FeatureDefinition {
 
 @Component({
   selector: 'app-admin',
-  imports: [CommonModule, FormsModule],
+  imports: [FormsModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="bg-white/90 backdrop-blur rounded-2xl shadow-lg overflow-hidden">
@@ -105,7 +104,7 @@ interface FeatureDefinition {
                       <div class="text-sm font-medium text-gray-800 truncate">{{ feature.label }}</div>
                       <span
                         class="inline-block mt-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
-                        [ngClass]="feature.providerColor"
+                        [class]="feature.providerColor"
                       >{{ feature.provider }}</span>
                     </div>
                   </button>
@@ -122,7 +121,7 @@ interface FeatureDefinition {
                   <h3 class="text-lg font-semibold text-gray-800">{{ selectedFeature().label }}</h3>
                   <span
                     class="text-xs font-semibold px-2 py-0.5 rounded-full"
-                    [ngClass]="selectedFeature().providerColor"
+                    [class]="selectedFeature().providerColor"
                   >{{ selectedFeature().provider }}</span>
                 </div>
                 <p class="text-sm text-gray-500 ml-11">{{ selectedFeature().description }}</p>

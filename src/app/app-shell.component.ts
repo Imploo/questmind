@@ -1,4 +1,5 @@
 import { Component, inject, ChangeDetectionStrategy } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterOutlet } from '@angular/router';
 import { CampaignContextService } from './campaign/campaign-context.service';
 import { NavRailComponent } from './layout/nav-rail/nav-rail.component';
@@ -31,7 +32,7 @@ export class AppShellComponent {
   readonly authService = inject(AuthService);
 
   constructor() {
-    this.route.paramMap.subscribe(params => {
+    this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(params => {
       const campaignId = params.get('campaignId');
       if (campaignId) {
         void this.campaignContext.selectCampaign(campaignId);

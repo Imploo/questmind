@@ -1,5 +1,4 @@
-import { Component, signal, inject, input, effect, viewChild, ElementRef, afterNextRender, runInInjectionContext, EnvironmentInjector, computed } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component, signal, inject, input, effect, viewChild, ElementRef, afterNextRender, runInInjectionContext, EnvironmentInjector, computed } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { ChatService, Message } from './chat.service';
@@ -10,8 +9,8 @@ import * as logger from '../shared/logger';
 
 @Component({
   selector: 'app-chat',
-  standalone: true,
-  imports: [CommonModule, FormsModule, ImageLightboxComponent],
+  imports: [FormsModule, ImageLightboxComponent],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     '[class.flex]': 'true',
     '[class.flex-col]': 'true',
