@@ -1,9 +1,9 @@
 export const environment = {
-  production: false,
+  production: true,
   useEmulators: false,
   sentry: {
-    dsn: '', // Empty in development - errors not sent to Sentry
-    environment: 'development',
+    dsn: 'https://1781192df2b465d67143294e13c12b8f@o4510852114022400.ingest.de.sentry.io/4510852117102672',
+    environment: 'beta'
   },
   firebaseConfig: {
     apiKey: "private",
