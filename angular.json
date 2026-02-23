@@ -98,6 +98,11 @@
                   "with": "src/environments/environment.local.ts"
                 }
               ]
+            },
+            "test": {
+              "optimization": false,
+              "extractLicenses": false,
+              "sourceMap": true
             }
           },
           "defaultConfiguration": "production"
@@ -126,7 +131,10 @@
           "builder": "@angular/build:extract-i18n"
         },
         "test": {
-          "builder": "@angular/build:unit-test"
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "buildTarget": "questmind:build:test"
+          }
         },
         "lint": {
           "builder": "@angular-eslint/builder:lint",
