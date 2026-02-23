@@ -116,7 +116,8 @@ export const transcribeAudioFast = onCall(
       fileUri,
       audioFileName,
       kankaEnabled,
-      userCorrections
+      userCorrections,
+      googleAiKey
     ).catch((error) => {
       logger.error('[transcribeAudioFast] Async processing failed:', error);
       // Error will be written to Firestore by processTranscriptionAsync
@@ -157,7 +158,8 @@ async function processTranscriptionAsync(
   fileUri: string,
   audioFileName: string,
   enableKankaContext: boolean,
-  userCorrections?: string
+  userCorrections: string | undefined,
+  googleAiKey: string
 ): Promise<void> {
   const db = getFirestore();
   const sessionRef = db
@@ -186,12 +188,12 @@ async function processTranscriptionAsync(
     );
 
     // 3. Call Gemini API with the Files API URI
-    const googleAi = new GoogleGenAI({ apiKey: process.env.GOOGLE_AI_API_KEY! });
+    const googleAi = new GoogleGenAI({ apiKey: googleAiKey });
 
     const prompt = buildRawStoryPrompt(kankaContext);
 
     // Gemini Files can take a short time to become ACTIVE after upload finalize.
-    await waitForGeminiFileToBecomeActive(fileUri, process.env.GOOGLE_AI_API_KEY!);
+    await waitForGeminiFileToBecomeActive(fileUri, googleAiKey);
 
     logger.debug(`[Fast Transcription] Calling Gemini API with request:`, {
       model,
@@ -306,7 +308,7 @@ async function processTranscriptionAsync(
     });
 
     logger.debug(`[Fast Transcription] Complete for session ${sessionId}`);
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error('[Fast Transcription] Processing error:', error);
 
     const errorMessage = error instanceof Error ? error.message : String(error);

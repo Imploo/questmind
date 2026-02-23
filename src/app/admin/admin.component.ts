@@ -6,6 +6,8 @@ import { type AiSettings, type AiModelConfig, type AiImageConfig, type PodcastVo
 import * as logger from '../shared/logger';
 
 type FeatureFormType = 'standard' | 'imageOnly' | 'voicesOnly';
+type AiSettingsFeatures = NonNullable<AiSettings['features']>;
+type FeatureKey = keyof AiSettingsFeatures;
 
 interface FeatureDefinition {
   key: string;
@@ -406,20 +408,22 @@ export class AdminComponent implements OnInit {
 
   getFeatureValue(field: string): unknown {
     const settings = this.aiSettings();
-    const key = this.selectedFeature().key;
+    const key = this.selectedFeature().key as FeatureKey;
     if (!settings?.features) return '';
-    const featureConfig = (settings.features as Record<string, Record<string, unknown>>)[key];
-    return featureConfig?.[field] ?? '';
+    const featureConfig = settings.features[key];
+    return (featureConfig as Record<string, unknown> | undefined)?.[field] ?? '';
   }
 
   setFeatureValue(field: string, value: unknown): void {
-    const settings = this.aiSettings();
-    const key = this.selectedFeature().key;
-    if (!settings?.features) return;
-    const featureConfig = (settings.features as Record<string, Record<string, unknown>>)[key];
-    if (featureConfig) {
-      featureConfig[field] = value;
-    }
+    this.aiSettings.update(settings => {
+      if (!settings?.features) return settings;
+      const key = this.selectedFeature().key as FeatureKey;
+      const featureConfig = settings.features[key];
+      if (!featureConfig) return settings;
+      const updated = structuredClone(settings);
+      (updated.features[key] as unknown as Record<string, unknown>)[field] = value;
+      return updated;
+    });
   }
 
   onFieldBlur(): void {
@@ -468,20 +472,20 @@ export class AdminComponent implements OnInit {
   }
 
   private normalizeSettings(settings: AiSettings): AiSettings {
-    const features = settings.features ?? {};
+    const features = (settings.features ?? {}) as Record<string, unknown>;
     const normalized: Record<string, unknown> = {};
 
     for (const def of this.featureDefinitions) {
-      const existing = (features as Record<string, unknown>)[def.key];
+      const existing = features[def.key] as Record<string, unknown> | undefined;
       const defaults = this.defaultConfigs[def.key];
-      normalized[def.key] = { ...defaults, ...(existing as Record<string, unknown> | undefined) };
+      normalized[def.key] = { ...defaults, ...existing };
     }
 
     // Preserve characterChat for backward compatibility
-    if (features.characterChat) {
+    if (features['characterChat']) {
       normalized['characterChat'] = {
         ...this.defaultConfigs['characterChat'],
-        ...(features.characterChat as unknown as Record<string, unknown>),
+        ...(features['characterChat'] as Record<string, unknown>),
       };
     }
 

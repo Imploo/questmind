@@ -2,7 +2,7 @@
 
 **Created:** 2026-02-18
 **Priority:** High
-**Status:** Todo
+**Status:** Done
 **Effort:** 1-2 weken
 **Dependencies:** -
 

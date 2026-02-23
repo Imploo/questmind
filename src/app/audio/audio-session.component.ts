@@ -317,16 +317,7 @@ export class AudioSessionComponent implements OnDestroy {
 
   sessions: Signal<AudioSessionRecord[]> = signal<AudioSessionRecord[]>([]);
 
-  // Sorted sessions by date (newest first)
-  sortedSessions = computed(() => {
-    const sessions = this.sessions();
-    return [...sessions].sort((a, b) => {
-      const dateA = a.sessionDate || '';
-      const dateB = b.sessionDate || '';
-      // Sort in descending order (newest first)
-      return dateB.localeCompare(dateA);
-    });
-  });
+  sortedSessions!: Signal<(AudioSessionRecord & Record<string, unknown>)[]>;
 
   // Mobile drawer state
   mobileDrawerOpen = signal(false);
@@ -403,6 +394,7 @@ export class AudioSessionComponent implements OnDestroy {
   constructor() {
     this.functions = this.firebaseService.requireFunctions();
     this.sessions = this.sessionStateService.sessions;
+    this.sortedSessions = this.sessionStateService.sortedSessions;
 
     // Subscribe to route params to handle session selection from URL
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(params => {

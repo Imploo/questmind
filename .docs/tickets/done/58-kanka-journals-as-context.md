@@ -4,7 +4,7 @@
 
 - **Ticket**: #58
 - **Created**: 2026-02-19
-- **Status**: Todo
+- **Status**: Won't Fix
 - **Priority**: Medium
 - **Component**: Kanka Integration / Transcription / Story Generation
 - **Type**: Feature Enhancement

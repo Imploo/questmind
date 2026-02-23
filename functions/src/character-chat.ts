@@ -9,11 +9,7 @@ import { CHARACTER_RESPONDER_PROMPT } from './prompts/character-responder.prompt
 import { DndCharacter } from './schemas/dnd-character.schema';
 import { executeGenerateCharacterDraft } from './generate-character-draft';
 import * as logger from './utils/logger';
-
-interface ChatHistoryMessage {
-  role: 'user' | 'assistant';
-  content: string;
-}
+import { ChatHistoryMessage } from './types/chat.types';
 
 export interface CharacterChatRequest {
   characterId: string;

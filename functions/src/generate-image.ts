@@ -7,11 +7,7 @@ import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { randomUUID } from 'crypto';
 import { fal } from '@fal-ai/client';
 import { GoogleGenAI } from '@google/genai';
-
-export interface ChatHistoryMessage {
-    role: 'user' | 'assistant';
-    content: string;
-}
+import { ChatHistoryMessage } from './types/chat.types';
 
 export interface CharacterChatRequest {
     systemPrompt: string;

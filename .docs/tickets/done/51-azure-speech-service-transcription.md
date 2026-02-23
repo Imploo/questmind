@@ -2,7 +2,7 @@
 
 **Created:** 2026-02-16
 **Priority:** High
-**Status:** Todo
+**Status:** Won't Fix
 **Effort:** 3-5 days
 **Dependencies:** None
 

@@ -182,14 +182,7 @@ export class AudioUploadPageComponent implements OnInit, OnDestroy {
   // Sessions list
   sessions = this.sessionStateService.sessions;
 
-  sortedSessions = computed(() => {
-    const sessions = this.sessions();
-    return [...sessions].sort((a, b) => {
-      const dateA = a.sessionDate || '';
-      const dateB = b.sessionDate || '';
-      return dateB.localeCompare(dateA);
-    });
-  });
+  sortedSessions = this.sessionStateService.sortedSessions;
 
   // Mobile drawer state
   mobileDrawerOpen = signal(false);

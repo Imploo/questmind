@@ -6,11 +6,7 @@ import { CHARACTER_JSON_GENERATOR_PROMPT } from './prompts/character-json-genera
 import { captureFunctionError } from './utils/sentry-error-handler';
 import { getAiFeatureConfig } from './utils/ai-settings';
 import * as logger from './utils/logger';
-
-interface ChatHistoryMessage {
-  role: 'user' | 'assistant';
-  content: string;
-}
+import { ChatHistoryMessage } from './types/chat.types';
 
 export interface GenerateCharacterDraftPayload {
   characterId: string;
@@ -31,7 +27,12 @@ export async function executeGenerateCharacterDraft(payload: GenerateCharacterDr
     return;
   }
 
-  const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_AI_API_KEY! });
+  const apiKey = process.env.GOOGLE_AI_API_KEY;
+  if (!apiKey) {
+    throw new Error('Google AI API key not configured');
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
   const config = await getAiFeatureConfig('characterDraft');
 
   // AI 2: JSON generator — build messages with full context

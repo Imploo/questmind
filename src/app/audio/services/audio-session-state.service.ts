@@ -38,6 +38,15 @@ export class AudioSessionStateService {
     return repo ? repo.get() : [];
   });
 
+  readonly sortedSessions = computed<SessionRecord[]>(() => {
+    const sessions = this.sessions();
+    return [...sessions].sort((a, b) => {
+      const dateA = a.sessionDate || '';
+      const dateB = b.sessionDate || '';
+      return dateB.localeCompare(dateA);
+    });
+  });
+
   constructor() {
     effect((onCleanup) => {
       const repo = this.sessionRepo.value();

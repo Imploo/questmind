@@ -17,8 +17,8 @@ This index provides a quick reference to all refactoring tickets created from th
 
 | Ticket | Title | Effort | Lines Saved | Issues |
 |--------|-------|--------|-------------|--------|
-| [#23](./23-extract-shared-formatting-service.md) | Extract Shared Formatting Service | 2 hours | ~50 | #6, #7, #8 |
-| [#24](./24-create-firebase-service.md) | Create Centralized Firebase Service | 3 hours | ~30 | #5, #10 |
+| [#23](./done/23-extract-shared-formatting-service.md) | Extract Shared Formatting Service | 2 hours | ~50 | #6, #7, #8 |
+| [#24](./done/24-create-firebase-service.md) | Create Centralized Firebase Service | 3 hours | ~30 | #5, #10 |
 | [#25](./25-extract-shared-utilities.md) | Extract Shared Utility Services | 2 hours | ~40 | #9, #20 |
 | [#26](./26-split-audio-session-component.md) | Split AudioSessionComponent | 1 week | ~400 | #1, #13, #14 |
 | [#27](./27-split-audio-transcription-service.md) | Split AudioTranscriptionService | 1 week | ~390 | #2 |
@@ -236,10 +236,10 @@ Start here for immediate impact with minimal risk:
 
 | Ticket | Title | Priority | Status | Dependencies |
 |--------|-------|----------|--------|--------------|
-| [#34](./34-backend-podcast-script-generation.md) | Backend Podcast Script Generation with Database-Driven Model Selection | High | Draft | #19, #17 |
-| [#35](./35-backend-transcription-and-story-generation.md) | Backend Audio Transcription and Story Generation with Configurable AI Parameters | High | Draft | #34, #19 |
-| [#36](./36-refactor-transcription-flow.md) | Refactor Transcription and Retranscription Flows (Worker Chain Architecture) | High | Open | - |
-| [#37](./37-gemini-batch-api-transcription.md) | Simplified Transcription Flow with Gemini Batch API | High | Open | #14 |
+| [#34](./done/34-backend-podcast-script-generation.md) | Backend Podcast Script Generation with Database-Driven Model Selection | High | Done | #19, #17 |
+| [#35](./done/35-backend-transcription-and-story-generation.md) | Backend Audio Transcription and Story Generation with Configurable AI Parameters | High | Done | #34, #19 |
+| [#36](./done/36-refactor-transcription-flow.md) | Refactor Transcription and Retranscription Flows (Worker Chain Architecture) | High | Done | - |
+| [#37](./done/37-gemini-batch-api-transcription.md) | Simplified Transcription Flow with Gemini Batch API | High | Done | #14 |
 
 **Key Features:**
 - **Ticket 34**: Move podcast script generation to backend with Gemini 3 Flash
@@ -272,9 +272,9 @@ Start here for immediate impact with minimal risk:
 
 | Ticket | Title | Priority | Effort | Dependencies |
 |--------|-------|----------|--------|--------------|
-| [#38](./38-data-layer-critical-duplicates-cleanup.md) | Data Layer Critical Duplicates Cleanup (Phase 1) | Critical | 1 week | - |
-| [#39](./39-data-layer-legacy-fields-removal.md) | Data Layer Legacy Fields Removal (Phase 2) | High | 2-3 days | #38 |
-| [#40](./40-data-layer-optimization.md) | Data Layer Optimization (Phase 3) | Medium | 1 week | #38, #39 |
+| [#38](./done/38-data-layer-critical-duplicates-cleanup.md) | Data Layer Critical Duplicates Cleanup (Phase 1) | Critical | 1 week | - |
+| [#39](./done/39-data-layer-legacy-fields-removal.md) | Data Layer Legacy Fields Removal (Phase 2) | High | 2-3 days | #38 |
+| [#40](./done/40-data-layer-optimization.md) | Data Layer Optimization (Phase 3) | Medium | 1 week | #38, #39 |
 
 **Key Improvements:**
 - **Ticket 38** (Phase 1): Remove critical duplicate fields
@@ -360,7 +360,7 @@ Start here for immediate impact with minimal risk:
 
 | Ticket | Title | Priority | Status | Effort | Dependencies |
 |--------|-------|----------|--------|--------|--------------|
-| [#44](./44-implement-sentry-error-logging.md) | Implement Sentry Error Logging for Frontend and Backend | High | Todo | 3-4 days | - |
+| [#44](./done/44-implement-sentry-error-logging.md) | Implement Sentry Error Logging for Frontend and Backend | High | Done | 3-4 days | - |
 
 **Key Improvements:**
 - **Ticket 44**: Comprehensive error tracking and monitoring
@@ -422,7 +422,7 @@ Start here for immediate impact with minimal risk:
 
 | Ticket | Title | Priority | Status | Effort | Dependencies |
 |--------|-------|----------|--------|--------|--------------|
-| [#47](./47-browser-audio-compression-before-upload.md) | Browser Audio Compression Before Upload | High | Todo | 3-5 days | #46 |
+| [#47](./done/47-browser-audio-compression-before-upload.md) | Browser Audio Compression Before Upload | High | Done | 3-5 days | #46 |
 
 **Key Improvements:**
 - **Ticket 47**: Compress audio in the browser before uploading to GCS
@@ -486,7 +486,7 @@ Start here for immediate impact with minimal risk:
 
 | Ticket | Title | Priority | Status | Effort | Dependencies |
 |--------|-------|----------|--------|--------|--------------|
-| [#51](./51-azure-speech-service-transcription.md) | Migrate Transcription to Azure Speech Service with Diarization | High | Todo | 3–5 days | - |
+| [#51](./done/51-azure-speech-service-transcription.md) | Migrate Transcription to Azure Speech Service with Diarization | High | Won't Fix | 3–5 days | - |
 | [#52](./done/52-azure-speech-podcast-generation.md) | Migrate Podcast TTS from Google Chirp 3 HD to Azure Speech Service | High | Done | 1–2 days | #51 |
 
 **Key Changes:**
@@ -515,8 +515,8 @@ Start here for immediate impact with minimal risk:
 
 | Ticket | Title | Priority | Status | Effort | Dependencies |
 |--------|-------|----------|--------|--------|--------------|
-| [#53](./53-multi-file-audio-upload.md) | Multi-File Audio Upload (Concatenate & Upload) | Medium | Todo | 2-3 days | - |
-| [#54](./54-refactor-transcription-to-raw-story.md) | Refactor Transcription Pipeline naar Raw Story + Polished Story | High | Todo | 3-5 days | - |
+| [#53](./done/53-multi-file-audio-upload.md) | Multi-File Audio Upload (Concatenate & Upload) | Medium | Done | 2-3 days | - |
+| [#54](./done/54-refactor-transcription-to-raw-story.md) | Refactor Transcription Pipeline naar Raw Story + Polished Story | High | Done | 3-5 days | - |
 
 **Key Improvements:**
 - **Ticket 53**: Meerdere audiobestanden van dezelfde sessie samenvoegen en als een bestand uploaden
@@ -540,8 +540,8 @@ Start here for immediate impact with minimal risk:
 
 | Ticket | Title | Priority | Status | Effort | Dependencies |
 |--------|-------|----------|--------|--------|--------------|
-| [#55](./55-previous-stories-as-context.md) | Vorige Stories als Context bij Story Generatie (Flashbacks & Herinneringen) | Medium | Todo | 2-3 days | - |
-| [#58](./58-kanka-journals-as-context.md) | Kanka Journals Ophalen en Meesturen als Context | Medium | Todo | 3-4 uur | #42 |
+| [#55](./done/55-previous-stories-as-context.md) | Vorige Stories als Context bij Story Generatie (Flashbacks & Herinneringen) | Medium | Done | 2-3 days | - |
+| [#58](./done/58-kanka-journals-as-context.md) | Kanka Journals Ophalen en Meesturen als Context | Medium | Won't Fix | 3-4 uur | #42 |
 
 **Key Improvements:**
 - **Ticket 55**: Eerdere sessie-stories meesturen als context bij story generatie
@@ -566,7 +566,7 @@ Start here for immediate impact with minimal risk:
 
 | Ticket | Title | Priority | Status | Effort | Dependencies |
 |--------|-------|----------|--------|--------|--------------|
-| [#56](./56-unified-ai-admin-panel.md) | Unified AI Admin Panel voor alle AI Features | High | Todo | 1-2 weken | - |
+| [#56](./done/56-unified-ai-admin-panel.md) | Unified AI Admin Panel voor alle AI Features | High | Done | 1-2 weken | - |
 
 **Key Improvements:**
 - **Ticket 56**: Centraal admin panel voor alle AI-instellingen
@@ -604,10 +604,10 @@ Start here for immediate impact with minimal risk:
 
 | Ticket | Title | Priority | Status | Confidence | Effort |
 |--------|-------|----------|--------|------------|--------|
-| [#59](./59-critical-security-fixes.md) | Critical Security Fixes (Auth + XSS) | Critical | Todo | HIGH | 2-3 hours |
+| [#59](./done/59-critical-security-fixes.md) | Critical Security Fixes (Auth + XSS) | Critical | Done | HIGH | 2-3 hours |
 | [#60](./done/60-replace-console-error-with-proper-logging.md) | Replace console.error with Proper Logging | High | Done | HIGH | 1-2 days |
 | [#61](./done/61-angular-modernization.md) | Angular Modernization: Migrate Legacy Patterns | Medium | Done | HIGH | 2-3 days |
-| [#62](./62-typescript-dry-code-quality.md) | TypeScript & DRY Code Quality | Medium | Todo | MEDIUM-HIGH | 2-3 days |
+| [#62](./done/62-typescript-dry-code-quality.md) | TypeScript & DRY Code Quality | Medium | Done | MEDIUM-HIGH | 2-3 days |
 | [#63](./63-establish-test-coverage.md) | Establish Test Coverage Foundation | High | Todo | HIGH | 2-3 weeks |
 | [#64](./64-performance-and-architecture.md) | Performance & Architecture Improvements | Medium | Todo | MEDIUM | 2-3 days |
 

@@ -2,7 +2,7 @@
 
 **Created:** 2026-02-14
 **Priority:** High
-**Status:** Todo
+**Status:** Done
 **Effort:** 3-5 days
 **Dependencies:** #46 (Background Fetch API for Uploads)
 
