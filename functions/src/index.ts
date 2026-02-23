@@ -39,8 +39,8 @@ export { storyGenerationWorker } from './workers/story-generation-worker';
 // Character chat proxy (AI 1: text responder)
 export { characterChat } from './character-chat';
 
-// Character draft generation (AI 2: JSON generator, triggered via Cloud Tasks)
-export { generateCharacterDraft } from './generate-character-draft';
+// Character draft generation (AI 2: JSON generator)
+export { generateCharacterDraft, generateCharacterDraftCallable } from './generate-character-draft';
 
 // Image generation via fal.ai
 export { generateImage } from './generate-image';

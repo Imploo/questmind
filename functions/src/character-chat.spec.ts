@@ -2,37 +2,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
-const mockCharDocUpdate = vi.fn();
-const mockCharDoc = vi.fn(() => ({ update: mockCharDocUpdate }));
-const mockCollection = vi.fn(() => ({ doc: mockCharDoc }));
-vi.mock('firebase-admin/firestore', () => ({
-  getFirestore: () => ({ collection: mockCollection }),
-}));
-
-vi.mock('firebase-admin/functions', () => ({
-  getFunctions: () => ({
-    taskQueue: vi.fn(() => ({
-      enqueue: vi.fn().mockResolvedValue(undefined),
-    })),
-  }),
-}));
-
-const mockMessagesCreate = vi.fn();
-vi.mock('@anthropic-ai/sdk', () => ({
-  Anthropic: class {
-    messages = { create: mockMessagesCreate };
+const mockGenerateContent = vi.fn();
+vi.mock('@google/genai', () => ({
+  GoogleGenAI: class {
+    models = { generateContent: mockGenerateContent };
   },
-  RateLimitError: class RateLimitError extends Error {
-    constructor() {
-      super('rate limit');
-      this.name = 'RateLimitError';
-    }
-  },
+  Part: {},
 }));
 
 vi.mock('./utils/ai-settings', () => ({
   getAiFeatureConfig: vi.fn(() => Promise.resolve({
-    model: 'claude-test',
+    model: 'gemini-test',
     temperature: 0.7,
     topP: 0.95,
     topK: 40,
@@ -46,10 +26,6 @@ vi.mock('./prompts/character-responder.prompt', () => ({
 
 vi.mock('./schemas/dnd-character.schema', () => ({
   DndCharacterSchema: { parse: vi.fn((x: unknown) => x) },
-}));
-
-vi.mock('./generate-character-draft', () => ({
-  executeGenerateCharacterDraft: vi.fn(),
 }));
 
 vi.mock('./utils/sentry-error-handler', () => ({
@@ -84,7 +60,6 @@ vi.mock('firebase-functions/v2/https', async () => {
 describe('characterChat', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    process.env.CLAUDE_API_KEY = 'test-api-key';
     process.env.GOOGLE_AI_API_KEY = 'test-google-key';
   });
 
@@ -151,8 +126,8 @@ describe('characterChat', () => {
 
   // ── API Key Tests ──
 
-  it('should reject if CLAUDE_API_KEY is not configured', async () => {
-    delete process.env.CLAUDE_API_KEY;
+  it('should reject if GOOGLE_AI_API_KEY is not configured', async () => {
+    delete process.env.GOOGLE_AI_API_KEY;
 
     const request = makeRequest();
     await expect(characterChatHandler(request)).rejects.toThrow(
@@ -162,21 +137,31 @@ describe('characterChat', () => {
 
   // ── Happy Path Tests ──
 
-  it('should return AI text response on success', async () => {
-    mockMessagesCreate.mockResolvedValueOnce({
-      content: [{ type: 'text', text: 'You know Fireball and Magic Missile.' }],
+  it('should return AI text response with shouldUpdateCharacter on success', async () => {
+    mockGenerateContent.mockResolvedValueOnce({
+      text: JSON.stringify({ text: 'You know Fireball and Magic Missile.', shouldUpdateCharacter: false }),
     });
-    mockCharDocUpdate.mockResolvedValue(undefined);
 
     const request = makeRequest();
     const result = await characterChatHandler(request);
 
-    expect(result).toEqual({ text: 'You know Fireball and Magic Missile.' });
+    expect(result).toEqual({ text: 'You know Fireball and Magic Missile.', shouldUpdateCharacter: false });
+  });
+
+  it('should return shouldUpdateCharacter true when AI indicates update needed', async () => {
+    mockGenerateContent.mockResolvedValueOnce({
+      text: JSON.stringify({ text: 'Ik heb je class veranderd naar Rogue.', shouldUpdateCharacter: true }),
+    });
+
+    const request = makeRequest();
+    const result = await characterChatHandler(request);
+
+    expect(result).toEqual({ text: 'Ik heb je class veranderd naar Rogue.', shouldUpdateCharacter: true });
   });
 
   it('should throw internal error when AI returns empty response', async () => {
-    mockMessagesCreate.mockResolvedValueOnce({
-      content: [{ type: 'tool_use', id: 'test' }],
+    mockGenerateContent.mockResolvedValueOnce({
+      text: '',
     });
 
     const request = makeRequest();
@@ -185,11 +170,73 @@ describe('characterChat', () => {
     );
   });
 
+  // ── Attachment Tests ──
+
+  it('should accept and forward attachments to Gemini', async () => {
+    mockGenerateContent.mockResolvedValueOnce({
+      text: JSON.stringify({ text: 'I see a level 5 Fighter named Thorin.', shouldUpdateCharacter: true }),
+    });
+
+    const request = makeRequest({
+      data: {
+        characterId: 'char-1',
+        currentCharacter: mockCharacter,
+        chatHistory: [{ role: 'user', content: 'Import this character' }],
+        attachments: [{
+          type: 'pdf',
+          fileName: 'character-sheet.pdf',
+          mimeType: 'application/pdf',
+          data: 'JVBERi0xLjQ=', // minimal base64
+        }],
+      },
+    });
+
+    const result = await characterChatHandler(request);
+
+    expect(result).toEqual({ text: 'I see a level 5 Fighter named Thorin.', shouldUpdateCharacter: true });
+    expect(mockGenerateContent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contents: expect.arrayContaining([
+          expect.objectContaining({
+            role: 'user',
+            parts: expect.arrayContaining([
+              expect.objectContaining({
+                inlineData: { mimeType: 'application/pdf', data: 'JVBERi0xLjQ=' },
+              }),
+            ]),
+          }),
+        ]),
+      })
+    );
+  });
+
+  it('should reject attachments exceeding 10 MB', async () => {
+    // Create a base64 string that exceeds 10 MB
+    const largeData = Buffer.alloc(11 * 1024 * 1024).toString('base64');
+
+    const request = makeRequest({
+      data: {
+        characterId: 'char-1',
+        currentCharacter: mockCharacter,
+        chatHistory: [{ role: 'user', content: 'Import this' }],
+        attachments: [{
+          type: 'pdf',
+          fileName: 'huge.pdf',
+          mimeType: 'application/pdf',
+          data: largeData,
+        }],
+      },
+    });
+
+    await expect(characterChatHandler(request)).rejects.toThrow(
+      expect.objectContaining({ code: 'invalid-argument' })
+    );
+  });
+
   // ── Rate Limit Handling ──
 
-  it('should throw resource-exhausted on rate limit error', async () => {
-    const { RateLimitError } = await import('@anthropic-ai/sdk');
-    mockMessagesCreate.mockRejectedValueOnce(new (RateLimitError as unknown as new () => Error)());
+  it('should throw resource-exhausted on 429 error', async () => {
+    mockGenerateContent.mockRejectedValueOnce(new Error('429 Resource has been exhausted'));
 
     const request = makeRequest();
     await expect(characterChatHandler(request)).rejects.toThrow(

@@ -55,7 +55,20 @@ vi.mock('./prompts/character-json-generator.prompt', () => ({
 
 vi.mock('./utils/sentry-error-handler', () => ({
   captureFunctionError: vi.fn(),
+  wrapCallable: (_name: string, handler: Function) => handler,
 }));
+
+vi.mock('./index', () => ({
+  SHARED_CORS: ['http://localhost:4200'],
+}));
+
+vi.mock('firebase-functions/v2/https', async () => {
+  const actual = await vi.importActual<typeof import('firebase-functions/v2/https')>('firebase-functions/v2/https');
+  return {
+    ...actual,
+    onCall: (_config: unknown, handler: Function) => handler,
+  };
+});
 
 vi.mock('./utils/logger', () => ({
   error: vi.fn(),

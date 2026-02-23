@@ -1,5 +1,8 @@
 # PDF Character Sheet Generator Spec Plan
 
+**Status:** Done
+**Completed:** 2026-02-23
+
 ## Overview
 Implement a D&D 5e character sheet generator with:
 - Integration with pdfMake for PDF generation

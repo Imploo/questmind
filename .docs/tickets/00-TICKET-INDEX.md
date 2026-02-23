@@ -232,6 +232,14 @@ Start here for immediate impact with minimal risk:
 
 ---
 
+## 📄 Feature Tickets (Pre-Review)
+
+| Ticket | Title | Priority | Status | Completed |
+|--------|-------|----------|--------|-----------|
+| [#03](./done/03-pdf-character-sheet-generator.md) | PDF Character Sheet Generator | Medium | Done | 2026-02-23 |
+
+---
+
 ## 🚀 Feature Enhancement Tickets
 
 | Ticket | Title | Priority | Status | Dependencies |
@@ -626,6 +634,22 @@ Start here for immediate impact with minimal risk:
 - 0% test coverage, broken test runner
 - 6 components missing `OnPush` (undermines zoneless strategy)
 - ~900-line component violating Single Responsibility
+
+---
+
+## 🎯 Character Builder Enhancements
+
+| Ticket | Title | Priority | Status | Effort | Dependencies |
+|--------|-------|----------|--------|--------|--------------|
+| [#65](./done/65-pdf-character-import-gemini-chat.md) | PDF Character Sheet Import via Chat + Migrate Chat to Gemini | High | Done | 3-5 days | - |
+
+**Key Features:**
+- **Ticket 65**: Import existing character sheets by uploading a PDF in the chat
+  - User attaches PDF (D&D Beyond, hand-filled, any tool) in the character chat
+  - AI reads and extracts all character data, generates character JSON as draft
+  - Migrates AI 1 (text responder) from Claude Haiku to Gemini — unifies AI stack on one provider
+  - Gemini 3 excels at PDF reading (tables, stat blocks, spell lists)
+  - Removes `@anthropic-ai/sdk` dependency from character chat path
 
 ---
 

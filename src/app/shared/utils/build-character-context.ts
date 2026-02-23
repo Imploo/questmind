@@ -5,6 +5,13 @@ export interface ChatHistoryMessage {
   content: string;
 }
 
+export interface ChatAttachment {
+  type: 'pdf' | 'image';
+  fileName: string;
+  mimeType: string;
+  data: string; // base64-encoded
+}
+
 /**
  * Request interface for image generation (still uses systemPrompt from frontend).
  * Character chat uses a different interface — see ChatService.
