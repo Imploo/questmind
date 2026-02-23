@@ -14,9 +14,9 @@ HOSTS:
 
 WAT DIT TRANSCRIPT KENMERKT:
 - Vulwoorden aan het BEGIN van beurten: "Nou,", "Kijk,", "Ja maar,", "Nee maar echt,"
-- Korte reacties tussendoor: "Ja!", "Echt hè?", "Nee joh.", "Ha, mooi."
-- Hosts die elkaars zinnen afmaken
 - Spontaan en energiek, niet voorgelezen
+- Hosts bouwen hun punt op over meerdere zinnen voordat de ander reageert
+- Af en toe een korte reactie ("Ja!", "Echt hè?"), maar NIET na elke beurt — maximaal 3-4 keer per transcript
 - Gebruik (..) voor een korte pauze, maximaal 2-3 keer per heel transcript
 - VERMIJD "Ehm...", "Uhm..." en andere aarzelingen — die klinken als lange stiltes bij AI stemmen
 - VERMIJD gedachtestreepjes (—)
@@ -26,7 +26,8 @@ BELANGRIJK:
 - De hosts WETEN dat dit van een tabletop RPG sessie komt, maar zeggen NIET expliciet "D&D" of "Dungeons & Dragons"
 - Gebruik natuurlijke termen zoals "het avontuur", "het verhaal", "de campagne", "de party"
 - Refereer naar campagne context natuurlijk (karakters, locaties, quests) zonder "Kanka" of "database" te noemen
-- Houd beurten kort — meestal 1-2 zinnen, soms maar een paar woorden
+- Beurten zijn meestal 3-5 zinnen lang — geef elke host de ruimte om een gedachte af te maken voordat de ander reageert
+- Wissel af: soms een langere beurt (4-6 zinnen), soms een kortere reactie (1-2 zinnen), maar vermijd constant korte heen-en-weer
 - KRITISCH: Het totale transcript moet ONDER ${maxCharacters} karakters blijven (dit is een harde limiet vanwege TTS)
 
 INHOUD:
@@ -52,14 +53,9 @@ HOST2: [dialoog]
 HOST1: [dialoog]
 
 VOORBEELD:
-HOST1: Nou, welkom terug! Vandaag hebben we een bijzondere sessie om te bespreken.
-HOST2: Ja, bijzonder is nog zacht uitgedrukt!
-HOST1: Kijk, het begon best rustig toch? Ze kwamen aan bij die tempel en iedereen dacht, oké dit wordt praten.
-HOST2: Ja precies! Maar nee. Thorn gooide gewoon een fireball. Zonder enige aanleiding!
-HOST1: Gewoon boem, klaar. Dat is Thorn ten voeten uit.
-HOST2: Haha ja! Maar oké, het mooie was wat er daarna gebeurde met Elara.
-HOST1: Oh ja, dat was echt goed.
-HOST2: Kijk, zij stond daar en je zag het gewoon aankomen.
+HOST1: Nou, welkom terug! Vandaag hebben we een bijzondere sessie om te bespreken. Het begon best rustig, ze kwamen aan bij die tempel en iedereen dacht oké, dit wordt een praatsessie. Maar dan doet Thorn wat Thorn altijd doet, hij gooide gewoon een fireball. Zonder enige aanleiding, gewoon boem, klaar.
+HOST2: Ja, dat is Thorn ten voeten uit! Maar oké, het mooie was eigenlijk wat er daarna gebeurde met Elara. Kijk, zij stond daar en je zag het gewoon aankomen. Ze had die hele sessie al hints laten vallen dat ze iets van plan was, en toen het gevecht losbarstte greep ze haar kans.
+HOST1: Ja precies, en wat ik zo goed vond was hoe de rest van de party daarop reageerde. Niemand had het zien aankomen, maar ze speelden er meteen op in. Dat soort momenten, daar doe je het voor.
 
 LENGTE:
 - Mik op ${maxCharacters} karakters totaal

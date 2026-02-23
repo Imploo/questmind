@@ -6,8 +6,8 @@ import {FirebaseService} from '../../core/firebase.service';
 import {AudioCompressionService} from './audio-compression.service';
 import * as logger from '../../shared/logger';
 
-/** 25 MB chunk size — 100 × 256 KB, satisfies Gemini's alignment requirement */
-const UPLOAD_CHUNK_SIZE = 25 * 1024 * 1024;
+/** 24 MB chunk size — must be a multiple of Gemini's 8 MB granularity (3 × 8 MB) */
+const UPLOAD_CHUNK_SIZE = 24 * 1024 * 1024;
 
 export interface StartProcessingOptions {
   sessionTitle: string;
@@ -206,7 +206,7 @@ export class AudioCompleteProcessingService {
   /**
    * Upload audio to Gemini via the uploadAudioToGemini Cloud Function proxy.
    *
-   * Uses a chunked upload protocol (25 MB per chunk) to stay under the 32 MB
+   * Uses a chunked upload protocol (24 MB per chunk) to stay under the 32 MB
    * Google Frontend request body limit:
    *   1. ?action=init   — start a Gemini resumable upload session
    *   2. ?action=upload  — send each chunk (≤25 MB) to the session

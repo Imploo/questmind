@@ -236,7 +236,7 @@ async function handleUpload(req: Request, res: Response): Promise<void> {
  * into two phases to stay under the 32 MB Google Frontend request body limit:
  *
  *   ?action=init   — Start a Gemini resumable upload session (small JSON body)
- *   ?action=upload — Forward a binary chunk (≤25 MB) to the Gemini session
+ *   ?action=upload — Forward a binary chunk (≤24 MB) to the Gemini session
  */
 export const uploadAudioToGemini = onRequest(
   {

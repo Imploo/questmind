@@ -3,6 +3,8 @@
 ## Strict rules
 ALWAYS FOLLOW THESE RULES
 - Never commit without explicit command from user
+- In backend Cloud Functions (`functions/src/`), use Sentry for error logging instead of `console.error`. Use `captureFunctionError()` or `captureException()` from `./utils/sentry-error-handler`
+- In frontend (`src/`), use `logger.error()` from `shared/logger` instead of `console.error`. It automatically sends to Sentry in production
 
 ## Build Process
 
