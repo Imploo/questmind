@@ -178,7 +178,7 @@ export class AudioCompleteProcessingService {
       const progress = data?.['progress'] as UnifiedProgress | undefined;
       callback(progress || null);
     }, (error: unknown) => {
-      console.error('Error listening to progress:', error);
+      logger.error('Error listening to progress:', error);
       callback(null);
     });
   }

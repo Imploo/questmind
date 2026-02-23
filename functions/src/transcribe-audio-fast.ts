@@ -40,6 +40,10 @@ export const transcribeAudioFast = onCall(
   wrapCallable<TranscribeAudioFastRequest, { success: boolean; message: string }>(
     'transcribeAudioFast',
     async (request): Promise<{ success: boolean; message: string }> => {
+    if (!request.auth?.uid) {
+      throw new HttpsError('unauthenticated', 'Authentication required');
+    }
+
     const {
       campaignId,
       sessionId,
@@ -114,7 +118,7 @@ export const transcribeAudioFast = onCall(
       kankaEnabled,
       userCorrections
     ).catch((error) => {
-      console.error('[transcribeAudioFast] Async processing failed:', error);
+      logger.error('[transcribeAudioFast] Async processing failed:', error);
       // Error will be written to Firestore by processTranscriptionAsync
     });
 
@@ -303,7 +307,7 @@ async function processTranscriptionAsync(
 
     logger.debug(`[Fast Transcription] Complete for session ${sessionId}`);
   } catch (error: any) {
-    console.error('[Fast Transcription] Processing error:', error);
+    logger.error('[Fast Transcription] Processing error:', error);
 
     const errorMessage = error instanceof Error ? error.message : String(error);
 

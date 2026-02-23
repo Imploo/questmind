@@ -372,7 +372,7 @@ async function generatePodcastInBackground(
     logger.debug(`Podcast generation completed: ${fileUrl}`);
 
   } catch (error: unknown) {
-    console.error('Error generating podcast:', error);
+    logger.error('Error generating podcast:', error);
 
     await updatePodcastEntry(sessionRef, existingPodcasts, version, {
       status: 'failed',

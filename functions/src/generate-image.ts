@@ -38,6 +38,10 @@ export const generateImage = onCall(
   wrapCallable<GenerateImageRequest, GenerateImageResponse>(
     'generateImage',
     async (request): Promise<GenerateImageResponse> => {
+      if (!request.auth?.uid) {
+        throw new HttpsError('unauthenticated', 'Authentication required');
+      }
+
       const { chatRequest, model: requestModel, characterId, referenceImageStoragePath } = request.data;
 
       if (!chatRequest || !characterId) {

@@ -115,7 +115,7 @@ export class KankaService {
         const entities = await this.fetchEntitiesByType(kankaCampaignId, entityType);
         result[entityType] = entities as never[];
       } catch (error) {
-        console.error(`[Kanka] Failed to fetch ${entityType}:`, error);
+        logger.error(`[Kanka] Failed to fetch ${entityType}:`, error);
         // Continue with empty array for this type
         result[entityType] = [];
       }
@@ -155,7 +155,7 @@ export class KankaService {
       const json = (await response.json()) as KankaApiResponse<KankaEntity>;
       return json.data || [];
     } catch (error) {
-      console.error(`[Kanka] Error fetching ${entityType}:`, error);
+      logger.error(`[Kanka] Error fetching ${entityType}:`, error);
       throw error;
     }
   }
@@ -184,7 +184,7 @@ export class KankaService {
         const entities = await this.searchByType(kankaCampaignId, entityType, query);
         result[entityType] = entities as never[];
       } catch (error) {
-        console.error(`[Kanka] Failed to search ${entityType}:`, error);
+        logger.error(`[Kanka] Failed to search ${entityType}:`, error);
         result[entityType] = [];
       }
     });
@@ -226,7 +226,7 @@ export class KankaService {
       const json = (await response.json()) as KankaApiResponse<KankaEntity>;
       return json.data || [];
     } catch (error) {
-      console.error(`[Kanka] Error searching ${entityType}:`, error);
+      logger.error(`[Kanka] Error searching ${entityType}:`, error);
       throw error;
     }
   }

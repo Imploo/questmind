@@ -113,7 +113,7 @@ export class CampaignContextService {
       const profile = await this.userProfileService.ensureProfile(user);
       await this.loadCampaignsFromProfile(user, profile);
     } catch (error: unknown) {
-      console.error('Failed to load campaigns:', error);
+      logger.error('Failed to load campaigns:', error);
       this.error.set((error as Error)?.message || 'Failed to load campaigns');
       this.isLoading.set(false);
     }
@@ -164,7 +164,7 @@ export class CampaignContextService {
         await this.userProfileService.setDefaultCampaign(user.uid, selectedId);
       }
     } catch (error: unknown) {
-      console.error('Failed to load campaigns from profile:', error);
+      logger.error('Failed to load campaigns from profile:', error);
       this.error.set((error as Error)?.message || 'Failed to load campaigns');
     } finally {
       this.isLoading.set(false);

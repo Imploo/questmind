@@ -9,6 +9,7 @@ import { CharacterImageGalleryComponent } from '../character-image-gallery/chara
 import { FirebaseService } from '../../../../core/firebase.service';
 import { lookupSpellFromJson, SpellDetails } from '../../../../shared/utils/spell-lookup';
 import { lookupFeatureFromJson, FeatureDetails } from '../../../../shared/utils/feature-lookup';
+import * as logger from '../../../../shared/logger';
 
 export interface SpellResolvedEvent {
   spellName: string;
@@ -545,7 +546,7 @@ export class CharacterSheetComponent {
       });
       this.spellResolved.emit({ spellName: spell.name, ...result.data });
     } catch (e) {
-      console.error('Failed to resolve spell details:', e);
+      logger.error('Failed to resolve spell details:', e);
     } finally {
       this.loadingSpells.update(s => {
         const n = new Set(s);
@@ -596,7 +597,7 @@ export class CharacterSheetComponent {
       });
       this.featureResolved.emit({ featureName: feature.name, ...result.data });
     } catch (e) {
-      console.error('Failed to resolve feature details:', e);
+      logger.error('Failed to resolve feature details:', e);
     } finally {
       this.loadingFeatures.update(s => {
         const n = new Set(s);

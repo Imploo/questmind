@@ -8,6 +8,7 @@ import { SHARED_CORS } from './index';
 import { CHARACTER_RESPONDER_PROMPT } from './prompts/character-responder.prompt';
 import { DndCharacter } from './schemas/dnd-character.schema';
 import { executeGenerateCharacterDraft } from './generate-character-draft';
+import * as logger from './utils/logger';
 
 interface ChatHistoryMessage {
   role: 'user' | 'assistant';
@@ -32,6 +33,10 @@ export const characterChat = onCall(
   wrapCallable<CharacterChatRequest, CharacterChatResponse>(
     'characterChat',
     async (request): Promise<CharacterChatResponse> => {
+      if (!request.auth?.uid) {
+        throw new HttpsError('unauthenticated', 'Authentication required');
+      }
+
       const { characterId, currentCharacter, chatHistory } = request.data;
 
       if (!characterId || !currentCharacter || !Array.isArray(chatHistory) || chatHistory.length === 0) {
@@ -41,7 +46,7 @@ export const characterChat = onCall(
       const apiKey = process.env.CLAUDE_API_KEY;
 
       if (!apiKey) {
-        console.error('Missing CLAUDE_API_KEY');
+        logger.error('Missing CLAUDE_API_KEY');
         throw new HttpsError('internal', 'AI service not configured');
       }
 
@@ -69,7 +74,7 @@ export const characterChat = onCall(
         const text = textBlock && 'text' in textBlock ? textBlock.text : null;
 
         if (!text) {
-          console.error('AI model returned empty response. Content:', JSON.stringify(response.content));
+          logger.error('AI model returned empty response. Content:', JSON.stringify(response.content));
           throw new HttpsError('internal', 'No response from AI model');
         }
 
@@ -87,7 +92,7 @@ export const characterChat = onCall(
           console.warn('Cloud Tasks enqueue failed (expected locally), falling back to direct execution:', err.message);
           // Fallback: run directly when Cloud Tasks is unavailable (e.g. local emulator)
           executeGenerateCharacterDraft(payload).catch(directErr => {
-            console.error('Direct generateCharacterDraft execution also failed:', directErr);
+            logger.error('Direct generateCharacterDraft execution also failed:', directErr);
           });
         });
 

@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { UserService } from '../core/user.service';
 import { AiSettingsRepository } from '../shared/repository/ai-settings.repository';
 import { type AiSettings, type AiModelConfig, type AiImageConfig, type PodcastVoiceSettings } from '../core/services/ai-settings.service';
+import * as logger from '../shared/logger';
 
 type FeatureFormType = 'standard' | 'imageOnly' | 'voicesOnly';
 
@@ -440,7 +441,7 @@ export class AdminComponent implements OnInit {
       const data = this.aiSettingsRepo.get() as unknown as AiSettings | null;
       this.aiSettings.set(this.normalizeSettings(data ?? {} as AiSettings));
     } catch (error) {
-      console.error('Error loading AI settings:', error);
+      logger.error('Error loading AI settings:', error);
       this.settingsError.set(
         error instanceof Error ? error.message : 'Failed to load AI settings'
       );
@@ -461,7 +462,7 @@ export class AdminComponent implements OnInit {
       this.saveIndicator.set('saved');
       setTimeout(() => this.saveIndicator.set('idle'), 2000);
     } catch (error) {
-      console.error('Auto-save failed:', error);
+      logger.error('Auto-save failed:', error);
       this.saveIndicator.set('error');
       setTimeout(() => this.saveIndicator.set('idle'), 3000);
     }

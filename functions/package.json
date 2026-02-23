@@ -8,6 +8,8 @@
   "scripts": {
     "build": "tsc",
     "build:watch": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "lint": "eslint --ext .ts src",
     "serve": "npm run build && firebase emulators:start --only functions --project questmind-dnd",
     "deploy": "npm run build && firebase deploy --only functions"
@@ -33,6 +35,7 @@
   },
   "devDependencies": {
     "@types/fluent-ffmpeg": "^2.1.28",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "vitest": "^4.0.18"
   }
 }

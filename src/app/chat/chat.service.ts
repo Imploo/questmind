@@ -13,6 +13,7 @@ import {
 import { AiSettingsService } from '../core/services/ai-settings.service';
 import { CharacterImageService } from '../core/services/character-image.service';
 import { FirebaseService } from '../core/firebase.service';
+import * as logger from '../shared/logger';
 
 export type { ChatHistoryMessage };
 
@@ -186,7 +187,7 @@ export class ChatService {
       errorMessage = 'AI service error. Please try again later.';
     }
 
-    console.error('ChatService Error:', { message: errorMessage, error: err });
+    logger.error('ChatService Error:', { message: errorMessage, error: err });
 
     return {
       status: err?.status ?? 500,

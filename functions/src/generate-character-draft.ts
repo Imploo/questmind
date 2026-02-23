@@ -5,6 +5,7 @@ import { DndCharacterSchema, DndCharacter } from './schemas/dnd-character.schema
 import { CHARACTER_JSON_GENERATOR_PROMPT } from './prompts/character-json-generator.prompt';
 import { captureFunctionError } from './utils/sentry-error-handler';
 import { getAiFeatureConfig } from './utils/ai-settings';
+import * as logger from './utils/logger';
 
 interface ChatHistoryMessage {
   role: 'user' | 'assistant';
@@ -26,7 +27,7 @@ export async function executeGenerateCharacterDraft(payload: GenerateCharacterDr
   const { characterId, currentCharacter, chatHistory, ai1Response } = payload;
 
   if (!characterId || !currentCharacter || !chatHistory || !ai1Response) {
-    console.error('generateCharacterDraft: missing required payload fields');
+    logger.error('generateCharacterDraft: missing required payload fields');
     return;
   }
 

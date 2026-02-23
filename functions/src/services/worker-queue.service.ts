@@ -34,7 +34,7 @@ export class WorkerQueueService {
         await workerHandler(payload);
       } catch (error) {
         // Errors are logged but don't affect the caller
-        console.error(
+        logger.error(
           `[WorkerQueue] Error triggering worker for session ${payload.sessionId}:`,
           error
         );
@@ -75,7 +75,7 @@ export class WorkerQueueService {
               await handler(data);
               logger.debug(`[${workerName}] Completed for session ${sessionId}`);
             } catch (error) {
-              console.error(
+              logger.error(
                 `[${workerName}] Error for session ${sessionId}:`,
                 error
               );
@@ -88,7 +88,7 @@ export class WorkerQueueService {
             stage: workerName,
           };
         } catch (error) {
-          console.error(`[${workerName}] Immediate error:`, error);
+          logger.error(`[${workerName}] Immediate error:`, error);
           throw error;
         }
       }

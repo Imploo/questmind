@@ -6,6 +6,7 @@ import { ChatService, Message } from './chat.service';
 import { marked } from 'marked';
 import { DndCharacter } from '../shared/models/dnd-character.model';
 import { ImageLightboxComponent } from './image-lightbox.component';
+import * as logger from '../shared/logger';
 
 @Component({
   selector: 'app-chat',
@@ -250,7 +251,7 @@ export class ChatComponent {
         this.isLoading.set(false);
       },
       error: (err) => {
-        console.error('AI Service Error:', err);
+        logger.error('AI Service Error:', err);
         const errorMessage = this.getErrorMessage(err);
         this.error.set(errorMessage);
         

@@ -5,6 +5,7 @@ import { getFirestore, type Firestore } from 'firebase/firestore';
 import { connectFunctionsEmulator, getFunctions, type Functions } from 'firebase/functions';
 import { environment } from '../../environments/environment';
 import { getStorage, type FirebaseStorage } from 'firebase/storage';
+import * as logger from '../shared/logger';
 
 const FUNCTIONS_REGION = 'europe-west1';
 const EMULATOR_HOST = 'localhost';
@@ -29,7 +30,7 @@ export class FirebaseService {
       }
       this.storage = getStorage(this.app);
     } catch (error) {
-      console.error('Firebase not initialized:', error);
+      logger.error('Firebase not initialized:', error);
       this.app = null;
       this.auth = null;
       this.firestore = null;

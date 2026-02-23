@@ -1,6 +1,6 @@
-import { Component, EventEmitter, Input, OnChanges, Output, SimpleChanges, inject, signal } from '@angular/core';
+import { Component, EventEmitter, Input, OnChanges, Output, SecurityContext, SimpleChanges, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { DomSanitizer } from '@angular/platform-browser';
 import { marked } from 'marked';
 import { PodcastVersion } from './services/audio-session.models';
 import { FormattingService } from '../shared/formatting.service';
@@ -449,7 +449,7 @@ export class SessionStoryComponent implements OnChanges {
   titleDraft = signal<string>('');
   dateDraft = signal<string>('');
   draft = signal<string>('');
-  renderedStory = signal<SafeHtml>('');
+  renderedStory = signal<string>('');
   showTranscript = signal<boolean>(false);
 
   constructor() {
@@ -463,7 +463,7 @@ export class SessionStoryComponent implements OnChanges {
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['story']) {
       this.draft.set(this.story);
-      this.renderedStory.set(this.sanitizer.bypassSecurityTrustHtml(this.convertMarkdown(this.story)));
+      this.renderedStory.set(this.sanitizer.sanitize(SecurityContext.HTML, this.convertMarkdown(this.story)) ?? '');
     }
   }
 

@@ -180,7 +180,7 @@ export const storyGenerationWorkerHandler = async (data: WorkerPayload) => {
         `[StoryGenerationWorker] Completed processing for session ${sessionId}`
       );
     } catch (error) {
-      console.error(
+      logger.error(
         `[StoryGenerationWorker] Error for session ${sessionId}:`,
         error
       );

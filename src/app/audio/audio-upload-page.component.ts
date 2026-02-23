@@ -8,6 +8,7 @@ import { AudioCompressionService } from './services/audio-compression.service';
 import { AuthService } from '../auth/auth.service';
 import { CampaignContextService } from '../campaign/campaign-context.service';
 import { AudioUpload, AudioSessionRecord, SessionProgress } from './services/audio-session.models';
+import * as logger from '../shared/logger';
 
 @Component({
   selector: 'app-audio-upload-page',
@@ -214,7 +215,7 @@ export class AudioUploadPageComponent implements OnInit, OnDestroy {
     const campaignId = this.campaignId();
 
     if (!userId || !campaignId) {
-      console.error('Missing userId or campaignId');
+      logger.error('Missing userId or campaignId');
       return;
     }
 
@@ -287,7 +288,7 @@ export class AudioUploadPageComponent implements OnInit, OnDestroy {
         await this.processMultipleFiles(campaignId, sessionId, files, event);
       }
     } catch (error) {
-      console.error('Error in background processing:', error);
+      logger.error('Error in background processing:', error);
       const errorMessage = error instanceof Error ? error.message : 'Upload failed';
       await this.completeProcessingService.writeFailure(campaignId, sessionId, errorMessage);
     }

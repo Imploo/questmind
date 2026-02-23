@@ -507,7 +507,7 @@ export class AudioSessionComponent implements OnDestroy {
       );
 
     } catch (error: unknown) {
-      console.error('Failed to start story regeneration:', error);
+      logger.error('Failed to start story regeneration:', error);
       this.failSession((error as Error)?.message || 'Failed to start story regeneration');
     }
   }
@@ -549,7 +549,7 @@ export class AudioSessionComponent implements OnDestroy {
       await this.sessionStateService.deleteSession(session.id);
       this.selectedSessionId.set(null);
     } catch (error) {
-      console.error('Failed to delete session:', error);
+      logger.error('Failed to delete session:', error);
     }
   }
 
@@ -774,7 +774,7 @@ export class AudioSessionComponent implements OnDestroy {
         this.correctionsSaveStatus.set('idle');
       }, 2000);
     } catch (error) {
-      console.error('Failed to save corrections:', error);
+      logger.error('Failed to save corrections:', error);
       this.correctionsSaveStatus.set('idle');
     }
   }
@@ -870,11 +870,11 @@ export class AudioSessionComponent implements OnDestroy {
       ).catch(err => {
         // The callable may time out on the client side, but the Cloud Function
         // keeps running. Progress tracking via Firestore listener continues.
-        console.warn('Podcast callable returned error (generation may still be running):', err);
+        logger.warn('Podcast callable returned error (generation may still be running):', err);
       });
 
     } catch (error: unknown) {
-      console.error('Failed to set up podcast generation:', error);
+      logger.error('Failed to set up podcast generation:', error);
       this.podcastError.set((error as Error)?.message || 'Failed to start podcast generation');
       this.podcastGenerationProgress.set('');
       this.podcastGenerationProgressPercent.set(0);

@@ -1,7 +1,7 @@
 # Replace console.error with Proper Logging Across Codebase
 
 **Priority:** High
-**Status:** Todo
+**Status:** Done
 **Created:** 2026-02-23
 **Source:** Multi-Agent Code Review (Opus + Sonnet + Haiku) — [Full Report](../../reviews/FULL-CODEBASE-review-2026-02-23.md)
 **Confidence:** HIGH (all 3 agents agreed, all cross-verifiers confirmed)
@@ -94,10 +94,10 @@ captureException(error, { extra: { context: 'Kanka API' } });
 
 ## Checklist
 
-- [ ] Replace all `console.error` in `src/` with `logger.error()` (~15 locations)
-- [ ] Replace `console.warn` in `audio-session.component.ts` with `logger.warn()`
-- [ ] Replace all `console.error` in `functions/src/` with `logger.error()` or `captureException()` (~20 locations)
-- [ ] Verify `shared/logger` is imported in all modified frontend files
-- [ ] Verify `utils/logger` or `utils/sentry-error-handler` is imported in all modified backend files
-- [ ] Run `grep -r "console.error" src/ functions/src/` to confirm zero remaining violations
-- [ ] Run build (`npm run build && npm run build:backend`)
+- [x] Replace all `console.error` in `src/` with `logger.error()` (~15 locations)
+- [x] Replace `console.warn` in `audio-session.component.ts` with `logger.warn()`
+- [x] Replace all `console.error` in `functions/src/` with `logger.error()` or `captureException()` (~20 locations)
+- [x] Verify `shared/logger` is imported in all modified frontend files
+- [x] Verify `utils/logger` or `utils/sentry-error-handler` is imported in all modified backend files
+- [x] Run `grep -r "console.error" src/ functions/src/` to confirm zero remaining violations
+- [x] Run build (`npm run build && npm run build:backend`)

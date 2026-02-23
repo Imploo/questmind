@@ -3,6 +3,7 @@ import { doc, onSnapshot, DocumentSnapshot } from 'firebase/firestore';
 import { httpsCallable, type Functions } from 'firebase/functions';
 import { FirebaseService } from '../../core/firebase.service';
 import { PodcastVersion } from './audio-session.models';
+import * as logger from '../../shared/logger';
 
 /**
  * @deprecated Use SessionProgress instead (Ticket #43)
@@ -77,7 +78,7 @@ export class PodcastAudioService {
       }
 
     } catch (error) {
-      console.error('Error starting podcast generation:', error);
+      logger.error('Error starting podcast generation:', error);
       throw new Error('Failed to start podcast generation. Please try again.');
     }
   }
@@ -134,7 +135,7 @@ export class PodcastAudioService {
         });
       },
       (error: Error) => {
-        console.error('Error listening to podcast progress:', error);
+        logger.error('Error listening to podcast progress:', error);
         progressSignal.set({
           status: 'failed',
           progress: 0,
