@@ -1,10 +1,9 @@
-import { onTaskDispatched } from 'firebase-functions/v2/tasks';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { GoogleGenAI } from '@google/genai';
 import { DndCharacterSchema, DndCharacter } from './schemas/dnd-character.schema';
 import { CHARACTER_JSON_GENERATOR_PROMPT } from './prompts/character-json-generator.prompt';
-import { captureFunctionError, wrapCallable } from './utils/sentry-error-handler';
+import { wrapCallable } from './utils/sentry-error-handler';
 import { getAiFeatureConfig } from './utils/ai-settings';
 import { SHARED_CORS } from './index';
 import * as logger from './utils/logger';
@@ -119,32 +118,6 @@ export async function executeGenerateCharacterDraft(payload: GenerateCharacterDr
   await saveDraftVersion(characterId, validatedCharacter);
 }
 
-export const generateCharacterDraft = onTaskDispatched(
-  {
-    secrets: ['GOOGLE_AI_API_KEY'],
-    retryConfig: {
-      maxAttempts: 3,
-    },
-  },
-  async (request) => {
-    try {
-      await executeGenerateCharacterDraft(request.data as GenerateCharacterDraftPayload);
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      captureFunctionError('generateCharacterDraft', err);
-
-      // Clear the generating flag so the user isn't stuck with a permanent loader
-      const payload = request.data as GenerateCharacterDraftPayload;
-      if (payload.characterId) {
-        const db = getFirestore();
-        await db.collection('characters').doc(payload.characterId).update({ isGenerating: false, isUpdating: false }).catch(() => {});
-      }
-
-      throw err; // Re-throw so Cloud Tasks can retry
-    }
-  }
-);
-
 /**
  * Callable endpoint for AI 2: allows the frontend to trigger character draft generation directly.
  */
@@ -152,7 +125,6 @@ export const generateCharacterDraftCallable = onCall(
   {
     cors: SHARED_CORS,
     secrets: ['GOOGLE_AI_API_KEY'],
-    timeoutSeconds: 120,
   },
   wrapCallable<GenerateCharacterDraftPayload, { success: boolean }>(
     'generateCharacterDraftCallable',

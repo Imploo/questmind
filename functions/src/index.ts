@@ -40,7 +40,7 @@ export { storyGenerationWorker } from './workers/story-generation-worker';
 export { characterChat } from './character-chat';
 
 // Character draft generation (AI 2: JSON generator)
-export { generateCharacterDraft, generateCharacterDraftCallable } from './generate-character-draft';
+export { generateCharacterDraftCallable } from './generate-character-draft';
 
 // Image generation via fal.ai
 export { generateImage } from './generate-image';
