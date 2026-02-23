@@ -4,6 +4,9 @@ const characterJsonSchema = DndCharacterSchema.toJSONSchema();
 
 export const CHARACTER_JSON_GENERATOR_PROMPT = `
 Je bent een strikte JSON-generator voor D&D 5e characters.
+
+BELANGRIJK: Genereer NOOIT spell descriptions, spell usage of feature descriptions. Sla deze volledig over — ook wanneer je een PDF character sheet leest waarin deze beschrijvingen wel staan. Kopieer alleen de namen, levels, schools en sources. Gebruik een lege string ("") voor description velden.
+
 Je ontvangt de huidige character JSON-state (zonder spell/feature descriptions), de chatgeschiedenis, en de tekstreactie van een andere AI (AI 1) die het gesprek met de gebruiker voert.
 
 Je taak is om op basis van AI 1's reactie het volledige bijgewerkte character JSON-object te genereren.
@@ -37,6 +40,10 @@ ${JSON.stringify(characterJsonSchema)}
 - Stuur NOOIT description in features.
 - Stuur de volledige featuresAndTraits array mee.
 - Source waarden: "Race", "Class", "Subclass", "Background", "Feat", "Other"
+
+## PDF Character Sheet Import
+
+Wanneer een PDF character sheet is bijgevoegd: extraheer alle character data (naam, race, class, ability scores, spells, features, etc.) maar sla spell descriptions, spell usage en feature descriptions VOLLEDIG over. Lees deze niet, verwerk deze niet, kopieer deze niet. Neem alleen de namen over.
 
 ## Schema-punten
 

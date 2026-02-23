@@ -1,6 +1,6 @@
 import { inject, Injectable, signal } from '@angular/core';
 import { from, Observable, throwError } from 'rxjs';
-import { catchError, map } from 'rxjs/operators';
+import { catchError, map, retry } from 'rxjs/operators';
 import { httpsCallable } from 'firebase/functions';
 import { IMAGE_GENERATION_SYSTEM_PROMPT } from '../prompts/image-generation.prompt';
 import { DndCharacter } from '../shared/models/dnd-character.model';
@@ -19,6 +19,7 @@ import * as logger from '../shared/logger';
 export type { ChatHistoryMessage, ChatAttachment };
 
 const IMAGE_TRIGGER_REGEX = /maak\s+afbeelding/i;
+const CALLABLE_TIMEOUT_MS = 1200_000; // 20 minutes, matches backend timeoutSeconds
 
 interface CharacterChatRequest {
   characterId: string;
@@ -108,7 +109,7 @@ export class ChatService {
     };
 
     const characterChat = httpsCallable<CharacterChatRequest, { text: string; shouldUpdateCharacter: boolean }>(
-      functions, 'characterChat'
+      functions, 'characterChat', { timeout: CALLABLE_TIMEOUT_MS }
     );
 
     return from(characterChat(payload)).pipe(
@@ -152,11 +153,12 @@ export class ChatService {
     };
 
     const callable = httpsCallable<typeof payload, { success: boolean }>(
-      functions, 'generateCharacterDraftCallable'
+      functions, 'generateCharacterDraftCallable', { timeout: CALLABLE_TIMEOUT_MS }
     );
 
     return from(callable(payload)).pipe(
       map(result => result.data),
+      retry({ count: 3, delay: 2000 }),
       catchError(error => throwError(() => this.formatError(error)))
     );
   }
@@ -177,7 +179,7 @@ export class ChatService {
     const imageConfig = this.aiSettingsService.getImageGenerationConfig();
 
     const generateImage = httpsCallable<GenerateImageRequest, GenerateImageResponse>(
-      functions, 'generateImage'
+      functions, 'generateImage', { timeout: CALLABLE_TIMEOUT_MS }
     );
 
     const chatRequest = buildImageChatRequest(this.currentCharacter, IMAGE_GENERATION_SYSTEM_PROMPT, userPrompt, this.conversationHistory);
