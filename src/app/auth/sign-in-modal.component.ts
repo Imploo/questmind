@@ -1,14 +1,14 @@
-import { Component, signal, output, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component, signal, output, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from './auth.service';
+import * as logger from '../shared/logger';
 
 type AuthMode = 'signin' | 'signup' | 'reset';
 
 @Component({
   selector: 'app-sign-in-modal',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [FormsModule],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div 
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
@@ -204,7 +204,7 @@ export class SignInModalComponent {
       await this.authService.signInWithGoogle();
       this.closed.emit();
     } catch (error) {
-      console.error('Google sign-in failed:', error);
+      logger.error('Google sign-in failed:', error);
     } finally {
       this.loading.set(false);
     }
@@ -231,7 +231,7 @@ export class SignInModalComponent {
         this.email = '';
       }
     } catch (error) {
-      console.error('Auth operation failed:', error);
+      logger.error('Auth operation failed:', error);
     } finally {
       this.loading.set(false);
     }

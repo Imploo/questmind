@@ -1,12 +1,12 @@
-import { Component, signal, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component, signal, inject } from '@angular/core';
 import { AuthService } from './auth.service';
 import { SignInModalComponent } from './sign-in-modal.component';
+import * as logger from '../shared/logger';
 
 @Component({
   selector: 'app-auth-button',
-  standalone: true,
-  imports: [CommonModule, SignInModalComponent],
+  imports: [SignInModalComponent],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex items-center gap-3">
       @if (authService.isLoading()) {
@@ -101,7 +101,7 @@ export class AuthButtonComponent {
     try {
       await this.authService.signOut();
     } catch (error) {
-      console.error('Sign out failed:', error);
+      logger.error('Sign out failed:', error);
     } finally {
       this.signingOut.set(false);
     }

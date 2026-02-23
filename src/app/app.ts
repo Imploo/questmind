@@ -1,15 +1,14 @@
-import { Component, inject, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, OnInit } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { AuthService } from './auth/auth.service';
 import { LoadingComponent } from './loading.component';
-import { CommonModule } from '@angular/common';
 import { UpdateService } from './core/update.service';
 import { ToastContainerComponent } from './shared/components/toast-container/toast-container.component';
 
 @Component({
   selector: 'app-root',
-  standalone: true,
-  imports: [RouterOutlet, LoadingComponent, CommonModule, ToastContainerComponent],
+  imports: [RouterOutlet, LoadingComponent, ToastContainerComponent],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './app.html',
   styleUrl: './app.css'
 })

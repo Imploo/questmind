@@ -1,11 +1,13 @@
-import { ChangeDetectionStrategy, Component, signal, OnInit, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component, signal, computed, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { UserService } from '../core/user.service';
 import { AiSettingsRepository } from '../shared/repository/ai-settings.repository';
 import { type AiSettings, type AiModelConfig, type AiImageConfig, type PodcastVoiceSettings } from '../core/services/ai-settings.service';
+import * as logger from '../shared/logger';
 
 type FeatureFormType = 'standard' | 'imageOnly' | 'voicesOnly';
+type AiSettingsFeatures = NonNullable<AiSettings['features']>;
+type FeatureKey = keyof AiSettingsFeatures;
 
 interface FeatureDefinition {
   key: string;
@@ -19,7 +21,7 @@ interface FeatureDefinition {
 
 @Component({
   selector: 'app-admin',
-  imports: [CommonModule, FormsModule],
+  imports: [FormsModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="bg-white/90 backdrop-blur rounded-2xl shadow-lg overflow-hidden">
@@ -37,24 +39,43 @@ interface FeatureDefinition {
               <h2 class="text-2xl font-bold text-gray-800">AI Settings</h2>
               <p class="text-sm text-gray-500">Configure AI model parameters per feature</p>
             </div>
-            <div class="h-6">
-              @switch (saveIndicator()) {
-                @case ('saving') {
-                  <span class="text-xs text-gray-400 flex items-center gap-1">
-                    <span class="inline-block animate-spin">⏳</span> Saving...
-                  </span>
+            <div class="flex items-center gap-4">
+              <!-- Backend cache toggle -->
+              <label class="flex items-center gap-2 cursor-pointer select-none">
+                <span class="text-xs font-medium text-gray-600">Backend Cache</span>
+                <button
+                  type="button"
+                  (click)="toggleCache()"
+                  class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors"
+                  [class]="cacheEnabled() ? 'bg-green-500' : 'bg-gray-300'"
+                >
+                  <span
+                    class="inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform"
+                    [class]="cacheEnabled() ? 'translate-x-4.5' : 'translate-x-0.5'"
+                  ></span>
+                </button>
+                <span class="text-[10px] text-gray-400">{{ cacheEnabled() ? 'ON' : 'OFF' }}</span>
+              </label>
+
+              <div class="h-6">
+                @switch (saveIndicator()) {
+                  @case ('saving') {
+                    <span class="text-xs text-gray-400 flex items-center gap-1">
+                      <span class="inline-block animate-spin">⏳</span> Saving...
+                    </span>
+                  }
+                  @case ('saved') {
+                    <span class="text-xs text-green-600 flex items-center gap-1">
+                      ✓ Saved
+                    </span>
+                  }
+                  @case ('error') {
+                    <span class="text-xs text-red-500 flex items-center gap-1">
+                      ✕ Save failed
+                    </span>
+                  }
                 }
-                @case ('saved') {
-                  <span class="text-xs text-green-600 flex items-center gap-1">
-                    ✓ Saved
-                  </span>
-                }
-                @case ('error') {
-                  <span class="text-xs text-red-500 flex items-center gap-1">
-                    ✕ Save failed
-                  </span>
-                }
-              }
+              </div>
             </div>
           </div>
         </div>
@@ -104,7 +125,7 @@ interface FeatureDefinition {
                       <div class="text-sm font-medium text-gray-800 truncate">{{ feature.label }}</div>
                       <span
                         class="inline-block mt-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
-                        [ngClass]="feature.providerColor"
+                        [class]="feature.providerColor"
                       >{{ feature.provider }}</span>
                     </div>
                   </button>
@@ -121,7 +142,7 @@ interface FeatureDefinition {
                   <h3 class="text-lg font-semibold text-gray-800">{{ selectedFeature().label }}</h3>
                   <span
                     class="text-xs font-semibold px-2 py-0.5 rounded-full"
-                    [ngClass]="selectedFeature().providerColor"
+                    [class]="selectedFeature().providerColor"
                   >{{ selectedFeature().provider }}</span>
                 </div>
                 <p class="text-sm text-gray-500 ml-11">{{ selectedFeature().description }}</p>
@@ -372,7 +393,7 @@ export class AdminComponent implements OnInit {
   ];
 
   private readonly defaultConfigs: Record<string, AiModelConfig | AiImageConfig | PodcastVoiceSettings> = {
-    characterChatText: { model: 'claude-haiku-4-5-20251001', temperature: 0.7, topP: 0.95, topK: 40, maxOutputTokens: 512 },
+    characterChatText: { model: 'claude-haiku-4-5-20251001', temperature: 0.7, topP: 0.95, topK: 40, maxOutputTokens: 4096 },
     characterDraft: { model: 'gemini-3-flash-preview', temperature: 0.1, topP: 0.95, topK: 40, maxOutputTokens: 8192 },
     spellResolution: { model: 'gemini-3-flash-preview', temperature: 0.3, topP: 0.95, topK: 40, maxOutputTokens: 4096 },
     featureResolution: { model: 'gemini-3-flash-preview', temperature: 0.3, topP: 0.95, topK: 40, maxOutputTokens: 4096 },
@@ -391,6 +412,7 @@ export class AdminComponent implements OnInit {
   settingsError = signal<string | null>(null);
   selectedFeature = signal<FeatureDefinition>(this.featureDefinitions[0]);
   saveIndicator = signal<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  cacheEnabled = computed(() => this.aiSettings()?.cacheEnabled ?? false);
 
   private saveTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -404,22 +426,32 @@ export class AdminComponent implements OnInit {
     this.selectedFeature.set(feature);
   }
 
+  toggleCache(): void {
+    this.aiSettings.update(settings => {
+      if (!settings) return settings;
+      return { ...settings, cacheEnabled: !settings.cacheEnabled };
+    });
+    void this.autoSave();
+  }
+
   getFeatureValue(field: string): unknown {
     const settings = this.aiSettings();
-    const key = this.selectedFeature().key;
+    const key = this.selectedFeature().key as FeatureKey;
     if (!settings?.features) return '';
-    const featureConfig = (settings.features as Record<string, Record<string, unknown>>)[key];
-    return featureConfig?.[field] ?? '';
+    const featureConfig = settings.features[key];
+    return (featureConfig as Record<string, unknown> | undefined)?.[field] ?? '';
   }
 
   setFeatureValue(field: string, value: unknown): void {
-    const settings = this.aiSettings();
-    const key = this.selectedFeature().key;
-    if (!settings?.features) return;
-    const featureConfig = (settings.features as Record<string, Record<string, unknown>>)[key];
-    if (featureConfig) {
-      featureConfig[field] = value;
-    }
+    this.aiSettings.update(settings => {
+      if (!settings?.features) return settings;
+      const key = this.selectedFeature().key as FeatureKey;
+      const featureConfig = settings.features[key];
+      if (!featureConfig) return settings;
+      const updated = structuredClone(settings);
+      (updated.features[key] as unknown as Record<string, unknown>)[field] = value;
+      return updated;
+    });
   }
 
   onFieldBlur(): void {
@@ -440,7 +472,7 @@ export class AdminComponent implements OnInit {
       const data = this.aiSettingsRepo.get() as unknown as AiSettings | null;
       this.aiSettings.set(this.normalizeSettings(data ?? {} as AiSettings));
     } catch (error) {
-      console.error('Error loading AI settings:', error);
+      logger.error('Error loading AI settings:', error);
       this.settingsError.set(
         error instanceof Error ? error.message : 'Failed to load AI settings'
       );
@@ -461,27 +493,27 @@ export class AdminComponent implements OnInit {
       this.saveIndicator.set('saved');
       setTimeout(() => this.saveIndicator.set('idle'), 2000);
     } catch (error) {
-      console.error('Auto-save failed:', error);
+      logger.error('Auto-save failed:', error);
       this.saveIndicator.set('error');
       setTimeout(() => this.saveIndicator.set('idle'), 3000);
     }
   }
 
   private normalizeSettings(settings: AiSettings): AiSettings {
-    const features = settings.features ?? {};
+    const features = (settings.features ?? {}) as Record<string, unknown>;
     const normalized: Record<string, unknown> = {};
 
     for (const def of this.featureDefinitions) {
-      const existing = (features as Record<string, unknown>)[def.key];
+      const existing = features[def.key] as Record<string, unknown> | undefined;
       const defaults = this.defaultConfigs[def.key];
-      normalized[def.key] = { ...defaults, ...(existing as Record<string, unknown> | undefined) };
+      normalized[def.key] = { ...defaults, ...existing };
     }
 
     // Preserve characterChat for backward compatibility
-    if (features.characterChat) {
+    if (features['characterChat']) {
       normalized['characterChat'] = {
         ...this.defaultConfigs['characterChat'],
-        ...(features.characterChat as unknown as Record<string, unknown>),
+        ...(features['characterChat'] as Record<string, unknown>),
       };
     }
 

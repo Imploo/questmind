@@ -4,6 +4,7 @@ import { getFirestore } from 'firebase-admin/firestore';
 import { wrapCallable } from './utils/sentry-error-handler';
 import { getAiFeatureConfig } from './utils/ai-settings';
 import { SHARED_CORS } from './index';
+import * as logger from './utils/logger';
 
 interface ResolveFeatureRequest {
   characterId: string;
@@ -25,10 +26,21 @@ export const resolveFeature = onCall(
   wrapCallable<ResolveFeatureRequest, ResolveFeatureResponse>(
     'resolveFeature',
     async (request): Promise<ResolveFeatureResponse> => {
+      if (!request.auth?.uid) {
+        throw new HttpsError('unauthenticated', 'Authentication required');
+      }
+
       const { characterId, featureName, featureSource, characterClass, characterRace } = request.data;
 
       if (!characterId || !featureName) {
         throw new HttpsError('invalid-argument', 'Missing required fields: characterId, featureName');
+      }
+
+      // Verify caller owns this character
+      const db = getFirestore();
+      const charSnap = await db.collection('characters').doc(characterId).get();
+      if (!charSnap.exists || charSnap.data()?.['userId'] !== request.auth.uid) {
+        throw new HttpsError('permission-denied', 'Not authorized for this character');
       }
 
       const apiKey = process.env.GOOGLE_AI_API_KEY;
@@ -72,14 +84,12 @@ Return only valid JSON like: {"description": "..."}`,
           throw new Error('Missing required fields in response');
         }
       } catch (parseError) {
-        console.error('resolveFeature: Failed to parse AI response:', text);
+        logger.error('resolveFeature: Failed to parse AI response:', text);
         throw new HttpsError('internal', 'Failed to parse feature details from AI response');
       }
 
       // Patch Firestore active version (best-effort)
       try {
-        const db = getFirestore();
-        const charSnap = await db.collection('characters').doc(characterId).get();
         const activeVersionId = charSnap.data()?.['activeVersionId'] as string | undefined;
 
         if (activeVersionId) {
@@ -99,7 +109,7 @@ Return only valid JSON like: {"description": "..."}`,
           }
         }
       } catch (e) {
-        console.error('resolveFeature: Firestore patch failed (non-fatal):', e);
+        logger.error('resolveFeature: Firestore patch failed (non-fatal):', e);
       }
 
       return details;

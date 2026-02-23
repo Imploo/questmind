@@ -8,6 +8,7 @@ import { CharacterService } from '../../../../core/services/character.service';
 import { CharacterVersionService } from '../../../../core/services/character-version.service';
 import { CharacterImageService } from '../../../../core/services/character-image.service';
 import { ChatService } from '../../../../chat/chat.service';
+import { PdfGeneratorService } from '../../../../shared/services/pdf-generator.service';
 import { Character, CharacterVersion } from '../../../../core/models/schemas/character.schema';
 import { CharacterImage } from '../../../../core/models/schemas/character-image.schema';
 import { DndCharacter } from '../../../../shared/models/dnd-character.model';
@@ -71,6 +72,7 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
                           [activeVersionId]="latestVersion()?.id ?? ''"
                           [images]="characterImages()"
                           [canDelete]="isOwner()"
+                          (exportPdf)="onExportPdf()"
                           (viewHistory)="showHistory.set(true)"
                           (deleteImage)="onDeleteImage($event)"
                           (spellResolved)="onSpellResolved($event)"
@@ -141,6 +143,7 @@ export class CharacterBuilderPageComponent {
   private characterVersionService = inject(CharacterVersionService);
   private characterImageService = inject(CharacterImageService);
   private chatService = inject(ChatService);
+  private pdfGeneratorService = inject(PdfGeneratorService);
   private destroyRef = inject(DestroyRef);
 
   // State
@@ -386,6 +389,13 @@ export class CharacterBuilderPageComponent {
       return;
     }
     this.isNarrow.set(window.innerWidth < 1024);
+  }
+
+  async onExportPdf(): Promise<void> {
+    const version = this.latestVersion();
+    if (version) {
+      await this.pdfGeneratorService.generateCharacterPdf(version.character);
+    }
   }
 
   async onDeleteImage(image: CharacterImage): Promise<void> {

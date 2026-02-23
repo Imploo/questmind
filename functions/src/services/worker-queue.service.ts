@@ -19,6 +19,7 @@ export type WorkerHandler = (data: WorkerPayload) => Promise<void>;
  * Uses direct function invocation pattern with fire-and-forget
  */
 export class WorkerQueueService {
+  private static handlerMap = new WeakMap<object, WorkerHandler>();
   /**
    * Trigger the next worker in the chain by calling it asynchronously
    * This is a fire-and-forget pattern - we don't wait for the result
@@ -27,23 +28,19 @@ export class WorkerQueueService {
     workerHandler: WorkerHandler,
     payload: WorkerPayload
   ): Promise<void> {
-    // Trigger the next worker asynchronously (fire-and-forget)
-    // This allows the current worker to complete immediately
-    setImmediate(async () => {
-      try {
-        await workerHandler(payload);
-      } catch (error) {
-        // Errors are logged but don't affect the caller
-        console.error(
-          `[WorkerQueue] Error triggering worker for session ${payload.sessionId}:`,
-          error
-        );
-      }
-    });
-
     logger.debug(
       `[WorkerQueue] Triggered worker for session ${payload.sessionId}`
     );
+
+    try {
+      await workerHandler(payload);
+    } catch (error) {
+      // Errors are logged but don't affect the caller
+      logger.error(
+        `[WorkerQueue] Error triggering worker for session ${payload.sessionId}:`,
+        error
+      );
+    }
   }
 
   /**
@@ -68,34 +65,22 @@ export class WorkerQueueService {
         logger.debug(`[${workerName}] Started for session ${sessionId}`);
 
         try {
-          // Execute the worker logic asynchronously
-          // We return immediately but processing continues
-          setImmediate(async () => {
-            try {
-              await handler(data);
-              logger.debug(`[${workerName}] Completed for session ${sessionId}`);
-            } catch (error) {
-              console.error(
-                `[${workerName}] Error for session ${sessionId}:`,
-                error
-              );
-            }
-          });
+          await handler(data);
+          logger.debug(`[${workerName}] Completed for session ${sessionId}`);
 
-          // Return immediately (fire-and-forget pattern)
           return {
             success: true,
             stage: workerName,
           };
         } catch (error) {
-          console.error(`[${workerName}] Immediate error:`, error);
+          logger.error(`[${workerName}] Error for session ${sessionId}:`, error);
           throw error;
         }
       }
     );
 
     // Attach the handler to the function for internal calls
-    (workerFunc as any).__handler = handler;
+    this.handlerMap.set(workerFunc, handler);
 
     return workerFunc;
   }
@@ -103,7 +88,7 @@ export class WorkerQueueService {
   /**
    * Get the internal handler from a worker function
    */
-  static getHandler(workerFunc: any): WorkerHandler {
-    return workerFunc.__handler;
+  static getHandler(workerFunc: object): WorkerHandler | undefined {
+    return this.handlerMap.get(workerFunc);
   }
 }

@@ -3,12 +3,7 @@ import { authGuard, noAuthGuard } from './auth/auth.guard';
 import { SignInPageComponent } from './auth/sign-in-page.component';
 import { AppShellComponent } from './app-shell.component';
 import { campaignGuard } from './campaign/campaign.guard';
-import { AudioSessionComponent } from './audio/audio-session.component';
-import { AudioUploadPageComponent } from './audio/audio-upload-page.component';
-import { PodcastLibraryComponent } from './audio/podcast-library.component';
-import { AdminComponent } from './admin/admin.component';
 import { adminGuard } from './auth/admin.guard';
-import { CampaignSettingsComponent } from './campaign/campaign-settings.component';
 
 export const routes: Routes = [
   {
@@ -43,7 +38,7 @@ export const routes: Routes = [
       },
       {
         path: 'admin',
-        component: AdminComponent,
+        loadComponent: () => import('./admin/admin.component').then(m => m.AdminComponent),
         canActivate: [adminGuard]
       }
     ]
@@ -60,23 +55,23 @@ export const routes: Routes = [
       },
       {
         path: 'audio',
-        component: AudioSessionComponent
+        loadComponent: () => import('./audio/audio-session.component').then(m => m.AudioSessionComponent)
       },
       {
         path: 'audio/new',
-        component: AudioUploadPageComponent
+        loadComponent: () => import('./audio/audio-upload-page.component').then(m => m.AudioUploadPageComponent)
       },
       {
         path: 'audio/:sessionId',
-        component: AudioSessionComponent
+        loadComponent: () => import('./audio/audio-session.component').then(m => m.AudioSessionComponent)
       },
       {
         path: 'podcasts',
-        component: PodcastLibraryComponent
+        loadComponent: () => import('./audio/podcast-library.component').then(m => m.PodcastLibraryComponent)
       },
       {
         path: 'settings',
-        component: CampaignSettingsComponent
+        loadComponent: () => import('./campaign/campaign-settings.component').then(m => m.CampaignSettingsComponent)
       }
     ]
   },

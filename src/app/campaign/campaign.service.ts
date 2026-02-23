@@ -132,7 +132,7 @@ export class CampaignService {
         throw new Error(`No user found with email: ${normalizedEmail}. The user must create an account first.`);
       }
     } catch (error: unknown) {
-      console.error('Error during user lookup:', error);
+      logger.error('Error during user lookup:', error);
       throw error;
     }
 
@@ -211,7 +211,7 @@ export class CampaignService {
 
   private async findUserByEmail(email: string): Promise<{ uid: string; email: string } | null> {
     if (!this.db) {
-      console.error('Firestore DB is not initialized');
+      logger.error('Firestore DB is not initialized');
       return null;
     }
     const normalizedEmail = email.trim().toLowerCase();
@@ -233,7 +233,7 @@ export class CampaignService {
       };
       return userData;
     } catch (error) {
-      console.error('Error searching for user by email:', error);
+      logger.error('Error searching for user by email:', error);
       throw error;
     }
   }

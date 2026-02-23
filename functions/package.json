@@ -8,12 +8,13 @@
   "scripts": {
     "build": "tsc",
     "build:watch": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "lint": "eslint --ext .ts src",
     "serve": "npm run build && firebase emulators:start --only functions --project questmind-dnd",
     "deploy": "npm run build && firebase deploy --only functions"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.74.0",
     "@azure-rest/ai-inference": "1.0.0-beta.6",
     "@azure/core-auth": "^1.9.0",
     "@elevenlabs/elevenlabs-js": "^2.34.0",
@@ -33,6 +34,7 @@
   },
   "devDependencies": {
     "@types/fluent-ffmpeg": "^2.1.28",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "vitest": "^4.0.18"
   }
 }

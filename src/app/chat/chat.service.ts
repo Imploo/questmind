@@ -1,6 +1,6 @@
 import { inject, Injectable, signal } from '@angular/core';
 import { from, Observable, throwError } from 'rxjs';
-import { catchError, map } from 'rxjs/operators';
+import { catchError, map, retry } from 'rxjs/operators';
 import { httpsCallable } from 'firebase/functions';
 import { IMAGE_GENERATION_SYSTEM_PROMPT } from '../prompts/image-generation.prompt';
 import { DndCharacter } from '../shared/models/dnd-character.model';
@@ -9,19 +9,23 @@ import {
   stripCharacterDetails,
   type ImageChatRequest,
   type ChatHistoryMessage,
+  type ChatAttachment,
 } from '../shared/utils/build-character-context';
 import { AiSettingsService } from '../core/services/ai-settings.service';
 import { CharacterImageService } from '../core/services/character-image.service';
 import { FirebaseService } from '../core/firebase.service';
+import * as logger from '../shared/logger';
 
-export type { ChatHistoryMessage };
+export type { ChatHistoryMessage, ChatAttachment };
 
 const IMAGE_TRIGGER_REGEX = /maak\s+afbeelding/i;
+const CALLABLE_TIMEOUT_MS = 1200_000; // 20 minutes, matches backend timeoutSeconds
 
 interface CharacterChatRequest {
   characterId: string;
   currentCharacter: DndCharacter;
   chatHistory: ChatHistoryMessage[];
+  attachments?: ChatAttachment[];
 }
 
 interface GenerateImageRequest {
@@ -43,10 +47,12 @@ export interface MessageImage {
 
 export interface Message {
   id: string;
-  sender: 'user' | 'ai' | 'error';
+  sender: 'user' | 'ai' | 'error' | 'system';
   text: string;
   images?: MessageImage[];
+  pdfFileName?: string;
   timestamp: Date;
+  isUpdatingCharacter?: boolean;
 }
 
 @Injectable({
@@ -77,7 +83,7 @@ export class ChatService {
     return IMAGE_TRIGGER_REGEX.test(message);
   }
 
-  sendMessage(userMessage: string): Observable<{ text: string; images?: MessageImage[] }> {
+  sendMessage(userMessage: string, attachments?: ChatAttachment[]): Observable<{ text: string; images?: MessageImage[]; shouldUpdateCharacter?: boolean }> {
     if (!this.currentCharacter || !this.characterId) {
       return throwError(() => ({
         status: 400,
@@ -99,16 +105,18 @@ export class ChatService {
         ...this.conversationHistory,
         { role: 'user', content: userMessage },
       ],
+      ...(attachments?.length && { attachments }),
     };
 
-    const characterChat = httpsCallable<CharacterChatRequest, { text: string }>(
-      functions, 'characterChat'
+    const characterChat = httpsCallable<CharacterChatRequest, { text: string; shouldUpdateCharacter: boolean }>(
+      functions, 'characterChat', { timeout: CALLABLE_TIMEOUT_MS }
     );
 
     return from(characterChat(payload)).pipe(
       map(result => {
-        const text = result.data.text;
+        const { text, shouldUpdateCharacter } = result.data;
 
+        // Store only text in conversation history (not attachment data)
         this.conversationHistory.push(
           { role: 'user', content: userMessage },
           { role: 'assistant', content: text }
@@ -118,8 +126,39 @@ export class ChatService {
           this.conversationHistory = this.conversationHistory.slice(-20);
         }
 
-        return { text };
+        return { text, shouldUpdateCharacter };
       }),
+      catchError(error => throwError(() => this.formatError(error)))
+    );
+  }
+
+  generateCharacterDraft(ai1Response: string, attachments?: ChatAttachment[]): Observable<{ success: boolean }> {
+    if (!this.currentCharacter || !this.characterId) {
+      return throwError(() => ({
+        status: 400,
+        message: 'No character selected.'
+      }));
+    }
+
+    const functions = this.firebase.requireFunctions();
+    const stripped = stripCharacterDetails(this.currentCharacter);
+    const pdfAttachment = attachments?.find(a => a.mimeType === 'application/pdf');
+
+    const payload = {
+      characterId: this.characterId,
+      currentCharacter: stripped,
+      chatHistory: [...this.conversationHistory],
+      ai1Response,
+      ...(pdfAttachment && { pdfAttachment: { mimeType: pdfAttachment.mimeType, data: pdfAttachment.data } }),
+    };
+
+    const callable = httpsCallable<typeof payload, { success: boolean }>(
+      functions, 'generateCharacterDraftCallable', { timeout: CALLABLE_TIMEOUT_MS }
+    );
+
+    return from(callable(payload)).pipe(
+      map(result => result.data),
+      retry({ count: 3, delay: 2000 }),
       catchError(error => throwError(() => this.formatError(error)))
     );
   }
@@ -140,7 +179,7 @@ export class ChatService {
     const imageConfig = this.aiSettingsService.getImageGenerationConfig();
 
     const generateImage = httpsCallable<GenerateImageRequest, GenerateImageResponse>(
-      functions, 'generateImage'
+      functions, 'generateImage', { timeout: CALLABLE_TIMEOUT_MS }
     );
 
     const chatRequest = buildImageChatRequest(this.currentCharacter, IMAGE_GENERATION_SYSTEM_PROMPT, userPrompt, this.conversationHistory);
@@ -186,7 +225,7 @@ export class ChatService {
       errorMessage = 'AI service error. Please try again later.';
     }
 
-    console.error('ChatService Error:', { message: errorMessage, error: err });
+    logger.error('ChatService Error:', { message: errorMessage, error: err });
 
     return {
       status: err?.status ?? 500,

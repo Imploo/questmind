@@ -102,28 +102,36 @@ export class KankaService {
       throw new Error('Kanka campaign ID is required');
     }
 
-    const result: KankaSearchResult = {
+    return this.fetchEntityTypes(types, (entityType) =>
+      this.fetchEntitiesByType(kankaCampaignId, entityType)
+    );
+  }
+
+  /**
+   * Shared parallel fetch across entity types with graceful per-type error handling
+   */
+  private async fetchEntityTypes(
+    types: KankaEntityType[],
+    fetchFn: (entityType: KankaEntityType) => Promise<KankaEntity[]>
+  ): Promise<KankaSearchResult> {
+    const result = {
       characters: [],
       locations: [],
       quests: [],
       organisations: [],
-    };
+    } as Record<KankaEntityType, KankaEntity[]>;
 
-    // Fetch all entity types in parallel
     const fetchPromises = types.map(async (entityType) => {
       try {
-        const entities = await this.fetchEntitiesByType(kankaCampaignId, entityType);
-        result[entityType] = entities as never[];
+        result[entityType] = await fetchFn(entityType);
       } catch (error) {
-        console.error(`[Kanka] Failed to fetch ${entityType}:`, error);
-        // Continue with empty array for this type
+        logger.error(`[Kanka] Failed to fetch ${entityType}:`, error);
         result[entityType] = [];
       }
     });
 
     await Promise.all(fetchPromises);
-
-    return result;
+    return result as unknown as KankaSearchResult;
   }
 
   /**
@@ -155,7 +163,7 @@ export class KankaService {
       const json = (await response.json()) as KankaApiResponse<KankaEntity>;
       return json.data || [];
     } catch (error) {
-      console.error(`[Kanka] Error fetching ${entityType}:`, error);
+      logger.error(`[Kanka] Error fetching ${entityType}:`, error);
       throw error;
     }
   }
@@ -172,26 +180,9 @@ export class KankaService {
       throw new Error('Kanka campaign ID and query are required');
     }
 
-    const result: KankaSearchResult = {
-      characters: [],
-      locations: [],
-      quests: [],
-      organisations: [],
-    };
-
-    const fetchPromises = types.map(async (entityType) => {
-      try {
-        const entities = await this.searchByType(kankaCampaignId, entityType, query);
-        result[entityType] = entities as never[];
-      } catch (error) {
-        console.error(`[Kanka] Failed to search ${entityType}:`, error);
-        result[entityType] = [];
-      }
-    });
-
-    await Promise.all(fetchPromises);
-
-    return result;
+    return this.fetchEntityTypes(types, (entityType) =>
+      this.searchByType(kankaCampaignId, entityType, query)
+    );
   }
 
   /**
@@ -226,7 +217,7 @@ export class KankaService {
       const json = (await response.json()) as KankaApiResponse<KankaEntity>;
       return json.data || [];
     } catch (error) {
-      console.error(`[Kanka] Error searching ${entityType}:`, error);
+      logger.error(`[Kanka] Error searching ${entityType}:`, error);
       throw error;
     }
   }

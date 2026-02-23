@@ -1,5 +1,4 @@
-import { Component, EventEmitter, Input, Output, signal, computed } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component, signal, computed, input, output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
 type Stage = 'idle' | 'compressing' | 'uploading' | 'transcribing' | 'generating' | 'completed' | 'failed';
@@ -16,8 +15,8 @@ export interface UploadRequestEvent {
 
 @Component({
   selector: 'app-audio-upload',
-  standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [FormsModule],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="border border-gray-200 rounded-xl bg-white shadow-sm p-6">
       <div class="flex items-center justify-between mb-4">
@@ -30,16 +29,16 @@ export interface UploadRequestEvent {
         </span>
       </div>
 
-      @if (stage !== 'idle') {
+      @if (stage() !== 'idle') {
         <div class="mb-4">
           <div class="flex items-center justify-between mb-2">
-            <p class="text-sm text-gray-600 m-0">{{ statusMessage }}</p>
-            <span class="text-xs text-gray-500">{{ progress }}%</span>
+            <p class="text-sm text-gray-600 m-0">{{ statusMessage() }}</p>
+            <span class="text-xs text-gray-500">{{ progress() }}%</span>
           </div>
           <div class="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
             <div
               class="h-full bg-primary transition-all duration-300"
-              [style.width.%]="progress"
+              [style.width.%]="progress()"
             ></div>
           </div>
         </div>
@@ -59,7 +58,7 @@ export interface UploadRequestEvent {
           multiple
           accept=".mp3,.wav,.m4a,.ogg,audio/*"
           (change)="onFileSelected($event)"
-          [disabled]="isBusy || !canUpload"
+          [disabled]="isBusy() || !canUpload()"
         />
         <p class="text-sm text-gray-600 m-0">
           Drag and drop your audio files here, or
@@ -67,7 +66,7 @@ export interface UploadRequestEvent {
             type="button"
             class="text-primary font-semibold hover:underline"
             (click)="fileInput.click()"
-            [disabled]="isBusy || !canUpload"
+            [disabled]="isBusy() || !canUpload()"
           >
             browse
           </button>
@@ -81,10 +80,10 @@ export interface UploadRequestEvent {
             class="rounded border-gray-300 text-primary focus:ring-primary/30"
             [checked]="keepAwake()"
             (change)="keepAwake.set(!keepAwake())"
-            [disabled]="isBusy || !wakeLockSupported"
+            [disabled]="isBusy() || !wakeLockSupported()"
           />
           Keep screen awake during upload
-          @if (!wakeLockSupported) {
+          @if (!wakeLockSupported()) {
             <span class="text-xs text-gray-400">(Not supported on this device)</span>
           }
         </label>
@@ -97,7 +96,7 @@ export interface UploadRequestEvent {
               type="text"
               class="mt-1 px-3 py-2 border border-gray-200 rounded-lg focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none"
               [(ngModel)]="sessionName"
-              [disabled]="isBusy || !canUpload"
+              [disabled]="isBusy() || !canUpload()"
               placeholder="The Goblin Warrens"
             />
           </label>
@@ -107,7 +106,7 @@ export interface UploadRequestEvent {
               type="date"
               class="mt-1 px-3 py-2 border border-gray-200 rounded-lg focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none"
               [(ngModel)]="sessionDate"
-              [disabled]="isBusy || !canUpload"
+              [disabled]="isBusy() || !canUpload()"
             />
           </label>
         </div>
@@ -122,13 +121,13 @@ export interface UploadRequestEvent {
                   <button
                     type="button"
                     (click)="moveFile(i, -1)"
-                    [disabled]="i === 0 || isBusy"
+                    [disabled]="i === 0 || isBusy()"
                     class="text-blue-400 hover:text-blue-600 disabled:opacity-30 text-xs leading-none p-0.5"
                   >&#9650;</button>
                   <button
                     type="button"
                     (click)="moveFile(i, 1)"
-                    [disabled]="i === selectedFiles().length - 1 || isBusy"
+                    [disabled]="i === selectedFiles().length - 1 || isBusy()"
                     class="text-blue-400 hover:text-blue-600 disabled:opacity-30 text-xs leading-none p-0.5"
                   >&#9660;</button>
                 </div>
@@ -139,7 +138,7 @@ export interface UploadRequestEvent {
               <button
                 type="button"
                 (click)="removeFile(i)"
-                [disabled]="isBusy"
+                [disabled]="isBusy()"
                 class="text-blue-400 hover:text-blue-600 disabled:opacity-30 text-lg leading-none px-1"
               >&times;</button>
             </div>
@@ -165,7 +164,7 @@ export interface UploadRequestEvent {
             class="px-4 py-2 rounded-lg font-semibold transition-colors"
             [class]="'bg-gray-100 text-gray-900 hover:bg-gray-200'"
             (click)="clearAll()"
-            [disabled]="isBusy"
+            [disabled]="isBusy()"
           >
             Clear
           </button>
@@ -174,29 +173,29 @@ export interface UploadRequestEvent {
           type="button"
           class="px-4 py-2 rounded-lg font-semibold transition-colors"
           [class]="
-            selectedFiles().length > 0 && !isBusy
+            selectedFiles().length > 0 && !isBusy()
               ? 'bg-primary text-white hover:opacity-90'
               : 'bg-gray-100 text-gray-400 cursor-not-allowed'
           "
           (click)="uploadFiles()"
-          [disabled]="selectedFiles().length === 0 || isBusy || !canUpload"
+          [disabled]="selectedFiles().length === 0 || isBusy() || !canUpload()"
         >
-          {{ isBusy ? 'Processing...' : (selectedFiles().length > 1 ? 'Merge & Upload' : 'Upload & Process') }}
+          {{ isBusy() ? 'Processing...' : (selectedFiles().length > 1 ? 'Merge & Upload' : 'Upload & Process') }}
         </button>
       </div>
     </div>
   `
 })
 export class AudioUploadComponent {
-  @Input() isBusy = false;
-  @Input() userId: string | null = null;
-  @Input() campaignId: string | null = null;
-  @Input() canUpload = false;
-  @Input() stage: Stage = 'idle';
-  @Input() progress = 0;
-  @Input() statusMessage = '';
-  @Input() wakeLockSupported = true;
-  @Output() uploadRequested = new EventEmitter<UploadRequestEvent>();
+  isBusy = input(false);
+  userId = input<string | null>(null);
+  campaignId = input<string | null>(null);
+  canUpload = input(false);
+  stage = input<Stage>('idle');
+  progress = input(0);
+  statusMessage = input('');
+  wakeLockSupported = input(true);
+  uploadRequested = output<UploadRequestEvent>();
 
   selectedFiles = signal<File[]>([]);
   sessionName = '';
@@ -217,7 +216,7 @@ export class AudioUploadComponent {
       'completed': 'bg-green-100 text-green-700',
       'failed': 'bg-red-100 text-red-700'
     };
-    return stageMap[this.stage] || stageMap['idle'];
+    return stageMap[this.stage()] || stageMap['idle'];
   });
 
   stageLabel = computed(() => {
@@ -230,7 +229,7 @@ export class AudioUploadComponent {
       'completed': 'Complete',
       'failed': 'Failed'
     };
-    return labels[this.stage] || 'Processing';
+    return labels[this.stage()] || 'Processing';
   });
 
   onDragOver(event: DragEvent): void {
@@ -299,7 +298,7 @@ export class AudioUploadComponent {
 
   uploadFiles(): void {
     const files = this.selectedFiles();
-    if (files.length === 0 || !this.userId || !this.campaignId || this.isBusy || !this.canUpload) {
+    if (files.length === 0 || !this.userId() || !this.campaignId() || this.isBusy() || !this.canUpload()) {
       return;
     }
     this.error.set('');
@@ -307,8 +306,8 @@ export class AudioUploadComponent {
       files,
       sessionName: this.sessionName,
       sessionDate: this.sessionDate,
-      userId: this.userId,
-      campaignId: this.campaignId,
+      userId: this.userId()!,
+      campaignId: this.campaignId()!,
       keepAwake: this.keepAwake()
     });
   }

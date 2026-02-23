@@ -1,7 +1,7 @@
 # Angular Modernization: Migrate Legacy Patterns
 
 **Priority:** Medium
-**Status:** Todo
+**Status:** Done
 **Created:** 2026-02-23
 **Source:** Multi-Agent Code Review (Opus + Sonnet + Haiku) — [Full Report](../../reviews/FULL-CODEBASE-review-2026-02-23.md)
 **Confidence:** HIGH (most findings confirmed by all 3 agents)
@@ -22,7 +22,7 @@ The app is configured with `provideZonelessChangeDetection()` but several compon
 - Subscriptions managed via `takeUntilDestroyed()` or `DestroyRef` (no manual `OnDestroy`)
 - Reactive forms preferred over template-driven `ngModel`
 
-## Status: Todo
+## Status: Done
 
 ---
 

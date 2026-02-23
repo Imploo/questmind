@@ -1,12 +1,10 @@
-import { Component, signal, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, signal, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { AuthService } from './auth.service';
-import { CommonModule } from '@angular/common';
 
 @Component({
   selector: 'app-sign-in-page',
-  standalone: true,
-  imports: [CommonModule],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="min-h-screen bg-gradient-to-br from-primary to-secondary flex items-center justify-center p-4">
       <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">

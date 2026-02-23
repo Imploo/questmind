@@ -1,8 +1,38 @@
 import { getFirestore } from 'firebase-admin/firestore';
 import { AISettings, AIFeatureConfig, PodcastVoiceSettings } from '../types/audio-session.types';
 
+let cachedSettings: AISettings | null = null;
+let cacheTimestamp = 0;
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+async function getCachedAiSettings(): Promise<AISettings | undefined> {
+  const now = Date.now();
+  const cacheExpired = !cachedSettings || now - cacheTimestamp > CACHE_TTL_MS;
+
+  if (cacheExpired) {
+    const snap = await getFirestore().doc('settings/ai').get();
+    cachedSettings = (snap.data() as AISettings) ?? null;
+    cacheTimestamp = now;
+  }
+
+  // When cache is disabled, always fetch fresh (but still store for cacheEnabled check)
+  if (cachedSettings && cachedSettings.cacheEnabled === false && !cacheExpired) {
+    const snap = await getFirestore().doc('settings/ai').get();
+    cachedSettings = (snap.data() as AISettings) ?? null;
+    cacheTimestamp = now;
+  }
+
+  return cachedSettings ?? undefined;
+}
+
+/** Reset the in-memory cache (for testing) */
+export function resetAiSettingsCache(): void {
+  cachedSettings = null;
+  cacheTimestamp = 0;
+}
+
 const DEFAULT_CONFIGS: Record<string, AIFeatureConfig> = {
-  characterChatText: { model: 'claude-haiku-4-5-20251001', temperature: 0.7, topP: 0.95, topK: 40, maxOutputTokens: 512 },
+  characterChatText: { model: 'gemini-3-flash-preview', temperature: 0.7, topP: 0.95, topK: 40, maxOutputTokens: 4096 },
   characterDraft: { model: 'gemini-3-flash-preview', temperature: 0.1, topP: 0.95, topK: 40, maxOutputTokens: 8192 },
   spellResolution: { model: 'gemini-3-flash-preview', temperature: 0.3, topP: 0.95, topK: 40, maxOutputTokens: 4096 },
   featureResolution: { model: 'gemini-3-flash-preview', temperature: 0.3, topP: 0.95, topK: 40, maxOutputTokens: 4096 },
@@ -16,24 +46,18 @@ const DEFAULT_IMAGE_CONFIG = { model: 'fal-ai/flux/schnell' };
 const DEFAULT_PODCAST_VOICES: PodcastVoiceSettings = { model: 'eleven_v3', maxCharacters: 5000, host1VoiceId: '', host2VoiceId: '' };
 
 export async function getAiFeatureConfig(featureKey: string): Promise<AIFeatureConfig> {
-  const db = getFirestore();
-  const snap = await db.doc('settings/ai').get();
-  const settings = snap.data() as AISettings | undefined;
+  const settings = await getCachedAiSettings();
   const featureConfig = settings?.features?.[featureKey as keyof NonNullable<AISettings['features']>];
   const defaults = DEFAULT_CONFIGS[featureKey];
   return { ...defaults, ...(featureConfig as AIFeatureConfig | undefined) };
 }
 
 export async function getAiImageConfig(): Promise<{ model: string }> {
-  const db = getFirestore();
-  const snap = await db.doc('settings/ai').get();
-  const settings = snap.data() as AISettings | undefined;
+  const settings = await getCachedAiSettings();
   return { ...DEFAULT_IMAGE_CONFIG, ...settings?.features?.imageGeneration };
 }
 
 export async function getPodcastVoiceConfig(): Promise<PodcastVoiceSettings> {
-  const db = getFirestore();
-  const snap = await db.doc('settings/ai').get();
-  const settings = snap.data() as AISettings | undefined;
+  const settings = await getCachedAiSettings();
   return { ...DEFAULT_PODCAST_VOICES, ...settings?.features?.podcastVoices };
 }

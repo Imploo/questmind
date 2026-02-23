@@ -320,7 +320,7 @@ async function generatePodcastInBackground(
     );
 
     const chunks: Buffer[] = [];
-    const readable = Readable.from(audioStream as AsyncIterable<Uint8Array>);
+    const readable = Readable.from(audioStream as unknown as AsyncIterable<Uint8Array>);
     for await (const chunk of readable) {
       chunks.push(Buffer.from(chunk));
     }
@@ -372,7 +372,7 @@ async function generatePodcastInBackground(
     logger.debug(`Podcast generation completed: ${fileUrl}`);
 
   } catch (error: unknown) {
-    console.error('Error generating podcast:', error);
+    logger.error('Error generating podcast:', error);
 
     await updatePodcastEntry(sessionRef, existingPodcasts, version, {
       status: 'failed',

@@ -120,10 +120,9 @@ export class ProgressTrackerService {
       progress: progressData,
     });
 
-    console.error(
+    logger.error(
       `[Progress] Session ${sessionId} FAILED at ${stage}:`,
-      errorMessage,
-      details
+      errorMessage
     );
   }
 

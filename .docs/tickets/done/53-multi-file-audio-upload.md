@@ -2,7 +2,7 @@
 
 **Created:** 2026-02-17
 **Priority:** Medium
-**Status:** Todo
+**Status:** Done
 **Effort:** 2-3 days
 **Dependencies:** -
 

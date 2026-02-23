@@ -7,6 +7,7 @@ import {
   AudioUpload
 } from './audio-session.models';
 import { AudioSessionRepositoryFactory } from '../../shared/repository/audio-session.repository';
+import * as logger from '../../shared/logger';
 
 type SessionRecord = AudioSessionRecord & Record<string, unknown>;
 
@@ -35,6 +36,15 @@ export class AudioSessionStateService {
   readonly sessions = computed<SessionRecord[]>(() => {
     const repo = this.sessionRepo.value();
     return repo ? repo.get() : [];
+  });
+
+  readonly sortedSessions = computed<SessionRecord[]>(() => {
+    const sessions = this.sessions();
+    return [...sessions].sort((a, b) => {
+      const dateA = a.sessionDate || '';
+      const dateB = b.sessionDate || '';
+      return dateB.localeCompare(dateA);
+    });
   });
 
   constructor() {
@@ -74,7 +84,7 @@ export class AudioSessionStateService {
 
   updateSession(id: string, patch: Partial<AudioSessionRecord>): void {
     void this.persistSessionPatch(id, patch).catch(error => {
-      console.error('Failed to update audio session in Firestore.', error);
+      logger.error('Failed to update audio session in Firestore.', error);
     });
   }
 
@@ -109,11 +119,11 @@ export class AudioSessionStateService {
   private writeSession(record: AudioSessionRecord): void {
     const repo = this.sessionRepo.value();
     if (!repo) {
-      console.error('Repository not available. Cannot save sessions.');
+      logger.error('Repository not available. Cannot save sessions.');
       return;
     }
     void repo.update(record as SessionRecord).catch(error => {
-      console.error('Failed to save audio session to Firestore.', error);
+      logger.error('Failed to save audio session to Firestore.', error);
     });
   }
 

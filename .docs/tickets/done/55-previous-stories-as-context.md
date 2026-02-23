@@ -7,7 +7,7 @@ Vorige sessie-stories meesturen als context bij `generateStory` voor flashbacks 
 2026-02-18
 
 ## Status
-Todo
+Done
 
 ## Priority
 Medium

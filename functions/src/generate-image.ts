@@ -7,11 +7,8 @@ import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { randomUUID } from 'crypto';
 import { fal } from '@fal-ai/client';
 import { GoogleGenAI } from '@google/genai';
-
-export interface ChatHistoryMessage {
-    role: 'user' | 'assistant';
-    content: string;
-}
+import { ChatHistoryMessage } from './types/chat.types';
+import * as logger from './utils/logger';
 
 export interface CharacterChatRequest {
     systemPrompt: string;
@@ -38,6 +35,10 @@ export const generateImage = onCall(
   wrapCallable<GenerateImageRequest, GenerateImageResponse>(
     'generateImage',
     async (request): Promise<GenerateImageResponse> => {
+      if (!request.auth?.uid) {
+        throw new HttpsError('unauthenticated', 'Authentication required');
+      }
+
       const { chatRequest, model: requestModel, characterId, referenceImageStoragePath } = request.data;
 
       if (!chatRequest || !characterId) {
@@ -83,7 +84,7 @@ export const generateImage = onCall(
             + 'However, follow the user\'s instructions for the new scene, pose, or expression. '
             + 'Do NOT describe the reference image literally — use it only for style inspiration.';
         } catch (err) {
-          console.warn('Failed to load reference image, proceeding without it:', err);
+          logger.warn('Failed to load reference image, proceeding without it:', err);
         }
       }
 

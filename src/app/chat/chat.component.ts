@@ -1,16 +1,19 @@
-import { Component, signal, inject, input, effect, viewChild, ElementRef, afterNextRender, runInInjectionContext, EnvironmentInjector, computed } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component, signal, inject, input, effect, viewChild, ElementRef, afterNextRender, runInInjectionContext, EnvironmentInjector, computed } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import { ChatService, Message } from './chat.service';
+import { Subscription } from 'rxjs';
+import { ChatService, Message, ChatAttachment } from './chat.service';
 import { marked } from 'marked';
 import { DndCharacter } from '../shared/models/dnd-character.model';
 import { ImageLightboxComponent } from './image-lightbox.component';
+import * as logger from '../shared/logger';
+
+const MAX_PDF_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 
 @Component({
   selector: 'app-chat',
-  standalone: true,
-  imports: [CommonModule, FormsModule, ImageLightboxComponent],
+  imports: [FormsModule, ImageLightboxComponent],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     '[class.flex]': 'true',
     '[class.flex-col]': 'true',
@@ -34,13 +37,32 @@ import { ImageLightboxComponent } from './image-lightbox.component';
             <p class="italic text-xs text-gray-400">Try: "Change my class to Rogue"</p>
           </div>
         }
-        
+
         @for (message of messages(); track message.id) {
-          @if (message.text || message.images?.length) {
-            <div 
+          @if (message.sender === 'system') {
+            <div class="max-w-[85%] p-3 rounded-lg self-start bg-amber-50 border border-amber-200 rounded-bl-sm animate-slide-in text-sm">
+              <div class="leading-relaxed flex items-center gap-2">
+                @if (message.isUpdatingCharacter) {
+                  <div class="flex gap-1">
+                    <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-bounce-dot"></span>
+                    <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-bounce-dot [animation-delay:-0.16s]"></span>
+                    <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-bounce-dot [animation-delay:-0.32s]"></span>
+                  </div>
+                }
+                <span class="text-amber-800">{{ message.text }}</span>
+                @if (message.isUpdatingCharacter) {
+                  <button
+                    (click)="cancelCharacterUpdate()"
+                    class="text-xs text-amber-700 underline hover:no-underline ml-auto shrink-0 bg-transparent border-none cursor-pointer p-0"
+                  >Annuleren</button>
+                }
+              </div>
+            </div>
+          } @else if (message.text || message.images?.length || message.pdfFileName) {
+            <div
               class="max-w-[85%] p-3 rounded-lg animate-slide-in text-sm"
-              [class]="message.sender === 'user' 
-                ? 'self-end bg-primary text-white rounded-br-sm' 
+              [class]="message.sender === 'user'
+                ? 'self-end bg-primary text-white rounded-br-sm'
                 : message.sender === 'error'
                 ? 'self-start bg-red-50 border border-red-200 text-red-700 rounded-bl-sm'
                 : 'self-start bg-white border border-gray-200 rounded-bl-sm'"
@@ -50,12 +72,21 @@ import { ImageLightboxComponent } from './image-lightbox.component';
                 <span class="pl-2 text-[0.7rem]">{{ formatTime(message.timestamp) }}</span>
               </div>
               <div class="leading-relaxed">
+                @if (message.pdfFileName) {
+                  <div class="flex items-center gap-2 mb-2 px-2 py-1.5 rounded-md"
+                    [class]="message.sender === 'user' ? 'bg-white/15' : 'bg-gray-100'">
+                    <svg class="w-4 h-4 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                      <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd"/>
+                    </svg>
+                    <span class="text-xs truncate">{{ message.pdfFileName }}</span>
+                  </div>
+                }
                 @if (message.sender === 'user') {
                   <p class="m-0 whitespace-pre-wrap break-words">{{ message.text }}</p>
                 } @else {
                   <div class="prose prose-sm prose-gray max-w-none" [innerHTML]="parseMarkdown(message.text)"></div>
                 }
-                
+
                 @if (message.images && message.images.length > 0) {
                   <div class="mt-3 flex flex-col gap-2">
                     @for (image of message.images; track $index) {
@@ -87,7 +118,14 @@ import { ImageLightboxComponent } from './image-lightbox.component';
         }
       </div>
 
-      <div class="border-t border-gray-200 bg-white">
+      <div class="border-t border-gray-200 bg-white"
+        (dragover)="onDragOver($event)"
+        (dragleave)="onDragLeave($event)"
+        (drop)="onDrop($event)"
+        [class.ring-2]="isDragOver()"
+        [class.ring-primary]="isDragOver()"
+        [class.ring-inset]="isDragOver()"
+      >
         @if (isImageMode()) {
           <div class="flex items-center gap-2 px-4 pt-3 pb-1">
             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-700 border border-purple-200">
@@ -97,7 +135,30 @@ import { ImageLightboxComponent } from './image-lightbox.component';
             <span class="text-xs text-gray-400">Stuurt naar fal.ai beeldgenerator</span>
           </div>
         }
-        <div class="flex gap-2 p-4" [class.pt-2]="isImageMode()">
+        @if (pendingAttachment()) {
+          <div class="flex items-center gap-2 px-4 pt-3 pb-1">
+            <span class="inline-flex items-center gap-1.5 pl-2 pr-1 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 border border-blue-200">
+              <svg class="w-3.5 h-3.5 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd"/>
+              </svg>
+              <span class="truncate max-w-[180px]">{{ pendingAttachment()!.fileName }}</span>
+              <button type="button" (click)="removeAttachment()" class="flex items-center justify-center w-4 h-4 rounded-full hover:bg-blue-200 transition-colors">
+                <svg class="w-3 h-3" viewBox="0 0 20 20" fill="currentColor">
+                  <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                </svg>
+              </button>
+            </span>
+          </div>
+        }
+        @if (isDragOver()) {
+          <div class="flex items-center justify-center gap-2 px-4 py-3 text-sm text-primary font-medium">
+            <svg class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd"/>
+            </svg>
+            <span>Drop PDF here</span>
+          </div>
+        }
+        <div class="flex gap-2 p-4" [class.pt-2]="isImageMode() || pendingAttachment()">
           <div class="relative flex-1 flex items-center border rounded-lg transition-all duration-200"
             [class]="isImageMode()
               ? 'border-purple-400 focus-within:border-purple-500 focus-within:ring-2 focus-within:ring-purple-200'
@@ -119,6 +180,16 @@ import { ImageLightboxComponent } from './image-lightbox.component';
                 <div class="absolute bottom-full left-0 mb-2 w-52 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden z-10">
                   <button
                     type="button"
+                    (click)="openPdfPicker()"
+                    class="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-left text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <svg class="w-4 h-4 text-blue-600" viewBox="0 0 20 20" fill="currentColor">
+                      <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd"/>
+                    </svg>
+                    <span>Import PDF</span>
+                  </button>
+                  <button
+                    type="button"
                     (click)="insertAction('maak afbeelding')"
                     class="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-left text-gray-700 hover:bg-gray-50 transition-colors"
                   >
@@ -134,13 +205,13 @@ import { ImageLightboxComponent } from './image-lightbox.component';
               [(ngModel)]="newMessage"
               (keyup.enter)="sendMessage()"
               [disabled]="isLoading()"
-              placeholder="Type a message..."
+              [placeholder]="pendingAttachment() ? 'Import this character (or add instructions)...' : 'Type a message...'"
               class="flex-1 px-2 py-2 text-sm bg-transparent border-none outline-none disabled:cursor-not-allowed"
             />
           </div>
           <button
             (click)="sendMessage()"
-            [disabled]="isLoading() || !newMessage().trim()"
+            [disabled]="isLoading() || (!newMessage().trim() && !pendingAttachment())"
             class="px-4 py-2 text-sm font-semibold text-white border-none rounded-lg cursor-pointer transition-all duration-200 disabled:bg-gray-300 disabled:cursor-not-allowed"
             [class]="isImageMode()
               ? 'bg-purple-600 hover:bg-purple-700'
@@ -158,26 +229,39 @@ import { ImageLightboxComponent } from './image-lightbox.component';
         </div>
       }
     </div>
+
+    <input
+      #pdfFileInput
+      type="file"
+      accept=".pdf"
+      class="hidden"
+      (change)="onFileSelected($event)"
+    />
   `
 })
 export class ChatComponent {
   // Optional character input - when provided, enables character-aware mode
   character = input<DndCharacter | null>(null);
-  
+
   messages = signal<Message[]>([]);
   newMessage = signal<string>('');
   isLoading = signal<boolean>(false);
   error = signal<string>('');
   messagesContainer = viewChild<ElementRef<HTMLDivElement>>('messagesContainer');
   messageInput = viewChild<ElementRef<HTMLInputElement>>('messageInput');
+  pdfFileInput = viewChild<ElementRef<HTMLInputElement>>('pdfFileInput');
   isImageMode = computed(() => this.chatService.isImageGenerationRequest(this.newMessage()));
 
   lightboxUrl = signal<string | null>(null);
   showActionMenu = signal(false);
+  pendingAttachment = signal<ChatAttachment | null>(null);
+  isDragOver = signal(false);
 
   private chatService = inject(ChatService);
   private sanitizer = inject(DomSanitizer);
   private environmentInjector = inject(EnvironmentInjector);
+  private ai2Subscription: Subscription | null = null;
+  private lastAttachments: ChatAttachment[] | undefined;
 
   constructor() {
     // Load chat history from service
@@ -212,24 +296,30 @@ export class ChatComponent {
 
   sendMessage(): void {
     const messageText = this.newMessage().trim();
-    
-    if (!messageText || this.isLoading()) {
+    const attachment = this.pendingAttachment();
+
+    if ((!messageText && !attachment) || this.isLoading()) {
       return;
     }
 
     // Clear previous errors
     this.error.set('');
 
+    // Use a default message when only an attachment is provided
+    const displayText = messageText || 'Import this character';
+
     // Add user message
     const userMessage: Message = {
       id: this.generateId(),
       sender: 'user',
-      text: messageText,
-      timestamp: new Date()
+      text: displayText,
+      timestamp: new Date(),
+      ...(attachment && { pdfFileName: attachment.fileName }),
     };
 
     this.messages.update(msgs => [...msgs, userMessage]);
     this.newMessage.set('');
+    this.pendingAttachment.set(null);
     this.isLoading.set(true);
 
     const aiMessageId = this.generateId();
@@ -242,18 +332,24 @@ export class ChatComponent {
     this.messages.update(msgs => [...msgs, aiMessage]);
 
     // Get AI response
-    this.chatService.sendMessage(messageText).subscribe({
+    const attachments = attachment ? [attachment] : undefined;
+    this.chatService.sendMessage(displayText, attachments).subscribe({
       next: (response) => {
         this.updateMessage(aiMessageId, response.text, response.images);
+
+        if (response.shouldUpdateCharacter) {
+          this.lastAttachments = attachments;
+          this.startCharacterUpdate(response.text);
+        }
       },
       complete: () => {
         this.isLoading.set(false);
       },
       error: (err) => {
-        console.error('AI Service Error:', err);
+        logger.error('AI Service Error:', err);
         const errorMessage = this.getErrorMessage(err);
         this.error.set(errorMessage);
-        
+
         const errorMsg: Message = {
           id: this.generateId(),
           sender: 'error',
@@ -299,6 +395,48 @@ export class ChatComponent {
     this.messageInput()?.nativeElement.focus();
   }
 
+  openPdfPicker(): void {
+    this.showActionMenu.set(false);
+    this.pdfFileInput()?.nativeElement.click();
+  }
+
+  onFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (file) {
+      this.processFile(file);
+    }
+    // Reset so the same file can be selected again
+    input.value = '';
+  }
+
+  onDragOver(event: DragEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.isDragOver.set(true);
+  }
+
+  onDragLeave(event: DragEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.isDragOver.set(false);
+  }
+
+  onDrop(event: DragEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.isDragOver.set(false);
+
+    const file = event.dataTransfer?.files[0];
+    if (file) {
+      this.processFile(file);
+    }
+  }
+
+  removeAttachment(): void {
+    this.pendingAttachment.set(null);
+  }
+
   clearError(): void {
     this.error.set('');
   }
@@ -314,6 +452,81 @@ export class ChatComponent {
   parseMarkdown(text: string): SafeHtml {
     const html = marked.parse(text, { async: false }) as string;
     return this.sanitizer.sanitize(1, html) || '';
+  }
+
+  cancelCharacterUpdate(): void {
+    if (this.ai2Subscription) {
+      this.ai2Subscription.unsubscribe();
+      this.ai2Subscription = null;
+    }
+    this.messages.update(msgs =>
+      msgs.map(m => m.isUpdatingCharacter
+        ? { ...m, text: 'Karakter aanpassen geannuleerd.', isUpdatingCharacter: false }
+        : m
+      )
+    );
+  }
+
+  private startCharacterUpdate(ai1Response: string): void {
+    const updateMessageId = this.generateId();
+    const updateMessage: Message = {
+      id: updateMessageId,
+      sender: 'system',
+      text: 'Karakter wordt aangepast...',
+      timestamp: new Date(),
+      isUpdatingCharacter: true,
+    };
+    this.messages.update(msgs => [...msgs, updateMessage]);
+
+    this.ai2Subscription = this.chatService.generateCharacterDraft(ai1Response, this.lastAttachments).subscribe({
+      next: () => {
+        this.messages.update(msgs =>
+          msgs.map(m => m.id === updateMessageId
+            ? { ...m, text: 'Karakter is aangepast!', isUpdatingCharacter: false }
+            : m
+          )
+        );
+      },
+      error: (err) => {
+        logger.error('Character update error:', err);
+        this.messages.update(msgs =>
+          msgs.map(m => m.id === updateMessageId
+            ? { ...m, text: 'Karakter aanpassen mislukt.', isUpdatingCharacter: false, sender: 'error' as const }
+            : m
+          )
+        );
+      },
+    });
+  }
+
+  private processFile(file: File): void {
+    if (file.type !== 'application/pdf') {
+      this.error.set('Only PDF files are supported.');
+      return;
+    }
+
+    if (file.size > MAX_PDF_SIZE_BYTES) {
+      this.error.set('PDF file exceeds 10 MB limit.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      // Strip the data URL prefix to get raw base64
+      const base64 = result.split(',')[1];
+
+      this.pendingAttachment.set({
+        type: 'pdf',
+        fileName: file.name,
+        mimeType: 'application/pdf',
+        data: base64,
+      });
+    };
+    reader.onerror = () => {
+      this.error.set('Failed to read PDF file.');
+    };
+    reader.readAsDataURL(file);
   }
 
   private generateId(): string {

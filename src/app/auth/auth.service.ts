@@ -61,7 +61,7 @@ export class AuthService {
         }
       }
     }, (err) => {
-      console.error('Auth state change error:', err);
+      logger.error('Auth state change error:', err);
       this.error.set(this.getErrorMessage(err));
       this.loading.set(false);
     });
@@ -76,7 +76,7 @@ export class AuthService {
         logger.info('Successfully signed in via redirect:', result.user.email);
       }
     } catch (err: unknown) {
-      console.error('Redirect result error:', err);
+      logger.error('Redirect result error:', err);
       this.error.set(this.getErrorMessage(err));
     } finally {
       this.redirectCheckComplete = true;

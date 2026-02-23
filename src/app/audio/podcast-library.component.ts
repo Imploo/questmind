@@ -1,5 +1,4 @@
-import { Component, signal, inject, effect } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component, signal, inject, effect } from '@angular/core';
 import { AuthService } from '../auth/auth.service';
 import { PodcastAudioService } from './services/podcast-audio.service';
 import { PodcastVersion, AudioSessionRecord } from './services/audio-session.models';
@@ -17,8 +16,8 @@ interface SessionWithPodcasts {
 
 @Component({
   selector: 'app-podcast-library',
-  standalone: true,
-  imports: [CommonModule, CampaignSelectorComponent],
+  imports: [CampaignSelectorComponent],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="max-w-5xl mx-auto">
       <div class="mb-6 hidden sm:block">

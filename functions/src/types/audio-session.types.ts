@@ -104,6 +104,7 @@ export interface AISettings {
   defaultModel: string;
   availableModels?: string[];
   apiProvider?: string;
+  cacheEnabled?: boolean;
   features?: {
     transcription?: TranscriptionFeatureConfig;
     storyGeneration?: AIFeatureConfig;

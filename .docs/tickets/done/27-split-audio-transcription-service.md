@@ -3,6 +3,7 @@
 **Priority:** CRITICAL
 **Estimated Effort:** 1 week
 **Code Review Issue:** #2
+**Status:** Done
 
 ## Problem
 

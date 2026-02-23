@@ -4,6 +4,7 @@ import { getFirestore } from 'firebase-admin/firestore';
 import { wrapCallable } from './utils/sentry-error-handler';
 import { getAiFeatureConfig } from './utils/ai-settings';
 import { SHARED_CORS } from './index';
+import * as logger from './utils/logger';
 
 interface ResolveSpellRequest {
   characterId: string;
@@ -25,10 +26,21 @@ export const resolveSpell = onCall(
   wrapCallable<ResolveSpellRequest, ResolveSpellResponse>(
     'resolveSpell',
     async (request): Promise<ResolveSpellResponse> => {
+      if (!request.auth?.uid) {
+        throw new HttpsError('unauthenticated', 'Authentication required');
+      }
+
       const { characterId, spellName, spellLevel, spellSchool } = request.data;
 
       if (!characterId || !spellName) {
         throw new HttpsError('invalid-argument', 'Missing required fields: characterId, spellName');
+      }
+
+      // Verify caller owns this character
+      const db = getFirestore();
+      const charSnap = await db.collection('characters').doc(characterId).get();
+      if (!charSnap.exists || charSnap.data()?.['userId'] !== request.auth.uid) {
+        throw new HttpsError('permission-denied', 'Not authorized for this character');
       }
 
       const apiKey = process.env.GOOGLE_AI_API_KEY;
@@ -70,14 +82,12 @@ Return only valid JSON like: {"description": "...", "usage": "Casting Time: 1 ac
           throw new Error('Missing required fields in response');
         }
       } catch (parseError) {
-        console.error('resolveSpell: Failed to parse AI response:', text);
+        logger.error('resolveSpell: Failed to parse AI response:', text);
         throw new HttpsError('internal', 'Failed to parse spell details from AI response');
       }
 
       // Patch Firestore active version (best-effort — do not fail the request if this fails)
       try {
-        const db = getFirestore();
-        const charSnap = await db.collection('characters').doc(characterId).get();
         const activeVersionId = charSnap.data()?.['activeVersionId'] as string | undefined;
 
         if (activeVersionId) {
@@ -97,7 +107,7 @@ Return only valid JSON like: {"description": "...", "usage": "Casting Time: 1 ac
           }
         }
       } catch (e) {
-        console.error('resolveSpell: Firestore patch failed (non-fatal):', e);
+        logger.error('resolveSpell: Firestore patch failed (non-fatal):', e);
       }
 
       return details;
