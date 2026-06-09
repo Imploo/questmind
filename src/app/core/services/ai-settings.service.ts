@@ -1,12 +1,13 @@
 import { Injectable, inject, computed } from '@angular/core';
 import { AiSettingsRepository } from '../../shared/repository/ai-settings.repository';
 
+export type GeminiThinkingLevel = 'minimal' | 'low' | 'medium' | 'high';
+
 export interface AiModelConfig {
   model: string;
-  temperature: number;
-  topP: number;
-  topK: number;
   maxOutputTokens: number;
+  /** Gemini 3.x reasoning effort — controls response speed vs. depth. */
+  thinkingLevel?: GeminiThinkingLevel;
 }
 
 export interface AiImageConfig {
@@ -47,11 +48,9 @@ export class AiSettingsService {
 
   // Default fallback values
   private readonly defaultCharacterChatConfig: AiModelConfig = {
-    model: 'gemini-3-flash-preview',
-    temperature: 0.7,
-    topP: 0.95,
-    topK: 40,
-    maxOutputTokens: 8192
+    model: 'gemini-3.5-flash',
+    maxOutputTokens: 8192,
+    thinkingLevel: 'low'
   };
 
   private readonly defaultImageGenerationConfig: AiImageConfig = {

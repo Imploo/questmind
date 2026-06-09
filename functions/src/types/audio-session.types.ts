@@ -70,12 +70,14 @@ export type RegenerateStoryStatus =
   | 'completed'
   | 'failed';
 
+/** Gemini 3.x reasoning effort. Maps to the SDK `ThinkingLevel` enum. */
+export type GeminiThinkingLevel = 'minimal' | 'low' | 'medium' | 'high';
+
 export interface AIFeatureConfig {
   model: string;
-  temperature: number;
-  topP: number;
-  topK: number;
   maxOutputTokens: number;
+  /** Gemini 3.x reasoning effort — controls response speed vs. depth. */
+  thinkingLevel?: GeminiThinkingLevel;
 }
 
 export interface PodcastVoiceSettings {
@@ -122,9 +124,6 @@ export interface AISettings {
   modelConfig?: {
     [key: string]: {
       maxOutputTokens: number;
-      temperature: number;
-      topP: number;
-      topK: number;
     };
   };
 }

@@ -13,9 +13,6 @@ vi.mock('@google/genai', () => ({
 vi.mock('./utils/ai-settings', () => ({
   getAiFeatureConfig: vi.fn(() => Promise.resolve({
     model: 'gemini-test',
-    temperature: 0.7,
-    topP: 0.95,
-    topK: 40,
     maxOutputTokens: 4096,
   })),
 }));

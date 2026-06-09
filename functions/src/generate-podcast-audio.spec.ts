@@ -29,9 +29,6 @@ vi.mock('@elevenlabs/elevenlabs-js', () => ({
 vi.mock('./utils/ai-settings', () => ({
   getAiFeatureConfig: vi.fn(() => Promise.resolve({
     model: 'gemini-test',
-    temperature: 0.9,
-    topP: 0.95,
-    topK: 40,
     maxOutputTokens: 4096,
   })),
   getPodcastVoiceConfig: vi.fn(() => Promise.resolve({

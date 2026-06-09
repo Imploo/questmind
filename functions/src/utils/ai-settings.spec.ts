@@ -28,11 +28,9 @@ describe('ai-settings', () => {
       const config = await getAiFeatureConfig('spellResolution');
 
       expect(config).toEqual({
-        model: 'gemini-3-flash-preview',
-        temperature: 0.3,
-        topP: 0.95,
-        topK: 40,
+        model: 'gemini-3.5-flash',
         maxOutputTokens: 4096,
+        thinkingLevel: 'low',
       });
     });
 
@@ -40,7 +38,7 @@ describe('ai-settings', () => {
       mockGet.mockResolvedValueOnce({
         data: () => ({
           features: {
-            spellResolution: { model: 'custom-model', temperature: 0.5 },
+            spellResolution: { model: 'custom-model', maxOutputTokens: 1234 },
           },
         }),
       });
@@ -49,10 +47,9 @@ describe('ai-settings', () => {
       const config = await getAiFeatureConfig('spellResolution');
 
       expect(config.model).toBe('custom-model');
-      expect(config.temperature).toBe(0.5);
+      expect(config.maxOutputTokens).toBe(1234);
       // Defaults preserved for non-overridden fields
-      expect(config.topP).toBe(0.95);
-      expect(config.maxOutputTokens).toBe(4096);
+      expect(config.thinkingLevel).toBe('low');
     });
 
     it('should return defaults for unknown feature keys', async () => {

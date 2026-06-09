@@ -65,7 +65,9 @@
       "Bash(gcloud run services get-iam-policy:*)",
       "Bash(gcloud run services add-iam-policy-binding:*)",
       "mcp__angular-cli__find_examples",
-      "Bash(npm run test)"
+      "Bash(npm run test)",
+      "Bash(npx -y npm-search-cli \"angular mcp server\")",
+      "Bash(npm search:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

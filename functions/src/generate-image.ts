@@ -1,6 +1,7 @@
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { wrapCallable } from './utils/sentry-error-handler';
 import { getAiImageConfig, getAiFeatureConfig } from './utils/ai-settings';
+import { buildGenerationParams } from './utils/gemini-config';
 import { SHARED_CORS } from './index';
 import { getStorage } from 'firebase-admin/storage';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
@@ -98,10 +99,7 @@ export const generateImage = onCall(
             + 'Focus on physical appearance, clothing, equipment, expression, and setting. '
             + 'Do NOT include any instructions, metadata, or formatting — only the image description.'
             + referenceStyleInstruction,
-          temperature: promptConfig.temperature,
-          topP: promptConfig.topP,
-          topK: promptConfig.topK,
-          maxOutputTokens: promptConfig.maxOutputTokens,
+          ...buildGenerationParams(promptConfig),
         },
       });
 

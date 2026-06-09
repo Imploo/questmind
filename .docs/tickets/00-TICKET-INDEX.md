@@ -653,5 +653,21 @@ Start here for immediate impact with minimal risk:
 
 ---
 
-**Last Updated:** 2026-02-23
+## 🎙️ Podcast TTS Migratie
+
+| Ticket | Title | Priority | Status | Effort | Dependencies |
+|--------|-------|----------|--------|--------|--------------|
+| [#66](./66-migrate-podcast-tts-to-gemini.md) | Migreer Podcast TTS van ElevenLabs naar Gemini TTS | High | Todo | 2-3 dagen | - |
+
+**Key Changes:**
+- **Ticket 66**: Vervang ElevenLabs text-to-dialogue door Gemini 2.5 TTS
+  - Native multi-speaker audio generatie (2 speakers in 1 API call)
+  - Hergebruikt bestaande `@google/genai` package — geen extra dependency
+  - `@elevenlabs/elevenlabs-js` en `ELEVENLABS_API_KEY` verwijderd
+  - 30 prebuilt stemmen, stijlcontrole via natural language prompts
+  - Vendor consolidatie: volledig op Google/Gemini stack
+
+---
+
+**Last Updated:** 2026-03-31
 **Status:** Planning Complete, Ready to Begin
