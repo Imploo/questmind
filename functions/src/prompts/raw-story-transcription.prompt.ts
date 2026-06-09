@@ -5,7 +5,7 @@
  * from a D&D session audio recording. The output is later polished into the
  * final session story by a second AI step.
  */
-export const RAW_STORY_TRANSCRIPTION_PROMPT = `Listen to this audio recording of a D&D 5e session and write a VERY extensive, richly detailed narrative of everything that happens. Your goal is to produce the most complete and detailed account possible — this raw story will be refined in a later step, so MORE detail is always better than less.
+export const RAW_STORY_TRANSCRIPTION_PROMPT = `Listen to this audio recording of a D&D 5e session and write an extensive, richly detailed narrative of everything that happens. This raw story will be refined in a later step, so detail matters — but you have a limited output budget (about 65,000 tokens). Your goal is the most complete, detailed account that still covers the ENTIRE session from start to finish within that budget.
 
 CRITICAL: You MUST actually listen to and process the provided audio file. DO NOT generate fictional content if you cannot access or hear the audio.
 
@@ -17,17 +17,20 @@ TRUTHFULNESS (CRITICAL):
 - If a section of audio is unclear, move on — do not fill in gaps with imagined content
 - The goal is a DETAILED and FAITHFUL account, not a creative writing exercise
 
-LENGTH AND DETAIL EXPECTATIONS:
-- Your output should be LONG — aim for at least 20,000 characters. A typical D&D session has hours of content; your narrative should reflect that depth
-- Do NOT summarize — instead, expand and elaborate on every scene, conversation, and encounter you HEAR in the audio
-- Include full dialogue exchanges as spoken, not just summaries of what was discussed
-- Describe combat round by round as narrated: who attacks whom, what abilities are used, what the results are, how characters react
-- Capture the emotional tone as expressed in the audio: how characters sound, their hesitations, their excitement, their fear
-- Describe environments and atmospheres as the DM describes them in the audio
-- Include NPC personalities and mannerisms as they come through in the audio
-- When characters deliberate about decisions, capture that discussion — what options were considered, what arguments were made
-- Include transitions between scenes: travel, rest, preparation moments as they occur
-- This is a raw detailed story — it is better to include too much of what was said than too little
+LENGTH, BUDGET AND PACING (CRITICAL):
+- You have a limited output budget of about 65,000 tokens (roughly 200,000 characters). Your most important constraint is that the narrative MUST cover the ENTIRE session, from the first scene to the last, within that budget — never run out of room before the session ends
+- A typical session is about 3 hours. Pace yourself across the whole recording so detail is distributed evenly; do NOT lavish so much detail on the opening that later parts get cut off
+- Write a long, detailed narrative — at least 20,000 characters, and as much more as the content warrants — but always keep a comfortable margin below the budget so the ending is never truncated. A detailed narrative of a full 3-hour session normally fits well within 65,000 tokens
+- If you notice you are using space too quickly, tighten your prose (shorter sentences, less repetition) rather than dropping events — every scene must still appear, in chronological order
+- Within that budget, be as detailed as the audio allows:
+  - Do NOT summarize — instead, expand and elaborate on every scene, conversation, and encounter you HEAR in the audio
+  - Include full dialogue exchanges as spoken, not just summaries of what was discussed
+  - Describe combat round by round as narrated: who attacks whom, what abilities are used, what the results are, how characters react
+  - Capture the emotional tone as expressed in the audio: how characters sound, their hesitations, their excitement, their fear
+  - Describe environments and atmospheres as the DM describes them in the audio
+  - Include NPC personalities and mannerisms as they come through in the audio
+  - When characters deliberate about decisions, capture that discussion — what options were considered, what arguments were made
+  - Include transitions between scenes: travel, rest, preparation moments as they occur
 
 PROCESSING APPROACH:
 - Process the audio chronologically in strict order
@@ -75,8 +78,8 @@ OUTPUT REQUIREMENTS:
 - Focus on in-game content only (combat, character actions, plot, NPC dialogue)
 - Remove meta-game talk, rules debates, breaks, background noise, and repeated corrections
 - Use clear, complete sentences grouped into well-developed paragraphs
-- Be MAXIMALLY thorough — this is the raw material for the final story, and every detail matters
-- When in doubt about whether to include something from the audio: INCLUDE IT
+- Be thorough — this is the raw material for the final story, and detail matters — but always stay within your output budget and keep the whole session covered from start to finish
+- When in doubt about whether to include something from the audio, prefer meaningful in-game content; if space is getting tight, economize on verbosity rather than skipping later events
 
 ERROR HANDLING:
 - If you cannot access the audio file or detect any speech, return exactly: ERROR: NO_AUDIO_DETECTED

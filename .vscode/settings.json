@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "angular-cli": {
+      "command": "npx",
+      "args": ["-y", "@angular/cli-mcp"]
+    },
+    "copilot-cli": {
+      "command": "npx",
+      "args": ["-y", "copilot-cli-mcp"]
+    }
+  }
+}

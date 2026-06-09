@@ -164,47 +164,6 @@ interface FeatureDefinition {
                       />
                     </div>
                     <div>
-                      <label class="block text-sm font-medium text-gray-700 mb-1">Temperature</label>
-                      <input
-                        type="number"
-                        [ngModel]="getFeatureValue('temperature')"
-                        (ngModelChange)="setFeatureValue('temperature', $event)"
-                        [name]="selectedFeature().key + '-temperature'"
-                        (blur)="onFieldBlur()"
-                        step="0.05"
-                        min="0"
-                        max="2"
-                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
-                      />
-                    </div>
-                    <div>
-                      <label class="block text-sm font-medium text-gray-700 mb-1">Top P</label>
-                      <input
-                        type="number"
-                        [ngModel]="getFeatureValue('topP')"
-                        (ngModelChange)="setFeatureValue('topP', $event)"
-                        [name]="selectedFeature().key + '-topP'"
-                        (blur)="onFieldBlur()"
-                        step="0.05"
-                        min="0"
-                        max="1"
-                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
-                      />
-                    </div>
-                    <div>
-                      <label class="block text-sm font-medium text-gray-700 mb-1">Top K</label>
-                      <input
-                        type="number"
-                        [ngModel]="getFeatureValue('topK')"
-                        (ngModelChange)="setFeatureValue('topK', $event)"
-                        [name]="selectedFeature().key + '-topK'"
-                        (blur)="onFieldBlur()"
-                        step="1"
-                        min="1"
-                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
-                      />
-                    </div>
-                    <div>
                       <label class="block text-sm font-medium text-gray-700 mb-1">Max Output Tokens</label>
                       <input
                         type="number"
@@ -217,6 +176,26 @@ interface FeatureDefinition {
                         class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                       />
                     </div>
+                    @if (currentModelIsGemini3()) {
+                      <div class="md:col-span-2">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">
+                          Thinking Level
+                          <span class="text-xs font-normal text-gray-400">(Gemini 3.x — reasoning effort, vervangt thinking budget)</span>
+                        </label>
+                        <select
+                          [ngModel]="getFeatureValue('thinkingLevel')"
+                          (ngModelChange)="setFeatureValue('thinkingLevel', $event)"
+                          [name]="selectedFeature().key + '-thinkingLevel'"
+                          (change)="onFieldBlur()"
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                        >
+                          <option value="">Model default (medium)</option>
+                          @for (level of thinkingLevels; track level) {
+                            <option [value]="level">{{ level }}</option>
+                          }
+                        </select>
+                      </div>
+                    }
                   </div>
                 }
                 @case ('imageOnly') {
@@ -299,13 +278,15 @@ export class AdminComponent implements OnInit {
   private readonly aiSettingsRepo = inject(AiSettingsRepository);
   readonly userService = inject(UserService);
 
+  readonly thinkingLevels = ['minimal', 'low', 'medium', 'high'] as const;
+
   readonly featureDefinitions: readonly FeatureDefinition[] = [
     {
       key: 'characterChatText',
       label: 'Character Chat (Tekst)',
       icon: '💬',
-      provider: 'Claude',
-      providerColor: 'bg-orange-100 text-orange-700',
+      provider: 'Gemini',
+      providerColor: 'bg-blue-100 text-blue-700',
       formType: 'standard',
       description: 'AI 1 — Reageert als D&D Sidekick op chatberichten'
     },
@@ -393,16 +374,16 @@ export class AdminComponent implements OnInit {
   ];
 
   private readonly defaultConfigs: Record<string, AiModelConfig | AiImageConfig | PodcastVoiceSettings> = {
-    characterChatText: { model: 'claude-haiku-4-5-20251001', temperature: 0.7, topP: 0.95, topK: 40, maxOutputTokens: 4096 },
-    characterDraft: { model: 'gemini-3-flash-preview', temperature: 0.1, topP: 0.95, topK: 40, maxOutputTokens: 8192 },
-    spellResolution: { model: 'gemini-3-flash-preview', temperature: 0.3, topP: 0.95, topK: 40, maxOutputTokens: 4096 },
-    featureResolution: { model: 'gemini-3-flash-preview', temperature: 0.3, topP: 0.95, topK: 40, maxOutputTokens: 4096 },
-    imagePromptGeneration: { model: 'gemini-2.5-flash', temperature: 0.7, topP: 0.95, topK: 40, maxOutputTokens: 1024 },
+    characterChatText: { model: 'gemini-3.5-flash', maxOutputTokens: 4096, thinkingLevel: 'low' },
+    characterDraft: { model: 'gemini-3.5-flash', maxOutputTokens: 8192, thinkingLevel: 'medium' },
+    spellResolution: { model: 'gemini-3.5-flash', maxOutputTokens: 4096, thinkingLevel: 'low' },
+    featureResolution: { model: 'gemini-3.5-flash', maxOutputTokens: 4096, thinkingLevel: 'low' },
+    imagePromptGeneration: { model: 'gemini-3.5-flash', maxOutputTokens: 1024, thinkingLevel: 'low' },
     imageGeneration: { model: 'fal-ai/flux/schnell' },
-    transcription: { model: 'gemini-2.0-flash-exp', temperature: 0.1, topP: 1, topK: 40, maxOutputTokens: 128000 },
-    storyGeneration: { model: 'gemini-2.0-flash-exp', temperature: 0.8, topP: 0.95, topK: 40, maxOutputTokens: 32000 },
-    podcastScript: { model: 'gemini-2.5-flash', temperature: 0.9, topP: 0.95, topK: 40, maxOutputTokens: 4096 },
-    characterChat: { model: 'gemini-2.0-flash-exp', temperature: 0.4, topP: 0.95, topK: 40, maxOutputTokens: 8192 },
+    transcription: { model: 'gemini-3.5-flash', maxOutputTokens: 65536, thinkingLevel: 'low' },
+    storyGeneration: { model: 'gemini-3.5-flash', maxOutputTokens: 32000, thinkingLevel: 'medium' },
+    podcastScript: { model: 'gemini-3.5-flash', maxOutputTokens: 4096, thinkingLevel: 'medium' },
+    characterChat: { model: 'gemini-3.5-flash', maxOutputTokens: 8192, thinkingLevel: 'low' },
     podcastVoices: { model: 'eleven_v3', maxCharacters: 5000, host1VoiceId: '', host2VoiceId: '' },
   };
 
@@ -432,6 +413,11 @@ export class AdminComponent implements OnInit {
       return { ...settings, cacheEnabled: !settings.cacheEnabled };
     });
     void this.autoSave();
+  }
+
+  currentModelIsGemini3(): boolean {
+    const model = this.getFeatureValue('model');
+    return typeof model === 'string' && /^gemini-3/.test(model);
   }
 
   getFeatureValue(field: string): unknown {

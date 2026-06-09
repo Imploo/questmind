@@ -2,6 +2,7 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { GoogleGenAI, Part } from '@google/genai';
 import { wrapCallable } from './utils/sentry-error-handler';
 import { getAiFeatureConfig } from './utils/ai-settings';
+import { buildGenerationParams } from './utils/gemini-config';
 import { SHARED_CORS } from './index';
 import { CHARACTER_RESPONDER_PROMPT } from './prompts/character-responder.prompt';
 import { DndCharacter } from './schemas/dnd-character.schema';
@@ -112,10 +113,7 @@ export const characterChat = onCall(
               },
               required: ['text', 'shouldUpdateCharacter'],
             },
-            maxOutputTokens: config.maxOutputTokens,
-            temperature: config.temperature,
-            topP: config.topP,
-            topK: config.topK,
+            ...buildGenerationParams(config),
           },
         });
 

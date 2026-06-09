@@ -32,14 +32,14 @@ export function resetAiSettingsCache(): void {
 }
 
 const DEFAULT_CONFIGS: Record<string, AIFeatureConfig> = {
-  characterChatText: { model: 'gemini-3-flash-preview', temperature: 0.7, topP: 0.95, topK: 40, maxOutputTokens: 4096 },
-  characterDraft: { model: 'gemini-3-flash-preview', temperature: 0.1, topP: 0.95, topK: 40, maxOutputTokens: 8192 },
-  spellResolution: { model: 'gemini-3-flash-preview', temperature: 0.3, topP: 0.95, topK: 40, maxOutputTokens: 4096 },
-  featureResolution: { model: 'gemini-3-flash-preview', temperature: 0.3, topP: 0.95, topK: 40, maxOutputTokens: 4096 },
-  transcription: { model: 'gemini-2.0-flash-exp', temperature: 0.1, topP: 1, topK: 40, maxOutputTokens: 128000 },
-  storyGeneration: { model: 'gemini-2.0-flash-exp', temperature: 0.8, topP: 0.95, topK: 40, maxOutputTokens: 32000 },
-  podcastScript: { model: 'gemini-2.5-flash', temperature: 0.9, topP: 0.95, topK: 40, maxOutputTokens: 4096 },
-  imagePromptGeneration: { model: 'gemini-2.5-flash', temperature: 0.7, topP: 0.95, topK: 40, maxOutputTokens: 1024 },
+  characterChatText: { model: 'gemini-3.5-flash', maxOutputTokens: 4096, thinkingLevel: 'low' },
+  characterDraft: { model: 'gemini-3.5-flash', maxOutputTokens: 8192, thinkingLevel: 'medium' },
+  spellResolution: { model: 'gemini-3.5-flash', maxOutputTokens: 4096, thinkingLevel: 'low' },
+  featureResolution: { model: 'gemini-3.5-flash', maxOutputTokens: 4096, thinkingLevel: 'low' },
+  transcription: { model: 'gemini-3.5-flash', maxOutputTokens: 65536, thinkingLevel: 'low' },
+  storyGeneration: { model: 'gemini-3.5-flash', maxOutputTokens: 32000, thinkingLevel: 'medium' },
+  podcastScript: { model: 'gemini-3.5-flash', maxOutputTokens: 4096, thinkingLevel: 'medium' },
+  imagePromptGeneration: { model: 'gemini-3.5-flash', maxOutputTokens: 1024, thinkingLevel: 'low' },
 };
 
 const DEFAULT_IMAGE_CONFIG = { model: 'fal-ai/flux/schnell' };

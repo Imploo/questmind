@@ -1,4 +1,5 @@
 import * as logger from '../utils/logger';
+import { buildGenerationParams } from '../utils/gemini-config';
 import { GoogleGenAI } from '@google/genai';
 import { AIFeatureConfig, KankaSearchResult, PreviousStory } from '../types/audio-session.types';
 import { SESSION_STORY_GENERATOR_PROMPT } from '../prompts/session-story-generator.prompt';
@@ -35,10 +36,7 @@ export async function generateStoryFromTranscription(
     model: config.model,
     contents: [{ role: 'user', parts: [{ text: storyPrompt }] }],
     config: {
-      temperature: config.temperature,
-      topP: config.topP,
-      topK: config.topK,
-      maxOutputTokens: config.maxOutputTokens
+      ...buildGenerationParams(config)
     }
   });
 

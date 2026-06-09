@@ -4,6 +4,7 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { ProgressTrackerService } from './services/progress-tracker.service';
 import { getAiFeatureConfig } from './utils/ai-settings';
+import { buildGenerationParams } from './utils/gemini-config';
 import { WorkerQueueService } from './services/worker-queue.service';
 import { buildRawStoryPrompt } from './audio/transcription-prompt';
 import { fetchKankaContextForTranscription } from './services/kanka.service';
@@ -198,10 +199,8 @@ async function processTranscriptionAsync(
     logger.debug(`[Fast Transcription] Calling Gemini API with request:`, {
       model,
       config: {
-        temperature: transcriptionConfig.temperature,
-        topK: transcriptionConfig.topK,
-        topP: transcriptionConfig.topP,
         maxOutputTokens: transcriptionConfig.maxOutputTokens,
+        thinkingLevel: transcriptionConfig.thinkingLevel,
       },
       prompt: prompt,
       hasKankaContext: !!kankaContext,
@@ -225,10 +224,7 @@ async function processTranscriptionAsync(
         },
       ],
       config: {
-        temperature: transcriptionConfig.temperature,
-        topK: transcriptionConfig.topK,
-        topP: transcriptionConfig.topP,
-        maxOutputTokens: transcriptionConfig.maxOutputTokens,
+        ...buildGenerationParams(transcriptionConfig),
       },
     });
 

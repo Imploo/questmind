@@ -3,6 +3,7 @@ import { GoogleGenAI } from '@google/genai';
 import { getFirestore } from 'firebase-admin/firestore';
 import { wrapCallable } from './utils/sentry-error-handler';
 import { getAiFeatureConfig } from './utils/ai-settings';
+import { buildGenerationParams } from './utils/gemini-config';
 import { SHARED_CORS } from './index';
 import * as logger from './utils/logger';
 
@@ -66,7 +67,7 @@ Fields:
 Return only valid JSON like: {"description": "..."}`,
         config: {
           responseMimeType: 'application/json',
-          maxOutputTokens: config.maxOutputTokens,
+          ...buildGenerationParams(config),
         },
       });
 

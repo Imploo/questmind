@@ -5,6 +5,7 @@ import { DndCharacterSchema, DndCharacter } from './schemas/dnd-character.schema
 import { CHARACTER_JSON_GENERATOR_PROMPT } from './prompts/character-json-generator.prompt';
 import { wrapCallable } from './utils/sentry-error-handler';
 import { getAiFeatureConfig } from './utils/ai-settings';
+import { buildGenerationParams } from './utils/gemini-config';
 import { SHARED_CORS } from './index';
 import * as logger from './utils/logger';
 import { ChatHistoryMessage } from './types/chat.types';
@@ -70,8 +71,7 @@ export async function executeGenerateCharacterDraft(payload: GenerateCharacterDr
     config: {
       systemInstruction: CHARACTER_JSON_GENERATOR_PROMPT,
       responseMimeType: 'application/json',
-      maxOutputTokens: config.maxOutputTokens,
-      temperature: config.temperature,
+      ...buildGenerationParams(config),
     },
   });
 

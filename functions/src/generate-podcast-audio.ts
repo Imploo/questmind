@@ -13,6 +13,7 @@ import { ensureAuthForTesting } from './utils/emulator-helpers';
 import { ProgressTrackerService } from './services/progress-tracker.service';
 import { wrapCallable, captureFunctionError } from './utils/sentry-error-handler';
 import { getAiFeatureConfig, getPodcastVoiceConfig } from './utils/ai-settings';
+import { buildGenerationParams } from './utils/gemini-config';
 import { AIFeatureConfig, PodcastEntry } from './types/audio-session.types';
 
 const DEFAULT_HOST_VOICES: Record<'host1' | 'host2', string> = {
@@ -242,10 +243,7 @@ async function generatePodcastInBackground(
         ],
         config: {
           systemInstruction: getPodcastScriptPrompt(voiceConfig.maxCharacters),
-          temperature: scriptConfig.temperature,
-          topP: scriptConfig.topP,
-          topK: scriptConfig.topK,
-          maxOutputTokens: scriptConfig.maxOutputTokens,
+          ...buildGenerationParams(scriptConfig),
         },
       });
 
