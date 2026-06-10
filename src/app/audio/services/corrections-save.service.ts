@@ -13,53 +13,65 @@ export class CorrectionsSaveService implements OnDestroy {
   private saveTimer?: ReturnType<typeof setTimeout>;
   private statusTimer?: ReturnType<typeof setTimeout>;
   private activeSessionId: string | null = null;
+  private pendingSave: { sessionId: string; corrections: string } | null = null;
 
   /**
    * Sync corrections state when the active session changes.
    * Call this from an effect in the parent component.
+   *
+   * The textarea is the source of truth while the user types: the field is
+   * only (re)filled from the database when the active session changes, never
+   * when a Firestore snapshot echoes back a value for the same session.
    */
   syncToSession(session: AudioSessionRecord | null): void {
     const sessionId = session?.id ?? null;
-    if (sessionId !== this.activeSessionId) {
-      this.activeSessionId = sessionId;
-      this.corrections.set(session?.userCorrections ?? '');
-      this.saveStatus.set('idle');
-      this.clearTimers();
+    if (sessionId === this.activeSessionId) {
       return;
     }
-    // If same session and user isn't actively saving, sync from Firestore
-    if (this.saveStatus() === 'idle') {
-      const corrections = session?.userCorrections ?? '';
-      if (corrections !== this.corrections()) {
-        this.corrections.set(corrections);
-      }
-    }
+    this.flushPendingSave();
+    this.activeSessionId = sessionId;
+    this.corrections.set(session?.userCorrections ?? '');
+    this.saveStatus.set('idle');
+    this.clearStatusTimer();
   }
 
   onInput(corrections: string): void {
     this.corrections.set(corrections);
     this.saveStatus.set('saving');
     this.clearSaveTimer();
+    this.pendingSave = this.activeSessionId
+      ? { sessionId: this.activeSessionId, corrections }
+      : null;
     this.saveTimer = setTimeout(() => {
-      void this.save(corrections);
+      this.flushPendingSave();
     }, 500);
   }
 
   ngOnDestroy(): void {
-    this.clearTimers();
+    this.flushPendingSave();
+    this.clearStatusTimer();
   }
 
-  private async save(corrections: string): Promise<void> {
-    const sessionId = this.activeSessionId;
-    if (!sessionId) {
-      this.saveStatus.set('idle');
+  private flushPendingSave(): void {
+    this.clearSaveTimer();
+    const pending = this.pendingSave;
+    this.pendingSave = null;
+    if (!pending) {
       return;
     }
+    void this.save(pending.sessionId, pending.corrections);
+  }
+
+  private async save(sessionId: string, corrections: string): Promise<void> {
     try {
       await this.sessionStateService.persistSessionPatch(sessionId, {
         userCorrections: corrections,
         correctionsUpdatedAt: new Date().toISOString()
       });
+      // Only show save feedback if the saved session is still the active one
+      if (sessionId !== this.activeSessionId) {
+        return;
+      }
       this.saveStatus.set('saved');
       this.clearStatusTimer();
       this.statusTimer = setTimeout(() => {
@@ -67,13 +79,10 @@ export class CorrectionsSaveService implements OnDestroy {
       }, 2000);
     } catch (error) {
       logger.error('Failed to save corrections:', error);
-      this.saveStatus.set('idle');
+      if (sessionId === this.activeSessionId) {
+        this.saveStatus.set('idle');
+      }
     }
-  }
-
-  private clearTimers(): void {
-    this.clearSaveTimer();
-    this.clearStatusTimer();
   }
 
   private clearSaveTimer(): void {
