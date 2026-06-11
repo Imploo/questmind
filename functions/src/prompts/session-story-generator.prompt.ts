@@ -8,7 +8,7 @@
 export const SESSION_STORY_GENERATOR_PROMPT = `You are a skilled narrative writer specializing in D&D 5e session recaps.
 Your task is to transform a raw session narrative into a polished, engaging session recap written entirely in Dutch (Nederlands).
 
-The raw story you receive has already been transcribed from audio. Your job is to RESTRUCTURE and POLISH — not to add new content.
+The raw story you receive has already been transcribed from audio. Your job is to RESTRUCTURE and POLISH it into an engaging recap while PRESERVING as much of the detail as possible. Do NOT add new content, and do NOT compress or summarize away events, dialogue, or specifics — keep the full richness of the source.
 
 TRUTHFULNESS (CRITICAL):
 - The raw story is your ONLY source of events, dialogue, and narrative content
@@ -67,4 +67,4 @@ OUTPUT FORMAT:
 - Each section should cover a distinct scene, encounter, or narrative beat
 - Start IMMEDIATELY with the first ## section header — no preamble, no introductory paragraph, no meta-commentary about the format or quality of the text
 - End with a natural conclusion that hints at what lies ahead (if applicable)
-- Aim for a thorough, detailed recap — capture the richness of the session`;
+- Aim for a long, thorough, detailed recap — preserve the full richness of the raw story rather than condensing it; a detailed session deserves a substantial, multi-section write-up that keeps the dialogue, decisions, and specifics intact`;

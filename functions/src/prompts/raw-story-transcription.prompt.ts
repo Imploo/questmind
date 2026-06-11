@@ -5,7 +5,7 @@
  * from a D&D session audio recording. The output is later polished into the
  * final session story by a second AI step.
  */
-export const RAW_STORY_TRANSCRIPTION_PROMPT = `Listen to this audio recording of a D&D 5e session and write an extensive, richly detailed narrative of everything that happens. This raw story will be refined in a later step, so detail matters — but you have a limited output budget (about 65,000 tokens). Your goal is the most complete, detailed account that still covers the ENTIRE session from start to finish within that budget.
+export const RAW_STORY_TRANSCRIPTION_PROMPT = `Listen to this audio recording of a D&D 5e session and write an extensive, richly detailed narrative of everything that happens. This raw story is the source material for a later refining step, so MORE faithful detail is always better. Use your full output budget (about 65,000 tokens / roughly 200,000 characters) to capture as much of what you actually hear as possible, while making sure you cover the ENTIRE session from the first scene to the last.
 
 CRITICAL: You MUST actually listen to and process the provided audio file. DO NOT generate fictional content if you cannot access or hear the audio.
 
@@ -17,12 +17,12 @@ TRUTHFULNESS (CRITICAL):
 - If a section of audio is unclear, move on — do not fill in gaps with imagined content
 - The goal is a DETAILED and FAITHFUL account, not a creative writing exercise
 
-LENGTH, BUDGET AND PACING (CRITICAL):
-- You have a limited output budget of about 65,000 tokens (roughly 200,000 characters). Your most important constraint is that the narrative MUST cover the ENTIRE session, from the first scene to the last, within that budget — never run out of room before the session ends
-- A typical session is about 3 hours. Pace yourself across the whole recording so detail is distributed evenly; do NOT lavish so much detail on the opening that later parts get cut off
-- Write a long, detailed narrative — at least 20,000 characters, and as much more as the content warrants — but always keep a comfortable margin below the budget so the ending is never truncated. A detailed narrative of a full 3-hour session normally fits well within 65,000 tokens
-- If you notice you are using space too quickly, tighten your prose (shorter sentences, less repetition) rather than dropping events — every scene must still appear, in chronological order
-- Within that budget, be as detailed as the audio allows:
+LENGTH AND DETAIL (CRITICAL):
+- Be as detailed and complete as the audio allows — your goal is to capture the MAXIMUM amount of what is actually in the recording. More faithful detail is always better than a shorter summary
+- A typical 3-hour session deserves a long, thorough narrative: aim well above 40,000 characters, and keep going as long as there is real content in the audio to capture. Do NOT stop early or compress the account "to be safe"
+- You have a large output budget (about 65,000 tokens / roughly 200,000 characters). Treat it as room to be thorough, not a limit to fear — a detailed full-session account fits comfortably within it
+- Cover the ENTIRE session, from the first scene to the last, in strict chronological order. Pace your detail evenly across the whole recording so the opening does not crowd out the ending — but err on the side of MORE detail everywhere, not less
+- Be as detailed as the audio allows on every front:
   - Do NOT summarize — instead, expand and elaborate on every scene, conversation, and encounter you HEAR in the audio
   - Include full dialogue exchanges as spoken, not just summaries of what was discussed
   - Describe combat round by round as narrated: who attacks whom, what abilities are used, what the results are, how characters react
@@ -78,7 +78,7 @@ OUTPUT REQUIREMENTS:
 - Focus on in-game content only (combat, character actions, plot, NPC dialogue)
 - Remove meta-game talk, rules debates, breaks, background noise, and repeated corrections
 - Use clear, complete sentences grouped into well-developed paragraphs
-- Be thorough — this is the raw material for the final story, and detail matters — but always stay within your output budget and keep the whole session covered from start to finish
+- Be thorough and richly detailed — this is the raw material for the final story, so capture as much real content as you can while keeping the whole session covered from start to finish
 - When in doubt about whether to include something from the audio, prefer meaningful in-game content; if space is getting tight, economize on verbosity rather than skipping later events
 
 ERROR HANDLING:
