@@ -43,7 +43,16 @@ const DEFAULT_CONFIGS: Record<string, AIFeatureConfig> = {
 };
 
 const DEFAULT_IMAGE_CONFIG = { model: 'fal-ai/flux/schnell' };
-const DEFAULT_PODCAST_VOICES: PodcastVoiceSettings = { model: 'eleven_v3', maxCharacters: 5000, host1VoiceId: '', host2VoiceId: '' };
+const DEFAULT_PODCAST_VOICES: PodcastVoiceSettings = {
+  ttsProvider: 'elevenlabs',                     // first release: default to proven ElevenLabs path
+  maxCharacters: 5000,
+  model: 'eleven_v3',
+  host1VoiceId: '',
+  host2VoiceId: '',
+  geminiModel: 'gemini-3.1-flash-tts-preview',   // fallback: 'gemini-2.5-flash-preview-tts'
+  host1VoiceName: 'Puck',                        // male — verify on Dutch
+  host2VoiceName: 'Leda',                        // female — verify on Dutch
+};
 
 export async function getAiFeatureConfig(featureKey: string): Promise<AIFeatureConfig> {
   const settings = await getCachedAiSettings();

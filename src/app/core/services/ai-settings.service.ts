@@ -15,10 +15,19 @@ export interface AiImageConfig {
 }
 
 export interface PodcastVoiceSettings {
-  model: string;
+  /** Selects the active TTS backend. Lets us fall back to ElevenLabs without a deploy. */
+  ttsProvider: 'gemini' | 'elevenlabs';
   maxCharacters: number;
+
+  // ElevenLabs (legacy)
+  model: string;
   host1VoiceId: string;
   host2VoiceId: string;
+
+  // Gemini
+  geminiModel: string;
+  host1VoiceName: string;
+  host2VoiceName: string;
 }
 
 export interface AiSettings {

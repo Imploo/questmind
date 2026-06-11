@@ -3,8 +3,6 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { GoogleGenAI } from '@google/genai';
-import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
-import { Readable } from 'stream';
 import { randomUUID } from 'crypto';
 import { Bucket } from '@google-cloud/storage';
 import { SHARED_CORS } from './index';
@@ -14,12 +12,8 @@ import { ProgressTrackerService } from './services/progress-tracker.service';
 import { wrapCallable, captureFunctionError } from './utils/sentry-error-handler';
 import { getAiFeatureConfig, getPodcastVoiceConfig } from './utils/ai-settings';
 import { buildGenerationParams } from './utils/gemini-config';
+import { generatePodcastAudioBuffer } from './utils/podcast-tts';
 import { AIFeatureConfig, PodcastEntry } from './types/audio-session.types';
-
-const DEFAULT_HOST_VOICES: Record<'host1' | 'host2', string> = {
-  host1: process.env.ELEVENLABS_HOST1_VOICE || 'tvFp0BgJPrEXGoDhDIA4', // Thomas
-  host2: process.env.ELEVENLABS_HOST2_VOICE || '7qdUFMklKPaaAVMsBTBt', // Roos
-};
 
 async function updatePodcastEntry(
   sessionRef: FirebaseFirestore.DocumentReference,
@@ -281,52 +275,19 @@ async function generatePodcastInBackground(
       logger.debug(`Using provided script: ${finalScript.segments.length} segments`);
     }
 
-    // STEP 2: Generate audio via ElevenLabs text-to-dialogue
+    // STEP 2: Generate audio via the configured TTS provider (Gemini or ElevenLabs)
+    const providerLabel = voiceConfig.ttsProvider === 'gemini' ? 'Gemini' : 'ElevenLabs';
     await ProgressTrackerService.updateProgress(
-      campaignId, sessionId, 'generating-podcast-audio', 55, 'Generating podcast audio with ElevenLabs...'
+      campaignId, sessionId, 'generating-podcast-audio', 55, `Generating podcast audio with ${providerLabel}...`
     );
 
-    const apiKey = process.env.ELEVENLABS_API_KEY;
-    if (!apiKey) {
-      throw new Error('ElevenLabs API key is not configured');
-    }
-
-    const hostVoices: Record<'host1' | 'host2', string> = {
-      host1: voiceConfig.host1VoiceId || DEFAULT_HOST_VOICES.host1,
-      host2: voiceConfig.host2VoiceId || DEFAULT_HOST_VOICES.host2,
-    };
-
-    const elevenlabs = new ElevenLabsClient({ apiKey });
-    const dialogueInputs = finalScript.segments.map(seg => ({
-      text: seg.text,
-      voiceId: hostVoices[seg.speaker]
-    }));
-
-    logger.debug(`Generating podcast audio via ElevenLabs text-to-dialogue (${finalScript.segments.length} segments)`);
-
-    await ProgressTrackerService.updateProgress(
-      campaignId, sessionId, 'generating-podcast-audio', 65, 'Calling ElevenLabs text-to-dialogue API...'
+    const audioBuffer = await generatePodcastAudioBuffer(
+      finalScript.segments,
+      voiceConfig,
+      (progress, message) => ProgressTrackerService.updateProgress(
+        campaignId, sessionId, 'generating-podcast-audio', progress, message
+      )
     );
-
-    const audioStream = await elevenlabs.textToDialogue.convert({
-      inputs: dialogueInputs,
-      modelId: voiceConfig.model || undefined,
-    });
-
-    await ProgressTrackerService.updateProgress(
-      campaignId, sessionId, 'generating-podcast-audio', 75, 'Receiving audio stream...'
-    );
-
-    const chunks: Buffer[] = [];
-    const readable = Readable.from(audioStream as unknown as AsyncIterable<Uint8Array>);
-    for await (const chunk of readable) {
-      chunks.push(Buffer.from(chunk));
-    }
-    const audioBuffer = Buffer.concat(chunks);
-
-    if (audioBuffer.length === 0) {
-      throw new Error('Empty audio buffer from ElevenLabs text-to-dialogue');
-    }
 
     logger.debug(`Generated podcast: ${audioBuffer.length} bytes`);
 

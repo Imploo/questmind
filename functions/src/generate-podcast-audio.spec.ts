@@ -32,10 +32,14 @@ vi.mock('./utils/ai-settings', () => ({
     maxOutputTokens: 4096,
   })),
   getPodcastVoiceConfig: vi.fn(() => Promise.resolve({
-    model: 'eleven_v3',
+    ttsProvider: 'elevenlabs',
     maxCharacters: 5000,
+    model: 'eleven_v3',
     host1VoiceId: 'voice-1',
     host2VoiceId: 'voice-2',
+    geminiModel: 'gemini-3.1-flash-tts-preview',
+    host1VoiceName: 'Puck',
+    host2VoiceName: 'Leda',
   })),
 }));
 

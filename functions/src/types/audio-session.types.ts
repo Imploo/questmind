@@ -81,10 +81,19 @@ export interface AIFeatureConfig {
 }
 
 export interface PodcastVoiceSettings {
-  model: string;
+  /** Selects the active TTS backend. Lets us fall back to ElevenLabs without a deploy. */
+  ttsProvider: 'gemini' | 'elevenlabs';
   maxCharacters: number;
-  host1VoiceId: string;
+
+  // ElevenLabs (legacy)
+  model: string;            // e.g. 'eleven_v3'
+  host1VoiceId: string;     // ElevenLabs voice ID
   host2VoiceId: string;
+
+  // Gemini
+  geminiModel: string;      // e.g. 'gemini-3.1-flash-tts-preview'
+  host1VoiceName: string;   // Gemini prebuilt voice (e.g. 'Puck')
+  host2VoiceName: string;   // Gemini prebuilt voice (e.g. 'Leda')
 }
 
 export interface TranscriptionModeConfig {

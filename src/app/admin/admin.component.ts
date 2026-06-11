@@ -217,16 +217,20 @@ interface FeatureDefinition {
                 @case ('voicesOnly') {
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div class="md:col-span-2">
-                      <label class="block text-sm font-medium text-gray-700 mb-1">Model</label>
-                      <input
-                        type="text"
-                        [ngModel]="getFeatureValue('model')"
-                        (ngModelChange)="setFeatureValue('model', $event)"
-                        [name]="selectedFeature().key + '-model'"
-                        (blur)="onFieldBlur()"
-                        placeholder="e.g. eleven_v3"
+                      <label class="block text-sm font-medium text-gray-700 mb-1">
+                        TTS Provider
+                        <span class="text-xs font-normal text-gray-400">(actieve backend — fallback zonder deploy)</span>
+                      </label>
+                      <select
+                        [ngModel]="getFeatureValue('ttsProvider')"
+                        (ngModelChange)="setFeatureValue('ttsProvider', $event)"
+                        [name]="selectedFeature().key + '-ttsProvider'"
+                        (change)="onFieldBlur()"
                         class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
-                      />
+                      >
+                        <option value="gemini">Gemini</option>
+                        <option value="elevenlabs">ElevenLabs</option>
+                      </select>
                     </div>
                     <div class="md:col-span-2">
                       <label class="block text-sm font-medium text-gray-700 mb-1">Max Characters</label>
@@ -239,6 +243,74 @@ interface FeatureDefinition {
                         step="1000"
                         min="1000"
                         placeholder="e.g. 5000"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                      />
+                    </div>
+
+                    <!-- Gemini -->
+                    <div class="md:col-span-2 mt-2 pt-3 border-t border-gray-200">
+                      <h4 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                        <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">Gemini</span>
+                        Native multi-speaker TTS
+                      </h4>
+                    </div>
+                    <div class="md:col-span-2">
+                      <label class="block text-sm font-medium text-gray-700 mb-1">Gemini Model</label>
+                      <input
+                        type="text"
+                        [ngModel]="getFeatureValue('geminiModel')"
+                        (ngModelChange)="setFeatureValue('geminiModel', $event)"
+                        [name]="selectedFeature().key + '-geminiModel'"
+                        (blur)="onFieldBlur()"
+                        placeholder="e.g. gemini-3.1-flash-tts-preview"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1">Host 1 Voice (male)</label>
+                      <select
+                        [ngModel]="getFeatureValue('host1VoiceName')"
+                        (ngModelChange)="setFeatureValue('host1VoiceName', $event)"
+                        [name]="selectedFeature().key + '-host1VoiceName'"
+                        (change)="onFieldBlur()"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                      >
+                        @for (voice of geminiVoiceNames; track voice) {
+                          <option [value]="voice">{{ voice }}</option>
+                        }
+                      </select>
+                    </div>
+                    <div>
+                      <label class="block text-sm font-medium text-gray-700 mb-1">Host 2 Voice (female)</label>
+                      <select
+                        [ngModel]="getFeatureValue('host2VoiceName')"
+                        (ngModelChange)="setFeatureValue('host2VoiceName', $event)"
+                        [name]="selectedFeature().key + '-host2VoiceName'"
+                        (change)="onFieldBlur()"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                      >
+                        @for (voice of geminiVoiceNames; track voice) {
+                          <option [value]="voice">{{ voice }}</option>
+                        }
+                      </select>
+                    </div>
+
+                    <!-- ElevenLabs -->
+                    <div class="md:col-span-2 mt-2 pt-3 border-t border-gray-200">
+                      <h4 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                        <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">ElevenLabs</span>
+                        Legacy text-to-dialogue
+                      </h4>
+                    </div>
+                    <div class="md:col-span-2">
+                      <label class="block text-sm font-medium text-gray-700 mb-1">Model</label>
+                      <input
+                        type="text"
+                        [ngModel]="getFeatureValue('model')"
+                        (ngModelChange)="setFeatureValue('model', $event)"
+                        [name]="selectedFeature().key + '-model'"
+                        (blur)="onFieldBlur()"
+                        placeholder="e.g. eleven_v3"
                         class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                       />
                     </div>
@@ -366,12 +438,21 @@ export class AdminComponent implements OnInit {
       key: 'podcastVoices',
       label: 'Podcast Voices (TTS)',
       icon: '🗣️',
-      provider: 'ElevenLabs',
-      providerColor: 'bg-green-100 text-green-700',
+      provider: 'Gemini / ElevenLabs',
+      providerColor: 'bg-indigo-100 text-indigo-700',
       formType: 'voicesOnly',
       description: 'Text-to-speech voor dual-voice podcast audio'
     },
   ];
+
+  /** Gemini prebuilt multi-speaker voice names (30 voices). */
+  readonly geminiVoiceNames = [
+    'Zephyr', 'Puck', 'Charon', 'Kore', 'Fenrir', 'Leda', 'Orus', 'Aoede',
+    'Callirrhoe', 'Autonoe', 'Enceladus', 'Iapetus', 'Umbriel', 'Algieba',
+    'Despina', 'Erinome', 'Algenib', 'Rasalgethi', 'Laomedeia', 'Achernar',
+    'Alnilam', 'Schedar', 'Gacrux', 'Pulcherrima', 'Achird', 'Zubenelgenubi',
+    'Vindemiatrix', 'Sadachbia', 'Sadaltager', 'Sulafat',
+  ] as const;
 
   private readonly defaultConfigs: Record<string, AiModelConfig | AiImageConfig | PodcastVoiceSettings> = {
     characterChatText: { model: 'gemini-3.5-flash', maxOutputTokens: 4096, thinkingLevel: 'low' },
@@ -384,7 +465,16 @@ export class AdminComponent implements OnInit {
     storyGeneration: { model: 'gemini-3.5-flash', maxOutputTokens: 32000, thinkingLevel: 'medium' },
     podcastScript: { model: 'gemini-3.5-flash', maxOutputTokens: 4096, thinkingLevel: 'medium' },
     characterChat: { model: 'gemini-3.5-flash', maxOutputTokens: 8192, thinkingLevel: 'low' },
-    podcastVoices: { model: 'eleven_v3', maxCharacters: 5000, host1VoiceId: '', host2VoiceId: '' },
+    podcastVoices: {
+      ttsProvider: 'elevenlabs',
+      maxCharacters: 5000,
+      model: 'eleven_v3',
+      host1VoiceId: '',
+      host2VoiceId: '',
+      geminiModel: 'gemini-3.1-flash-tts-preview',
+      host1VoiceName: 'Puck',
+      host2VoiceName: 'Leda',
+    },
   };
 
   // State
