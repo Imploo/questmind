@@ -10,17 +10,22 @@ Je taak is om een D&D sessie recap om te zetten in een rauw, onbewerkt transcrip
 
 HOSTS:
 - HOST1 (Mannelijke stem): Analytisch, gefocust op mechanics en tactieken. Soms zoekend naar woorden.
-- HOST2 (Vrouwelijke stem): Narratief, benadrukt verhaal en emotie. Enthousiast, valt soms bij.
+- HOST2 (Vrouwelijke stem): Narratief, benadrukt verhaal en emotie. Betrokken en warm, valt af en toe bij.
 
 WAT DIT TRANSCRIPT KENMERKT:
 - Vulwoorden aan het BEGIN van beurten: "Nou,", "Kijk,", "Ja maar,", "Nee maar echt,"
-- Spontaan en energiek, niet voorgelezen
+- Spontaan en natuurlijk, niet voorgelezen — levendig waar het past, rustig waar het kan
 - Hosts bouwen hun punt op over meerdere zinnen voordat de ander reageert
-- Af en toe een korte reactie ("Ja!", "Echt hè?"), maar NIET na elke beurt — maximaal 3-4 keer per transcript
+- Af en toe een korte reactie ("Ja, precies", "Echt hè?"), maar NIET na elke beurt — maximaal 3-4 keer per transcript
 - Gebruik (..) voor een korte pauze, maximaal 2-3 keer per heel transcript
 - VERMIJD "Ehm...", "Uhm..." en andere aarzelingen — die klinken als lange stiltes bij AI stemmen
 - VERMIJD gedachtestreepjes (—)
-- Gebruik GEEN pauze-trucjes — de energie moet hoog blijven, het tempo vlot
+- Houd het tempo natuurlijk en vlot — niet gehaast, maar ook geen lange stiltes
+
+TOON:
+- Zoek de balans tussen energiek en rustig babbelen — geen journaal dat wordt voorgelezen, maar ook geen non-stop hypetrain
+- Spaarzaam met uitroeptekens: gebruik ze alleen bij een écht hoogtepunt, niet als standaard interpunctie. Een gewone punt volstaat meestal
+- Niet elke zin is een climax; laat de meeste observaties gewoon rustig landen
 
 BELANGRIJK:
 - De hosts WETEN dat dit van een tabletop RPG sessie komt, maar zeggen NIET expliciet "D&D" of "Dungeons & Dragons"
@@ -53,8 +58,8 @@ HOST2: [dialoog]
 HOST1: [dialoog]
 
 VOORBEELD:
-HOST1: Nou, welkom terug! Vandaag hebben we een bijzondere sessie om te bespreken. Het begon best rustig, ze kwamen aan bij die tempel en iedereen dacht oké, dit wordt een praatsessie. Maar dan doet Thorn wat Thorn altijd doet, hij gooide gewoon een fireball. Zonder enige aanleiding, gewoon boem, klaar.
-HOST2: Ja, dat is Thorn ten voeten uit! Maar oké, het mooie was eigenlijk wat er daarna gebeurde met Elara. Kijk, zij stond daar en je zag het gewoon aankomen. Ze had die hele sessie al hints laten vallen dat ze iets van plan was, en toen het gevecht losbarstte greep ze haar kans.
+HOST1: Nou, welkom terug. Vandaag hebben we een bijzondere sessie om te bespreken. Het begon best rustig, ze kwamen aan bij die tempel en iedereen dacht oké, dit wordt een praatsessie. Maar dan doet Thorn wat Thorn altijd doet, hij gooide gewoon een fireball. Zonder enige aanleiding, gewoon boem, klaar.
+HOST2: Ja, dat is Thorn ten voeten uit. Maar oké, het mooie was eigenlijk wat er daarna gebeurde met Elara. Kijk, zij stond daar en je zag het gewoon aankomen. Ze had die hele sessie al hints laten vallen dat ze iets van plan was, en toen het gevecht losbarstte greep ze haar kans.
 HOST1: Ja precies, en wat ik zo goed vond was hoe de rest van de party daarop reageerde. Niemand had het zien aankomen, maar ze speelden er meteen op in. Dat soort momenten, daar doe je het voor.
 
 LENGTE:

@@ -22,8 +22,9 @@ const SPEAKER_LABELS: Record<'host1' | 'host2', string> = {
  * ElevenLabs' `eleven_v3` did implicitly.
  */
 const GEMINI_STYLE_INSTRUCTION =
-  'Lees het volgende voor als een enthousiaste, informele Nederlandse podcast met twee hosts. ' +
-  'Houd het tempo vlot en de intonatie levendig, met natuurlijke overgangen tussen de sprekers.';
+  'Lees het volgende voor als een ontspannen, natuurlijk gesprek tussen twee Nederlandse podcast-hosts. ' +
+  'Praat rustig en conversationeel op een normaal tempo. Niet elke zin krijgt nadruk — leg alleen klemtoon ' +
+  'op echt belangrijke momenten en houd de rest luchtig en ingetogen, alsof twee vrienden gewoon napraten.';
 
 /**
  * Max characters per Gemini TTS request. The official docs warn that speech
