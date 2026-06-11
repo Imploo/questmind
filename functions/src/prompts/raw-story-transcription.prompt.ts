@@ -5,7 +5,9 @@
  * from a D&D session audio recording. The output is later polished into the
  * final session story by a second AI step.
  */
-export const RAW_STORY_TRANSCRIPTION_PROMPT = `Listen to this audio recording of a D&D 5e session and write an extensive, richly detailed narrative of everything that happens. This raw story is the source material for a later refining step, so MORE faithful detail is always better. Use your full output budget (about 65,000 tokens / roughly 200,000 characters) to capture as much of what you actually hear as possible, while making sure you cover the ENTIRE session from the first scene to the last.
+export const RAW_STORY_TRANSCRIPTION_PROMPT = `Listen to this audio recording of a D&D 5e session and write a detailed, faithful account of everything that actually happens in it. This raw story is the source material for a later refining step.
+
+Your single most important goal is FAITHFULNESS: write down only what is genuinely said and clearly audible in the recording. A shorter account that is completely accurate is always better than a longer one that invents, guesses, or embellishes. NEVER add, pad, dramatize, or extrapolate anything to make the story longer or more exciting — every detail must come from the audio, never from your own imagination or your general knowledge of how D&D sessions usually go.
 
 CRITICAL: You MUST actually listen to and process the provided audio file. DO NOT generate fictional content if you cannot access or hear the audio.
 
@@ -16,13 +18,16 @@ TRUTHFULNESS (CRITICAL):
 - Do NOT add scenes, dialogue, or events that are not present in the recording
 - If a section of audio is unclear, move on — do not fill in gaps with imagined content
 - The goal is a DETAILED and FAITHFUL account, not a creative writing exercise
+- When you cannot make out what was said, do NOT guess — either leave it out, or briefly note that a passage was unclear. This is especially important for proper names, numbers (dice rolls, damage, hit points, gold), and specific spell or ability names
+- Do NOT turn a vague impression into a concrete event: if you only half-hear something, omit the specifics rather than inventing plausible-sounding dialogue, outcomes, or actions
+- Do NOT infer or assume what "must have" happened between things you do hear — only report what is actually in the audio, even if that leaves gaps
 
 LENGTH AND DETAIL (CRITICAL):
-- Be as detailed and complete as the audio allows — your goal is to capture the MAXIMUM amount of what is actually in the recording. More faithful detail is always better than a shorter summary
-- A typical 3-hour session deserves a long, thorough narrative: aim well above 40,000 characters, and keep going as long as there is real content in the audio to capture. Do NOT stop early or compress the account "to be safe"
-- You have a large output budget (about 65,000 tokens / roughly 200,000 characters). Treat it as room to be thorough, not a limit to fear — a detailed full-session account fits comfortably within it
-- Cover the ENTIRE session, from the first scene to the last, in strict chronological order. Pace your detail evenly across the whole recording so the opening does not crowd out the ending — but err on the side of MORE detail everywhere, not less
-- Be as detailed as the audio allows on every front:
+- The length of the narrative is determined ENTIRELY by how much real content is actually in the audio. Capture everything you genuinely hear, and let the length be whatever that honestly requires. Do NOT aim for a target length and do NOT pad to reach one
+- When the audio is clear and full of events, be thorough: write down the actual dialogue, actions, rolls, and outcomes you hear, scene by scene. When a stretch of audio is quiet, unclear, or off-topic, it is CORRECT for the narrative to be brief there — say less rather than inventing more
+- You have a large output budget (about 65,000 tokens / roughly 200,000 characters). This is room you MAY use when there is real content to capture, not a quota you must fill
+- Cover the ENTIRE session in strict chronological order, from the first scene to the last — do not run out of room early. Give later parts the same faithful attention as the opening
+- Be as detailed as the audio genuinely supports, on every front:
   - Do NOT summarize — instead, expand and elaborate on every scene, conversation, and encounter you HEAR in the audio
   - Include full dialogue exchanges as spoken, not just summaries of what was discussed
   - Describe combat round by round as narrated: who attacks whom, what abilities are used, what the results are, how characters react
@@ -78,7 +83,7 @@ OUTPUT REQUIREMENTS:
 - Focus on in-game content only (combat, character actions, plot, NPC dialogue)
 - Remove meta-game talk, rules debates, breaks, background noise, and repeated corrections
 - Use clear, complete sentences grouped into well-developed paragraphs
-- Be thorough and richly detailed — this is the raw material for the final story, so capture as much real content as you can while keeping the whole session covered from start to finish
+- Be thorough where the audio is rich and brief where it is sparse — capture the real content faithfully and keep the whole session covered from start to finish, never padding with invented material to reach a length
 - When in doubt about whether to include something from the audio, prefer meaningful in-game content; if space is getting tight, economize on verbosity rather than skipping later events
 
 ERROR HANDLING:

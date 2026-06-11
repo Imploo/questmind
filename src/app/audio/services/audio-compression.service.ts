@@ -3,9 +3,9 @@ import { Mp3Encoder } from '@breezystack/lamejs';
 import * as logger from '../../shared/logger';
 
 export interface CompressionOptions {
-  /** Target bitrate in bps (default: 32_000) */
+  /** Target bitrate in bps (default: 64_000) */
   targetBitrate: number;
-  /** Target sample rate in Hz (default: 16_000) */
+  /** Target sample rate in Hz (default: 24_000) */
   targetSampleRate: number;
   /** Number of output channels (default: 1 — mono) */
   channels: 1 | 2;
@@ -23,8 +23,13 @@ export interface CompressionResult {
 }
 
 const DEFAULT_OPTIONS: CompressionOptions = {
-  targetBitrate: 32_000,
-  targetSampleRate: 16_000,
+  // Tuned for transcription faithfulness: 32 kbps / 16 kHz mono lost enough
+  // detail (names, overlapping speakers, fricatives) that Gemini mis-heard and
+  // filled gaps with invented content. 64 kbps / 24 kHz keeps speech far
+  // clearer while staying small (a 3h session is ~86 MB) and costs no extra
+  // Gemini tokens (audio is billed per second of duration, not per byte).
+  targetBitrate: 64_000,
+  targetSampleRate: 24_000,
   channels: 1,
 };
 
@@ -35,10 +40,10 @@ const MP3_CHUNK_SIZE = 1152; // PCM samples per MPEG Layer-3 frame
  *
  * Pipeline:
  *   1. Decode source audio via AudioContext.decodeAudioData()
- *   2. Resample + downmix to mono 16 kHz via OfflineAudioContext
- *   3. Encode to MP3 at 16 kbps via lamejs
+ *   2. Resample + downmix to mono 24 kHz via OfflineAudioContext
+ *   3. Encode to MP3 at 64 kbps via lamejs
  *
- * Typical result: 300 MB WAV → ~22 MB MP3 (~14× reduction).
+ * Typical result: 300 MB WAV → ~45 MB MP3 (~7× reduction).
  * If the encoded output is larger than the original the original file is returned unchanged.
  */
 @Injectable({ providedIn: 'root' })

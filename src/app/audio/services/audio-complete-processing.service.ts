@@ -42,7 +42,7 @@ export class AudioCompleteProcessingService {
 
   /**
    * Start complete audio processing:
-   * 1. Compress audio in the browser (Web Audio API + lamejs MP3 @ 16 kbps)
+   * 1. Compress audio in the browser (Web Audio API + lamejs MP3 @ 64 kbps / 24 kHz mono)
    * 2. POST compressed file to uploadAudioToGemini Cloud Function → Gemini Files API → fileUri
    * 3. Call transcribeAudioFast with the fileUri
    *
