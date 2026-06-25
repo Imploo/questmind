@@ -1,5 +1,10 @@
 import { getFirestore } from 'firebase-admin/firestore';
-import { AISettings, AIFeatureConfig, PodcastVoiceSettings } from '../types/audio-session.types';
+import {
+  AISettings,
+  AIFeatureConfig,
+  PodcastVoiceSettings,
+  TranscriptionSegmentationSettings,
+} from '../types/audio-session.types';
 
 let cachedSettings: AISettings | null = null;
 let cacheTimestamp = 0;
@@ -42,6 +47,21 @@ const DEFAULT_CONFIGS: Record<string, AIFeatureConfig> = {
   imagePromptGeneration: { model: 'gemini-3.5-flash', maxOutputTokens: 1024, thinkingLevel: 'low' },
 };
 
+/**
+ * Defaults for audio segmentation (ticket #67). 30-min segments keep enough
+ * narrative context for the story step while still giving each clip the model's
+ * full attention. Only recordings longer than 35 min are split.
+ */
+const DEFAULT_SEGMENTATION: TranscriptionSegmentationSettings = {
+  enabled: true,
+  segmentMinutes: 30,
+  overlapSeconds: 15,
+  minSplitMinutes: 35,
+  concurrency: 4,
+  maxAttempts: 2,
+  onSegmentFailure: 'gap',
+};
+
 const DEFAULT_IMAGE_CONFIG = { model: 'fal-ai/flux/schnell' };
 const DEFAULT_PODCAST_VOICES: PodcastVoiceSettings = {
   ttsProvider: 'elevenlabs',                     // first release: default to proven ElevenLabs path
@@ -69,4 +89,9 @@ export async function getAiImageConfig(): Promise<{ model: string }> {
 export async function getPodcastVoiceConfig(): Promise<PodcastVoiceSettings> {
   const settings = await getCachedAiSettings();
   return { ...DEFAULT_PODCAST_VOICES, ...settings?.features?.podcastVoices };
+}
+
+export async function getTranscriptionSegmentationConfig(): Promise<TranscriptionSegmentationSettings> {
+  const settings = await getCachedAiSettings();
+  return { ...DEFAULT_SEGMENTATION, ...settings?.transcriptionSegmentation };
 }

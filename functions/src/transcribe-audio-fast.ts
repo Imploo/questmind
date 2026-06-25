@@ -3,20 +3,61 @@ import { GoogleGenAI } from '@google/genai';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { ProgressTrackerService } from './services/progress-tracker.service';
-import { getAiFeatureConfig } from './utils/ai-settings';
+import { getAiFeatureConfig, getTranscriptionSegmentationConfig } from './utils/ai-settings';
 import { buildGenerationParams } from './utils/gemini-config';
+import { AIFeatureConfig } from './types/audio-session.types';
 import { WorkerQueueService } from './services/worker-queue.service';
-import { buildRawStoryPrompt } from './audio/transcription-prompt';
+import { buildRawStoryPrompt, buildSegmentRawStoryPrompt } from './audio/transcription-prompt';
 import { fetchKankaContextForTranscription } from './services/kanka.service';
 import { wrapCallable } from './utils/sentry-error-handler';
+
+/** One audio segment to transcribe (a time-slice of a longer recording). */
+export interface AudioSegmentRef {
+  /** 0-based order of this segment within the recording. */
+  index: number;
+  /** Gemini Files API URI for this segment's audio. */
+  fileUri: string;
+  /** Approximate start offset within the full recording, in seconds. */
+  startSec?: number;
+  /** Approximate end offset within the full recording, in seconds. */
+  endSec?: number;
+}
 
 export interface TranscribeAudioFastRequest {
   campaignId: string;
   sessionId: string;
-  fileUri: string;
+  /** Single-segment (legacy) audio reference. */
+  fileUri?: string;
+  /** Multi-segment audio references (ticket #67). Takes priority over fileUri. */
+  fileUris?: AudioSegmentRef[];
   audioFileName: string;
   audioFileSize?: number;
   userCorrections?: string;
+}
+
+/**
+ * Normalize the request's audio references into an ordered segment list.
+ * Filters out empty URIs and falls back to the legacy single `fileUri`.
+ */
+function normalizeSegments(
+  fileUris: AudioSegmentRef[] | undefined,
+  fileUri: string | undefined
+): AudioSegmentRef[] {
+  if (Array.isArray(fileUris) && fileUris.length > 0) {
+    return fileUris
+      .filter((s): s is AudioSegmentRef => !!s && typeof s.fileUri === 'string' && s.fileUri.length > 0)
+      .map((s, i) => ({
+        index: typeof s.index === 'number' ? s.index : i,
+        fileUri: s.fileUri,
+        startSec: s.startSec,
+        endSec: s.endSec,
+      }))
+      .sort((a, b) => a.index - b.index);
+  }
+  if (typeof fileUri === 'string' && fileUri.length > 0) {
+    return [{ index: 0, fileUri }];
+  }
+  return [];
 }
 
 interface GeminiFileStateResponse {
@@ -36,6 +77,10 @@ interface GeminiFileStateResponse {
  */
 export const transcribeAudioFast = onCall(
   {
+    // Segmented transcription runs several Gemini calls back-to-back in the
+    // background, so give the instance room to live long enough to finish them.
+    timeoutSeconds: 1200,
+    memory: '1GiB',
     secrets: ['GOOGLE_AI_API_KEY', 'KANKA_API_TOKEN'],
   },
   wrapCallable<TranscribeAudioFastRequest, { success: boolean; message: string }>(
@@ -49,15 +94,18 @@ export const transcribeAudioFast = onCall(
       campaignId,
       sessionId,
       fileUri,
+      fileUris,
       audioFileName,
       userCorrections,
     } = request.data;
 
+    const segments = normalizeSegments(fileUris, fileUri);
+
     // Validate required fields
-    if (!campaignId || !sessionId || !fileUri || !audioFileName) {
+    if (!campaignId || !sessionId || segments.length === 0 || !audioFileName) {
       throw new HttpsError(
         'invalid-argument',
-        'Missing required fields: campaignId, sessionId, fileUri, audioFileName'
+        'Missing required fields: campaignId, sessionId, fileUri/fileUris, audioFileName'
       );
     }
 
@@ -103,7 +151,15 @@ export const transcribeAudioFast = onCall(
         mode: 'fast',
         enableKankaContext: kankaEnabled,
         userCorrections,
-        fileUri,
+        fileUri: segments[0].fileUri,         // first segment — kept for backward compatibility
+        segmentCount: segments.length,
+        segments: segments.map((s) => ({
+          index: s.index,
+          fileUri: s.fileUri,
+          startSec: s.startSec ?? null,
+          endSec: s.endSec ?? null,
+          status: 'pending',
+        })),
         audioFileName,
         submittedAt: FieldValue.serverTimestamp(),
         status: 'processing',
@@ -114,7 +170,7 @@ export const transcribeAudioFast = onCall(
     processTranscriptionAsync(
       campaignId,
       sessionId,
-      fileUri,
+      segments,
       audioFileName,
       kankaEnabled,
       userCorrections,
@@ -156,7 +212,7 @@ async function getCampaignKankaEnabled(campaignId: string): Promise<boolean> {
 async function processTranscriptionAsync(
   campaignId: string,
   sessionId: string,
-  fileUri: string,
+  segments: AudioSegmentRef[],
   audioFileName: string,
   enableKankaContext: boolean,
   userCorrections: string | undefined,
@@ -176,6 +232,7 @@ async function processTranscriptionAsync(
 
     // 1. Get AI settings
     const transcriptionConfig = await getAiFeatureConfig('transcription');
+    const segmentationConfig = await getTranscriptionSegmentationConfig();
     const model = transcriptionConfig.model;
     const mimeType = resolveMimeType(audioFileName);
 
@@ -188,71 +245,81 @@ async function processTranscriptionAsync(
       enableKankaContext
     );
 
-    // 3. Call Gemini API with the Files API URI
+    // 3. Transcribe each segment with its own Gemini call, then join in order.
+    //    A single segment (the common/legacy case) uses the full-session prompt;
+    //    multiple segments each use a segment-aware prompt and are concatenated.
     const googleAi = new GoogleGenAI({ apiKey: googleAiKey });
+    const fullPrompt = buildRawStoryPrompt(kankaContext);
+    const total = segments.length;
 
-    const prompt = buildRawStoryPrompt(kankaContext);
+    const concurrency = Math.max(1, segmentationConfig.concurrency);
+    logger.debug(
+      `[Fast Transcription] Transcribing ${total} segment(s) for session ${sessionId} (concurrency ${Math.min(concurrency, total)}, onFailure ${segmentationConfig.onSegmentFailure})`
+    );
 
-    // Gemini Files can take a short time to become ACTIVE after upload finalize.
-    await waitForGeminiFileToBecomeActive(fileUri, googleAiKey);
+    // Segments are transcribed in parallel (bounded by the configured concurrency).
+    // mapWithConcurrency preserves INPUT order regardless of which segment
+    // finishes first, and each segment also carries its index/offsets — so the
+    // story is always joined back together in the right order.
+    let completedSegments = 0;
+    const segmentTexts = await mapWithConcurrency(segments, concurrency, async (seg, i) => {
+      const segmentPrompt =
+        total === 1
+          ? fullPrompt
+          : buildSegmentRawStoryPrompt(
+              { index: i + 1, total, startSec: seg.startSec ?? 0, endSec: seg.endSec ?? 0 },
+              kankaContext
+            );
 
-    logger.debug(`[Fast Transcription] Calling Gemini API with request:`, {
-      model,
-      config: {
-        maxOutputTokens: transcriptionConfig.maxOutputTokens,
-        thinkingLevel: transcriptionConfig.thinkingLevel,
-      },
-      prompt: prompt,
-      hasKankaContext: !!kankaContext,
-      mimeType,
+      let segmentText: string;
+      try {
+        segmentText = await transcribeSegment(
+          googleAi,
+          model,
+          segmentPrompt,
+          mimeType,
+          seg.fileUri,
+          transcriptionConfig,
+          googleAiKey,
+          segmentationConfig.maxAttempts,
+          i + 1,
+          total
+        );
+        if (segmentText.trim().startsWith('ERROR:') && total > 1) {
+          logger.warn(`[Fast Transcription] Segment ${i + 1}/${total} returned ${segmentText.trim()}`);
+          segmentText = `[Segment ${i + 1} van ${total}: geen verstaanbare audio.]`;
+        }
+      } catch (segmentError) {
+        // Single-pass always hard-fails; multi-segment honours the configured
+        // failure policy ('fail' = sink the session, 'gap' = continue).
+        if (total === 1 || segmentationConfig.onSegmentFailure === 'fail') {
+          throw segmentError;
+        }
+        // Don't let one bad clip sink the whole session — leave a transparent gap
+        // marker (never fabricate the missing content) and continue.
+        logger.warn(
+          `[Fast Transcription] Segment ${i + 1}/${total} failed after retries, inserting gap marker`,
+          segmentError
+        );
+        segmentText = `[Segment ${i + 1} van ${total} kon niet worden getranscribeerd.]`;
+      }
+
+      completedSegments += 1;
+      await ProgressTrackerService.updateProgress(
+        campaignId,
+        sessionId,
+        'transcribing',
+        70 + Math.round((completedSegments / total) * 8),
+        total > 1
+          ? `Transcribed ${completedSegments} of ${total} segments...`
+          : 'Transcribing audio...'
+      );
+
+      return segmentText.trim();
     });
 
-    const result = await googleAi.models.generateContent({
-      model: model,
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            { text: prompt },
-            {
-              fileData: {
-                mimeType: mimeType,
-                fileUri: fileUri,
-              },
-            },
-          ],
-        },
-      ],
-      config: {
-        ...buildGenerationParams(transcriptionConfig),
-      },
-    });
-
-    if (!result.text) {
-      throw new Error('No response text from Gemini API');
-    }
-
-    const text = result.text;
-
-    // Log usage metadata to detect output token truncation
-    const usage = result.usageMetadata;
-    const finishReason = result.candidates?.[0]?.finishReason;
-    logger.info('[Fast Transcription] Gemini usage metadata', {
-      promptTokenCount: usage?.promptTokenCount,
-      candidatesTokenCount: usage?.candidatesTokenCount,
-      totalTokenCount: usage?.totalTokenCount,
-      configuredMaxOutputTokens: transcriptionConfig.maxOutputTokens,
-      finishReason,
-    });
-
-    if (finishReason === 'MAX_TOKENS') {
-      logger.warn('[Fast Transcription] Response was truncated — output hit maxOutputTokens limit. Transcription may be incomplete.');
-    }
-
-    logger.debug(`[Fast Transcription] Received response, processing...`);
-
-    // 5. Process raw story response
-    const rawStory = text.trim();
+    // 5. Join segments in order into the raw story
+    const rawStory = segmentTexts.join('\n\n').trim();
 
     // Check for error prefixes
     if (rawStory.startsWith('ERROR:')) {
@@ -323,6 +390,110 @@ async function processTranscriptionAsync(
       'transcriptionFast.failedAt': FieldValue.serverTimestamp(),
     });
   }
+}
+
+/**
+ * Run `fn` over `items` with at most `limit` running at once, returning the
+ * results in INPUT order (independent of completion order). If `fn` rejects,
+ * the whole call rejects (used to preserve single-segment hard-fail behaviour).
+ */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+
+  async function worker(): Promise<void> {
+    for (;;) {
+      const current = nextIndex;
+      nextIndex += 1;
+      if (current >= items.length) {
+        return;
+      }
+      results[current] = await fn(items[current], current);
+    }
+  }
+
+  const workerCount = Math.max(1, Math.min(limit, items.length));
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
+}
+
+/**
+ * Transcribe one audio segment via Gemini, with a small retry budget.
+ * Waits for the Gemini file to become ACTIVE, logs usage/truncation, and
+ * returns the raw response text. Throws if all attempts fail.
+ */
+async function transcribeSegment(
+  googleAi: GoogleGenAI,
+  model: string,
+  prompt: string,
+  mimeType: string,
+  fileUri: string,
+  config: AIFeatureConfig,
+  apiKey: string,
+  maxAttempts: number,
+  segmentNumber: number,
+  totalSegments: number
+): Promise<string> {
+  let lastError: unknown;
+  const attempts = Math.max(1, maxAttempts);
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      // Gemini Files can take a short time to become ACTIVE after upload finalize.
+      await waitForGeminiFileToBecomeActive(fileUri, apiKey);
+
+      const result = await googleAi.models.generateContent({
+        model,
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { text: prompt },
+              { fileData: { mimeType, fileUri } },
+            ],
+          },
+        ],
+        config: {
+          ...buildGenerationParams(config),
+        },
+      });
+
+      if (!result.text) {
+        throw new Error('No response text from Gemini API');
+      }
+
+      const usage = result.usageMetadata;
+      const finishReason = result.candidates?.[0]?.finishReason;
+      logger.info('[Fast Transcription] Gemini usage metadata', {
+        segment: `${segmentNumber}/${totalSegments}`,
+        promptTokenCount: usage?.promptTokenCount,
+        candidatesTokenCount: usage?.candidatesTokenCount,
+        totalTokenCount: usage?.totalTokenCount,
+        configuredMaxOutputTokens: config.maxOutputTokens,
+        finishReason,
+      });
+
+      if (finishReason === 'MAX_TOKENS') {
+        logger.warn(
+          `[Fast Transcription] Segment ${segmentNumber}/${totalSegments} hit maxOutputTokens — output may be truncated.`
+        );
+      }
+
+      return result.text;
+    } catch (error) {
+      lastError = error;
+      logger.warn(
+        `[Fast Transcription] Segment ${segmentNumber}/${totalSegments} attempt ${attempt}/${attempts} failed`,
+        error
+      );
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
 function resolveMimeType(audioFileName: string): string {

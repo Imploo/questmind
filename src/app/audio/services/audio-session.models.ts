@@ -161,6 +161,27 @@ export interface TranscriptionBatchMetadata {
   userCorrections?: string;
 }
 
+/** One transcribed audio segment's reference + status (ticket #67). */
+export interface AudioSegmentRecord {
+  index: number;
+  fileUri: string;
+  startSec?: number | null;
+  endSec?: number | null;
+  status?: 'pending' | 'completed' | 'failed';
+}
+
+/** Fast-transcription metadata persisted on the session (ticket #67). */
+export interface TranscriptionFastMetadata {
+  mode?: string;
+  status?: 'processing' | 'completed' | 'failed';
+  /** First segment's fileUri — kept for backward compatibility. */
+  fileUri?: string;
+  segmentCount?: number;
+  segments?: AudioSegmentRecord[];
+  audioFileName?: string;
+  error?: string;
+}
+
 export interface AudioSessionRecord extends SessionStory {
   campaignId: string;
   ownerId: string;
@@ -191,6 +212,9 @@ export interface AudioSessionRecord extends SessionStory {
 
   // Batch job tracking
   transcriptionBatch?: TranscriptionBatchMetadata;
+
+  // Fast transcription tracking (segment fileUris reused on retry — ticket #67)
+  transcriptionFast?: TranscriptionFastMetadata;
 
   // Unified progress tracking (Ticket #43)
   progress?: SessionProgress;

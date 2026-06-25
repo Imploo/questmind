@@ -111,11 +111,35 @@ export interface TranscriptionFeatureConfig extends AIFeatureConfig {
   };
 }
 
+/**
+ * Controls how long recordings are split into shorter segments for transcription
+ * (ticket #67). Overridable via `settings/ai.transcriptionSegmentation` so segment
+ * length, overlap and failure policy can be tuned without a deploy.
+ */
+export interface TranscriptionSegmentationSettings {
+  /** Master switch — when false the frontend uploads a single segment (legacy flow). */
+  enabled: boolean;
+  /** Target length of each segment, in minutes. */
+  segmentMinutes: number;
+  /** Lead-in overlap pulled from the previous segment, in seconds. */
+  overlapSeconds: number;
+  /** Recordings at or below this length are not split. */
+  minSplitMinutes: number;
+  /** Max segments transcribed concurrently on the backend (bounded by Gemini rate limits). */
+  concurrency: number;
+  /** Per-segment transcription attempts before falling back to the failure policy. */
+  maxAttempts: number;
+  /** When a segment fails after all retries: insert a transparent gap marker, or fail the session. */
+  onSegmentFailure: 'gap' | 'fail';
+}
+
 export interface AISettings {
   defaultModel: string;
   availableModels?: string[];
   apiProvider?: string;
   cacheEnabled?: boolean;
+  /** Audio segmentation tuning for fast transcription (ticket #67). */
+  transcriptionSegmentation?: Partial<TranscriptionSegmentationSettings>;
   features?: {
     transcription?: TranscriptionFeatureConfig;
     storyGeneration?: AIFeatureConfig;

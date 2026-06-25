@@ -4,7 +4,6 @@ import { AudioUploadComponent, UploadRequestEvent } from './audio-upload.compone
 import { SessionListSidebarComponent } from './session-list-sidebar.component';
 import { AudioSessionStateService } from './services/audio-session-state.service';
 import { AudioCompleteProcessingService } from './services/audio-complete-processing.service';
-import { AudioCompressionService } from './services/audio-compression.service';
 import { AuthService } from '../auth/auth.service';
 import { CampaignContextService } from '../campaign/campaign-context.service';
 import { AudioUpload, AudioSessionRecord, SessionProgress } from './services/audio-session.models';
@@ -50,7 +49,6 @@ export class AudioUploadPageComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private sessionStateService = inject(AudioSessionStateService);
   private completeProcessingService = inject(AudioCompleteProcessingService);
-  private audioCompression = inject(AudioCompressionService);
   private authService = inject(AuthService);
   private campaignContextService = inject(CampaignContextService);
   private wakeLockSentinel: WakeLockSentinel | null = null;
@@ -157,84 +155,22 @@ export class AudioUploadPageComponent implements OnInit, OnDestroy {
     event: UploadRequestEvent,
   ): Promise<void> {
     try {
-      const files = event.files;
-
-      if (files.length === 1) {
-        await this.completeProcessingService.startCompleteProcessing(
-          campaignId,
-          sessionId,
-          files[0],
-          {
-            sessionTitle: event.sessionName || 'Untitled Session',
-            sessionDate: event.sessionDate,
-          },
-        );
-      } else {
-        await this.processMultipleFiles(campaignId, sessionId, files, event);
-      }
+      // Single and multi-file uploads share one path: multiple files are
+      // concatenated into one continuous evening and then segmented (#53 + #67).
+      await this.completeProcessingService.startCompleteProcessing(
+        campaignId,
+        sessionId,
+        event.files,
+        {
+          sessionTitle: event.sessionName || 'Untitled Session',
+          sessionDate: event.sessionDate,
+        },
+      );
     } catch (error) {
       logger.error('Error in background processing:', error);
       const errorMessage = error instanceof Error ? error.message : 'Upload failed';
       await this.completeProcessingService.writeFailure(campaignId, sessionId, errorMessage);
     }
-  }
-
-  /**
-   * Multi-file path: compress each file, concatenate, then upload.
-   * Compression progress is written to Firestore (throttled every 2s).
-   */
-  private async processMultipleFiles(
-    campaignId: string,
-    sessionId: string,
-    files: File[],
-    event: UploadRequestEvent,
-  ): Promise<void> {
-    const compressedBlobs: Blob[] = [];
-    let totalOriginalSize = 0;
-    let lastFirestoreWrite = 0;
-
-    // Compress each file sequentially (0–60% of total progress)
-    for (let i = 0; i < files.length; i++) {
-      const compressionResult = await this.audioCompression.compress(
-        files[i],
-        (fileProgress: number) => {
-          const overallProgress = Math.round(((i + fileProgress / 100) / files.length) * 60);
-          // Throttled Firestore write (every 2s)
-          const now = Date.now();
-          if (now - lastFirestoreWrite >= 2000 || (fileProgress >= 100 && i === files.length - 1)) {
-            lastFirestoreWrite = now;
-            this.sessionStateService.updateSession(sessionId, {
-              progress: {
-                stage: 'compressing',
-                progress: overallProgress,
-                message: `Compressing file ${i + 1} of ${files.length}... ${Math.round(fileProgress)}%`,
-                updatedAt: new Date(),
-              } as SessionProgress,
-            });
-          }
-        }
-      );
-
-      compressedBlobs.push(compressionResult.blob);
-      totalOriginalSize += compressionResult.originalSize;
-    }
-
-    // Concatenate compressed MP3 blobs
-    const concatenatedBlob = new Blob(compressedBlobs, { type: 'audio/mpeg' });
-    const fileName = `${(event.sessionName || files[0].name).replace(/\.[^.]+$/, '')}.mp3`;
-
-    // Upload + transcribe (uploadAndTranscribe writes 60–70% progress to Firestore)
-    await this.completeProcessingService.uploadAndTranscribe(
-      campaignId,
-      sessionId,
-      concatenatedBlob,
-      fileName,
-      { originalSize: totalOriginalSize, compressedSize: concatenatedBlob.size },
-      {
-        sessionTitle: event.sessionName || 'Untitled Session',
-        sessionDate: event.sessionDate,
-      },
-    );
   }
 
   private async requestWakeLock(): Promise<void> {

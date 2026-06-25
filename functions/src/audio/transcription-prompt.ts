@@ -1,19 +1,41 @@
-import {RAW_STORY_TRANSCRIPTION_PROMPT} from '../prompts/raw-story-transcription.prompt';
+import {
+  RAW_STORY_TRANSCRIPTION_PROMPT,
+  buildSegmentTranscriptionPrompt,
+  SegmentPromptMeta,
+} from '../prompts/raw-story-transcription.prompt';
 import {KankaSearchResult} from '../types/audio-session.types';
 
 export function buildRawStoryPrompt(
   kankaContext?: KankaSearchResult
 ): string {
+  return appendKankaContext(RAW_STORY_TRANSCRIPTION_PROMPT, kankaContext);
+}
+
+/**
+ * Build the transcription prompt for one time-segment of a longer session,
+ * with the same Kanka name/place reference appended for accuracy.
+ */
+export function buildSegmentRawStoryPrompt(
+  meta: SegmentPromptMeta,
+  kankaContext?: KankaSearchResult
+): string {
+  return appendKankaContext(buildSegmentTranscriptionPrompt(meta), kankaContext);
+}
+
+function appendKankaContext(
+  basePrompt: string,
+  kankaContext?: KankaSearchResult
+): string {
   if (!kankaContext || Object.keys(kankaContext).length === 0) {
-    return RAW_STORY_TRANSCRIPTION_PROMPT;
+    return basePrompt;
   }
 
   const contextPrompt = buildKankaContextPrompt(kankaContext);
   if (!contextPrompt) {
-    return RAW_STORY_TRANSCRIPTION_PROMPT;
+    return basePrompt;
   }
 
-  return `${RAW_STORY_TRANSCRIPTION_PROMPT}\n\n${contextPrompt}`;
+  return `${basePrompt}\n\n${contextPrompt}`;
 }
 
 function buildKankaContextPrompt(context: KankaSearchResult): string {

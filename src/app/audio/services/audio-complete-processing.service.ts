@@ -3,7 +3,8 @@ import {type Functions, httpsCallable} from 'firebase/functions';
 import {doc, type DocumentReference, type Firestore, updateDoc} from 'firebase/firestore';
 import {Auth, getIdToken} from 'firebase/auth';
 import {FirebaseService} from '../../core/firebase.service';
-import {AudioCompressionService} from './audio-compression.service';
+import {AudioCompressionService, AudioSegmentResult, SegmentationOptions} from './audio-compression.service';
+import {AiSettingsService} from '../../core/services/ai-settings.service';
 import * as logger from '../../shared/logger';
 
 /** 24 MB chunk size — must be a multiple of Gemini's 8 MB granularity (3 × 8 MB) */
@@ -30,6 +31,7 @@ import {type Unsubscribe, onSnapshot, DocumentSnapshot} from 'firebase/firestore
 export class AudioCompleteProcessingService {
   private firebase = inject(FirebaseService);
   private audioCompression = inject(AudioCompressionService);
+  private aiSettings = inject(AiSettingsService);
   private functions: Functions;
   private firestore: Firestore;
   private auth: Auth;
@@ -41,10 +43,16 @@ export class AudioCompleteProcessingService {
   }
 
   /**
-   * Start complete audio processing:
-   * 1. Compress audio in the browser (Web Audio API + lamejs MP3 @ 64 kbps / 24 kHz mono)
-   * 2. POST compressed file to uploadAudioToGemini Cloud Function → Gemini Files API → fileUri
-   * 3. Call transcribeAudioFast with the fileUri
+   * Start complete audio processing for one or more recordings:
+   * 1. Compress audio in the browser and split it into segments
+   *    (Web Audio API + lamejs MP3 @ 64 kbps / 24 kHz mono; ~30 min per segment).
+   *    Multiple files are concatenated into one continuous evening first, then
+   *    segmented (ticket #53 + #67).
+   * 2. Upload each segment to the Gemini Files API → one fileUri per segment
+   * 3. Call transcribeAudioFast with the ordered list of segment fileUris
+   *
+   * Splitting long recordings (ticket #67) keeps the model's attention high so
+   * the second half of long sessions stays as detailed and faithful as the first.
    *
    * Unified progress ranges:
    *   Compressing: 0–60%
@@ -54,21 +62,27 @@ export class AudioCompleteProcessingService {
   async startCompleteProcessing(
     campaignId: string,
     sessionId: string,
-    audioFile: File,
+    audioFiles: File[],
     options: StartProcessingOptions,
     onProgress?: (stage: UploadStage, progress: number) => void
   ): Promise<ProcessingResult> {
+    if (audioFiles.length === 0) {
+      throw new Error('startCompleteProcessing requires at least one audio file');
+    }
+
     const sessionRef = doc(
       this.firestore,
       `campaigns/${campaignId}/audioSessions/${sessionId}`
     );
 
-    // ── 1. Compress audio in the browser ────────────────────────────────────
-    logger.info('[AudioCompleteProcessing] Compressing audio before upload...');
+    // ── 1. Compress + segment audio in the browser ──────────────────────────
+    logger.info(
+      `[AudioCompleteProcessing] Compressing + segmenting ${audioFiles.length} file(s) before upload...`
+    );
 
     let lastFirestoreWrite = 0;
-    const compressionResult = await this.audioCompression.compress(
-      audioFile,
+    const segmented = await this.audioCompression.compressFilesToSegments(
+      audioFiles,
       (compressionProgress) => {
         onProgress?.('compressing', compressionProgress);
         // Throttled Firestore write (every 2s)
@@ -80,38 +94,58 @@ export class AudioCompleteProcessingService {
             `Compressing audio... ${Math.round(compressionProgress)}%`);
         }
       },
+      {},
+      this.resolveSegmentationOptions(),
     );
 
-    if (compressionResult.skipped) {
-      logger.info('[AudioCompleteProcessing] Compression skipped — uploading original file');
-    } else {
-      logger.info('[AudioCompleteProcessing] Compression complete', {
-        ratio: compressionResult.compressionRatio.toFixed(2),
-        originalMb: (compressionResult.originalSize / 1_048_576).toFixed(1),
-        compressedMb: (compressionResult.compressedSize / 1_048_576).toFixed(1),
-      });
-    }
+    logger.info('[AudioCompleteProcessing] Compression complete', {
+      durationSeconds: Math.round(segmented.durationSeconds),
+      segments: segmented.segments.length,
+      originalMb: (segmented.originalSize / 1_048_576).toFixed(1),
+      compressedMb: (segmented.compressedSize / 1_048_576).toFixed(1),
+    });
 
-    // ── 2. Upload + transcribe ──────────────────────────────────────────────
-    return this.uploadAndTranscribe(
+    // ── 2. Upload segments + transcribe ─────────────────────────────────────
+    return this.uploadSegmentsAndTranscribe(
       campaignId,
       sessionId,
-      compressionResult.blob,
-      replaceExtension(audioFile.name, 'mp3'),
-      { originalSize: compressionResult.originalSize, compressedSize: compressionResult.compressedSize },
+      segmented.segments,
+      replaceExtension(audioFiles[0].name, 'mp3'),
+      { originalSize: segmented.originalSize, compressedSize: segmented.compressedSize },
       options,
       (uploadProgress) => onProgress?.('uploading', uploadProgress),
     );
   }
 
   /**
-   * Upload a pre-compressed audio blob and start transcription.
-   * Use this when compression is handled externally (e.g. multi-file concatenation).
+   * Map the configurable segmentation settings (minutes) onto the compression
+   * service's SegmentationOptions (seconds). When segmentation is disabled the
+   * recording is never split (single segment = legacy flow).
    */
-  async uploadAndTranscribe(
+  private resolveSegmentationOptions(): Partial<SegmentationOptions> {
+    const cfg = this.aiSettings.getTranscriptionSegmentationConfig();
+    if (!cfg.enabled) {
+      return { minSplitSeconds: Number.POSITIVE_INFINITY };
+    }
+    return {
+      segmentSeconds: cfg.segmentMinutes * 60,
+      overlapSeconds: cfg.overlapSeconds,
+      minSplitSeconds: cfg.minSplitMinutes * 60,
+    };
+  }
+
+  /**
+   * Upload pre-segmented audio and start segmented transcription.
+   *
+   * Each segment is uploaded to the Gemini Files API (one fileUri each), then
+   * transcribeAudioFast is called with the ordered list. A single segment is
+   * sent as a normal single-fileUri request (no behavioural change for short
+   * recordings).
+   */
+  async uploadSegmentsAndTranscribe(
     campaignId: string,
     sessionId: string,
-    blob: Blob,
+    segments: AudioSegmentResult[],
     fileName: string,
     sizeInfo: { originalSize: number; compressedSize: number },
     options: StartProcessingOptions,
@@ -122,19 +156,50 @@ export class AudioCompleteProcessingService {
       `campaigns/${campaignId}/audioSessions/${sessionId}`
     );
 
-    logger.info('[AudioCompleteProcessing] Uploading to Gemini via Cloud Function...');
-
     onProgress?.(0);
 
-    const fileUri = await this.uploadToGemini(
-      blob,
-      'audio/mpeg',
-      fileName,
-      sessionRef,
-      (uploadProgress) => onProgress?.(uploadProgress),
-    );
+    const baseName = fileName.replace(/\.mp3$/i, '');
+    const total = segments.length;
+    const fileUris: { index: number; fileUri: string; startSec: number; endSec: number }[] = [];
 
-    logger.info(`[AudioCompleteProcessing] Gemini upload complete: ${fileUri}`);
+    logger.info(`[AudioCompleteProcessing] Uploading ${total} segment(s) to Gemini...`);
+
+    // Throttled Firestore progress write. The overall upload (across all
+    // segments) maps onto unified progress 60–70%, so a multi-segment upload
+    // advances monotonically instead of resetting 60→70 per segment.
+    let lastFirestoreWrite = 0;
+    const reportOverall = (overall: number) => {
+      onProgress?.(overall);
+      const now = Date.now();
+      if (now - lastFirestoreWrite >= 1000 || overall >= 100) {
+        lastFirestoreWrite = now;
+        this.writeProgress(sessionRef, 'uploading', 60 + Math.round(overall * 0.1),
+          total > 1
+            ? `Uploading audio... ${overall}% (${total} segments)`
+            : `Uploading audio... ${overall}%`);
+      }
+    };
+
+    for (let i = 0; i < total; i++) {
+      const seg = segments[i];
+      const segFileName = total > 1 ? `${baseName}-part${i + 1}.mp3` : `${baseName}.mp3`;
+
+      const fileUri = await this.uploadToGemini(
+        seg.blob,
+        'audio/mpeg',
+        segFileName,
+        (segUploadProgress) => {
+          // Map this segment's 0–100 upload onto the overall upload range.
+          const overall = Math.round(((i + segUploadProgress / 100) / total) * 100);
+          reportOverall(overall);
+        },
+      );
+
+      fileUris.push({ index: seg.index, fileUri, startSec: seg.startSec, endSec: seg.endSec });
+    }
+
+    reportOverall(100);
+    logger.info(`[AudioCompleteProcessing] Uploaded ${fileUris.length} segment(s)`);
 
     await updateDoc(sessionRef, {
       audioCompressedSizeBytes: sizeInfo.compressedSize,
@@ -146,7 +211,7 @@ export class AudioCompleteProcessingService {
     await transcribe({
       campaignId,
       sessionId,
-      fileUri,
+      fileUris,
       audioFileName: fileName,
       audioFileSize: sizeInfo.compressedSize,
       userCorrections: options.userCorrections,
@@ -211,13 +276,13 @@ export class AudioCompleteProcessingService {
    *   1. ?action=init   — start a Gemini resumable upload session
    *   2. ?action=upload  — send each chunk (≤25 MB) to the session
    *
-   * Upload progress maps to 60–70% of unified progress range.
+   * Reports this upload's own 0–100 progress via `onProgress`; the caller maps
+   * it onto the overall (multi-segment) range and writes it to Firestore.
    */
   private async uploadToGemini(
     blob: Blob,
     mimeType: string,
     fileName: string,
-    sessionRef: DocumentReference,
     onProgress?: (progress: number) => void,
   ): Promise<string> {
     const token = await getIdToken(this.auth.currentUser!);
@@ -257,7 +322,7 @@ export class AudioCompleteProcessingService {
       const fileUri = await this.uploadChunk(
         functionUrl, token, uploadUrl, chunk,
         offset, isFinal, mimeType, totalSize,
-        sessionRef, onProgress,
+        onProgress,
       );
 
       offset = end;
@@ -287,7 +352,6 @@ export class AudioCompleteProcessingService {
     isFinal: boolean,
     mimeType: string,
     totalSize: number,
-    sessionRef: DocumentReference,
     onProgress?: (progress: number) => void,
   ): Promise<string | null> {
     return new Promise<string | null>((resolve, reject) => {
@@ -303,10 +367,9 @@ export class AudioCompleteProcessingService {
         if (event.lengthComputable) {
           const totalSent = offset + event.loaded;
           const uploadPercent = Math.round((totalSent / totalSize) * 100);
+          // Report this upload's own progress; the caller maps it onto the
+          // overall (multi-segment) range and throttles the Firestore write.
           onProgress?.(uploadPercent);
-          const overallProgress = 60 + Math.round((totalSent / totalSize) * 10);
-          this.writeProgress(sessionRef, 'uploading', overallProgress,
-            `Uploading audio... ${uploadPercent}%`);
         }
       });
 

@@ -669,5 +669,23 @@ Start here for immediate impact with minimal risk:
 
 ---
 
-**Last Updated:** 2026-03-31
+## ✂️ Transcriptie Kwaliteit — Audio Segmentatie
+
+| Ticket | Title | Priority | Status | Effort | Dependencies |
+|--------|-------|----------|--------|--------|--------------|
+| [#67](./done/67-split-audio-into-segments-for-transcription.md) | Audio opsplitsen in segmenten voor transcriptie | High | Done | 3-5 dagen | #53, #54 |
+
+**Key Changes:**
+- **Ticket 67**: Knip lange opnames client-side in segmenten van ~30 min en transcribeer elk apart (afgerond — single- én multi-file)
+  - Lost detailverlies in de tweede helft van de avond op (single-pass aandachtsverval over 3+ uur)
+  - Elk segment krijgt eigen 65k output-budget → langer + getrouwer transcript
+  - Client-side splitsen (audio staat niet in Storage, Gemini-files niet downloadbaar)
+  - Multi-file: concateneert eerst tot één avond (PCM), segmenteert dáárna (inverse van #53)
+  - Backend accepteert `fileUris[]`, transcribeert per segment, concateneert tot één `rawStory`
+  - Retry hergebruikt opgeslagen segment-fileUris i.p.v. niet-bruikbare storageUrl
+  - Segmentlengte/overlap/concurrency/failure-policy configureerbaar via `settings/ai.transcriptionSegmentation` zonder deploy
+
+---
+
+**Last Updated:** 2026-06-11
 **Status:** Planning Complete, Ready to Begin
