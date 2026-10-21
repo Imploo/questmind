@@ -17,16 +17,22 @@ vi.mock('firebase-admin/firestore', () => ({
   FieldValue: { serverTimestamp: () => 'SERVER_TIMESTAMP' },
 }));
 
+const mockGenerateContent = vi.fn();
 vi.mock('@google/genai', () => ({
-  GoogleGenAI: vi.fn(() => ({
-    models: { generateContent: vi.fn() },
-  })),
+  GoogleGenAI: vi.fn(function GoogleGenAI() {
+    return { models: { generateContent: mockGenerateContent } };
+  }),
 }));
 
 vi.mock('./utils/ai-settings', () => ({
   getAiFeatureConfig: vi.fn(() => Promise.resolve({
     model: 'gemini-test',
     maxOutputTokens: 128000,
+  })),
+  getTranscriptionSegmentationConfig: vi.fn(() => Promise.resolve({
+    concurrency: 1,
+    maxAttempts: 1,
+    onSegmentFailure: 'fail',
   })),
 }));
 
@@ -46,14 +52,22 @@ vi.mock('./services/worker-queue.service', () => ({
 
 vi.mock('./audio/transcription-prompt', () => ({
   buildRawStoryPrompt: vi.fn(() => 'test-prompt'),
+  buildSegmentRawStoryPrompt: vi.fn(() => 'test-segment-prompt'),
+}));
+
+const mockLoadVoiceIntroAudio = vi.fn();
+vi.mock('./audio/voice-intro.service', () => ({
+  loadVoiceIntroAudio: (...args: unknown[]) => mockLoadVoiceIntroAudio(...args),
 }));
 
 vi.mock('./services/kanka.service', () => ({
   fetchKankaContextForTranscription: vi.fn(() => Promise.resolve(undefined)),
 }));
 
+const mockCaptureException = vi.fn();
 vi.mock('./utils/sentry-error-handler', () => ({
   wrapCallable: (_name: string, handler: Function) => handler,
+  captureException: (...args: unknown[]) => mockCaptureException(...args),
 }));
 
 vi.mock('./utils/logger', () => ({
@@ -82,6 +96,12 @@ describe('transcribeAudioFast', () => {
     vi.clearAllMocks();
     process.env.GOOGLE_AI_API_KEY = 'test-api-key';
     process.env.KANKA_API_TOKEN = 'test-kanka-token';
+    mockLoadVoiceIntroAudio.mockResolvedValue(null);
+    // Gemini file-state polling: report the session file as ACTIVE immediately.
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ state: 'ACTIVE' }),
+    })));
   });
 
   beforeEach(async () => {
@@ -201,5 +221,69 @@ describe('transcribeAudioFast', () => {
       success: true,
       message: 'Fast transcription started',
     });
+  });
+
+  // ── Voice Intro (ticket #68) ──
+
+  it('should send the campaign voice intro before the prompt in each segment call', async () => {
+    const voiceIntro = { storagePath: 'campaigns/campaign-1/voice-intro/intro.mp3', mimeType: 'audio/mpeg' };
+    mockGet.mockResolvedValueOnce({ exists: true, data: () => ({}) });
+    mockGet.mockResolvedValueOnce({ exists: true, data: () => ({ settings: { kankaEnabled: false, voiceIntro } }) });
+    mockUpdate.mockResolvedValue(undefined);
+    mockLoadVoiceIntroAudio.mockResolvedValue({ mimeType: 'audio/mpeg', data: 'BASE64' });
+    mockGenerateContent.mockResolvedValue({ text: 'DM [rustig]: Welkom terug, avonturiers. Jullie staan voor de poort.' });
+
+    await transcribeHandler(makeRequest());
+
+    await vi.waitFor(() => expect(mockGenerateContent).toHaveBeenCalled());
+    expect(mockLoadVoiceIntroAudio).toHaveBeenCalledWith('campaign-1', voiceIntro);
+    const parts = mockGenerateContent.mock.calls[0][0].contents[0].parts;
+    expect(parts).toHaveLength(4);
+    expect(parts[0].text).toContain('VOICE REFERENCE');
+    expect(parts[1]).toEqual({ inlineData: { mimeType: 'audio/mpeg', data: 'BASE64' } });
+    expect(parts[2]).toEqual({ text: 'test-prompt' });
+    expect(parts[3].fileData.fileUri).toBe('https://generativelanguage.googleapis.com/files/abc123');
+    expect(mockUpdate).toHaveBeenCalledWith({ 'transcriptionFast.voiceIntroUsed': true });
+  });
+
+  it('should transcribe without reference parts when no voice intro is available', async () => {
+    mockGet.mockResolvedValueOnce({ exists: true, data: () => ({}) });
+    mockGet.mockResolvedValueOnce({ exists: true, data: () => ({ settings: { kankaEnabled: false } }) });
+    mockUpdate.mockResolvedValue(undefined);
+    mockGenerateContent.mockResolvedValue({ text: 'DM [rustig]: Welkom terug, avonturiers. Jullie staan voor de poort.' });
+
+    await transcribeHandler(makeRequest());
+
+    await vi.waitFor(() => expect(mockGenerateContent).toHaveBeenCalled());
+    expect(mockLoadVoiceIntroAudio).toHaveBeenCalledWith('campaign-1', undefined);
+    const parts = mockGenerateContent.mock.calls[0][0].contents[0].parts;
+    expect(parts).toHaveLength(2);
+    expect(parts[0]).toEqual({ text: 'test-prompt' });
+    expect(mockUpdate).toHaveBeenCalledWith({ 'transcriptionFast.voiceIntroUsed': false });
+  });
+
+  it('should fall back to transcribing without the voice intro when Gemini rejects it', async () => {
+    const voiceIntro = { storagePath: 'campaigns/campaign-1/voice-intro/intro.m4a', mimeType: 'audio/x-m4a' };
+    mockGet.mockResolvedValueOnce({ exists: true, data: () => ({}) });
+    mockGet.mockResolvedValueOnce({ exists: true, data: () => ({ settings: { kankaEnabled: false, voiceIntro } }) });
+    mockUpdate.mockResolvedValue(undefined);
+    mockLoadVoiceIntroAudio.mockResolvedValue({ mimeType: 'audio/x-m4a', data: 'BASE64' });
+    mockGenerateContent.mockImplementation((request: { contents: { parts: unknown[] }[] }) =>
+      request.contents[0].parts.length === 4
+        ? Promise.reject(new Error('400 Unsupported MIME type'))
+        : Promise.resolve({ text: 'DM [rustig]: Welkom terug, avonturiers. Jullie staan voor de poort.' })
+    );
+
+    await transcribeHandler(makeRequest());
+
+    await vi.waitFor(() =>
+      expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ 'transcriptionFast.status': 'completed' }))
+    );
+    const partCounts = mockGenerateContent.mock.calls.map((call) => call[0].contents[0].parts.length);
+    expect(partCounts).toEqual([4, 2]);
+    expect(mockCaptureException).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ feature: 'voiceIntro' })
+    );
   });
 });

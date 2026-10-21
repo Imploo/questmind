@@ -15,12 +15,26 @@ export const CampaignMemberSchema = z.object({
 });
 
 /**
+ * Campaign voice intro schema (ticket #68)
+ */
+export const CampaignVoiceIntroSchema = z.object({
+  storagePath: z.string().min(1),
+  fileName: z.string(),
+  mimeType: z.string(),
+  sizeBytes: z.number().nonnegative(),
+  durationSec: z.number().nonnegative(),
+  uploadedAt: z.string(),
+  uploadedBy: z.string(),
+});
+
+/**
  * Campaign settings schema
  */
 export const CampaignSettingsSchema = z.object({
   allowMembersToCreateSessions: z.boolean(),
   kankaEnabled: z.boolean().optional(),
   kankaCampaignId: z.string().optional(),
+  voiceIntro: CampaignVoiceIntroSchema.optional(),
 });
 
 /**
@@ -43,6 +57,7 @@ export const CampaignSchema = z.object({
  */
 export type CampaignRole = z.infer<typeof CampaignRoleSchema>;
 export type CampaignMember = z.infer<typeof CampaignMemberSchema>;
+export type CampaignVoiceIntro = z.infer<typeof CampaignVoiceIntroSchema>;
 export type CampaignSettings = z.infer<typeof CampaignSettingsSchema>;
 export type Campaign = z.infer<typeof CampaignSchema>;
 

@@ -1,14 +1,16 @@
 import {
-  RAW_STORY_TRANSCRIPTION_PROMPT,
+  buildFullTranscriptionPrompt,
   buildSegmentTranscriptionPrompt,
   SegmentPromptMeta,
+  TranscriptionPromptOptions,
 } from '../prompts/raw-story-transcription.prompt';
 import {KankaSearchResult} from '../types/audio-session.types';
 
 export function buildRawStoryPrompt(
-  kankaContext?: KankaSearchResult
+  kankaContext?: KankaSearchResult,
+  options: TranscriptionPromptOptions = {}
 ): string {
-  return appendKankaContext(RAW_STORY_TRANSCRIPTION_PROMPT, kankaContext);
+  return appendKankaContext(buildFullTranscriptionPrompt(options), kankaContext);
 }
 
 /**
@@ -17,9 +19,10 @@ export function buildRawStoryPrompt(
  */
 export function buildSegmentRawStoryPrompt(
   meta: SegmentPromptMeta,
-  kankaContext?: KankaSearchResult
+  kankaContext?: KankaSearchResult,
+  options: TranscriptionPromptOptions = {}
 ): string {
-  return appendKankaContext(buildSegmentTranscriptionPrompt(meta), kankaContext);
+  return appendKankaContext(buildSegmentTranscriptionPrompt(meta, options), kankaContext);
 }
 
 function appendKankaContext(

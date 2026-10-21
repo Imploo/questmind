@@ -12,6 +12,22 @@ service firebase.storage {
       );
     }
 
+    function isCampaignOwner(campaignId) {
+      return request.auth != null &&
+        firestore.get(/databases/(default)/documents/campaigns/$(campaignId)).data.ownerId == request.auth.uid;
+    }
+
+    // Voice intro per campaign (ticket #68): the group introducing themselves,
+    // used as a voice reference during transcription. Owner manages it, members can listen.
+    // Delete is a separate rule: request.resource is null on delete, so the size/type checks can't apply.
+    match /campaigns/{campaignId}/voice-intro/{filename} {
+      allow read: if isCampaignMember(campaignId);
+      allow create, update: if isCampaignOwner(campaignId)
+                            && request.resource.size < 25 * 1024 * 1024
+                            && request.resource.contentType.matches('audio/.*');
+      allow delete: if isCampaignOwner(campaignId);
+    }
+
     // Audio files (campaigns)
     // Write only requires authentication — session IDs are UUIDs (unguessable) and the
     // backend validates campaign membership before processing. Cross-service Firestore
