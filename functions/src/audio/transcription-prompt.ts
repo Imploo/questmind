@@ -71,5 +71,5 @@ function buildKankaContextPrompt(context: KankaSearchResult): string {
   return `CAMPAIGN REFERENCE (for name/place accuracy only):
 ${sections.join('\n')}
 
-Remember: Use this context ONLY to spell names and places correctly when you hear them. Do not add information that wasn't spoken.`;
+Remember: Use this context ONLY to spell names and places correctly when you hear them. Do not add information that wasn't spoken, and never use this list to decide who is speaking.`;
 }
