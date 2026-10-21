@@ -28,7 +28,7 @@ describe('ai-settings', () => {
       const config = await getAiFeatureConfig('spellResolution');
 
       expect(config).toEqual({
-        model: 'gemini-3.5-flash',
+        model: 'gemini-3.8-flash',
         maxOutputTokens: 4096,
         thinkingLevel: 'low',
       });

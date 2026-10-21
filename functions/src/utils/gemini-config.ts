@@ -15,7 +15,6 @@ export function isGemini3Model(model: string): boolean {
 // Typed via a type-only import so we never reference the enum at runtime (keeps test mocks of
 // `@google/genai` — which only stub `GoogleGenAI` — from breaking on module load).
 const THINKING_LEVEL_MAP: Record<GeminiThinkingLevel, ThinkingLevel> = {
-  minimal: 'MINIMAL' as unknown as ThinkingLevel,
   low: 'LOW' as unknown as ThinkingLevel,
   medium: 'MEDIUM' as unknown as ThinkingLevel,
   high: 'HIGH' as unknown as ThinkingLevel,
@@ -33,8 +32,10 @@ export function buildGenerationParams(config: AIFeatureConfig): Partial<Generate
     maxOutputTokens: config.maxOutputTokens,
   };
 
-  if (isGemini3Model(config.model) && config.thinkingLevel) {
-    params.thinkingConfig = { thinkingLevel: THINKING_LEVEL_MAP[config.thinkingLevel] };
+  // Lookup guards against stale Firestore values (e.g. the removed 'minimal', unsupported on 3.8).
+  const thinkingLevel = config.thinkingLevel && THINKING_LEVEL_MAP[config.thinkingLevel];
+  if (isGemini3Model(config.model) && thinkingLevel) {
+    params.thinkingConfig = { thinkingLevel };
   }
 
   return params;

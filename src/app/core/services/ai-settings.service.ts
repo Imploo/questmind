@@ -1,7 +1,7 @@
 import { Injectable, inject, computed } from '@angular/core';
 import { AiSettingsRepository } from '../../shared/repository/ai-settings.repository';
 
-export type GeminiThinkingLevel = 'minimal' | 'low' | 'medium' | 'high';
+export type GeminiThinkingLevel = 'low' | 'medium' | 'high';
 
 export interface AiModelConfig {
   model: string;
@@ -69,7 +69,7 @@ export class AiSettingsService {
 
   // Default fallback values
   private readonly defaultCharacterChatConfig: AiModelConfig = {
-    model: 'gemini-3.5-flash',
+    model: 'gemini-3.8-flash',
     maxOutputTokens: 8192,
     thinkingLevel: 'low'
   };

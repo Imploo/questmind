@@ -37,14 +37,14 @@ export function resetAiSettingsCache(): void {
 }
 
 const DEFAULT_CONFIGS: Record<string, AIFeatureConfig> = {
-  characterChatText: { model: 'gemini-3.5-flash', maxOutputTokens: 4096, thinkingLevel: 'low' },
-  characterDraft: { model: 'gemini-3.5-flash', maxOutputTokens: 8192, thinkingLevel: 'medium' },
-  spellResolution: { model: 'gemini-3.5-flash', maxOutputTokens: 4096, thinkingLevel: 'low' },
-  featureResolution: { model: 'gemini-3.5-flash', maxOutputTokens: 4096, thinkingLevel: 'low' },
-  transcription: { model: 'gemini-3.5-flash', maxOutputTokens: 65536, thinkingLevel: 'low' },
-  storyGeneration: { model: 'gemini-3.5-flash', maxOutputTokens: 60000, thinkingLevel: 'medium' },
-  podcastScript: { model: 'gemini-3.5-flash', maxOutputTokens: 32768, thinkingLevel: 'medium' },
-  imagePromptGeneration: { model: 'gemini-3.5-flash', maxOutputTokens: 1024, thinkingLevel: 'low' },
+  characterChatText: { model: 'gemini-3.8-flash', maxOutputTokens: 4096, thinkingLevel: 'low' },
+  characterDraft: { model: 'gemini-3.8-flash', maxOutputTokens: 8192, thinkingLevel: 'medium' },
+  spellResolution: { model: 'gemini-3.8-flash', maxOutputTokens: 4096, thinkingLevel: 'low' },
+  featureResolution: { model: 'gemini-3.8-flash', maxOutputTokens: 4096, thinkingLevel: 'low' },
+  transcription: { model: 'gemini-3.8-flash', maxOutputTokens: 65536, thinkingLevel: 'low' },
+  storyGeneration: { model: 'gemini-3.8-flash', maxOutputTokens: 60000, thinkingLevel: 'medium' },
+  podcastScript: { model: 'gemini-3.8-flash', maxOutputTokens: 32768, thinkingLevel: 'medium' },
+  imagePromptGeneration: { model: 'gemini-3.8-flash', maxOutputTokens: 1024, thinkingLevel: 'low' },
 };
 
 /**
@@ -64,7 +64,7 @@ const DEFAULT_SEGMENTATION: TranscriptionSegmentationSettings = {
 
 const DEFAULT_IMAGE_CONFIG = { model: 'fal-ai/flux/schnell' };
 const DEFAULT_PODCAST_VOICES: PodcastVoiceSettings = {
-  ttsProvider: 'elevenlabs',                     // first release: default to proven ElevenLabs path
+  ttsProvider: 'gemini',                         // ElevenLabs subscription cancelled
   maxCharacters: 5000,
   model: 'eleven_v3',
   host1VoiceId: '',

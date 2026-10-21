@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { UserService } from '../core/user.service';
 import { AiSettingsRepository } from '../shared/repository/ai-settings.repository';
 import { type AiSettings, type AiModelConfig, type AiImageConfig, type PodcastVoiceSettings } from '../core/services/ai-settings.service';
+import { ToastService } from '../shared/services/toast.service';
 import * as logger from '../shared/logger';
 
 type FeatureFormType = 'standard' | 'imageOnly' | 'voicesOnly';
@@ -56,6 +57,15 @@ interface FeatureDefinition {
                 </button>
                 <span class="text-[10px] text-gray-400">{{ cacheEnabled() ? 'ON' : 'OFF' }}</span>
               </label>
+
+              <button
+                type="button"
+                (click)="resetToDefaults()"
+                [disabled]="saveIndicator() === 'saving'"
+                class="px-3 py-1.5 text-xs font-semibold text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-all disabled:opacity-50"
+              >
+                Reset to defaults
+              </button>
 
               <div class="h-6">
                 @switch (saveIndicator()) {
@@ -348,9 +358,10 @@ interface FeatureDefinition {
 })
 export class AdminComponent implements OnInit {
   private readonly aiSettingsRepo = inject(AiSettingsRepository);
+  private readonly toastService = inject(ToastService);
   readonly userService = inject(UserService);
 
-  readonly thinkingLevels = ['minimal', 'low', 'medium', 'high'] as const;
+  readonly thinkingLevels = ['low', 'medium', 'high'] as const;
 
   readonly featureDefinitions: readonly FeatureDefinition[] = [
     {
@@ -455,18 +466,18 @@ export class AdminComponent implements OnInit {
   ] as const;
 
   private readonly defaultConfigs: Record<string, AiModelConfig | AiImageConfig | PodcastVoiceSettings> = {
-    characterChatText: { model: 'gemini-3.5-flash', maxOutputTokens: 4096, thinkingLevel: 'low' },
-    characterDraft: { model: 'gemini-3.5-flash', maxOutputTokens: 8192, thinkingLevel: 'medium' },
-    spellResolution: { model: 'gemini-3.5-flash', maxOutputTokens: 4096, thinkingLevel: 'low' },
-    featureResolution: { model: 'gemini-3.5-flash', maxOutputTokens: 4096, thinkingLevel: 'low' },
-    imagePromptGeneration: { model: 'gemini-3.5-flash', maxOutputTokens: 1024, thinkingLevel: 'low' },
+    characterChatText: { model: 'gemini-3.8-flash', maxOutputTokens: 4096, thinkingLevel: 'low' },
+    characterDraft: { model: 'gemini-3.8-flash', maxOutputTokens: 8192, thinkingLevel: 'medium' },
+    spellResolution: { model: 'gemini-3.8-flash', maxOutputTokens: 4096, thinkingLevel: 'low' },
+    featureResolution: { model: 'gemini-3.8-flash', maxOutputTokens: 4096, thinkingLevel: 'low' },
+    imagePromptGeneration: { model: 'gemini-3.8-flash', maxOutputTokens: 1024, thinkingLevel: 'low' },
     imageGeneration: { model: 'fal-ai/flux/schnell' },
-    transcription: { model: 'gemini-3.5-flash', maxOutputTokens: 65536, thinkingLevel: 'low' },
-    storyGeneration: { model: 'gemini-3.5-flash', maxOutputTokens: 32000, thinkingLevel: 'medium' },
-    podcastScript: { model: 'gemini-3.5-flash', maxOutputTokens: 4096, thinkingLevel: 'medium' },
-    characterChat: { model: 'gemini-3.5-flash', maxOutputTokens: 8192, thinkingLevel: 'low' },
+    transcription: { model: 'gemini-3.8-flash', maxOutputTokens: 65536, thinkingLevel: 'low' },
+    storyGeneration: { model: 'gemini-3.8-flash', maxOutputTokens: 60000, thinkingLevel: 'medium' },
+    podcastScript: { model: 'gemini-3.8-flash', maxOutputTokens: 32768, thinkingLevel: 'medium' },
+    characterChat: { model: 'gemini-3.8-flash', maxOutputTokens: 8192, thinkingLevel: 'low' },
     podcastVoices: {
-      ttsProvider: 'elevenlabs',
+      ttsProvider: 'gemini',
       maxCharacters: 5000,
       model: 'eleven_v3',
       host1VoiceId: '',
@@ -554,6 +565,36 @@ export class AdminComponent implements OnInit {
       );
     } finally {
       this.loadingSettings.set(false);
+    }
+  }
+
+  /**
+   * Wipes all stored AI settings so the code defaults (frontend + backend) apply again.
+   * The defaults are only shown locally — not written back — so future default changes take effect.
+   */
+  async resetToDefaults(): Promise<void> {
+    const confirmed = await this.toastService.confirm(
+      'Alle custom AI settings verwijderen en terugzetten naar de defaults?'
+    );
+    if (!confirmed) return;
+
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout);
+      this.saveTimeout = null;
+    }
+
+    this.saveIndicator.set('saving');
+
+    try {
+      await this.aiSettingsRepo.replace({ features: {} });
+      this.aiSettings.set(this.normalizeSettings({ features: {} }));
+
+      this.saveIndicator.set('saved');
+      setTimeout(() => this.saveIndicator.set('idle'), 2000);
+    } catch (error) {
+      logger.error('Reset to defaults failed:', error);
+      this.saveIndicator.set('error');
+      setTimeout(() => this.saveIndicator.set('idle'), 3000);
     }
   }
 

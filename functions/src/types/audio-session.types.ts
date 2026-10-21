@@ -71,7 +71,7 @@ export type RegenerateStoryStatus =
   | 'failed';
 
 /** Gemini 3.x reasoning effort. Maps to the SDK `ThinkingLevel` enum. */
-export type GeminiThinkingLevel = 'minimal' | 'low' | 'medium' | 'high';
+export type GeminiThinkingLevel = 'low' | 'medium' | 'high';
 
 export interface AIFeatureConfig {
   model: string;
