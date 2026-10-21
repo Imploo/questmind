@@ -104,7 +104,6 @@ Check de terminal waar `firebase serve` draait voor function logs.
 ### Environment Variables
 Zorg dat je `.env` bestand in de `functions` directory de volgende secrets bevat:
 - `GOOGLE_AI_API_KEY`
-- `ELEVENLABS_API_KEY`
 - `GEMINI_CALLBACK_SECRET`
 
 ## Project Structure

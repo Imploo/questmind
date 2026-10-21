@@ -48,6 +48,11 @@ export abstract class FirestoreDocumentRepository<T extends Record<string, unkno
     await setDoc(this.docRef, data, { merge: true });
   }
 
+  /** Overwrites the whole document, dropping any fields not present in `data`. */
+  public async replace(data: T): Promise<void> {
+    await setDoc(this.docRef, data);
+  }
+
   public async patch(data: Record<string, unknown>): Promise<void> {
     await updateDoc(this.docRef, data);
   }

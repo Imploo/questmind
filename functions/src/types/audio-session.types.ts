@@ -71,7 +71,7 @@ export type RegenerateStoryStatus =
   | 'failed';
 
 /** Gemini 3.x reasoning effort. Maps to the SDK `ThinkingLevel` enum. */
-export type GeminiThinkingLevel = 'minimal' | 'low' | 'medium' | 'high';
+export type GeminiThinkingLevel = 'low' | 'medium' | 'high';
 
 export interface AIFeatureConfig {
   model: string;
@@ -81,10 +81,10 @@ export interface AIFeatureConfig {
 }
 
 export interface PodcastVoiceSettings {
-  model: string;
   maxCharacters: number;
-  host1VoiceId: string;
-  host2VoiceId: string;
+  geminiModel: string;      // e.g. 'gemini-3.8-flash-tts'
+  host1VoiceName: string;   // Gemini prebuilt voice (e.g. 'Puck')
+  host2VoiceName: string;   // Gemini prebuilt voice (e.g. 'Leda')
 }
 
 export interface TranscriptionModeConfig {
@@ -102,11 +102,35 @@ export interface TranscriptionFeatureConfig extends AIFeatureConfig {
   };
 }
 
+/**
+ * Controls how long recordings are split into shorter segments for transcription
+ * (ticket #67). Overridable via `settings/ai.transcriptionSegmentation` so segment
+ * length, overlap and failure policy can be tuned without a deploy.
+ */
+export interface TranscriptionSegmentationSettings {
+  /** Master switch — when false the frontend uploads a single segment (legacy flow). */
+  enabled: boolean;
+  /** Target length of each segment, in minutes. */
+  segmentMinutes: number;
+  /** Lead-in overlap pulled from the previous segment, in seconds. */
+  overlapSeconds: number;
+  /** Recordings at or below this length are not split. */
+  minSplitMinutes: number;
+  /** Max segments transcribed concurrently on the backend (bounded by Gemini rate limits). */
+  concurrency: number;
+  /** Per-segment transcription attempts before falling back to the failure policy. */
+  maxAttempts: number;
+  /** When a segment fails after all retries: insert a transparent gap marker, or fail the session. */
+  onSegmentFailure: 'gap' | 'fail';
+}
+
 export interface AISettings {
   defaultModel: string;
   availableModels?: string[];
   apiProvider?: string;
   cacheEnabled?: boolean;
+  /** Audio segmentation tuning for fast transcription (ticket #67). */
+  transcriptionSegmentation?: Partial<TranscriptionSegmentationSettings>;
   features?: {
     transcription?: TranscriptionFeatureConfig;
     storyGeneration?: AIFeatureConfig;

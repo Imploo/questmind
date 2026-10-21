@@ -10,17 +10,22 @@ Je taak is om een D&D sessie recap om te zetten in een rauw, onbewerkt transcrip
 
 HOSTS:
 - HOST1 (Mannelijke stem): Analytisch, gefocust op mechanics en tactieken. Soms zoekend naar woorden.
-- HOST2 (Vrouwelijke stem): Narratief, benadrukt verhaal en emotie. Enthousiast, valt soms bij.
+- HOST2 (Vrouwelijke stem): Narratief, benadrukt verhaal en emotie. Betrokken en warm, valt af en toe bij.
 
 WAT DIT TRANSCRIPT KENMERKT:
 - Vulwoorden aan het BEGIN van beurten: "Nou,", "Kijk,", "Ja maar,", "Nee maar echt,"
-- Spontaan en energiek, niet voorgelezen
+- Spontaan en natuurlijk, niet voorgelezen — levendig waar het past, rustig waar het kan
 - Hosts bouwen hun punt op over meerdere zinnen voordat de ander reageert
-- Af en toe een korte reactie ("Ja!", "Echt hè?"), maar NIET na elke beurt — maximaal 3-4 keer per transcript
-- Gebruik (..) voor een korte pauze, maximaal 2-3 keer per heel transcript
+- Af en toe een korte reactie ("Ja, precies", "Echt hè?"), maar NIET na elke beurt — maximaal 3-4 keer per transcript
+- Gebruik <short pause> voor een korte pauze, maximaal 2-3 keer per heel transcript. Gebruik verder GEEN regieaanwijzingen of tekst tussen haakjes, want alles wordt letterlijk voorgelezen
 - VERMIJD "Ehm...", "Uhm..." en andere aarzelingen — die klinken als lange stiltes bij AI stemmen
 - VERMIJD gedachtestreepjes (—)
-- Gebruik GEEN pauze-trucjes — de energie moet hoog blijven, het tempo vlot
+- Houd het tempo natuurlijk en vlot — niet gehaast, maar ook geen lange stiltes
+
+TOON:
+- Zoek de balans tussen energiek en rustig babbelen — geen journaal dat wordt voorgelezen, maar ook geen non-stop hypetrain
+- Spaarzaam met uitroeptekens: gebruik ze alleen bij een écht hoogtepunt, niet als standaard interpunctie. Een gewone punt volstaat meestal
+- Niet elke zin is een climax; laat de meeste observaties gewoon rustig landen
 
 BELANGRIJK:
 - De hosts WETEN dat dit van een tabletop RPG sessie komt, maar zeggen NIET expliciet "D&D" of "Dungeons & Dragons"
@@ -39,6 +44,12 @@ INHOUD:
 6. Memorabele quotes of grappige momenten
 7. Speculatie en theorieën over wat er gaat komen
 
+TROUW AAN HET VERHAAL (BELANGRIJK):
+- Gebruik UITSLUITEND gebeurtenissen, namen, locaties, beslissingen en details die in het sessieverhaal hieronder staan
+- Verzin NOOIT extra gebeurtenissen, personages, quotes of uitkomsten om de aflevering langer te maken — de lengte komt uit het UITGEBREID bespreken van wat er écht in het verhaal staat, niet uit verzinsels
+- Wees concreet: noem specifieke namen, plekken, beslissingen, gevechtsmomenten en uitkomsten uit het verhaal in plaats van vage algemeenheden
+- Speculatie is toegestaan en gewenst (zie hieronder), maar maak duidelijk dat het speculatie is ("ik denk dat...", "stel dat...", "misschien...") — presenteer het nooit als iets dat al gebeurd is
+
 BALANS TUSSEN RECAP EN SPECULATIE:
 - Besteed NIET het hele transcript aan alleen opsommen wat er gebeurd is
 - Na het bespreken van een belangrijk moment, laat de hosts SPECULEREN: "Wat denk jij, zou dit betekenen dat...?", "Ik heb zo'n gevoel dat dit nog terugkomt..."
@@ -53,13 +64,15 @@ HOST2: [dialoog]
 HOST1: [dialoog]
 
 VOORBEELD:
-HOST1: Nou, welkom terug! Vandaag hebben we een bijzondere sessie om te bespreken. Het begon best rustig, ze kwamen aan bij die tempel en iedereen dacht oké, dit wordt een praatsessie. Maar dan doet Thorn wat Thorn altijd doet, hij gooide gewoon een fireball. Zonder enige aanleiding, gewoon boem, klaar.
-HOST2: Ja, dat is Thorn ten voeten uit! Maar oké, het mooie was eigenlijk wat er daarna gebeurde met Elara. Kijk, zij stond daar en je zag het gewoon aankomen. Ze had die hele sessie al hints laten vallen dat ze iets van plan was, en toen het gevecht losbarstte greep ze haar kans.
+HOST1: Nou, welkom terug. Vandaag hebben we een bijzondere sessie om te bespreken. Het begon best rustig, ze kwamen aan bij die tempel en iedereen dacht oké, dit wordt een praatsessie. Maar dan doet Thorn wat Thorn altijd doet, hij gooide gewoon een fireball. Zonder enige aanleiding, gewoon boem, klaar.
+HOST2: Ja, dat is Thorn ten voeten uit. Maar oké, het mooie was eigenlijk wat er daarna gebeurde met Elara. Kijk, zij stond daar en je zag het gewoon aankomen. Ze had die hele sessie al hints laten vallen dat ze iets van plan was, en toen het gevecht losbarstte greep ze haar kans.
 HOST1: Ja precies, en wat ik zo goed vond was hoe de rest van de party daarop reageerde. Niemand had het zien aankomen, maar ze speelden er meteen op in. Dat soort momenten, daar doe je het voor.
 
 LENGTE:
-- Mik op ${maxCharacters} karakters totaal
-- Korte intro, neem de tijd voor de inhoud, eindig met speculatie en een korte afsluiting
+- Dit is een uitgebreide aflevering — mik op een vol, rijk transcript van ${Math.round(maxCharacters * 0.85)} tot ${maxCharacters} karakters (ruwweg ${Math.round(maxCharacters / 1000)} minuten luistertijd)
+- Blijf ONDER ${maxCharacters} karakters; dat is de harde bovengrens
+- Vul die lengte met ECHTE inhoud uit het verhaal: behandel meerdere scènes, beslissingen en momenten uitgebreid in plaats van één highlight uit te spinnen
+- Korte intro, neem ruim de tijd voor de inhoud, en sluit af met speculatie en een korte afronding
 
 Schrijf nu het transcript gebaseerd op het sessie verhaal hieronder.
 `;

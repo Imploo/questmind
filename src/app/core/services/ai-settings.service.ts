@@ -1,7 +1,7 @@
 import { Injectable, inject, computed } from '@angular/core';
 import { AiSettingsRepository } from '../../shared/repository/ai-settings.repository';
 
-export type GeminiThinkingLevel = 'minimal' | 'low' | 'medium' | 'high';
+export type GeminiThinkingLevel = 'low' | 'medium' | 'high';
 
 export interface AiModelConfig {
   model: string;
@@ -15,14 +15,26 @@ export interface AiImageConfig {
 }
 
 export interface PodcastVoiceSettings {
-  model: string;
   maxCharacters: number;
-  host1VoiceId: string;
-  host2VoiceId: string;
+  geminiModel: string;
+  host1VoiceName: string;
+  host2VoiceName: string;
+}
+
+/** Audio segmentation tuning for fast transcription (ticket #67). */
+export interface TranscriptionSegmentationSettings {
+  enabled: boolean;
+  segmentMinutes: number;
+  overlapSeconds: number;
+  minSplitMinutes: number;
+  concurrency: number;
+  maxAttempts: number;
+  onSegmentFailure: 'gap' | 'fail';
 }
 
 export interface AiSettings {
   cacheEnabled?: boolean;
+  transcriptionSegmentation?: Partial<TranscriptionSegmentationSettings>;
   features: {
     transcription?: AiModelConfig;
     storyGeneration?: AiModelConfig;
@@ -48,7 +60,7 @@ export class AiSettingsService {
 
   // Default fallback values
   private readonly defaultCharacterChatConfig: AiModelConfig = {
-    model: 'gemini-3.5-flash',
+    model: 'gemini-3.8-flash',
     maxOutputTokens: 8192,
     thinkingLevel: 'low'
   };
@@ -56,6 +68,27 @@ export class AiSettingsService {
   private readonly defaultImageGenerationConfig: AiImageConfig = {
     model: 'fal-ai/flux/schnell'
   };
+
+  /** Defaults mirror the backend (functions ai-settings DEFAULT_SEGMENTATION). */
+  private readonly defaultSegmentationConfig: TranscriptionSegmentationSettings = {
+    enabled: true,
+    segmentMinutes: 30,
+    overlapSeconds: 15,
+    minSplitMinutes: 35,
+    concurrency: 4,
+    maxAttempts: 4,
+    onSegmentFailure: 'gap'
+  };
+
+  /**
+   * Get audio segmentation config (with fallback to defaults).
+   * Lets segment length/overlap/split-threshold be tuned via settings/ai
+   * without a deploy (ticket #67).
+   */
+  getTranscriptionSegmentationConfig(): TranscriptionSegmentationSettings {
+    const settings = this.data() as AiSettings | null;
+    return { ...this.defaultSegmentationConfig, ...settings?.transcriptionSegmentation };
+  }
 
   /**
    * Get character chat config (with fallback to defaults)

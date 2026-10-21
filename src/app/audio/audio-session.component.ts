@@ -451,30 +451,57 @@ export class AudioSessionComponent {
 
     logger.debug('[Retry] Retrying failed transcription for session:', session?.id);
 
-    const storageUrl = session?.storageUrl || null;
-    if (!storageUrl) {
-      this.toastService.show('Cannot retry: No audio file found for this session.', 'error');
+    if (!session?.campaignId) {
+      this.toastService.show('Cannot retry: No campaign selected.', 'error');
       return;
     }
 
-    if (!session?.campaignId) {
-      this.toastService.show('Cannot retry: No campaign selected.', 'error');
+    // Reuse the segment fileUris uploaded on the original attempt — the audio
+    // bytes only ever lived in the browser, so a retry can't re-upload them
+    // (ticket #67). Falls back to the legacy single fileUri when present.
+    const fileUris = this.collectSegmentFileUris(session.transcriptionFast);
+    if (fileUris.length === 0) {
+      this.toastService.show(
+        'Cannot retry: the uploaded audio is no longer available. Please re-upload the recording.',
+        'error'
+      );
       return;
     }
 
     await this.callTranscribeAudioFast(
       session.campaignId,
       session.id,
-      storageUrl,
-      session.audioFileName || 'audio.wav',
+      fileUris,
+      session.audioFileName || 'audio.mp3',
       this.correctionsSave.corrections() || undefined
     );
+  }
+
+  /** Build the ordered segment list for a retry from stored fast-transcription metadata. */
+  private collectSegmentFileUris(
+    meta: AudioSessionRecord['transcriptionFast']
+  ): { index: number; fileUri: string; startSec?: number | null; endSec?: number | null }[] {
+    const segments = meta?.segments?.filter((s) => !!s?.fileUri) ?? [];
+    if (segments.length > 0) {
+      return segments
+        .map((s, i) => ({
+          index: typeof s.index === 'number' ? s.index : i,
+          fileUri: s.fileUri,
+          startSec: s.startSec ?? null,
+          endSec: s.endSec ?? null,
+        }))
+        .sort((a, b) => a.index - b.index);
+    }
+    if (meta?.fileUri) {
+      return [{ index: 0, fileUri: meta.fileUri }];
+    }
+    return [];
   }
 
   private async callTranscribeAudioFast(
     campaignId: string,
     sessionId: string,
-    storageUrl: string,
+    fileUris: { index: number; fileUri: string; startSec?: number | null; endSec?: number | null }[],
     audioFileName: string,
     userCorrections?: string
   ): Promise<void> {
@@ -482,7 +509,8 @@ export class AudioSessionComponent {
       logger.debug('[TranscribeFast] Starting fast transcription', {
         campaignId,
         sessionId,
-        audioFileName
+        audioFileName,
+        segments: fileUris.length
       });
 
       await this.sessionStateService.persistSessionPatch(sessionId, {
@@ -500,7 +528,7 @@ export class AudioSessionComponent {
         {
           campaignId: string;
           sessionId: string;
-          storageUrl: string;
+          fileUris: { index: number; fileUri: string; startSec?: number | null; endSec?: number | null }[];
           audioFileName: string;
           audioFileSize?: number;
           userCorrections?: string;
@@ -511,7 +539,7 @@ export class AudioSessionComponent {
       const result = await transcribeAudioFast({
         campaignId,
         sessionId,
-        storageUrl,
+        fileUris,
         audioFileName,
         userCorrections
       });

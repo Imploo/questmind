@@ -20,22 +20,16 @@ vi.mock('@google/genai', () => ({
   })),
 }));
 
-vi.mock('@elevenlabs/elevenlabs-js', () => ({
-  ElevenLabsClient: vi.fn(() => ({
-    textToDialogue: { convert: vi.fn() },
-  })),
-}));
-
 vi.mock('./utils/ai-settings', () => ({
   getAiFeatureConfig: vi.fn(() => Promise.resolve({
     model: 'gemini-test',
     maxOutputTokens: 4096,
   })),
   getPodcastVoiceConfig: vi.fn(() => Promise.resolve({
-    model: 'eleven_v3',
     maxCharacters: 5000,
-    host1VoiceId: 'voice-1',
-    host2VoiceId: 'voice-2',
+    geminiModel: 'gemini-3.8-flash-tts',
+    host1VoiceName: 'Puck',
+    host2VoiceName: 'Leda',
   })),
 }));
 
@@ -89,7 +83,6 @@ describe('generatePodcastAudio', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.GOOGLE_AI_API_KEY = 'test-api-key';
-    process.env.ELEVENLABS_API_KEY = 'test-elevenlabs-key';
   });
 
   beforeEach(async () => {

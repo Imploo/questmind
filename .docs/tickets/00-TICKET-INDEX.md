@@ -657,10 +657,10 @@ Start here for immediate impact with minimal risk:
 
 | Ticket | Title | Priority | Status | Effort | Dependencies |
 |--------|-------|----------|--------|--------|--------------|
-| [#66](./66-migrate-podcast-tts-to-gemini.md) | Migreer Podcast TTS van ElevenLabs naar Gemini TTS | High | Todo | 2-3 dagen | - |
+| [#66](./done/66-migrate-podcast-tts-to-gemini.md) | Migreer Podcast TTS van ElevenLabs naar Gemini TTS | High | Done | 2-3 dagen | - |
 
 **Key Changes:**
-- **Ticket 66**: Vervang ElevenLabs text-to-dialogue door Gemini 2.5 TTS
+- **Ticket 66**: Vervang ElevenLabs text-to-dialogue door Gemini 3.8 Flash TTS (afgerond, via Interactions API)
   - Native multi-speaker audio generatie (2 speakers in 1 API call)
   - Hergebruikt bestaande `@google/genai` package — geen extra dependency
   - `@elevenlabs/elevenlabs-js` en `ELEVENLABS_API_KEY` verwijderd
@@ -669,5 +669,23 @@ Start here for immediate impact with minimal risk:
 
 ---
 
-**Last Updated:** 2026-03-31
+## ✂️ Transcriptie Kwaliteit — Audio Segmentatie
+
+| Ticket | Title | Priority | Status | Effort | Dependencies |
+|--------|-------|----------|--------|--------|--------------|
+| [#67](./done/67-split-audio-into-segments-for-transcription.md) | Audio opsplitsen in segmenten voor transcriptie | High | Done | 3-5 dagen | #53, #54 |
+
+**Key Changes:**
+- **Ticket 67**: Knip lange opnames client-side in segmenten van ~30 min en transcribeer elk apart (afgerond — single- én multi-file)
+  - Lost detailverlies in de tweede helft van de avond op (single-pass aandachtsverval over 3+ uur)
+  - Elk segment krijgt eigen 65k output-budget → langer + getrouwer transcript
+  - Client-side splitsen (audio staat niet in Storage, Gemini-files niet downloadbaar)
+  - Multi-file: concateneert eerst tot één avond (PCM), segmenteert dáárna (inverse van #53)
+  - Backend accepteert `fileUris[]`, transcribeert per segment, concateneert tot één `rawStory`
+  - Retry hergebruikt opgeslagen segment-fileUris i.p.v. niet-bruikbare storageUrl
+  - Segmentlengte/overlap/concurrency/failure-policy configureerbaar via `settings/ai.transcriptionSegmentation` zonder deploy
+
+---
+
+**Last Updated:** 2026-10-21
 **Status:** Planning Complete, Ready to Begin

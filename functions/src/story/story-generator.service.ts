@@ -5,9 +5,9 @@ import { AIFeatureConfig, KankaSearchResult, PreviousStory } from '../types/audi
 import { SESSION_STORY_GENERATOR_PROMPT } from '../prompts/session-story-generator.prompt';
 
 /**
- * Generates a polished story from a raw story narrative
+ * Generates a polished story from the annotated session log
  *
- * @param rawStory - Raw story narrative from transcription
+ * @param rawStory - Annotated session log from transcription (older sessions: a raw narrative)
  * @param config - AI model configuration
  * @param kankaContext - Optional campaign context for accuracy
  * @param userCorrections - Optional DM corrections to apply
@@ -83,7 +83,7 @@ ${storySummaries}`;
     prompt += `\n\nDM CORRECTIONS:\n${userCorrections}`;
   }
 
-  prompt += `\n\nRAW SESSION STORY:\n${rawStory}`;
+  prompt += `\n\nSESSION LOG:\n${rawStory}`;
 
   return prompt;
 }
