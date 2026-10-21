@@ -21,7 +21,7 @@
     "@fal-ai/client": "^1.9.0",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@google-cloud/storage": "^7.17.1",
-    "@google/genai": "^1.39.0",
+    "@google/genai": "^2.30.0",
     "@google/generative-ai": "^0.24.1",
     "@sentry/node": "^10.38.0",
     "date-fns": "^4.1.0",

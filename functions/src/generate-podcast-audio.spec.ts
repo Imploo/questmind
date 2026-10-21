@@ -37,7 +37,7 @@ vi.mock('./utils/ai-settings', () => ({
     model: 'eleven_v3',
     host1VoiceId: 'voice-1',
     host2VoiceId: 'voice-2',
-    geminiModel: 'gemini-3.1-flash-tts-preview',
+    geminiModel: 'gemini-3.8-flash-tts',
     host1VoiceName: 'Puck',
     host2VoiceName: 'Leda',
   })),

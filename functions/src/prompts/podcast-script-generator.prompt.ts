@@ -17,7 +17,7 @@ WAT DIT TRANSCRIPT KENMERKT:
 - Spontaan en natuurlijk, niet voorgelezen — levendig waar het past, rustig waar het kan
 - Hosts bouwen hun punt op over meerdere zinnen voordat de ander reageert
 - Af en toe een korte reactie ("Ja, precies", "Echt hè?"), maar NIET na elke beurt — maximaal 3-4 keer per transcript
-- Gebruik (..) voor een korte pauze, maximaal 2-3 keer per heel transcript
+- Gebruik <short pause> voor een korte pauze, maximaal 2-3 keer per heel transcript. Gebruik verder GEEN regieaanwijzingen of tekst tussen haakjes, want alles wordt letterlijk voorgelezen
 - VERMIJD "Ehm...", "Uhm..." en andere aarzelingen — die klinken als lange stiltes bij AI stemmen
 - VERMIJD gedachtestreepjes (—)
 - Houd het tempo natuurlijk en vlot — niet gehaast, maar ook geen lange stiltes

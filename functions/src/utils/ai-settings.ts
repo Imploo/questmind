@@ -69,7 +69,7 @@ const DEFAULT_PODCAST_VOICES: PodcastVoiceSettings = {
   model: 'eleven_v3',
   host1VoiceId: '',
   host2VoiceId: '',
-  geminiModel: 'gemini-3.1-flash-tts-preview',   // fallback: 'gemini-2.5-flash-preview-tts'
+  geminiModel: 'gemini-3.8-flash-tts',           // fallback: 'gemini-3.8-flash-lite-tts'
   host1VoiceName: 'Puck',                        // male — verify on Dutch
   host2VoiceName: 'Leda',                        // female — verify on Dutch
 };

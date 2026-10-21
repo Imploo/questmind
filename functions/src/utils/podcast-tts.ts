@@ -1,25 +1,24 @@
-import { GoogleGenAI, Modality } from '@google/genai';
+import { GoogleGenAI } from '@google/genai';
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { Readable } from 'stream';
 import * as logger from './logger';
 import { PodcastVoiceSettings } from '../types/audio-session.types';
-import { pcmToMp3, parsePcmSampleRate, DEFAULT_PCM_SAMPLE_RATE } from './pcm-to-mp3';
+import { pcmToMp3, DEFAULT_PCM_SAMPLE_RATE } from './pcm-to-mp3';
 
 export interface PodcastSegment {
   speaker: 'host1' | 'host2';
   text: string;
 }
 
-/** Speaker labels used both in the dialog text and the Gemini multi-speaker config. */
+/** Speaker names used in the per-turn speech_metadata and the Gemini speaker→voice config. */
 const SPEAKER_LABELS: Record<'host1' | 'host2', string> = {
   host1: 'HOST1',
   host2: 'HOST2',
 };
 
 /**
- * Natural-language style instruction prepended to the Gemini TTS input.
- * Steers tone/tempo without SSML — this is the Gemini equivalent of what
- * ElevenLabs' `eleven_v3` did implicitly.
+ * Delivery style attached to every turn via `speech_metadata.style`.
+ * Gemini 3.8 TTS reads the `text` field verbatim, so style must NOT be part of the text.
  */
 const GEMINI_STYLE_INSTRUCTION =
   'Lees het volgende voor als een ontspannen, natuurlijk gesprek tussen twee Nederlandse podcast-hosts. ' +
@@ -34,6 +33,8 @@ const GEMINI_STYLE_INSTRUCTION =
 const GEMINI_CHUNK_CHAR_LIMIT = 3000;
 
 /** Legacy ElevenLabs voice IDs (fallback when none configured). */
+const DEFAULT_GEMINI_TTS_MODEL = 'gemini-3.8-flash-tts';
+
 const DEFAULT_ELEVENLABS_VOICES: Record<'host1' | 'host2', string> = {
   host1: process.env.ELEVENLABS_HOST1_VOICE || 'tvFp0BgJPrEXGoDhDIA4', // Thomas
   host2: process.env.ELEVENLABS_HOST2_VOICE || '7qdUFMklKPaaAVMsBTBt', // Roos
@@ -82,9 +83,18 @@ export function chunkSegmentsByChars(segments: PodcastSegment[], maxChars: numbe
   return chunks;
 }
 
-/** Render segments as a speaker-labelled transcript for Gemini multi-speaker TTS. */
-export function buildDialogText(segments: PodcastSegment[]): string {
-  return segments.map(seg => `${SPEAKER_LABELS[seg.speaker]}: ${seg.text}`).join('\n');
+/**
+ * Map segments to Gemini 3.8 TTS turns: verbatim text, with speaker and delivery
+ * style carried in a `speech_metadata` annotation on every turn.
+ */
+export function buildTurns(segments: PodcastSegment[]) {
+  return segments.map(seg => ({
+    type: 'text' as const,
+    text: seg.text,
+    annotations: [
+      { type: 'speech_metadata' as const, speaker: SPEAKER_LABELS[seg.speaker], style: GEMINI_STYLE_INSTRUCTION },
+    ],
+  }));
 }
 
 async function generateGeminiAudio(
@@ -97,7 +107,7 @@ async function generateGeminiAudio(
     throw new Error('Google AI API key is not configured');
   }
 
-  const model = voiceConfig.geminiModel || 'gemini-3.1-flash-tts-preview';
+  const model = voiceConfig.geminiModel || DEFAULT_GEMINI_TTS_MODEL;
   const googleAi = new GoogleGenAI({ apiKey });
   const chunks = chunkSegmentsByChars(segments, GEMINI_CHUNK_CHAR_LIMIT);
 
@@ -114,36 +124,31 @@ async function generateGeminiAudio(
       `Generating podcast audio with Gemini (part ${i + 1}/${chunks.length})...`
     );
 
-    const promptText = `${GEMINI_STYLE_INSTRUCTION}\n\n${buildDialogText(chunks[i])}`;
-
-    const response = await googleAi.models.generateContent({
+    // Request headerless PCM (l16): unary default is WAV, and concatenating WAV
+    // chunks would leave RIFF headers mid-stream as audible clicks.
+    const interaction = await googleAi.interactions.create({
       model,
-      contents: [{ parts: [{ text: promptText }] }],
-      config: {
-        responseModalities: [Modality.AUDIO],
-        speechConfig: {
-          multiSpeakerVoiceConfig: {
-            speakerVoiceConfigs: [
-              {
-                speaker: SPEAKER_LABELS.host1,
-                voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceConfig.host1VoiceName } },
-              },
-              {
-                speaker: SPEAKER_LABELS.host2,
-                voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceConfig.host2VoiceName } },
-              },
-            ],
-          },
+      input: [{ type: 'user_input', content: buildTurns(chunks[i]) }],
+      response_format: { type: 'audio', mime_type: 'audio/l16', sample_rate: DEFAULT_PCM_SAMPLE_RATE },
+      generation_config: {
+        speech_config: {
+          speakers: [
+            { speaker: SPEAKER_LABELS.host1, voice: voiceConfig.host1VoiceName },
+            { speaker: SPEAKER_LABELS.host2, voice: voiceConfig.host2VoiceName },
+          ],
         },
       },
     });
 
-    const inlineData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData;
-    if (!inlineData?.data) {
+    if (interaction.errors?.length) {
+      throw new Error(`Gemini TTS error: ${JSON.stringify(interaction.errors)}`);
+    }
+    const audio = interaction.output_audio;
+    if (!audio?.data) {
       throw new Error('No audio data returned from Gemini TTS');
     }
-    pcmChunks.push(Buffer.from(inlineData.data, 'base64'));
-    sampleRate = parsePcmSampleRate(inlineData.mimeType);
+    pcmChunks.push(Buffer.from(audio.data, 'base64'));
+    sampleRate = audio.sample_rate ?? DEFAULT_PCM_SAMPLE_RATE;
   }
 
   const pcmBuffer = Buffer.concat(pcmChunks);

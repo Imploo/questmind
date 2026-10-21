@@ -3,8 +3,8 @@ import type { PodcastVoiceSettings } from '../types/audio-session.types';
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
-const { mockGenerateContent, mockConvert, mockPcmToMp3 } = vi.hoisted(() => ({
-  mockGenerateContent: vi.fn(),
+const { mockCreateInteraction, mockConvert, mockPcmToMp3 } = vi.hoisted(() => ({
+  mockCreateInteraction: vi.fn(),
   mockConvert: vi.fn(),
   mockPcmToMp3: vi.fn(),
 }));
@@ -13,9 +13,8 @@ const { mockGenerateContent, mockConvert, mockPcmToMp3 } = vi.hoisted(() => ({
 // constructable with `new`.
 vi.mock('@google/genai', () => ({
   GoogleGenAI: vi.fn(function () {
-    return { models: { generateContent: mockGenerateContent } };
+    return { interactions: { create: mockCreateInteraction } };
   }),
-  Modality: { AUDIO: 'AUDIO', TEXT: 'TEXT' },
 }));
 
 vi.mock('@elevenlabs/elevenlabs-js', () => ({
@@ -26,10 +25,6 @@ vi.mock('@elevenlabs/elevenlabs-js', () => ({
 
 vi.mock('./pcm-to-mp3', () => ({
   pcmToMp3: (buffer: Buffer, rate: number) => mockPcmToMp3(buffer, rate),
-  parsePcmSampleRate: (mime: string | undefined | null) => {
-    const match = mime ? /rate=(\d+)/i.exec(mime) : null;
-    return match ? Number.parseInt(match[1], 10) : 24000;
-  },
   DEFAULT_PCM_SAMPLE_RATE: 24000,
 }));
 
@@ -38,7 +33,7 @@ vi.mock('./logger', () => ({ error: vi.fn(), debug: vi.fn(), info: vi.fn(), warn
 import {
   generatePodcastAudioBuffer,
   chunkSegmentsByChars,
-  buildDialogText,
+  buildTurns,
   type PodcastSegment,
 } from './podcast-tts';
 
@@ -49,18 +44,22 @@ function voiceConfig(overrides: Partial<PodcastVoiceSettings> = {}): PodcastVoic
     model: 'eleven_v3',
     host1VoiceId: 'el-host1',
     host2VoiceId: 'el-host2',
-    geminiModel: 'gemini-3.1-flash-tts-preview',
+    geminiModel: 'gemini-3.8-flash-tts',
     host1VoiceName: 'Puck',
     host2VoiceName: 'Leda',
     ...overrides,
   };
 }
 
-function geminiResponse(pcmBytes: number[], mimeType = 'audio/L16;codec=pcm;rate=24000') {
+function geminiResponse(pcmBytes: number[], sampleRate: number | undefined = 24000) {
   return {
-    candidates: [
-      { content: { parts: [{ inlineData: { data: Buffer.from(pcmBytes).toString('base64'), mimeType } }] } },
-    ],
+    id: 'interaction-1',
+    output_audio: {
+      type: 'audio',
+      data: Buffer.from(pcmBytes).toString('base64'),
+      mime_type: 'audio/l16',
+      sample_rate: sampleRate,
+    },
   };
 }
 
@@ -95,14 +94,20 @@ describe('chunkSegmentsByChars', () => {
   });
 });
 
-describe('buildDialogText', () => {
-  it('labels turns with the speaker config names', () => {
-    const segments: PodcastSegment[] = [
+describe('buildTurns', () => {
+  it('keeps text verbatim and puts speaker + style in speech_metadata', () => {
+    const turns = buildTurns([
       { speaker: 'host1', text: 'Hoi allemaal' },
       { speaker: 'host2', text: 'Welkom terug' },
-    ];
+    ]);
 
-    expect(buildDialogText(segments)).toBe('HOST1: Hoi allemaal\nHOST2: Welkom terug');
+    expect(turns.map(t => t.text)).toEqual(['Hoi allemaal', 'Welkom terug']);
+    expect(turns.map(t => t.annotations[0].speaker)).toEqual(['HOST1', 'HOST2']);
+    for (const turn of turns) {
+      expect(turn.type).toBe('text');
+      expect(turn.annotations[0].type).toBe('speech_metadata');
+      expect(turn.annotations[0].style).toBeTruthy();
+    }
   });
 });
 
@@ -115,8 +120,8 @@ describe('generatePodcastAudioBuffer', () => {
     process.env.ELEVENLABS_API_KEY = 'test-elevenlabs-key';
   });
 
-  it('routes to Gemini, builds a multi-speaker config, and transcodes to MP3', async () => {
-    mockGenerateContent.mockResolvedValue(geminiResponse([1, 2, 3, 4]));
+  it('routes to Gemini, builds a multi-speaker interaction, and transcodes to MP3', async () => {
+    mockCreateInteraction.mockResolvedValue(geminiResponse([1, 2, 3, 4]));
     const mp3 = Buffer.from([0xff, 0xfb, 0x90, 0x00]);
     mockPcmToMp3.mockResolvedValue(mp3);
 
@@ -130,18 +135,23 @@ describe('generatePodcastAudioBuffer', () => {
     expect(result.equals(mp3)).toBe(true);
     expect(mockConvert).not.toHaveBeenCalled();
 
-    const config = mockGenerateContent.mock.calls[0][0].config;
-    expect(config.responseModalities).toEqual(['AUDIO']);
-    const speakers = config.speechConfig.multiSpeakerVoiceConfig.speakerVoiceConfigs;
-    expect(speakers[0].speaker).toBe('HOST1');
-    expect(speakers[0].voiceConfig.prebuiltVoiceConfig.voiceName).toBe('Puck');
-    expect(speakers[1].speaker).toBe('HOST2');
-    expect(speakers[1].voiceConfig.prebuiltVoiceConfig.voiceName).toBe('Leda');
+    const request = mockCreateInteraction.mock.calls[0][0];
+    expect(request.model).toBe('gemini-3.8-flash-tts');
+    expect(request.response_format).toEqual({ type: 'audio', mime_type: 'audio/l16', sample_rate: 24000 });
+    expect(request.generation_config.speech_config.speakers).toEqual([
+      { speaker: 'HOST1', voice: 'Puck' },
+      { speaker: 'HOST2', voice: 'Leda' },
+    ]);
+    const content = request.input[0].content;
+    expect(request.input[0].type).toBe('user_input');
+    expect(content.map((t: { text: string }) => t.text)).toEqual(['Hallo', 'Hoi']);
+    expect(content[0].annotations[0].speaker).toBe('HOST1');
+    expect(content[1].annotations[0].speaker).toBe('HOST2');
     expect(mockPcmToMp3).toHaveBeenCalledWith(expect.any(Buffer), 24000);
   });
 
-  it('parses a non-default sample rate from the response mimeType', async () => {
-    mockGenerateContent.mockResolvedValue(geminiResponse([1, 2], 'audio/L16;codec=pcm;rate=16000'));
+  it('uses the sample rate reported in output_audio', async () => {
+    mockCreateInteraction.mockResolvedValue(geminiResponse([1, 2], 16000));
     mockPcmToMp3.mockResolvedValue(Buffer.from([0xff, 0xfb]));
 
     await generatePodcastAudioBuffer([{ speaker: 'host1', text: 'Hi' }], voiceConfig());
@@ -149,8 +159,17 @@ describe('generatePodcastAudioBuffer', () => {
     expect(mockPcmToMp3).toHaveBeenCalledWith(expect.any(Buffer), 16000);
   });
 
+  it('falls back to 24 kHz when output_audio has no sample rate', async () => {
+    mockCreateInteraction.mockResolvedValue(geminiResponse([1, 2], undefined));
+    mockPcmToMp3.mockResolvedValue(Buffer.from([0xff, 0xfb]));
+
+    await generatePodcastAudioBuffer([{ speaker: 'host1', text: 'Hi' }], voiceConfig());
+
+    expect(mockPcmToMp3).toHaveBeenCalledWith(expect.any(Buffer), 24000);
+  });
+
   it('generates one request per chunk and concatenates the PCM before encoding', async () => {
-    mockGenerateContent.mockResolvedValue(geminiResponse([7]));
+    mockCreateInteraction.mockResolvedValue(geminiResponse([7]));
     mockPcmToMp3.mockResolvedValue(Buffer.from([0xff, 0xfb]));
 
     // Two ~2500-char turns => 5000 chars total => 2 chunks at the 3000 limit.
@@ -161,17 +180,25 @@ describe('generatePodcastAudioBuffer', () => {
 
     await generatePodcastAudioBuffer(segments, voiceConfig());
 
-    expect(mockGenerateContent).toHaveBeenCalledTimes(2);
+    expect(mockCreateInteraction).toHaveBeenCalledTimes(2);
     const pcmArg = mockPcmToMp3.mock.calls[0][0] as Buffer;
     expect(pcmArg.length).toBe(2); // one byte of PCM per chunk
   });
 
   it('throws when Gemini returns no audio data', async () => {
-    mockGenerateContent.mockResolvedValue({ candidates: [{ content: { parts: [{}] } }] });
+    mockCreateInteraction.mockResolvedValue({ id: 'interaction-1' });
 
     await expect(
       generatePodcastAudioBuffer([{ speaker: 'host1', text: 'Hi' }], voiceConfig())
     ).rejects.toThrow(/No audio data/);
+  });
+
+  it('throws when the interaction reports errors', async () => {
+    mockCreateInteraction.mockResolvedValue({ id: 'interaction-1', errors: [{ message: 'bad speaker' }] });
+
+    await expect(
+      generatePodcastAudioBuffer([{ speaker: 'host1', text: 'Hi' }], voiceConfig())
+    ).rejects.toThrow(/bad speaker/);
   });
 
   it('routes to ElevenLabs when the provider is elevenlabs', async () => {
@@ -186,7 +213,7 @@ describe('generatePodcastAudioBuffer', () => {
     );
 
     expect(result.equals(Buffer.from([1, 2, 3]))).toBe(true);
-    expect(mockGenerateContent).not.toHaveBeenCalled();
+    expect(mockCreateInteraction).not.toHaveBeenCalled();
     expect(mockPcmToMp3).not.toHaveBeenCalled();
     const convertArg = mockConvert.mock.calls[0][0];
     expect(convertArg.inputs[0].voiceId).toBe('el-host1');

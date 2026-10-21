@@ -272,7 +272,7 @@ interface FeatureDefinition {
                         (ngModelChange)="setFeatureValue('geminiModel', $event)"
                         [name]="selectedFeature().key + '-geminiModel'"
                         (blur)="onFieldBlur()"
-                        placeholder="e.g. gemini-3.1-flash-tts-preview"
+                        placeholder="e.g. gemini-3.8-flash-tts"
                         class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                       />
                     </div>
@@ -482,7 +482,7 @@ export class AdminComponent implements OnInit {
       model: 'eleven_v3',
       host1VoiceId: '',
       host2VoiceId: '',
-      geminiModel: 'gemini-3.1-flash-tts-preview',
+      geminiModel: 'gemini-3.8-flash-tts',
       host1VoiceName: 'Puck',
       host2VoiceName: 'Leda',
     },

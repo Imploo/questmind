@@ -91,7 +91,7 @@ export interface PodcastVoiceSettings {
   host2VoiceId: string;
 
   // Gemini
-  geminiModel: string;      // e.g. 'gemini-3.1-flash-tts-preview'
+  geminiModel: string;      // e.g. 'gemini-3.8-flash-tts'
   host1VoiceName: string;   // Gemini prebuilt voice (e.g. 'Puck')
   host2VoiceName: string;   // Gemini prebuilt voice (e.g. 'Leda')
 }
