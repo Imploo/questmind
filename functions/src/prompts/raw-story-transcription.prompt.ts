@@ -38,7 +38,8 @@ Write the log as consecutive lines in strict chronological order. Use ONLY these
    (Groep: <korte beschrijving van de sfeer of reactie aan tafel>)
 3. Out-of-character summary (one short line per OOC stretch):
    [OOC: <korte samenvatting van het off-game gesprek>]
-4. Nothing else — no headers, no prose paragraphs, no timestamps, no markdown, no introduction or conclusion
+   (on its own line — never put a speaker label in front of an [OOC: ...] line)
+4. Nothing else — no headers, no prose paragraphs, no timestamps, no markdown, no introduction or conclusion, and NEVER any commentary about your own task or process (e.g. "Here is the log", "Faithful conversation log of…", "Part of the process involves…"). Your very first character must be the start of the first log line
 
 Illustration of the FORMAT only (placeholders — never copy these names or content):
 DM [rustig, dreigend]: <beschrijving van de DM zoals uitgesproken>
@@ -63,12 +64,12 @@ NEAR-VERBATIM CONTENT:
 - Separate turns into separate lines; never merge different speakers or different moments into one line
 - Keep strict chronological order
 
-ANNOTATIONS:
-- The annotation between [ ] describes ONLY audible delivery: tone, volume, pace, laughter, hesitation, sighing, excitement, tension, sarcasm you can hear in the voice
-- Keep it to a few Dutch words (e.g. "fluisterend", "lachend", "geïrriteerd", "plechtig", "snel, opgewonden")
-- If no clear cue is audible, leave the annotation out entirely: <Spreker>: <tekst>
-- Never state motives, intentions, or thoughts — only what can be heard
-- Use (Groep: ...) lines for the shared energy at the table when it clearly shifts or stands out (laughter, cheering, tense silence after a big roll, chaos). Do not add one after every line
+ANNOTATIONS (IMPORTANT — this nuance is the main reason this log exists):
+- The annotation between [ ] captures HOW something is said: tone, emotion, energy, volume, pace, laughter, hesitation, sighing, excitement, tension, sarcasm, a DM voicing a character in a distinct voice
+- Annotate EVERY line where the delivery carries any noticeable tone or emotion — which in a lively session is most lines. A plain, neutral line (e.g. a short "Ja." or a number) may go without
+- Keep it to a few Dutch words (e.g. "fluisterend", "lachend", "geïrriteerd", "plechtig", "snel, opgewonden", "met dreigende stem", "twijfelend", "triomfantelijk")
+- Base it on what you HEAR in the voice, never on what would fit the story. Never state motives, intentions, or thoughts
+- Use (Groep: ...) lines for the shared energy at the table whenever it shifts or stands out (laughter, cheering, groaning, tense silence after a big roll, chaos, everyone talking at once)
 
 OUT-OF-CHARACTER TALK:
 - Rules debates, jokes about real life, breaks, snacks, technical issues, scheduling: do NOT transcribe these verbatim

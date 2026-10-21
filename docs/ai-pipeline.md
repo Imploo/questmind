@@ -70,7 +70,7 @@ opname ──► 7. Gespreksverslag ──► 8. Verhaal ──► (op verzoek) 
 
 **7. Transcriptie** — `functions/src/transcribe-audio-fast.ts`, prompt in `functions/src/prompts/raw-story-transcription.prompt.ts`
 - Lange opnames worden **client-side** opgeknipt in segmenten (ticket #67). Instelbaar via `settings/ai.transcriptionSegmentation`:
-  - `segmentMinutes: 30`, `overlapSeconds: 15`, `minSplitMinutes: 35`, `concurrency: 4`, `maxAttempts: 2`, `onSegmentFailure: 'gap'`
+  - `segmentMinutes: 30`, `overlapSeconds: 15`, `minSplitMinutes: 35`, `concurrency: 4`, `maxAttempts: 4` (met oplopende wachttijd tussen pogingen), `onSegmentFailure: 'gap'`
 - Elk segment wordt apart getranscribeerd met een eigen output-budget; de resultaten worden samengevoegd tot één `rawStory`.
 - Het resultaat is **geen verhaal** maar een **geannoteerd gespreksverslag**: vrij letterlijk wat er gezegd wordt, wie het zegt en hoe het klinkt. Regelformaat:
   ```
@@ -81,8 +81,9 @@ opname ──► 7. Gespreksverslag ──► 8. Verhaal ──► (op verzoek) 
   [OOC: <korte samenvatting van off-game gepraat>]
   ```
 - **Sprekers:** `DM` voor alles wat de DM inspreekt (ook NPC's). Spelers krijgen hun character-naam alleen als de audio dat duidelijk maakt (aangesproken, zichzelf noemen, DM benoemt het); anders `Speler (onbekend)`. Namen worden niet over segmenten heen meegenomen. De Kanka-lijst is alleen voor spelling, nooit voor sprekertoewijzing.
-- **Annotaties** beschrijven alleen hoorbare cues (toon, volume, tempo, lachen, aarzeling); geen motieven of gedachten. Geen duidelijke cue → geen annotatie.
+- **Annotaties** beschrijven hoe iets klinkt (toon, emotie, energie, tempo, lachen, aarzeling) en staan bij elke regel met een merkbare toon; alleen neutrale korte regels mogen zonder. Geen motieven of gedachten.
 - **Onverstaanbare audio wordt weggelaten**, zonder placeholder. Niets verzinnen.
+- Regels die niet in het formaat passen (bijv. gelekte denkstappen van het model) worden vóór opslaan weggefilterd (`functions/src/audio/session-log-sanitizer.ts`). Bij een leeg Gemini-antwoord wordt `finishReason`/`blockReason` gelogd.
 - **Off-game** (regeldiscussies, pauzes, grappen over het echte leven) → één korte `[OOC: ...]`-regel per stuk.
 - Bij een fout geeft het model `ERROR: NO_AUDIO_DETECTED` / `ERROR: AUDIO_CORRUPTED` terug; een mislukt segment wordt `[Segment X van Y: geen verstaanbare audio.]`.
 - Na afloop start automatisch stap 8 via de worker-queue.
@@ -92,6 +93,7 @@ opname ──► 7. Gespreksverslag ──► 8. Verhaal ──► (op verzoek) 
 - Prompt: `functions/src/prompts/session-story-generator.prompt.ts`. Zet het gespreksverslag om naar een verhaal in de derde persoon, verleden tijd:
   - Spelersacties ("ik val aan", "ik rol een 17") → acties van het character; DM-vertelling → proza.
   - Annotaties en `(Groep: ...)` kleuren toon en tempo, maar zijn geen gebeurtenissen. `[OOC: ...]` wordt genegeerd.
+  - **Verhalend, niet technisch:** schade, hit points, worpen en regeltermen worden niet genoemd maar vertaald naar wat er gebeurt ("de genadeslag, waarna de wachter door zijn knieën zakte").
   - Dubbele regels door de segment-overlap worden één keer opgenomen; gaten blijven gaten.
   - Oudere sessies hebben nog een verhalende `rawStory`; die wordt op dezelfde manier gepolijst.
 - Schrijft het eindverhaal naar `content` op de sessie en zet de status op `completed`.

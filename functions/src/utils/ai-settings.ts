@@ -58,7 +58,7 @@ const DEFAULT_SEGMENTATION: TranscriptionSegmentationSettings = {
   overlapSeconds: 15,
   minSplitMinutes: 35,
   concurrency: 4,
-  maxAttempts: 2,
+  maxAttempts: 4,
   onSegmentFailure: 'gap',
 };
 

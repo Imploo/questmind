@@ -10,8 +10,12 @@ import { WorkerQueueService } from './services/worker-queue.service';
 import { buildRawStoryPrompt, buildSegmentRawStoryPrompt } from './audio/transcription-prompt';
 import { fetchKankaContextForTranscription } from './services/kanka.service';
 import { wrapCallable } from './utils/sentry-error-handler';
+import { sanitizeSessionLog } from './audio/session-log-sanitizer';
 
 /** One audio segment to transcribe (a time-slice of a longer recording). */
+/** Base delay between transcription attempts of one segment (multiplied by the attempt number). */
+const RETRY_BACKOFF_MS = 5000;
+
 export interface AudioSegmentRef {
   /** 0-based order of this segment within the recording. */
   index: number;
@@ -304,6 +308,22 @@ async function processTranscriptionAsync(
         segmentText = `[Segment ${i + 1} van ${total} kon niet worden getranscribeerd.]`;
       }
 
+      // Gap markers and ERROR responses are control output, not log content — leave them intact.
+      const isControlOutput = /^(\[Segment \d+ van \d+|ERROR:)/.test(segmentText.trim());
+      if (!isControlOutput) {
+        const { text, dropped } = sanitizeSessionLog(segmentText);
+        if (dropped.length > 0) {
+          logger.warn(
+            `[Fast Transcription] Segment ${i + 1}/${total}: dropped ${dropped.length} line(s) outside the log format`,
+            { sample: dropped.slice(0, 3).map((l) => l.slice(0, 200)) }
+          );
+        }
+        segmentText =
+          text.length > 0 || total === 1
+            ? text
+            : `[Segment ${i + 1} van ${total}: geen verstaanbare audio.]`;
+      }
+
       completedSegments += 1;
       await ProgressTrackerService.updateProgress(
         campaignId,
@@ -463,7 +483,19 @@ async function transcribeSegment(
       });
 
       if (!result.text) {
-        throw new Error('No response text from Gemini API');
+        // Surface WHY Gemini returned nothing (safety block, recitation, other) — without
+        // this an empty response is undiagnosable from the logs.
+        const candidate = result.candidates?.[0];
+        throw new Error(
+          'No response text from Gemini API ' +
+            JSON.stringify({
+              finishReason: candidate?.finishReason,
+              finishMessage: candidate?.finishMessage,
+              blockReason: result.promptFeedback?.blockReason,
+              blockReasonMessage: result.promptFeedback?.blockReasonMessage,
+              safetyRatings: candidate?.safetyRatings?.filter((r) => r.blocked),
+            })
+        );
       }
 
       const usage = result.usageMetadata;
@@ -490,6 +522,11 @@ async function transcribeSegment(
         `[Fast Transcription] Segment ${segmentNumber}/${totalSegments} attempt ${attempt}/${attempts} failed`,
         error
       );
+      if (attempt < attempts) {
+        // Back off before retrying: transient failures (dropped sockets, empty
+        // responses under load) rarely succeed on an immediate retry.
+        await new Promise((resolve) => setTimeout(resolve, RETRY_BACKOFF_MS * attempt));
+      }
     }
   }
 

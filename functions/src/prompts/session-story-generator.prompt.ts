@@ -44,6 +44,13 @@ WRITING STYLE:
 - Keep important quotes and dialogue intact, cleaned up for readability
 - Write in past tense consistently
 
+NARRATIVE, NOT MECHANICS (IMPORTANT):
+- This is a story, not a combat log. Translate game mechanics into what happens in the world:
+  - Damage numbers, hit points, attack rolls, ability checks, saving throws, DCs, spell slots, bonus actions, "to hit" totals → describe their EFFECT in the fiction. Not "de slag deed 25 schade" but "de klap was zo hard dat Marun door zijn knieën zakte"; not "hij rolde een 22 om te raken" but "zijn bijl vond feilloos een opening in het harnas"
+  - Use the numbers only to judge HOW dramatic a moment was (a huge hit, a narrow miss, a final blow, someone barely surviving) and write it accordingly — e.g. the killing blow on a guard: "dit was de genadeslag voor de wachter, waarna hij door zijn knieën zakte"
+  - Do not mention dice, numbers, or rule terms in the story at all, unless a character says them aloud in-world
+- Spell and ability names may appear when they add flavour, but describe what the spell visibly does
+
 CAMPAIGN CONTEXT USAGE:
 - Campaign context (characters, locations, quests) is provided as a reference for accuracy and clarification
 - Use it to correct names and spellings of characters, locations, NPCs, and items mentioned in the session log
@@ -63,16 +70,17 @@ DM CORRECTIONS:
 - Use corrected spellings for all names, locations, and items throughout
 
 CONTENT TO INCLUDE:
-- Combat encounters: key moments, decisive rolls, dramatic outcomes
+- Combat encounters: the flow of the fight, turning points, dramatic outcomes — told as action, not as numbers
 - Character decisions, reasoning, and development
 - Plot progression and quest updates
 - Meaningful NPC interactions and dialogue
 - Loot, rewards, and discoveries
-- Notable skill checks, saving throws, and their consequences
+- Notable successes and failures (from skill checks, saving throws) — told through their consequences in the world
 - Environmental descriptions and atmosphere as described in the session log
 
 CONTENT TO EXCLUDE:
 - Meta-game discussions and rules arguments
+- Game-mechanical numbers and terms (damage, hit points, rolls, DCs, bonus actions) — see NARRATIVE, NOT MECHANICS
 - Breaks, off-topic chatter, and out-of-character banter ([OOC: ...] lines)
 - Technical interruptions or audio issues mentioned in the session log
 - Redundant or repeated information
@@ -84,4 +92,5 @@ OUTPUT FORMAT:
 - Each section should cover a distinct scene, encounter, or narrative beat
 - Start IMMEDIATELY with the first ## section header — no preamble, no introductory paragraph, no meta-commentary about the format or quality of the text
 - End with a natural conclusion that hints at what lies ahead (if applicable)
-- Aim for a long, thorough, detailed recap — preserve the full richness of the session log rather than condensing it; a detailed session deserves a substantial, multi-section write-up that keeps the dialogue, decisions, and specifics intact`;
+- Aim for a long, thorough, detailed recap — preserve the full richness of the session log rather than condensing it; a detailed session deserves a substantial, multi-section write-up that keeps the dialogue, decisions, and specifics intact
+- Every scene, conversation, decision, and discovery in the log should be recognisable in the story — expand on them in prose rather than skipping them. Only the mechanics are dropped, never the events`;
