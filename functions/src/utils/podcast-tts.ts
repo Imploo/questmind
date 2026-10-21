@@ -1,6 +1,4 @@
 import { GoogleGenAI } from '@google/genai';
-import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
-import { Readable } from 'stream';
 import * as logger from './logger';
 import { PodcastVoiceSettings } from '../types/audio-session.types';
 import { pcmToMp3, DEFAULT_PCM_SAMPLE_RATE } from './pcm-to-mp3';
@@ -32,33 +30,10 @@ const GEMINI_STYLE_INSTRUCTION =
  */
 const GEMINI_CHUNK_CHAR_LIMIT = 3000;
 
-/** Legacy ElevenLabs voice IDs (fallback when none configured). */
 const DEFAULT_GEMINI_TTS_MODEL = 'gemini-3.8-flash-tts';
-
-const DEFAULT_ELEVENLABS_VOICES: Record<'host1' | 'host2', string> = {
-  host1: process.env.ELEVENLABS_HOST1_VOICE || 'tvFp0BgJPrEXGoDhDIA4', // Thomas
-  host2: process.env.ELEVENLABS_HOST2_VOICE || '7qdUFMklKPaaAVMsBTBt', // Roos
-};
 
 /** Reports audio-generation progress (0-100) with a user-facing message. */
 export type ProgressFn = (progress: number, message: string) => Promise<void> | void;
-
-/**
- * Generate podcast audio for a dialog script and return an MP3 buffer.
- *
- * Picks the TTS provider from `voiceConfig.ttsProvider` so we can fall back to
- * ElevenLabs without a deploy while the Gemini TTS preview models prove out.
- */
-export async function generatePodcastAudioBuffer(
-  segments: PodcastSegment[],
-  voiceConfig: PodcastVoiceSettings,
-  onProgress?: ProgressFn
-): Promise<Buffer> {
-  if (voiceConfig.ttsProvider === 'gemini') {
-    return generateGeminiAudio(segments, voiceConfig, onProgress);
-  }
-  return generateElevenLabsAudio(segments, voiceConfig, onProgress);
-}
 
 /**
  * Group segments into chunks no larger than `maxChars`, never splitting a
@@ -97,7 +72,11 @@ export function buildTurns(segments: PodcastSegment[]) {
   }));
 }
 
-async function generateGeminiAudio(
+/**
+ * Generate podcast audio for a dialog script with Gemini multi-speaker TTS
+ * and return an MP3 buffer.
+ */
+export async function generatePodcastAudioBuffer(
   segments: PodcastSegment[],
   voiceConfig: PodcastVoiceSettings,
   onProgress?: ProgressFn
@@ -166,49 +145,4 @@ async function generateGeminiAudio(
     `Gemini TTS audio: ${pcmBuffer.length} PCM bytes → ${mp3Buffer.length} MP3 bytes @ ${sampleRate} Hz`
   );
   return mp3Buffer;
-}
-
-async function generateElevenLabsAudio(
-  segments: PodcastSegment[],
-  voiceConfig: PodcastVoiceSettings,
-  onProgress?: ProgressFn
-): Promise<Buffer> {
-  const apiKey = process.env.ELEVENLABS_API_KEY;
-  if (!apiKey) {
-    throw new Error('ElevenLabs API key is not configured');
-  }
-
-  const hostVoices: Record<'host1' | 'host2', string> = {
-    host1: voiceConfig.host1VoiceId || DEFAULT_ELEVENLABS_VOICES.host1,
-    host2: voiceConfig.host2VoiceId || DEFAULT_ELEVENLABS_VOICES.host2,
-  };
-
-  const elevenlabs = new ElevenLabsClient({ apiKey });
-  const dialogueInputs = segments.map(seg => ({
-    text: seg.text,
-    voiceId: hostVoices[seg.speaker],
-  }));
-
-  logger.debug(`Generating podcast audio via ElevenLabs text-to-dialogue (${segments.length} segments)`);
-  await onProgress?.(65, 'Calling ElevenLabs text-to-dialogue API...');
-
-  const audioStream = await elevenlabs.textToDialogue.convert({
-    inputs: dialogueInputs,
-    modelId: voiceConfig.model || undefined,
-  });
-
-  await onProgress?.(75, 'Receiving audio stream...');
-
-  const chunks: Buffer[] = [];
-  const readable = Readable.from(audioStream as unknown as AsyncIterable<Uint8Array>);
-  for await (const chunk of readable) {
-    chunks.push(Buffer.from(chunk));
-  }
-  const audioBuffer = Buffer.concat(chunks);
-
-  if (audioBuffer.length === 0) {
-    throw new Error('Empty audio buffer from ElevenLabs text-to-dialogue');
-  }
-
-  return audioBuffer;
 }

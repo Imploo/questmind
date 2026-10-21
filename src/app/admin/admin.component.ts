@@ -227,22 +227,6 @@ interface FeatureDefinition {
                 @case ('voicesOnly') {
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div class="md:col-span-2">
-                      <label class="block text-sm font-medium text-gray-700 mb-1">
-                        TTS Provider
-                        <span class="text-xs font-normal text-gray-400">(actieve backend — fallback zonder deploy)</span>
-                      </label>
-                      <select
-                        [ngModel]="getFeatureValue('ttsProvider')"
-                        (ngModelChange)="setFeatureValue('ttsProvider', $event)"
-                        [name]="selectedFeature().key + '-ttsProvider'"
-                        (change)="onFieldBlur()"
-                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
-                      >
-                        <option value="gemini">Gemini</option>
-                        <option value="elevenlabs">ElevenLabs</option>
-                      </select>
-                    </div>
-                    <div class="md:col-span-2">
                       <label class="block text-sm font-medium text-gray-700 mb-1">Max Characters</label>
                       <input
                         type="number"
@@ -303,48 +287,6 @@ interface FeatureDefinition {
                           <option [value]="voice">{{ voice }}</option>
                         }
                       </select>
-                    </div>
-
-                    <!-- ElevenLabs -->
-                    <div class="md:col-span-2 mt-2 pt-3 border-t border-gray-200">
-                      <h4 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                        <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">ElevenLabs</span>
-                        Legacy text-to-dialogue
-                      </h4>
-                    </div>
-                    <div class="md:col-span-2">
-                      <label class="block text-sm font-medium text-gray-700 mb-1">Model</label>
-                      <input
-                        type="text"
-                        [ngModel]="getFeatureValue('model')"
-                        (ngModelChange)="setFeatureValue('model', $event)"
-                        [name]="selectedFeature().key + '-model'"
-                        (blur)="onFieldBlur()"
-                        placeholder="e.g. eleven_v3"
-                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
-                      />
-                    </div>
-                    <div>
-                      <label class="block text-sm font-medium text-gray-700 mb-1">Host 1 Voice ID</label>
-                      <input
-                        type="text"
-                        [ngModel]="getFeatureValue('host1VoiceId')"
-                        (ngModelChange)="setFeatureValue('host1VoiceId', $event)"
-                        [name]="selectedFeature().key + '-host1'"
-                        (blur)="onFieldBlur()"
-                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
-                      />
-                    </div>
-                    <div>
-                      <label class="block text-sm font-medium text-gray-700 mb-1">Host 2 Voice ID</label>
-                      <input
-                        type="text"
-                        [ngModel]="getFeatureValue('host2VoiceId')"
-                        (ngModelChange)="setFeatureValue('host2VoiceId', $event)"
-                        [name]="selectedFeature().key + '-host2'"
-                        (blur)="onFieldBlur()"
-                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
-                      />
                     </div>
                   </div>
                 }
@@ -449,7 +391,7 @@ export class AdminComponent implements OnInit {
       key: 'podcastVoices',
       label: 'Podcast Voices (TTS)',
       icon: '🗣️',
-      provider: 'Gemini / ElevenLabs',
+      provider: 'Gemini',
       providerColor: 'bg-indigo-100 text-indigo-700',
       formType: 'voicesOnly',
       description: 'Text-to-speech voor dual-voice podcast audio'
@@ -477,11 +419,7 @@ export class AdminComponent implements OnInit {
     podcastScript: { model: 'gemini-3.8-flash', maxOutputTokens: 32768, thinkingLevel: 'medium' },
     characterChat: { model: 'gemini-3.8-flash', maxOutputTokens: 8192, thinkingLevel: 'low' },
     podcastVoices: {
-      ttsProvider: 'gemini',
       maxCharacters: 5000,
-      model: 'eleven_v3',
-      host1VoiceId: '',
-      host2VoiceId: '',
       geminiModel: 'gemini-3.8-flash-tts',
       host1VoiceName: 'Puck',
       host2VoiceName: 'Leda',

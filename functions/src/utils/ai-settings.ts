@@ -64,11 +64,7 @@ const DEFAULT_SEGMENTATION: TranscriptionSegmentationSettings = {
 
 const DEFAULT_IMAGE_CONFIG = { model: 'fal-ai/flux/schnell' };
 const DEFAULT_PODCAST_VOICES: PodcastVoiceSettings = {
-  ttsProvider: 'gemini',                         // ElevenLabs subscription cancelled
   maxCharacters: 5000,
-  model: 'eleven_v3',
-  host1VoiceId: '',
-  host2VoiceId: '',
   geminiModel: 'gemini-3.8-flash-tts',           // fallback: 'gemini-3.8-flash-lite-tts'
   host1VoiceName: 'Puck',                        // male — verify on Dutch
   host2VoiceName: 'Leda',                        // female — verify on Dutch

@@ -2,9 +2,24 @@
 
 **Created:** 2026-03-31
 **Priority:** High
-**Status:** Todo
+**Status:** Done
+**Completed:** 2026-10-21
 **Effort:** 2-3 dagen
 **Dependencies:** Geen
+
+---
+
+## Afronding (2026-10-21)
+
+Afgerond met **Gemini 3.8 Flash TTS** (`gemini-3.8-flash-tts`) i.p.v. het oorspronkelijk geplande 3.1-preview-model. Afwijkingen t.o.v. het plan hieronder:
+
+- **API:** 3.8 TTS gebruikt de Interactions API (`googleAi.interactions.create`, `@google/genai` ≥ 2.24 — geüpgraded naar 2.30) i.p.v. `generateContent` + `multiSpeakerVoiceConfig`. Elke beurt is een apart tekstitem met een `speech_metadata`-annotatie (`speaker` + `style`); 3.8 leest de tekst letterlijk voor, dus de stijl-instructie en `HOST1:`/`HOST2:`-labels staan niet meer in de tekst. Script-format `HOST1`/`HOST2` is behouden en wordt gemapt naar de speaker config (optie 2 van Stap 1).
+- **Audioformaat:** expliciet `audio/l16` (24 kHz) opgevraagd — 3.8 levert standaard WAV, en WAV-chunks concateneren zou headers midden in de audio zetten. PCM → MP3 via de bestaande `pcmToMp3`; storage-pad, MIME-type en frontend ongewijzigd. Chunking op beurtgrenzen (3000 tekens) is geïmplementeerd.
+- **Cleanup (Stap 5):** volledig uitgevoerd. Het ElevenLabs-abonnement is opgezegd, dus de `ttsProvider`-switch en de fallback naar ElevenLabs zijn **verwijderd** i.p.v. behouden. Verwijderd: `@elevenlabs/elevenlabs-js`, `ELEVENLABS_API_KEY` (secrets-array + `.env.example`), `ELEVENLABS_HOST*_VOICE`, ElevenLabs-velden (`model`, `host1VoiceId`, `host2VoiceId`) uit types, defaults en admin panel.
+- **Stemmen (Stap 6):** `Puck` (host 1) en `Leda` (host 2), goedgekeurd na beluisteren.
+- **Podcastscript-prompt:** pauzes als `<short pause>` i.p.v. `(..)`, geen regieaanwijzingen (worden anders letterlijk voorgelezen).
+
+**Getest:** unit tests (request-vorm, speech_metadata per beurt, PCM-concatenatie, sample rate, foutafhandeling), plus een live smoke test tegen de echte API (2 beurten → geldige MP3, 10,2 s, 24 kHz mono) die goed klonk. **Nog te doen na deploy:** E2E-check van de volledige flow (story → script → audio → storage → playback) in de beta, en het `ELEVENLABS_API_KEY`-secret in Secret Manager mag verwijderd worden.
 
 ---
 

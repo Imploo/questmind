@@ -3,9 +3,8 @@ import type { PodcastVoiceSettings } from '../types/audio-session.types';
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
-const { mockCreateInteraction, mockConvert, mockPcmToMp3 } = vi.hoisted(() => ({
+const { mockCreateInteraction, mockPcmToMp3 } = vi.hoisted(() => ({
   mockCreateInteraction: vi.fn(),
-  mockConvert: vi.fn(),
   mockPcmToMp3: vi.fn(),
 }));
 
@@ -14,12 +13,6 @@ const { mockCreateInteraction, mockConvert, mockPcmToMp3 } = vi.hoisted(() => ({
 vi.mock('@google/genai', () => ({
   GoogleGenAI: vi.fn(function () {
     return { interactions: { create: mockCreateInteraction } };
-  }),
-}));
-
-vi.mock('@elevenlabs/elevenlabs-js', () => ({
-  ElevenLabsClient: vi.fn(function () {
-    return { textToDialogue: { convert: mockConvert } };
   }),
 }));
 
@@ -39,11 +32,7 @@ import {
 
 function voiceConfig(overrides: Partial<PodcastVoiceSettings> = {}): PodcastVoiceSettings {
   return {
-    ttsProvider: 'gemini',
     maxCharacters: 5000,
-    model: 'eleven_v3',
-    host1VoiceId: 'el-host1',
-    host2VoiceId: 'el-host2',
     geminiModel: 'gemini-3.8-flash-tts',
     host1VoiceName: 'Puck',
     host2VoiceName: 'Leda',
@@ -111,16 +100,15 @@ describe('buildTurns', () => {
   });
 });
 
-// ── Provider routing ────────────────────────────────────────────────────────
+// ── Gemini TTS ─────────────────────────────────────────────────────────────
 
 describe('generatePodcastAudioBuffer', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.GOOGLE_AI_API_KEY = 'test-google-key';
-    process.env.ELEVENLABS_API_KEY = 'test-elevenlabs-key';
   });
 
-  it('routes to Gemini, builds a multi-speaker interaction, and transcodes to MP3', async () => {
+  it('builds a multi-speaker interaction and transcodes to MP3', async () => {
     mockCreateInteraction.mockResolvedValue(geminiResponse([1, 2, 3, 4]));
     const mp3 = Buffer.from([0xff, 0xfb, 0x90, 0x00]);
     mockPcmToMp3.mockResolvedValue(mp3);
@@ -133,7 +121,6 @@ describe('generatePodcastAudioBuffer', () => {
     const result = await generatePodcastAudioBuffer(segments, voiceConfig());
 
     expect(result.equals(mp3)).toBe(true);
-    expect(mockConvert).not.toHaveBeenCalled();
 
     const request = mockCreateInteraction.mock.calls[0][0];
     expect(request.model).toBe('gemini-3.8-flash-tts');
@@ -201,21 +188,4 @@ describe('generatePodcastAudioBuffer', () => {
     ).rejects.toThrow(/bad speaker/);
   });
 
-  it('routes to ElevenLabs when the provider is elevenlabs', async () => {
-    async function* fakeStream() {
-      yield new Uint8Array([1, 2, 3]);
-    }
-    mockConvert.mockResolvedValue(fakeStream());
-
-    const result = await generatePodcastAudioBuffer(
-      [{ speaker: 'host1', text: 'Hallo' }],
-      voiceConfig({ ttsProvider: 'elevenlabs' })
-    );
-
-    expect(result.equals(Buffer.from([1, 2, 3]))).toBe(true);
-    expect(mockCreateInteraction).not.toHaveBeenCalled();
-    expect(mockPcmToMp3).not.toHaveBeenCalled();
-    const convertArg = mockConvert.mock.calls[0][0];
-    expect(convertArg.inputs[0].voiceId).toBe('el-host1');
-  });
 });

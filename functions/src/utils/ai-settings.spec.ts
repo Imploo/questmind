@@ -102,17 +102,17 @@ describe('ai-settings', () => {
       const { getPodcastVoiceConfig } = await import('./ai-settings');
       const config = await getPodcastVoiceConfig();
 
-      expect(config.model).toBe('eleven_v3');
+      expect(config.geminiModel).toBe('gemini-3.8-flash-tts');
       expect(config.maxCharacters).toBe(5000);
-      expect(config.host1VoiceId).toBe('');
-      expect(config.host2VoiceId).toBe('');
+      expect(config.host1VoiceName).toBe('Puck');
+      expect(config.host2VoiceName).toBe('Leda');
     });
 
     it('should merge Firestore overrides for podcast voices', async () => {
       mockGet.mockResolvedValueOnce({
         data: () => ({
           features: {
-            podcastVoices: { host1VoiceId: 'custom-voice-1', maxCharacters: 8000 },
+            podcastVoices: { host1VoiceName: 'Charon', maxCharacters: 8000 },
           },
         }),
       });
@@ -120,10 +120,10 @@ describe('ai-settings', () => {
       const { getPodcastVoiceConfig } = await import('./ai-settings');
       const config = await getPodcastVoiceConfig();
 
-      expect(config.host1VoiceId).toBe('custom-voice-1');
+      expect(config.host1VoiceName).toBe('Charon');
       expect(config.maxCharacters).toBe(8000);
       // Default preserved
-      expect(config.model).toBe('eleven_v3');
+      expect(config.host2VoiceName).toBe('Leda');
     });
   });
 });

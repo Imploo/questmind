@@ -50,7 +50,7 @@ interface PodcastGenerationRequest {
 export const generatePodcastAudio = onCall(
   {
     cors: SHARED_CORS,
-    secrets: ['GOOGLE_AI_API_KEY', 'ELEVENLABS_API_KEY'],
+    secrets: ['GOOGLE_AI_API_KEY'],
   },
   wrapCallable<PodcastGenerationRequest, unknown>('generatePodcastAudio', async (request) => {
     ensureAuthForTesting(request);
@@ -275,10 +275,9 @@ async function generatePodcastInBackground(
       logger.debug(`Using provided script: ${finalScript.segments.length} segments`);
     }
 
-    // STEP 2: Generate audio via the configured TTS provider (Gemini or ElevenLabs)
-    const providerLabel = voiceConfig.ttsProvider === 'gemini' ? 'Gemini' : 'ElevenLabs';
+    // STEP 2: Generate audio via Gemini TTS
     await ProgressTrackerService.updateProgress(
-      campaignId, sessionId, 'generating-podcast-audio', 55, `Generating podcast audio with ${providerLabel}...`
+      campaignId, sessionId, 'generating-podcast-audio', 55, 'Generating podcast audio with Gemini...'
     );
 
     const audioBuffer = await generatePodcastAudioBuffer(

@@ -102,7 +102,7 @@ opname ──► 7. Gespreksverslag ──► 8. Verhaal ──► (op verzoek) 
   - Elke beurt is een apart `text`-item met een `speech_metadata`-annotatie (`speaker` + `style`). De toon-instructie staat in `style`, niet in de tekst.
   - Het script wordt in blokken van ~3000 tekens gerenderd. Output wordt expliciet als ruwe PCM (`audio/l16`, 24 kHz) opgevraagd, aan elkaar geplakt en daarna naar MP3 omgezet. (Standaard levert 3.8 WAV; WAV-blokken plakken zou headers midden in de audio zetten.)
 - Opslag: `campaigns/{campaignId}/podcasts/{sessionId}/v{version}.mp3`, plus een entry in `podcasts[]` en `latestPodcastVersion` op de sessie.
-- `ttsProvider` staat standaard op `gemini`. De ElevenLabs-optie (`model`, `host1VoiceId`, `host2VoiceId`) is legacy: het abonnement is opgezegd. Opruimen staat in ticket #66.
+- Instelbaar via admin: `geminiModel`, `host1VoiceName`, `host2VoiceName`, `maxCharacters`. ElevenLabs is volledig verwijderd (ticket #66).
 
 ---
 
