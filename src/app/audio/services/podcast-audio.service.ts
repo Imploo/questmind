@@ -78,6 +78,12 @@ export class PodcastAudioService {
       }
 
     } catch (error) {
+      // Long podcasts outlive the client-side callable timeout while the Cloud
+      // Function keeps running; real failures are reported via Firestore.
+      if ((error as { code?: string })?.code === 'functions/deadline-exceeded') {
+        logger.debug('Podcast callable timed out client-side; generation continues in background');
+        return;
+      }
       logger.error('Error starting podcast generation:', error);
       throw new Error('Failed to start podcast generation. Please try again.');
     }
