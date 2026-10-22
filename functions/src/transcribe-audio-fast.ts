@@ -1,5 +1,5 @@
 import * as logger from './utils/logger';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, Part } from '@google/genai';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { ProgressTrackerService } from './services/progress-tracker.service';
@@ -9,8 +9,14 @@ import { AIFeatureConfig } from './types/audio-session.types';
 import { WorkerQueueService } from './services/worker-queue.service';
 import { buildRawStoryPrompt, buildSegmentRawStoryPrompt } from './audio/transcription-prompt';
 import { fetchKankaContextForTranscription } from './services/kanka.service';
-import { wrapCallable } from './utils/sentry-error-handler';
+import { captureException, wrapCallable } from './utils/sentry-error-handler';
 import { sanitizeSessionLog } from './audio/session-log-sanitizer';
+import {
+  CampaignVoiceIntroSettings,
+  VoiceIntroAudio,
+  loadVoiceIntroAudio,
+} from './audio/voice-intro.service';
+import { buildVoiceIntroReferencePrompt } from './prompts/raw-story-transcription.prompt';
 
 /** One audio segment to transcribe (a time-slice of a longer recording). */
 /** Base delay between transcription attempts of one segment (multiplied by the attempt number). */
@@ -146,8 +152,8 @@ export const transcribeAudioFast = onCall(
       'Fast transcription started...'
     );
 
-    // Fetch Kanka enabled setting from campaign settings
-    const kankaEnabled = await getCampaignKankaEnabled(campaignId);
+    // Fetch Kanka + voice-intro settings from campaign settings
+    const { kankaEnabled, voiceIntro, voiceIntroRoster } = await getCampaignTranscriptionSettings(campaignId);
 
     // Store fast transcription metadata
     await sessionRef.update({
@@ -177,6 +183,8 @@ export const transcribeAudioFast = onCall(
       segments,
       audioFileName,
       kankaEnabled,
+      voiceIntro,
+      voiceIntroRoster,
       userCorrections,
       googleAiKey
     ).catch((error) => {
@@ -193,21 +201,53 @@ export const transcribeAudioFast = onCall(
   ),
 );
 
+interface CampaignTranscriptionSettings {
+  kankaEnabled: boolean;
+  voiceIntro?: CampaignVoiceIntroSettings;
+  /** Free-text speaking order of the voice intro, written by the campaign owner. */
+  voiceIntroRoster?: string;
+}
+
 /**
- * Helper function to fetch Kanka enabled setting from campaign settings
+ * Helper function to fetch the transcription-related campaign settings
+ * (Kanka context toggle and voice-intro reference, ticket #68)
  */
-async function getCampaignKankaEnabled(campaignId: string): Promise<boolean> {
+async function getCampaignTranscriptionSettings(
+  campaignId: string
+): Promise<CampaignTranscriptionSettings> {
   const db = getFirestore();
   const campaignRef = db.collection('campaigns').doc(campaignId);
   const campaignSnap = await campaignRef.get();
 
   if (!campaignSnap.exists) {
     logger.warn(`Campaign ${campaignId} not found, defaulting kankaEnabled to false`);
-    return false;
+    return { kankaEnabled: false };
   }
 
-  const campaignData = campaignSnap.data();
-  return campaignData?.settings?.kankaEnabled ?? false;
+  const settings = campaignSnap.data()?.settings;
+  return {
+    kankaEnabled: settings?.kankaEnabled ?? false,
+    voiceIntro: settings?.voiceIntro?.storagePath ? settings.voiceIntro : undefined,
+    voiceIntroRoster:
+      typeof settings?.voiceIntroRoster === 'string' ? settings.voiceIntroRoster : undefined,
+  };
+}
+
+/**
+ * Parts that precede every segment's prompt when a voice intro is available:
+ * an explanation (including the speaking order, if given) followed by the intro audio itself.
+ */
+function buildVoiceIntroParts(
+  voiceIntroAudio: VoiceIntroAudio | null,
+  voiceIntroRoster: string | undefined
+): Part[] {
+  if (!voiceIntroAudio) {
+    return [];
+  }
+  return [
+    { text: buildVoiceIntroReferencePrompt(voiceIntroRoster) },
+    { inlineData: { mimeType: voiceIntroAudio.mimeType, data: voiceIntroAudio.data } },
+  ];
 }
 
 /**
@@ -219,6 +259,8 @@ async function processTranscriptionAsync(
   segments: AudioSegmentRef[],
   audioFileName: string,
   enableKankaContext: boolean,
+  voiceIntro: CampaignVoiceIntroSettings | undefined,
+  voiceIntroRoster: string | undefined,
   userCorrections: string | undefined,
   googleAiKey: string
 ): Promise<void> {
@@ -249,11 +291,21 @@ async function processTranscriptionAsync(
       enableKankaContext
     );
 
-    // 3. Transcribe each segment with its own Gemini call, then join in order.
+    // 3. Load the campaign's voice intro (ticket #68). Optional and non-fatal:
+    //    without it the transcription behaves exactly as before.
+    const voiceIntroAudio = await loadVoiceIntroAudio(campaignId, voiceIntro);
+    const hasVoiceIntro = voiceIntroAudio !== null;
+    const voiceIntroParts = buildVoiceIntroParts(voiceIntroAudio, voiceIntroRoster);
+    await sessionRef.update({ 'transcriptionFast.voiceIntroUsed': hasVoiceIntro });
+
+    // 4. Transcribe each segment with its own Gemini call, then join in order.
     //    A single segment (the common/legacy case) uses the full-session prompt;
     //    multiple segments each use a segment-aware prompt and are concatenated.
     const googleAi = new GoogleGenAI({ apiKey: googleAiKey });
-    const fullPrompt = buildRawStoryPrompt(kankaContext);
+    const fullPrompt = buildRawStoryPrompt(kankaContext, { hasVoiceIntro });
+    // Used when a segment has to be retried WITHOUT the intro audio: the voice-intro
+    // prompt would then point the model at a reference it never receives.
+    const fullPromptWithoutIntro = hasVoiceIntro ? buildRawStoryPrompt(kankaContext) : fullPrompt;
     const total = segments.length;
 
     const concurrency = Math.max(1, segmentationConfig.concurrency);
@@ -266,29 +318,40 @@ async function processTranscriptionAsync(
     // finishes first, and each segment also carries its index/offsets — so the
     // story is always joined back together in the right order.
     let completedSegments = 0;
+    const voiceIntroFallbackSegments: number[] = [];
     const segmentTexts = await mapWithConcurrency(segments, concurrency, async (seg, i) => {
+      const segmentMeta = { index: i + 1, total, startSec: seg.startSec ?? 0, endSec: seg.endSec ?? 0 };
       const segmentPrompt =
         total === 1
           ? fullPrompt
-          : buildSegmentRawStoryPrompt(
-              { index: i + 1, total, startSec: seg.startSec ?? 0, endSec: seg.endSec ?? 0 },
-              kankaContext
-            );
+          : buildSegmentRawStoryPrompt(segmentMeta, kankaContext, { hasVoiceIntro });
+      const segmentPromptWithoutIntro =
+        total === 1
+          ? fullPromptWithoutIntro
+          : hasVoiceIntro
+            ? buildSegmentRawStoryPrompt(segmentMeta, kankaContext)
+            : segmentPrompt;
 
       let segmentText: string;
       try {
-        segmentText = await transcribeSegment(
+        const segmentResult = await transcribeSegment(
           googleAi,
           model,
           segmentPrompt,
+          segmentPromptWithoutIntro,
           mimeType,
           seg.fileUri,
+          voiceIntroParts,
           transcriptionConfig,
           googleAiKey,
           segmentationConfig.maxAttempts,
           i + 1,
           total
         );
+        segmentText = segmentResult.text;
+        if (segmentResult.voiceIntroDropped) {
+          voiceIntroFallbackSegments.push(i + 1);
+        }
         if (segmentText.trim().startsWith('ERROR:') && total > 1) {
           logger.warn(`[Fast Transcription] Segment ${i + 1}/${total} returned ${segmentText.trim()}`);
           segmentText = `[Segment ${i + 1} van ${total}: geen verstaanbare audio.]`;
@@ -337,6 +400,12 @@ async function processTranscriptionAsync(
 
       return segmentText.trim();
     });
+
+    if (voiceIntroFallbackSegments.length > 0) {
+      await sessionRef.update({
+        'transcriptionFast.voiceIntroFallbackSegments': voiceIntroFallbackSegments.sort((a, b) => a - b),
+      });
+    }
 
     // 5. Join segments in order into the raw story
     const rawStory = segmentTexts.join('\n\n').trim();
@@ -441,17 +510,71 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
+interface SegmentTranscription {
+  text: string;
+  /** True when the voice intro was dropped for the final (fallback) attempt. */
+  voiceIntroDropped: boolean;
+}
+
 /**
- * Transcribe one audio segment via Gemini, with a small retry budget.
- * Waits for the Gemini file to become ACTIVE, logs usage/truncation, and
- * returns the raw response text. Throws if all attempts fail.
+ * Transcribe one audio segment via Gemini. `referenceParts` (e.g. the campaign
+ * voice intro) are sent before `prompt`. If every attempt WITH reference parts
+ * fails — e.g. Gemini rejects the intro audio — one final attempt is made without
+ * them, using `promptWithoutReference`, so a bad voice intro can never sink the
+ * session (ticket #68) and the model is never told about a reference it does not get.
  */
 async function transcribeSegment(
   googleAi: GoogleGenAI,
   model: string,
   prompt: string,
+  promptWithoutReference: string,
   mimeType: string,
   fileUri: string,
+  referenceParts: Part[],
+  config: AIFeatureConfig,
+  apiKey: string,
+  maxAttempts: number,
+  segmentNumber: number,
+  totalSegments: number
+): Promise<SegmentTranscription> {
+  try {
+    const text = await transcribeSegmentWithRetries(
+      googleAi, model, prompt, mimeType, fileUri, referenceParts,
+      config, apiKey, maxAttempts, segmentNumber, totalSegments
+    );
+    return { text, voiceIntroDropped: false };
+  } catch (error) {
+    if (referenceParts.length === 0) {
+      throw error;
+    }
+    logger.warn(
+      `[Fast Transcription] Segment ${segmentNumber}/${totalSegments} failed with voice intro, retrying once without it`,
+      error
+    );
+    captureException(error instanceof Error ? error : new Error(String(error)), {
+      feature: 'voiceIntro',
+      segment: `${segmentNumber}/${totalSegments}`,
+    });
+    const text = await transcribeSegmentWithRetries(
+      googleAi, model, promptWithoutReference, mimeType, fileUri, [],
+      config, apiKey, 1, segmentNumber, totalSegments
+    );
+    return { text, voiceIntroDropped: true };
+  }
+}
+
+/**
+ * Transcribe one audio segment via Gemini, with a small retry budget.
+ * Waits for the Gemini file to become ACTIVE, logs usage/truncation, and
+ * returns the raw response text. Throws if all attempts fail.
+ */
+async function transcribeSegmentWithRetries(
+  googleAi: GoogleGenAI,
+  model: string,
+  prompt: string,
+  mimeType: string,
+  fileUri: string,
+  referenceParts: Part[],
   config: AIFeatureConfig,
   apiKey: string,
   maxAttempts: number,
@@ -472,6 +595,7 @@ async function transcribeSegment(
           {
             role: 'user',
             parts: [
+              ...referenceParts,
               { text: prompt },
               { fileData: { mimeType, fileUri } },
             ],

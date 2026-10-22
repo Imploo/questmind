@@ -687,5 +687,19 @@ Start here for immediate impact with minimal risk:
 
 ---
 
+## 🎙️ Transcriptie Kwaliteit — Sprekerherkenning
+
+| Ticket | Title | Priority | Status | Effort | Dependencies |
+|--------|-------|----------|--------|--------|--------------|
+| [#68](./done/68-campaign-voice-intro-speaker-identification.md) | Voorstelrondje-audio per campaign voor sprekerherkenning | High | Done | 2-4 dagen | #54, #67 |
+
+**Key Changes:**
+- **Ticket 68**: Per campaign een voorstelrondje-audio uploaden (spelers met naam + karakter, DM als DM) dat als stemreferentie meegaat met elke segment-transcriptie (afgerond)
+  - Bron van waarheid in Firebase Storage; per run één keer gedownload en als inline audio meegestuurd (geen 48u-cache nodig)
+  - Sprekers gelabeld met karakternaam bij duidelijke stem-match; DM (incl. NPC's) blijft `DM`; twijfel blijft `Speler (onbekend)`
+  - Non-fatal: zonder of bij falende intro werkt de transcriptie als voorheen
+
+---
+
 **Last Updated:** 2026-10-21
 **Status:** Planning Complete, Ready to Begin

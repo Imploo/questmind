@@ -63,6 +63,32 @@ describe('CampaignSettingsSchema', () => {
     const result = CampaignSettingsSchema.safeParse({});
     expect(result.success).toBe(false);
   });
+
+  it('should keep a voice intro (ticket #68)', () => {
+    const voiceIntro = {
+      storagePath: 'campaigns/campaign-1/voice-intro/1-intro.mp3',
+      fileName: 'intro.mp3',
+      mimeType: 'audio/mpeg',
+      sizeBytes: 1024,
+      durationSec: 90,
+      uploadedAt: '2026-10-21T00:00:00.000Z',
+      uploadedBy: 'user-1',
+    };
+    const result = CampaignSettingsSchema.safeParse({
+      allowMembersToCreateSessions: true,
+      voiceIntro,
+    });
+    expect(result.success).toBe(true);
+    expect(result.data?.voiceIntro).toEqual(voiceIntro);
+  });
+
+  it('should reject a voice intro without storagePath', () => {
+    const result = CampaignSettingsSchema.safeParse({
+      allowMembersToCreateSessions: true,
+      voiceIntro: { fileName: 'intro.mp3' },
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('CampaignSchema', () => {

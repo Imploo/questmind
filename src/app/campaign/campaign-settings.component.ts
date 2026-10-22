@@ -4,11 +4,15 @@ import { Router } from '@angular/router';
 import { AuthService } from '../auth/auth.service';
 import { CampaignContextService } from './campaign-context.service';
 import { CampaignService } from './campaign.service';
-import { Campaign } from './campaign.models';
+import { Campaign, CampaignVoiceIntro } from './campaign.models';
+import { CampaignVoiceIntroService } from './campaign-voice-intro.service';
+import { CampaignVoiceIntroComponent } from './campaign-voice-intro.component';
+import { CampaignVoiceRosterComponent } from './campaign-voice-roster.component';
+import * as logger from '../shared/logger';
 
 @Component({
   selector: 'app-campaign-settings',
-  imports: [FormsModule],
+  imports: [FormsModule, CampaignVoiceIntroComponent, CampaignVoiceRosterComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="max-w-4xl mx-auto">
@@ -104,6 +108,28 @@ import { Campaign } from './campaign.models';
             </div>
           </div>
 
+          <!-- Transcription Section -->
+          <div class="mb-6 border-t pt-6">
+            <h4 class="text-lg font-semibold text-gray-900 mb-4">Transcription</h4>
+            <app-campaign-voice-intro
+              [voiceIntro]="selectedCampaign()!.settings?.voiceIntro"
+              [playbackUrl]="voiceIntroPlaybackUrl()"
+              [canEdit]="isCampaignOwner(selectedCampaign()!)"
+              [isBusy]="voiceIntroBusy()"
+              [progress]="voiceIntroProgress()"
+              [errorMessage]="voiceIntroError()"
+              (fileSelected)="uploadVoiceIntro($event)"
+              (removeRequested)="removeVoiceIntro()"
+            />
+            <app-campaign-voice-roster
+              [roster]="selectedCampaign()!.settings?.voiceIntroRoster ?? ''"
+              [canEdit]="isCampaignOwner(selectedCampaign()!)"
+              [isBusy]="voiceRosterBusy()"
+              [errorMessage]="voiceRosterError()"
+              (rosterSaved)="saveVoiceIntroRoster($event)"
+            />
+          </div>
+
           <!-- Members Section -->
           <div class="mb-6 border-t pt-6">
             <h4 class="text-lg font-semibold text-gray-900 mb-4">Members ({{ campaignMembers().length }})</h4>
@@ -170,6 +196,7 @@ export class CampaignSettingsComponent {
   private readonly authService = inject(AuthService);
   private readonly campaignService = inject(CampaignService);
   private readonly campaignContext = inject(CampaignContextService);
+  private readonly voiceIntroService = inject(CampaignVoiceIntroService);
 
   selectedCampaign = this.campaignContext.selectedCampaign;
   campaignMembers = signal<{ userId: string; role: string; email: string }[]>([]);
@@ -187,6 +214,14 @@ export class CampaignSettingsComponent {
   saveSuccess = signal(false);
   saveError = signal('');
 
+  voiceIntroPlaybackUrl = signal<string | null>(null);
+  voiceIntroBusy = signal(false);
+  voiceIntroProgress = signal<number | null>(null);
+  voiceIntroError = signal('');
+
+  voiceRosterBusy = signal(false);
+  voiceRosterError = signal('');
+
   constructor() {
     effect(() => {
       const campaign = this.selectedCampaign();
@@ -195,6 +230,7 @@ export class CampaignSettingsComponent {
         this.kankaCampaignId = campaign.settings?.kankaCampaignId || '';
         this.allowMembersToCreateSessions = campaign.settings?.allowMembersToCreateSessions ?? true;
         void this.loadMembers();
+        void this.loadVoiceIntroPlaybackUrl(campaign.settings?.voiceIntro);
       }
     });
   }
@@ -235,6 +271,74 @@ export class CampaignSettingsComponent {
       setTimeout(() => this.saveError.set(''), 5000);
     } finally {
       this.isSaving.set(false);
+    }
+  }
+
+  async uploadVoiceIntro(file: File): Promise<void> {
+    const campaignId = this.campaignContext.selectedCampaignId();
+    if (!campaignId) return;
+
+    const validationError = this.voiceIntroService.validateFile(file);
+    if (validationError) {
+      this.voiceIntroError.set(validationError);
+      return;
+    }
+
+    this.voiceIntroError.set('');
+    this.voiceIntroBusy.set(true);
+    this.voiceIntroProgress.set(0);
+    try {
+      await this.voiceIntroService.upload(
+        campaignId,
+        file,
+        this.selectedCampaign()?.settings?.voiceIntro,
+        (progress) => this.voiceIntroProgress.set(progress)
+      );
+      await this.campaignContext.refreshCampaigns();
+    } catch (error: unknown) {
+      logger.error('[CampaignSettings] Voice intro upload failed:', error);
+      this.voiceIntroError.set(error instanceof Error ? error.message : 'Failed to upload voice introduction');
+    } finally {
+      this.voiceIntroBusy.set(false);
+      this.voiceIntroProgress.set(null);
+    }
+  }
+
+  async removeVoiceIntro(): Promise<void> {
+    const campaignId = this.campaignContext.selectedCampaignId();
+    const current = this.selectedCampaign()?.settings?.voiceIntro;
+    if (!campaignId || !current) return;
+    if (!confirm('Remove the voice introduction? Transcriptions will no longer use it for speaker recognition.')) {
+      return;
+    }
+
+    this.voiceIntroError.set('');
+    this.voiceIntroBusy.set(true);
+    try {
+      await this.voiceIntroService.remove(campaignId, current);
+      await this.campaignContext.refreshCampaigns();
+    } catch (error: unknown) {
+      logger.error('[CampaignSettings] Voice intro removal failed:', error);
+      this.voiceIntroError.set(error instanceof Error ? error.message : 'Failed to remove voice introduction');
+    } finally {
+      this.voiceIntroBusy.set(false);
+    }
+  }
+
+  async saveVoiceIntroRoster(roster: string): Promise<void> {
+    const campaignId = this.campaignContext.selectedCampaignId();
+    if (!campaignId) return;
+
+    this.voiceRosterError.set('');
+    this.voiceRosterBusy.set(true);
+    try {
+      await this.campaignService.updateVoiceIntroRoster(campaignId, roster);
+      await this.campaignContext.refreshCampaigns();
+    } catch (error: unknown) {
+      logger.error('[CampaignSettings] Saving voice intro speaking order failed:', error);
+      this.voiceRosterError.set(error instanceof Error ? error.message : 'Failed to save speaking order');
+    } finally {
+      this.voiceRosterBusy.set(false);
     }
   }
 
@@ -282,6 +386,19 @@ export class CampaignSettingsComponent {
   isCampaignOwner(campaign: Campaign): boolean {
     const userId = this.authService.currentUser()?.uid;
     return this.campaignService.isCampaignOwner(campaign, userId);
+  }
+
+  private async loadVoiceIntroPlaybackUrl(voiceIntro: CampaignVoiceIntro | undefined): Promise<void> {
+    if (!voiceIntro) {
+      this.voiceIntroPlaybackUrl.set(null);
+      return;
+    }
+    try {
+      this.voiceIntroPlaybackUrl.set(await this.voiceIntroService.getPlaybackUrl(voiceIntro));
+    } catch (error: unknown) {
+      logger.error('[CampaignSettings] Could not load voice intro playback URL:', error);
+      this.voiceIntroPlaybackUrl.set(null);
+    }
   }
 
   private async loadMembers(): Promise<void> {

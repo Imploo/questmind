@@ -48,15 +48,30 @@ Speler (onbekend) [aarzelend]: <wat er gezegd wordt>
 (Groep: <bijv. gelach, iedereen praat door elkaar>)
 [OOC: <bijv. korte regeldiscussie over een spreuk, luchtig>]`;
 
-/** Speaker attribution, near-verbatim and annotation rules — shared by both variants. */
-const LOG_RULES = `SPEAKERS (CRITICAL — NEVER GUESS):
+/** Speaker attribution when the audio itself is the only source of who is speaking. */
+const SPEAKER_RULES = `SPEAKERS (CRITICAL — NEVER GUESS):
 - "DM" for the Dungeon Master. This includes everything the DM voices: narration, NPCs, monsters, rulings. Do NOT relabel NPC speech as the NPC — it stays "DM"
 - A player is labelled with their CHARACTER name ONLY when the audio itself makes it clear: the player is addressed by that character name, introduces themselves as that character, or the DM states that character is acting right before/after the line
 - Otherwise label the player exactly as: Speler (onbekend)
 - Never assign a speaker based on what would make sense in the story, or based on the campaign reference list. A wrong name is worse than "Speler (onbekend)"
-- Once a voice is clearly linked to a character in this recording, you may keep using that name for the same clearly recognisable voice — if in any doubt, fall back to "Speler (onbekend)"
+- Once a voice is clearly linked to a character in this recording, you may keep using that name for the same clearly recognisable voice — if in any doubt, fall back to "Speler (onbekend)"`;
 
-NEAR-VERBATIM CONTENT:
+/** Speaker attribution when a voice-reference recording of the group is provided (ticket #68). */
+const VOICE_INTRO_SPEAKER_RULES = `SPEAKERS (CRITICAL — NEVER GUESS):
+- "DM" for the Dungeon Master. This includes everything the DM voices: narration, NPCs, monsters, rulings. Do NOT relabel NPC speech as the NPC — it stays "DM"
+- A VOICE REFERENCE recording (the introduction round) is provided. Before writing the log, silently build a voice profile for every person in it (pitch, timbre, accent, speaking rhythm, typical phrasing) and the character name that belongs to it. Never write these profiles in your output
+- EVIDENCE ORDER — use the strongest evidence available for every line:
+  1. Explicit cues in the session audio: the player is addressed by their character name, or the DM states that character is acting right before/after the line
+  2. A voice that clearly and unambiguously matches exactly ONE profile from the introduction round
+  3. Anything weaker (a voice that resembles two or more people, a short line like "ja" or "oké", crosstalk, laughter, poor audio, a guest who did not introduce themselves): label it exactly as: Speler (onbekend)
+- When an explicit cue (1) contradicts a voice match (2), the explicit cue wins
+- CONSISTENCY: within this recording, one voice keeps one name, and two clearly different voices NEVER share the same name. If you notice two different voices getting the same name, label the less certain one "Speler (onbekend)"
+- The DM's voice from the introduction round is always "DM" — never label it with a player character name
+- Never assign a speaker based on what would make sense in the story, or based on the campaign reference list. A wrong name is worse than "Speler (onbekend)"
+- Use the character names as they are spoken in the introduction round (spelled per the speaking order provided with it, or per the campaign reference list when the same name appears there)`;
+
+/** Near-verbatim, annotation, OOC and context rules — shared by both variants. */
+const CONTENT_RULES = `NEAR-VERBATIM CONTENT:
 - Write down what is said as closely as possible to the actual words. Do NOT paraphrase, summarise, or polish in-game speech
 - You MAY drop filler words ("eh", "uhm"), stutters, and immediately-repeated false starts
 - Keep dice rolls, numbers, damage, and outcomes exactly as spoken
@@ -85,11 +100,58 @@ ANTI-REPETITION RULES:
 - NEVER repeat the same word more than 5 times in a row
 - If you find yourself generating repetitive content, STOP and move on to the next audible line`;
 
+/** Speaker attribution, near-verbatim and annotation rules for the chosen speaker mode. */
+function buildLogRules(hasVoiceIntro: boolean): string {
+  return `${hasVoiceIntro ? VOICE_INTRO_SPEAKER_RULES : SPEAKER_RULES}
+
+${CONTENT_RULES}`;
+}
+
+/** Upper bound for the speaking-order text, so a pasted wall of text cannot crowd out the prompt. */
+export const VOICE_INTRO_ROSTER_MAX_LENGTH = 2000;
+
+/**
+ * Instruction placed directly BEFORE the voice-reference audio part (ticket #68).
+ * The request then looks like: [this text, intro audio, transcription prompt, session audio].
+ *
+ * `roster` is the owner's free-text description of who speaks in which order in
+ * the introduction round, so the model does not have to catch every name by ear.
+ */
+export function buildVoiceIntroReferencePrompt(roster?: string): string {
+  const trimmedRoster = roster?.trim().slice(0, VOICE_INTRO_ROSTER_MAX_LENGTH);
+  const rosterSection = trimmedRoster
+    ? `
+
+SPEAKING ORDER OF THE INTRODUCTION ROUND (written by the group):
+"""
+${trimmedRoster}
+"""
+- Use this order to know which name belongs to which voice in the introduction round: the first person speaking is the first entry, and so on
+- If what you hear in the introduction round clearly differs from this order, trust the order for the names but only link a voice when you can tell the speakers apart
+- This list describes ONLY the introduction round. It is NOT evidence of who speaks in the session — that is still decided by voice and explicit cues`
+    : '';
+
+  return `VOICE REFERENCE (the audio directly after this text):
+This first audio is NOT part of the session. It is a short introduction round recorded by this group: each player says their own name and the name of the character they play, and the Dungeon Master introduces themselves as the DM.
+Use it ONLY as a voice reference: learn what each person sounds like (pitch, timbre, accent, speaking rhythm) and which character name belongs to which voice.
+- Do NOT transcribe the introduction round, and never include anything said in it in your log
+- The SESSION audio you must transcribe comes after the instructions that follow the introduction round
+- If the SESSION audio contains no speech, return the error code as instructed — never transcribe the introduction round instead${rosterSection}`;
+}
+
+/** Options shared by both prompt variants. */
+export interface TranscriptionPromptOptions {
+  /** A voice-reference recording of the group is sent along (ticket #68). */
+  hasVoiceIntro?: boolean;
+}
+
 const ERROR_HANDLING = `ERROR HANDLING:
 - If you cannot access the audio file or detect any speech, return exactly: ERROR: NO_AUDIO_DETECTED
 - If the audio is corrupted or unreadable, return exactly: ERROR: AUDIO_CORRUPTED`;
 
-export const RAW_STORY_TRANSCRIPTION_PROMPT = `Listen to this audio recording of a D&D 5e session and write an annotated conversation log of it: near-verbatim what is said, who says it, and how it sounds. This log is the source material for a later step that writes the session story — so capture the nuance, do not write the story yourself.
+/** Build the full-session prompt (single pass). */
+export function buildFullTranscriptionPrompt(options: TranscriptionPromptOptions = {}): string {
+  return `Listen to this audio recording of a D&D 5e session and write an annotated conversation log of it: near-verbatim what is said, who says it, and how it sounds. This log is the source material for a later step that writes the session story — so capture the nuance, do not write the story yourself.
 
 ${FAITHFULNESS_PARAGRAPH}
 
@@ -102,9 +164,12 @@ LENGTH:
 
 ${LOG_FORMAT}
 
-${LOG_RULES}
+${buildLogRules(!!options.hasVoiceIntro)}
 
 ${ERROR_HANDLING}`;
+}
+
+export const RAW_STORY_TRANSCRIPTION_PROMPT = buildFullTranscriptionPrompt();
 
 export interface SegmentPromptMeta {
   /** 1-based position of this segment. */
@@ -117,6 +182,10 @@ export interface SegmentPromptMeta {
   endSec: number;
 }
 
+const SEGMENT_SPEAKER_LINE = `- Speaker names cannot be carried over from other segments: only use a character name when THIS clip makes it clear, otherwise use "Speler (onbekend)"`;
+
+const SEGMENT_SPEAKER_LINE_WITH_VOICE_INTRO = `- Speaker names cannot be carried over from other segments: identify speakers by matching voices against the voice reference recording, or when THIS clip makes it clear — otherwise use "Speler (onbekend)"`;
+
 /**
  * Build the transcription prompt for ONE time-segment of a longer session.
  *
@@ -124,7 +193,10 @@ export interface SegmentPromptMeta {
  * previously caused the model to ration its budget — and keeps every format and
  * faithfulness rule, so the per-segment logs can simply be concatenated.
  */
-export function buildSegmentTranscriptionPrompt(meta: SegmentPromptMeta): string {
+export function buildSegmentTranscriptionPrompt(
+  meta: SegmentPromptMeta,
+  options: TranscriptionPromptOptions = {}
+): string {
   const startMin = Math.round(meta.startSec / 60);
   const endMin = Math.round(meta.endSec / 60);
   const approxMinutes = Math.max(1, endMin - startMin);
@@ -141,12 +213,12 @@ LENGTH:
 - Log this clip from its very beginning to its very end, in strict chronological order. Give the end of the clip the same faithful attention as the start
 - Only log what is audible in THIS clip. Do NOT recap other segments, and do NOT speculate about what happened before or after it
 - The very start of the clip may overlap slightly with the previous segment; just log what you hear
-- Speaker names cannot be carried over from other segments: only use a character name when THIS clip makes it clear, otherwise use "Speler (onbekend)"
+${options.hasVoiceIntro ? SEGMENT_SPEAKER_LINE_WITH_VOICE_INTRO : SEGMENT_SPEAKER_LINE}
 - Do NOT write any introduction or conclusion about the clip itself — start directly with the first line of the log
 
 ${LOG_FORMAT}
 
-${LOG_RULES}
+${buildLogRules(!!options.hasVoiceIntro)}
 
 ${ERROR_HANDLING}`;
 }

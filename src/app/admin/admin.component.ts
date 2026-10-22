@@ -432,7 +432,7 @@ export class AdminComponent implements OnInit {
   settingsError = signal<string | null>(null);
   selectedFeature = signal<FeatureDefinition>(this.featureDefinitions[0]);
   saveIndicator = signal<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  cacheEnabled = computed(() => this.aiSettings()?.cacheEnabled ?? false);
+  cacheEnabled = computed(() => this.aiSettings()?.cacheEnabled ?? true);
 
   private saveTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -449,7 +449,7 @@ export class AdminComponent implements OnInit {
   toggleCache(): void {
     this.aiSettings.update(settings => {
       if (!settings) return settings;
-      return { ...settings, cacheEnabled: !settings.cacheEnabled };
+      return { ...settings, cacheEnabled: !(settings.cacheEnabled ?? true) };
     });
     void this.autoSave();
   }

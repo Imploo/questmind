@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import {
   collection,
+  deleteField,
   doc,
   getDoc,
   getDocs,
@@ -11,7 +12,7 @@ import {
   type Firestore
 } from 'firebase/firestore';
 import { AuthService } from '../auth/auth.service';
-import { Campaign, CampaignMember, CampaignRole, CampaignSettings } from './campaign.models';
+import { Campaign, CampaignMember, CampaignRole, CampaignSettings, CampaignVoiceIntro } from './campaign.models';
 import { UserProfileService } from './user-profile.service';
 import { FirebaseService } from '../core/firebase.service';
 import * as logger from '../shared/logger';
@@ -105,6 +106,37 @@ export class CampaignService {
 
   async updateCampaignSettings(campaignId: string, settings: CampaignSettings): Promise<void> {
     await this.updateCampaign(campaignId, { settings });
+  }
+
+  /**
+   * Set or clear the campaign voice intro (ticket #68). Writes only the nested
+   * field, so other settings are never overwritten with stale values.
+   */
+  async updateVoiceIntro(campaignId: string, voiceIntro: CampaignVoiceIntro | null): Promise<void> {
+    if (!this.db) {
+      throw new Error('Firestore is not configured');
+    }
+    const campaignRef = doc(this.db, 'campaigns', campaignId);
+    await updateDoc(campaignRef, {
+      'settings.voiceIntro': voiceIntro ?? deleteField(),
+      updatedAt: new Date().toISOString()
+    });
+  }
+
+  /**
+   * Set or clear the speaking order of the voice intro. Writes only this one
+   * settings field, like updateVoiceIntro.
+   */
+  async updateVoiceIntroRoster(campaignId: string, roster: string): Promise<void> {
+    if (!this.db) {
+      throw new Error('Firestore is not configured');
+    }
+    const trimmed = roster.trim();
+    const campaignRef = doc(this.db, 'campaigns', campaignId);
+    await updateDoc(campaignRef, {
+      'settings.voiceIntroRoster': trimmed || deleteField(),
+      updatedAt: new Date().toISOString()
+    });
   }
 
   async inviteUserByEmail(campaignId: string, email: string): Promise<void> {
