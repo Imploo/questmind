@@ -35,6 +35,7 @@ export const CampaignSettingsSchema = z.object({
   kankaEnabled: z.boolean().optional(),
   kankaCampaignId: z.string().optional(),
   voiceIntro: CampaignVoiceIntroSchema.optional(),
+  voiceIntroRoster: z.string().optional(),
 });
 
 /**

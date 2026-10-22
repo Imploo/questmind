@@ -27,6 +27,8 @@ export interface CampaignSettings {
   kankaEnabled?: boolean;
   kankaCampaignId?: string;
   voiceIntro?: CampaignVoiceIntro;
+  /** Free-text speaking order of the voice intro, sent along as a name reference. */
+  voiceIntroRoster?: string;
 }
 
 export interface Campaign {

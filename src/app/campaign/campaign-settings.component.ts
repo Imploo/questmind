@@ -7,11 +7,12 @@ import { CampaignService } from './campaign.service';
 import { Campaign, CampaignVoiceIntro } from './campaign.models';
 import { CampaignVoiceIntroService } from './campaign-voice-intro.service';
 import { CampaignVoiceIntroComponent } from './campaign-voice-intro.component';
+import { CampaignVoiceRosterComponent } from './campaign-voice-roster.component';
 import * as logger from '../shared/logger';
 
 @Component({
   selector: 'app-campaign-settings',
-  imports: [FormsModule, CampaignVoiceIntroComponent],
+  imports: [FormsModule, CampaignVoiceIntroComponent, CampaignVoiceRosterComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="max-w-4xl mx-auto">
@@ -120,6 +121,13 @@ import * as logger from '../shared/logger';
               (fileSelected)="uploadVoiceIntro($event)"
               (removeRequested)="removeVoiceIntro()"
             />
+            <app-campaign-voice-roster
+              [roster]="selectedCampaign()!.settings?.voiceIntroRoster ?? ''"
+              [canEdit]="isCampaignOwner(selectedCampaign()!)"
+              [isBusy]="voiceRosterBusy()"
+              [errorMessage]="voiceRosterError()"
+              (rosterSaved)="saveVoiceIntroRoster($event)"
+            />
           </div>
 
           <!-- Members Section -->
@@ -210,6 +218,9 @@ export class CampaignSettingsComponent {
   voiceIntroBusy = signal(false);
   voiceIntroProgress = signal<number | null>(null);
   voiceIntroError = signal('');
+
+  voiceRosterBusy = signal(false);
+  voiceRosterError = signal('');
 
   constructor() {
     effect(() => {
@@ -311,6 +322,23 @@ export class CampaignSettingsComponent {
       this.voiceIntroError.set(error instanceof Error ? error.message : 'Failed to remove voice introduction');
     } finally {
       this.voiceIntroBusy.set(false);
+    }
+  }
+
+  async saveVoiceIntroRoster(roster: string): Promise<void> {
+    const campaignId = this.campaignContext.selectedCampaignId();
+    if (!campaignId) return;
+
+    this.voiceRosterError.set('');
+    this.voiceRosterBusy.set(true);
+    try {
+      await this.campaignService.updateVoiceIntroRoster(campaignId, roster);
+      await this.campaignContext.refreshCampaigns();
+    } catch (error: unknown) {
+      logger.error('[CampaignSettings] Saving voice intro speaking order failed:', error);
+      this.voiceRosterError.set(error instanceof Error ? error.message : 'Failed to save speaking order');
+    } finally {
+      this.voiceRosterBusy.set(false);
     }
   }
 

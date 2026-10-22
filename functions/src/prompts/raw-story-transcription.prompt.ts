@@ -59,11 +59,16 @@ const SPEAKER_RULES = `SPEAKERS (CRITICAL — NEVER GUESS):
 /** Speaker attribution when a voice-reference recording of the group is provided (ticket #68). */
 const VOICE_INTRO_SPEAKER_RULES = `SPEAKERS (CRITICAL — NEVER GUESS):
 - "DM" for the Dungeon Master. This includes everything the DM voices: narration, NPCs, monsters, rulings. Do NOT relabel NPC speech as the NPC — it stays "DM"
-- A VOICE REFERENCE recording (the introduction round) is provided. Label a player with their CHARACTER name when their voice clearly matches a voice from that introduction round, or when the audio itself makes it clear: the player is addressed by that character name, or the DM states that character is acting right before/after the line
+- A VOICE REFERENCE recording (the introduction round) is provided. Before writing the log, silently build a voice profile for every person in it (pitch, timbre, accent, speaking rhythm, typical phrasing) and the character name that belongs to it. Never write these profiles in your output
+- EVIDENCE ORDER — use the strongest evidence available for every line:
+  1. Explicit cues in the session audio: the player is addressed by their character name, or the DM states that character is acting right before/after the line
+  2. A voice that clearly and unambiguously matches exactly ONE profile from the introduction round
+  3. Anything weaker (a voice that resembles two or more people, a short line like "ja" or "oké", crosstalk, laughter, poor audio, a guest who did not introduce themselves): label it exactly as: Speler (onbekend)
+- When an explicit cue (1) contradicts a voice match (2), the explicit cue wins
+- CONSISTENCY: within this recording, one voice keeps one name, and two clearly different voices NEVER share the same name. If you notice two different voices getting the same name, label the less certain one "Speler (onbekend)"
 - The DM's voice from the introduction round is always "DM" — never label it with a player character name
-- If a voice does not clearly match any voice from the introduction round (similar-sounding players, crosstalk, poor audio, a guest who did not introduce themselves), label it exactly as: Speler (onbekend)
 - Never assign a speaker based on what would make sense in the story, or based on the campaign reference list. A wrong name is worse than "Speler (onbekend)"
-- Use the character names as they are spoken in the introduction round (spelled per the campaign reference list when the same name appears there)`;
+- Use the character names as they are spoken in the introduction round (spelled per the speaking order provided with it, or per the campaign reference list when the same name appears there)`;
 
 /** Near-verbatim, annotation, OOC and context rules — shared by both variants. */
 const CONTENT_RULES = `NEAR-VERBATIM CONTENT:
@@ -102,16 +107,37 @@ function buildLogRules(hasVoiceIntro: boolean): string {
 ${CONTENT_RULES}`;
 }
 
+/** Upper bound for the speaking-order text, so a pasted wall of text cannot crowd out the prompt. */
+export const VOICE_INTRO_ROSTER_MAX_LENGTH = 2000;
+
 /**
  * Instruction placed directly BEFORE the voice-reference audio part (ticket #68).
  * The request then looks like: [this text, intro audio, transcription prompt, session audio].
+ *
+ * `roster` is the owner's free-text description of who speaks in which order in
+ * the introduction round, so the model does not have to catch every name by ear.
  */
-export const VOICE_INTRO_REFERENCE_PROMPT = `VOICE REFERENCE (the audio directly after this text):
+export function buildVoiceIntroReferencePrompt(roster?: string): string {
+  const trimmedRoster = roster?.trim().slice(0, VOICE_INTRO_ROSTER_MAX_LENGTH);
+  const rosterSection = trimmedRoster
+    ? `
+
+SPEAKING ORDER OF THE INTRODUCTION ROUND (written by the group):
+"""
+${trimmedRoster}
+"""
+- Use this order to know which name belongs to which voice in the introduction round: the first person speaking is the first entry, and so on
+- If what you hear in the introduction round clearly differs from this order, trust the order for the names but only link a voice when you can tell the speakers apart
+- This list describes ONLY the introduction round. It is NOT evidence of who speaks in the session — that is still decided by voice and explicit cues`
+    : '';
+
+  return `VOICE REFERENCE (the audio directly after this text):
 This first audio is NOT part of the session. It is a short introduction round recorded by this group: each player says their own name and the name of the character they play, and the Dungeon Master introduces themselves as the DM.
 Use it ONLY as a voice reference: learn what each person sounds like (pitch, timbre, accent, speaking rhythm) and which character name belongs to which voice.
 - Do NOT transcribe the introduction round, and never include anything said in it in your log
 - The SESSION audio you must transcribe comes after the instructions that follow the introduction round
-- If the SESSION audio contains no speech, return the error code as instructed — never transcribe the introduction round instead`;
+- If the SESSION audio contains no speech, return the error code as instructed — never transcribe the introduction round instead${rosterSection}`;
+}
 
 /** Options shared by both prompt variants. */
 export interface TranscriptionPromptOptions {

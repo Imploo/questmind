@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
   RAW_STORY_TRANSCRIPTION_PROMPT,
-  VOICE_INTRO_REFERENCE_PROMPT,
+  VOICE_INTRO_ROSTER_MAX_LENGTH,
   buildFullTranscriptionPrompt,
   buildSegmentTranscriptionPrompt,
+  buildVoiceIntroReferencePrompt,
 } from './raw-story-transcription.prompt';
 
 const meta = { index: 2, total: 5, startSec: 1800, endSec: 3600 };
@@ -26,7 +27,7 @@ describe('raw story transcription prompts', () => {
   describe('with voice intro (ticket #68)', () => {
     it('allows voice matching against the introduction round in the full prompt', () => {
       const prompt = buildFullTranscriptionPrompt({ hasVoiceIntro: true });
-      expect(prompt).toContain('clearly matches a voice from that introduction round');
+      expect(prompt).toContain('clearly and unambiguously matches exactly ONE profile from the introduction round');
       expect(prompt).not.toContain('ONLY when the audio itself makes it clear');
     });
 
@@ -42,9 +43,38 @@ describe('raw story transcription prompts', () => {
       expect(prompt).toContain('label it exactly as: Speler (onbekend)');
     });
 
+    it('ranks explicit cues above voice matches and enforces one name per voice', () => {
+      const prompt = buildFullTranscriptionPrompt({ hasVoiceIntro: true });
+      expect(prompt).toContain('EVIDENCE ORDER');
+      expect(prompt).toContain('the explicit cue wins');
+      expect(prompt).toContain('two clearly different voices NEVER share the same name');
+      expect(prompt).toContain('silently build a voice profile');
+    });
+
     it('tells the model never to transcribe the introduction round', () => {
-      expect(VOICE_INTRO_REFERENCE_PROMPT).toContain('Do NOT transcribe the introduction round');
-      expect(VOICE_INTRO_REFERENCE_PROMPT).toContain('never transcribe the introduction round instead');
+      const prompt = buildVoiceIntroReferencePrompt();
+      expect(prompt).toContain('Do NOT transcribe the introduction round');
+      expect(prompt).toContain('never transcribe the introduction round instead');
+    });
+  });
+
+  describe('voice intro speaking order', () => {
+    it('omits the speaking-order section when no roster is given', () => {
+      expect(buildVoiceIntroReferencePrompt()).not.toContain('SPEAKING ORDER');
+      expect(buildVoiceIntroReferencePrompt('   ')).not.toContain('SPEAKING ORDER');
+    });
+
+    it('includes the trimmed roster and limits it to the session scope', () => {
+      const prompt = buildVoiceIntroReferencePrompt('  1. DM (Matt)\n2. Thorin (Jan)  ');
+      expect(prompt).toContain('SPEAKING ORDER OF THE INTRODUCTION ROUND');
+      expect(prompt).toContain('"""\n1. DM (Matt)\n2. Thorin (Jan)\n"""');
+      expect(prompt).toContain('It is NOT evidence of who speaks in the session');
+    });
+
+    it('caps an overly long roster', () => {
+      const prompt = buildVoiceIntroReferencePrompt('x'.repeat(VOICE_INTRO_ROSTER_MAX_LENGTH + 500));
+      expect(prompt).toContain('x'.repeat(VOICE_INTRO_ROSTER_MAX_LENGTH));
+      expect(prompt).not.toContain('x'.repeat(VOICE_INTRO_ROSTER_MAX_LENGTH + 1));
     });
   });
 });

@@ -123,6 +123,22 @@ export class CampaignService {
     });
   }
 
+  /**
+   * Set or clear the speaking order of the voice intro. Writes only this one
+   * settings field, like updateVoiceIntro.
+   */
+  async updateVoiceIntroRoster(campaignId: string, roster: string): Promise<void> {
+    if (!this.db) {
+      throw new Error('Firestore is not configured');
+    }
+    const trimmed = roster.trim();
+    const campaignRef = doc(this.db, 'campaigns', campaignId);
+    await updateDoc(campaignRef, {
+      'settings.voiceIntroRoster': trimmed || deleteField(),
+      updatedAt: new Date().toISOString()
+    });
+  }
+
   async inviteUserByEmail(campaignId: string, email: string): Promise<void> {
     const user = this.authService.currentUser();
     if (!user) {

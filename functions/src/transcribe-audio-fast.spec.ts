@@ -51,7 +51,9 @@ vi.mock('./services/worker-queue.service', () => ({
 }));
 
 vi.mock('./audio/transcription-prompt', () => ({
-  buildRawStoryPrompt: vi.fn(() => 'test-prompt'),
+  buildRawStoryPrompt: vi.fn((_kanka: unknown, options?: { hasVoiceIntro?: boolean }) =>
+    options?.hasVoiceIntro ? 'test-prompt-voice-intro' : 'test-prompt'
+  ),
   buildSegmentRawStoryPrompt: vi.fn(() => 'test-segment-prompt'),
 }));
 
@@ -241,7 +243,7 @@ describe('transcribeAudioFast', () => {
     expect(parts).toHaveLength(4);
     expect(parts[0].text).toContain('VOICE REFERENCE');
     expect(parts[1]).toEqual({ inlineData: { mimeType: 'audio/mpeg', data: 'BASE64' } });
-    expect(parts[2]).toEqual({ text: 'test-prompt' });
+    expect(parts[2]).toEqual({ text: 'test-prompt-voice-intro' });
     expect(parts[3].fileData.fileUri).toBe('https://generativelanguage.googleapis.com/files/abc123');
     expect(mockUpdate).toHaveBeenCalledWith({ 'transcriptionFast.voiceIntroUsed': true });
   });
@@ -281,9 +283,32 @@ describe('transcribeAudioFast', () => {
     );
     const partCounts = mockGenerateContent.mock.calls.map((call) => call[0].contents[0].parts.length);
     expect(partCounts).toEqual([4, 2]);
+    // The retry without the intro audio must not use the voice-intro prompt.
+    expect(mockGenerateContent.mock.calls[1][0].contents[0].parts[0]).toEqual({ text: 'test-prompt' });
+    expect(mockUpdate).toHaveBeenCalledWith({ 'transcriptionFast.voiceIntroFallbackSegments': [1] });
     expect(mockCaptureException).toHaveBeenCalledWith(
       expect.any(Error),
       expect.objectContaining({ feature: 'voiceIntro' })
     );
+  });
+
+  it('should include the campaign speaking order in the voice reference text', async () => {
+    const voiceIntro = { storagePath: 'campaigns/campaign-1/voice-intro/intro.mp3', mimeType: 'audio/mpeg' };
+    const voiceIntroRoster = '1. DM (Matt)\n2. Thorin (Jan)';
+    mockGet.mockResolvedValueOnce({ exists: true, data: () => ({}) });
+    mockGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ settings: { kankaEnabled: false, voiceIntro, voiceIntroRoster } }),
+    });
+    mockUpdate.mockResolvedValue(undefined);
+    mockLoadVoiceIntroAudio.mockResolvedValue({ mimeType: 'audio/mpeg', data: 'BASE64' });
+    mockGenerateContent.mockResolvedValue({ text: 'DM [rustig]: Welkom terug, avonturiers. Jullie staan voor de poort.' });
+
+    await transcribeHandler(makeRequest());
+
+    await vi.waitFor(() => expect(mockGenerateContent).toHaveBeenCalled());
+    const parts = mockGenerateContent.mock.calls[0][0].contents[0].parts;
+    expect(parts[0].text).toContain('SPEAKING ORDER OF THE INTRODUCTION ROUND');
+    expect(parts[0].text).toContain(voiceIntroRoster);
   });
 });

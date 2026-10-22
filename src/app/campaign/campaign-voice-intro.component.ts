@@ -17,6 +17,7 @@ import { CampaignVoiceIntro } from './campaign.models';
         Let each person talk for about 10–20 seconds, e.g.
         <em>"Hi, I'm Matt and I play Thorin, a dwarven fighter."</em> The DM introduces themselves as the DM.
         Use the same microphone setup as during your sessions and re-record when the party changes.
+        Fill in the speaking order below so the AI knows which name belongs to which voice.
       </p>
 
       @if (voiceIntro(); as intro) {
