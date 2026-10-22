@@ -241,11 +241,13 @@ export class NavRailComponent {
   readonly navItems = computed((): NavItem[] => {
     const campaignId = this.campaignContext.selectedCampaignId();
     const audioRoute = campaignId ? `/campaign/${campaignId}/audio` : null;
+    const storyRoute = campaignId ? `/campaign/${campaignId}/story` : null;
     const podcastsRoute = campaignId ? `/campaign/${campaignId}/podcasts` : null;
 
     const items: NavItem[] = [
       { id: 'characters', label: 'Characters', route: '/characters', icon: 'users' },
       ...(audioRoute ? [{ id: 'audio', label: 'Audio', route: audioRoute, icon: 'mic' }] : []),
+      ...(storyRoute ? [{ id: 'story', label: 'Verhaal', route: storyRoute, icon: 'book-open' }] : []),
       ...(podcastsRoute ? [{ id: 'podcasts', label: 'Podcasts', route: podcastsRoute, icon: 'music' }] : []),
     ];
 
@@ -268,6 +270,7 @@ export class NavRailComponent {
     const active = this.activeRoute();
     // For campaign-prefixed routes, activeRoute() returns just the segment
     if (item.id === 'audio') return active === 'audio';
+    if (item.id === 'story') return active === 'story';
     if (item.id === 'podcasts') return active === 'podcasts';
     return active === item.route;
   }

@@ -124,6 +124,12 @@ service cloud.firestore {
       allow write: if isSessionOwner(campaignId, sessionId);
     }
 
+    // Campaign story versions (ticket #69) — members read, only the backend writes
+    match /campaigns/{campaignId}/campaignStories/{versionId} {
+      allow read: if isCampaignMember(campaignId);
+      allow write: if false;
+    }
+
     // Settings collection - read-only for authenticated users
     match /settings/{document} {
       allow read: if isAuthenticated();

@@ -50,3 +50,7 @@ export { resolveSpell } from './resolve-spell';
 
 // Feature/trait description resolution for lazy loading
 export { resolveFeature } from './resolve-feature';
+
+// Campaign story (ticket #69): versioned summary of all sessions + podcast per version
+export { generateCampaignStory } from './generate-campaign-story';
+export { generateCampaignStoryPodcast } from './generate-campaign-story-podcast';

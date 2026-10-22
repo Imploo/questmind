@@ -66,6 +66,10 @@ export const routes: Routes = [
         loadComponent: () => import('./audio/audio-session.component').then(m => m.AudioSessionComponent)
       },
       {
+        path: 'story',
+        loadComponent: () => import('./campaign-story/campaign-story-page.component').then(m => m.CampaignStoryPageComponent)
+      },
+      {
         path: 'podcasts',
         loadComponent: () => import('./audio/podcast-library.component').then(m => m.PodcastLibraryComponent)
       },

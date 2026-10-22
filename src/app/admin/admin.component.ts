@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, signal, computed, OnInit, inject } 
 import { FormsModule } from '@angular/forms';
 import { UserService } from '../core/user.service';
 import { AiSettingsRepository } from '../shared/repository/ai-settings.repository';
-import { type AiSettings, type AiModelConfig, type AiImageConfig, type PodcastVoiceSettings } from '../core/services/ai-settings.service';
+import { type AiSettings, type AiModelConfig, type AiImageConfig, type CampaignStoryModelConfig, type PodcastVoiceSettings } from '../core/services/ai-settings.service';
 import { ToastService } from '../shared/services/toast.service';
 import * as logger from '../shared/logger';
 
@@ -186,6 +186,25 @@ interface FeatureDefinition {
                         class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                       />
                     </div>
+                    @if (selectedFeature().key === 'campaignStory') {
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">
+                          Doel (woorden)
+                          <span class="text-xs font-normal text-gray-400">(~500-600 per A4, 500-1800)</span>
+                        </label>
+                        <input
+                          type="number"
+                          [ngModel]="getFeatureValue('targetWords')"
+                          (ngModelChange)="setFeatureValue('targetWords', $event)"
+                          [name]="selectedFeature().key + '-targetWords'"
+                          (blur)="onFieldBlur()"
+                          step="100"
+                          min="500"
+                          max="1800"
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                        />
+                      </div>
+                    }
                     @if (currentModelIsGemini3()) {
                       <div class="md:col-span-2">
                         <label class="block text-sm font-medium text-gray-700 mb-1">
@@ -388,6 +407,15 @@ export class AdminComponent implements OnInit {
       description: 'Converteert verhaal naar twee-host podcast dialoog'
     },
     {
+      key: 'campaignStory',
+      label: 'Campaign-verhaal',
+      icon: '📚',
+      provider: 'Gemini',
+      providerColor: 'bg-blue-100 text-blue-700',
+      formType: 'standard',
+      description: 'Vat alle sessieverhalen samen tot één campagneverhaal (~1-3 A4)'
+    },
+    {
       key: 'podcastVoices',
       label: 'Podcast Voices (TTS)',
       icon: '🗣️',
@@ -407,7 +435,7 @@ export class AdminComponent implements OnInit {
     'Vindemiatrix', 'Sadachbia', 'Sadaltager', 'Sulafat',
   ] as const;
 
-  private readonly defaultConfigs: Record<string, AiModelConfig | AiImageConfig | PodcastVoiceSettings> = {
+  private readonly defaultConfigs: Record<string, AiModelConfig | CampaignStoryModelConfig | AiImageConfig | PodcastVoiceSettings> = {
     characterChatText: { model: 'gemini-3.8-flash', maxOutputTokens: 4096, thinkingLevel: 'low' },
     characterDraft: { model: 'gemini-3.8-flash', maxOutputTokens: 8192, thinkingLevel: 'medium' },
     spellResolution: { model: 'gemini-3.8-flash', maxOutputTokens: 4096, thinkingLevel: 'low' },
@@ -417,6 +445,7 @@ export class AdminComponent implements OnInit {
     transcription: { model: 'gemini-3.8-flash', maxOutputTokens: 65536, thinkingLevel: 'low' },
     storyGeneration: { model: 'gemini-3.8-flash', maxOutputTokens: 60000, thinkingLevel: 'medium' },
     podcastScript: { model: 'gemini-3.8-flash', maxOutputTokens: 32768, thinkingLevel: 'medium' },
+    campaignStory: { model: 'gemini-3.8-flash', maxOutputTokens: 16384, thinkingLevel: 'medium', targetWords: 1200 },
     characterChat: { model: 'gemini-3.8-flash', maxOutputTokens: 8192, thinkingLevel: 'low' },
     podcastVoices: {
       maxCharacters: 5000,
