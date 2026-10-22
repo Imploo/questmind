@@ -135,6 +135,8 @@ export interface AISettings {
     transcription?: TranscriptionFeatureConfig;
     storyGeneration?: AIFeatureConfig;
     podcastScript?: AIFeatureConfig;
+    /** Campaign story (ticket #69); targetWords is the desired length */
+    campaignStory?: AIFeatureConfig & { targetWords?: number };
     podcastVoices?: PodcastVoiceSettings;
     characterChat?: AIFeatureConfig;
     characterChatText?: AIFeatureConfig;

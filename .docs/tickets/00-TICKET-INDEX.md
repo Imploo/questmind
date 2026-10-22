@@ -701,5 +701,20 @@ Start here for immediate impact with minimal risk:
 
 ---
 
-**Last Updated:** 2026-10-21
+## 📖 Campaign-verhaal
+
+| Ticket | Title | Priority | Status | Effort | Dependencies |
+|--------|-------|----------|--------|--------|--------------|
+| [#69](./done/69-campaign-story-versioned-with-podcast.md) | Campaign-verhaal: geversioneerd totaalverhaal van alle sessies (+ podcast per versie) | Medium | Done | 4-6 dagen | #54, #66 |
+
+**Key Changes:**
+- **Ticket 69**: (afgerond) Per campaign één doorlopend, samengevat verhaal (~1-3 A4) van alle sessieverhalen in chronologische volgorde
+  - Geversioneerd in `campaigns/{id}/campaignStories/v{n}`; oude versies via een onopvallende drawer rechtsboven
+  - Knop "Nieuw verhaal genereren" (alleen campaign-owner), altijd volledig opnieuw uit alle sessies
+  - Podcast per verhaalversie met de normale podcast-instellingen; alleen op de verhaalpagina (niet in de Podcast library)
+  - Nieuw nav-item "Verhaal" (`/campaign/:id/story`)
+
+---
+
+**Last Updated:** 2026-10-22
 **Status:** Planning Complete, Ready to Begin

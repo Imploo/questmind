@@ -49,6 +49,12 @@ service firebase.storage {
                        || request.resource.contentType == 'audio/m4a');
     }
 
+    // Campaign story podcasts (ticket #69) — members listen, only the backend writes
+    match /campaigns/{campaignId}/campaign-story-podcasts/{storyVersion}/{filename} {
+      allow read: if isCampaignMember(campaignId);
+      allow write: if false;
+    }
+
     // Generated character images — owner can delete, anyone can read via download token
     match /images/{characterId}/{filename} {
       allow read: if true;

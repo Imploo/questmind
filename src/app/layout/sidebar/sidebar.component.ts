@@ -88,6 +88,7 @@ export class SidebarComponent {
     const items: NavItem[] = [
       { id: 'characters', label: 'Characters', route: 'characters', icon: 'users' },
       { id: 'audio', label: 'Audio Transcription', route: 'audio', icon: 'mic' },
+      { id: 'story', label: 'Verhaal', route: 'story', icon: 'book-open' },
       { id: 'podcasts', label: 'Podcast Bibliotheek', route: 'podcasts', icon: 'music' },
     ];
 

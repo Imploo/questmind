@@ -10,6 +10,11 @@ export interface AiModelConfig {
   thinkingLevel?: GeminiThinkingLevel;
 }
 
+/** Campaign story (ticket #69): targetWords is the desired story length. */
+export interface CampaignStoryModelConfig extends AiModelConfig {
+  targetWords?: number;
+}
+
 export interface AiImageConfig {
   model: string;
 }
@@ -39,6 +44,7 @@ export interface AiSettings {
     transcription?: AiModelConfig;
     storyGeneration?: AiModelConfig;
     podcastScript?: AiModelConfig;
+    campaignStory?: CampaignStoryModelConfig;
     characterChat?: AiModelConfig;
     characterChatText?: AiModelConfig;
     characterDraft?: AiModelConfig;

@@ -5,6 +5,7 @@ import {
   PodcastVoiceSettings,
   TranscriptionSegmentationSettings,
 } from '../types/audio-session.types';
+import { CampaignStoryFeatureConfig } from '../types/campaign-story.types';
 
 let cachedSettings: AISettings | null = null;
 let cacheTimestamp = 0;
@@ -44,6 +45,7 @@ const DEFAULT_CONFIGS: Record<string, AIFeatureConfig> = {
   transcription: { model: 'gemini-3.8-flash', maxOutputTokens: 65536, thinkingLevel: 'low' },
   storyGeneration: { model: 'gemini-3.8-flash', maxOutputTokens: 60000, thinkingLevel: 'medium' },
   podcastScript: { model: 'gemini-3.8-flash', maxOutputTokens: 32768, thinkingLevel: 'medium' },
+  campaignStory: { model: 'gemini-3.8-flash', maxOutputTokens: 16384, thinkingLevel: 'medium' },
   imagePromptGeneration: { model: 'gemini-3.8-flash', maxOutputTokens: 1024, thinkingLevel: 'low' },
 };
 
@@ -75,6 +77,18 @@ export async function getAiFeatureConfig(featureKey: string): Promise<AIFeatureC
   const featureConfig = settings?.features?.[featureKey as keyof NonNullable<AISettings['features']>];
   const defaults = DEFAULT_CONFIGS[featureKey];
   return { ...defaults, ...(featureConfig as AIFeatureConfig | undefined) };
+}
+
+/** Campaign story (ticket #69): ~1.200 words ≈ 2 A4, tunable via settings/ai without a deploy. */
+const DEFAULT_CAMPAIGN_STORY_TARGET_WORDS = 1200;
+
+export async function getCampaignStoryConfig(): Promise<CampaignStoryFeatureConfig> {
+  const settings = await getCachedAiSettings();
+  return {
+    targetWords: DEFAULT_CAMPAIGN_STORY_TARGET_WORDS,
+    ...DEFAULT_CONFIGS['campaignStory'],
+    ...settings?.features?.campaignStory,
+  };
 }
 
 export async function getAiImageConfig(): Promise<{ model: string }> {
