@@ -1,6 +1,8 @@
 import * as logger from './utils/logger';
 import { GoogleGenAI, Part } from '@google/genai';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
+import { onTaskDispatched } from 'firebase-functions/v2/tasks';
+import { getFunctions } from 'firebase-admin/functions';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { ProgressTrackerService } from './services/progress-tracker.service';
 import { getAiFeatureConfig, getTranscriptionSegmentationConfig } from './utils/ai-settings';
@@ -21,6 +23,16 @@ import { buildVoiceIntroReferencePrompt } from './prompts/raw-story-transcriptio
 /** One audio segment to transcribe (a time-slice of a longer recording). */
 /** Base delay between transcription attempts of one segment (multiplied by the attempt number). */
 const RETRY_BACKOFF_MS = 5000;
+
+/** Name of the task-queue function that does the actual transcription work. */
+const TRANSCRIPTION_WORKER_NAME = 'transcribeAudioFastWorker';
+const TRANSCRIPTION_WORKER_REGION = 'europe-west1';
+
+/**
+ * Upper bound for one transcription run (segments + story generation).
+ * 1800s is the maximum Cloud Tasks dispatch deadline.
+ */
+const TRANSCRIPTION_WORKER_TIMEOUT_SECONDS = 1800;
 
 export interface AudioSegmentRef {
   /** 0-based order of this segment within the recording. */
@@ -78,18 +90,16 @@ interface GeminiFileStateResponse {
 /**
  * Fast transcription using direct Gemini API call
  *
- * This function uses a fire-and-forget pattern:
  * 1. Validates input and updates progress
- * 2. Returns immediately to frontend
- * 3. Processes transcription asynchronously in background
- * 4. Updates Firestore with results
- * 5. Triggers story generation when complete
+ * 2. Enqueues the work on the `transcribeAudioFastWorker` task queue
+ * 3. Returns immediately to frontend (which monitors Firestore)
+ *
+ * The work itself runs in the task function, NOT after this callable has
+ * responded: Cloud Run throttles CPU and reclaims idle instances once a
+ * request has finished, which silently killed long background runs.
  */
 export const transcribeAudioFast = onCall(
   {
-    // Segmented transcription runs several Gemini calls back-to-back in the
-    // background, so give the instance room to live long enough to finish them.
-    timeoutSeconds: 1200,
     memory: '1GiB',
     secrets: ['GOOGLE_AI_API_KEY', 'KANKA_API_TOKEN'],
   },
@@ -176,21 +186,19 @@ export const transcribeAudioFast = onCall(
       },
     });
 
-    // Start async processing (don't await - fire and forget)
-    processTranscriptionAsync(
+    const payload: TranscriptionTaskPayload = {
       campaignId,
       sessionId,
       segments,
       audioFileName,
       kankaEnabled,
-      voiceIntro,
-      voiceIntroRoster,
-      userCorrections,
-      googleAiKey
-    ).catch((error) => {
-      logger.error('[transcribeAudioFast] Async processing failed:', error);
-      // Error will be written to Firestore by processTranscriptionAsync
-    });
+      voiceIntro: voiceIntro ?? null,
+      voiceIntroRoster: voiceIntroRoster ?? null,
+      userCorrections: userCorrections ?? null,
+    };
+    await getFunctions()
+      .taskQueue(`locations/${TRANSCRIPTION_WORKER_REGION}/functions/${TRANSCRIPTION_WORKER_NAME}`)
+      .enqueue(payload, { dispatchDeadlineSeconds: TRANSCRIPTION_WORKER_TIMEOUT_SECONDS });
 
     // Return immediately - frontend will monitor Firestore for updates
       return {
@@ -199,6 +207,57 @@ export const transcribeAudioFast = onCall(
       };
     }
   ),
+);
+
+/** Data handed from the callable to the transcription task (JSON-serialisable: no undefined). */
+interface TranscriptionTaskPayload {
+  campaignId: string;
+  sessionId: string;
+  segments: AudioSegmentRef[];
+  audioFileName: string;
+  kankaEnabled: boolean;
+  voiceIntro: CampaignVoiceIntroSettings | null;
+  voiceIntroRoster: string | null;
+  userCorrections: string | null;
+}
+
+/**
+ * Task-queue worker that runs the transcription (and the story generation it
+ * triggers) inside a live request, so the instance stays up until it is done.
+ * Not retried by Cloud Tasks: failures are written to Firestore instead, and a
+ * re-run would redo every Gemini call.
+ */
+export const transcribeAudioFastWorker = onTaskDispatched<TranscriptionTaskPayload>(
+  {
+    timeoutSeconds: TRANSCRIPTION_WORKER_TIMEOUT_SECONDS,
+    memory: '1GiB',
+    secrets: ['GOOGLE_AI_API_KEY', 'KANKA_API_TOKEN'],
+    retryConfig: { maxAttempts: 1 },
+  },
+  async (request) => {
+    const {
+      campaignId,
+      sessionId,
+      segments,
+      audioFileName,
+      kankaEnabled,
+      voiceIntro,
+      voiceIntroRoster,
+      userCorrections,
+    } = request.data;
+
+    await processTranscriptionAsync(
+      campaignId,
+      sessionId,
+      segments,
+      audioFileName,
+      kankaEnabled,
+      voiceIntro ?? undefined,
+      voiceIntroRoster ?? undefined,
+      userCorrections ?? undefined,
+      process.env.GOOGLE_AI_API_KEY ?? ''
+    );
+  }
 );
 
 interface CampaignTranscriptionSettings {
@@ -251,7 +310,8 @@ function buildVoiceIntroParts(
 }
 
 /**
- * Process transcription asynchronously in the background
+ * Run the transcription for all segments, store the raw story and trigger story generation.
+ * Never throws: failures are written to the session in Firestore.
  */
 async function processTranscriptionAsync(
   campaignId: string,

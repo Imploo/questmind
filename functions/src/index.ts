@@ -31,7 +31,7 @@ export { generatePodcastAudio } from './generate-podcast-audio';
 export { uploadAudioToGemini } from './upload-audio-to-gemini';
 
 // Transcription
-export { transcribeAudioFast } from './transcribe-audio-fast';
+export { transcribeAudioFast, transcribeAudioFastWorker } from './transcribe-audio-fast';
 
 // Story generation (triggered after transcription)
 export { storyGenerationWorker } from './workers/story-generation-worker';
