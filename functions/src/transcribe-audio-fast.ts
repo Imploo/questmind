@@ -2,13 +2,12 @@ import * as logger from './utils/logger';
 import { GoogleGenAI, Part } from '@google/genai';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { onTaskDispatched } from 'firebase-functions/v2/tasks';
-import { getFunctions } from 'firebase-admin/functions';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { ProgressTrackerService } from './services/progress-tracker.service';
 import { getAiFeatureConfig, getTranscriptionSegmentationConfig } from './utils/ai-settings';
 import { buildGenerationParams } from './utils/gemini-config';
 import { AIFeatureConfig } from './types/audio-session.types';
-import { WorkerQueueService } from './services/worker-queue.service';
+import { TASK_WORKERS, TASK_WORKER_TIMEOUT_SECONDS, enqueueWorkerTask } from './services/task-queue.service';
 import { buildRawStoryPrompt, buildSegmentRawStoryPrompt } from './audio/transcription-prompt';
 import { fetchKankaContextForTranscription } from './services/kanka.service';
 import { captureException, wrapCallable } from './utils/sentry-error-handler';
@@ -19,20 +18,15 @@ import {
   loadVoiceIntroAudio,
 } from './audio/voice-intro.service';
 import { buildVoiceIntroReferencePrompt } from './prompts/raw-story-transcription.prompt';
+import {
+  AudioRecording,
+  prepareSegmentsFromStorage,
+  sessionAudioPrefix,
+} from './audio/stored-audio.service';
 
 /** One audio segment to transcribe (a time-slice of a longer recording). */
 /** Base delay between transcription attempts of one segment (multiplied by the attempt number). */
 const RETRY_BACKOFF_MS = 5000;
-
-/** Name of the task-queue function that does the actual transcription work. */
-const TRANSCRIPTION_WORKER_NAME = 'transcribeAudioFastWorker';
-const TRANSCRIPTION_WORKER_REGION = 'europe-west1';
-
-/**
- * Upper bound for one transcription run (segments + story generation).
- * 1800s is the maximum Cloud Tasks dispatch deadline.
- */
-const TRANSCRIPTION_WORKER_TIMEOUT_SECONDS = 1800;
 
 export interface AudioSegmentRef {
   /** 0-based order of this segment within the recording. */
@@ -52,6 +46,12 @@ export interface TranscribeAudioFastRequest {
   fileUri?: string;
   /** Multi-segment audio references (ticket #67). Takes priority over fileUri. */
   fileUris?: AudioSegmentRef[];
+  /**
+   * Storage path of the session's stored recording (`audioRecording` on the
+   * session). Takes priority over fileUri(s): the worker cuts and uploads the
+   * segments itself, so a session can be re-transcribed at any time.
+   */
+  storagePath?: string;
   audioFileName: string;
   audioFileSize?: number;
   userCorrections?: string;
@@ -115,17 +115,18 @@ export const transcribeAudioFast = onCall(
       sessionId,
       fileUri,
       fileUris,
+      storagePath,
       audioFileName,
       userCorrections,
     } = request.data;
 
-    const segments = normalizeSegments(fileUris, fileUri);
+    const segments = storagePath ? [] : normalizeSegments(fileUris, fileUri);
 
     // Validate required fields
-    if (!campaignId || !sessionId || segments.length === 0 || !audioFileName) {
+    if (!campaignId || !sessionId || (!storagePath && segments.length === 0) || !audioFileName) {
       throw new HttpsError(
         'invalid-argument',
-        'Missing required fields: campaignId, sessionId, fileUri/fileUris, audioFileName'
+        'Missing required fields: campaignId, sessionId, storagePath/fileUri/fileUris, audioFileName'
       );
     }
 
@@ -153,25 +154,77 @@ export const transcribeAudioFast = onCall(
       );
     }
 
-    // Update progress to transcribing (70-80% range)
-    await ProgressTrackerService.updateProgress(
+    // The recording must be this session's own stored file — never read an
+    // arbitrary bucket path on behalf of the caller.
+    let recording: AudioRecording | null = null;
+    if (storagePath) {
+      const stored = sessionSnap.get('audioRecording') as AudioRecording | undefined;
+      if (
+        !storagePath.startsWith(sessionAudioPrefix(campaignId, sessionId)) ||
+        stored?.storagePath !== storagePath
+      ) {
+        throw new HttpsError('invalid-argument', 'storagePath does not belong to this session');
+      }
+      recording = stored;
+    }
+
+    await enqueueTranscription({
       campaignId,
       sessionId,
-      'transcribing',
-      70,
-      'Fast transcription started...'
-    );
+      segments,
+      recording,
+      audioFileName,
+      userCorrections: userCorrections ?? null,
+    });
 
-    // Fetch Kanka + voice-intro settings from campaign settings
-    const { kankaEnabled, voiceIntro, voiceIntroRoster } = await getCampaignTranscriptionSettings(campaignId);
+    // Return immediately - frontend will monitor Firestore for updates
+      return {
+        success: true,
+        message: 'Fast transcription started',
+      };
+    }
+  ),
+);
 
-    // Store fast transcription metadata
-    await sessionRef.update({
+/**
+ * Record the transcription metadata on the session and enqueue the
+ * transcription task. Used by the callable (upload / retry / re-transcribe) and
+ * by the audio processing task once the stored recording is ready.
+ */
+export async function enqueueTranscription(params: {
+  campaignId: string;
+  sessionId: string;
+  segments: AudioSegmentRef[];
+  recording: AudioRecording | null;
+  audioFileName: string;
+  userCorrections: string | null;
+}): Promise<void> {
+  const { campaignId, sessionId, segments, recording, audioFileName, userCorrections } = params;
+
+  // Update progress to transcribing (70-80% range)
+  await ProgressTrackerService.updateProgress(
+    campaignId,
+    sessionId,
+    'transcribing',
+    70,
+    'Fast transcription started...'
+  );
+
+  // Fetch Kanka + voice-intro settings from campaign settings
+  const { kankaEnabled, voiceIntro, voiceIntroRoster } = await getCampaignTranscriptionSettings(campaignId);
+
+  // Store fast transcription metadata
+  await getFirestore()
+    .collection('campaigns').doc(campaignId)
+    .collection('audioSessions').doc(sessionId)
+    .update({
       transcriptionFast: {
         mode: 'fast',
         enableKankaContext: kankaEnabled,
         userCorrections,
-        fileUri: segments[0].fileUri,         // first segment — kept for backward compatibility
+        source: recording ? 'storage' : 'fileUris',
+        storagePath: recording?.storagePath ?? null,
+        fileUri: segments[0]?.fileUri ?? null, // first segment — kept for backward compatibility
         segmentCount: segments.length,
         segments: segments.map((s) => ({
           index: s.index,
@@ -186,34 +239,27 @@ export const transcribeAudioFast = onCall(
       },
     });
 
-    const payload: TranscriptionTaskPayload = {
-      campaignId,
-      sessionId,
-      segments,
-      audioFileName,
-      kankaEnabled,
-      voiceIntro: voiceIntro ?? null,
-      voiceIntroRoster: voiceIntroRoster ?? null,
-      userCorrections: userCorrections ?? null,
-    };
-    await getFunctions()
-      .taskQueue(`locations/${TRANSCRIPTION_WORKER_REGION}/functions/${TRANSCRIPTION_WORKER_NAME}`)
-      .enqueue(payload, { dispatchDeadlineSeconds: TRANSCRIPTION_WORKER_TIMEOUT_SECONDS });
-
-    // Return immediately - frontend will monitor Firestore for updates
-      return {
-        success: true,
-        message: 'Fast transcription started',
-      };
-    }
-  ),
-);
+  const payload: TranscriptionTaskPayload = {
+    campaignId,
+    sessionId,
+    segments,
+    recording,
+    audioFileName,
+    kankaEnabled,
+    voiceIntro: voiceIntro ?? null,
+    voiceIntroRoster: voiceIntroRoster ?? null,
+    userCorrections,
+  };
+  await enqueueWorkerTask(TASK_WORKERS.transcription, { ...payload });
+}
 
 /** Data handed from the callable to the transcription task (JSON-serialisable: no undefined). */
 interface TranscriptionTaskPayload {
   campaignId: string;
   sessionId: string;
   segments: AudioSegmentRef[];
+  /** When set, segments are cut from this stored recording instead of `segments`. */
+  recording: AudioRecording | null;
   audioFileName: string;
   kankaEnabled: boolean;
   voiceIntro: CampaignVoiceIntroSettings | null;
@@ -222,15 +268,17 @@ interface TranscriptionTaskPayload {
 }
 
 /**
- * Task-queue worker that runs the transcription (and the story generation it
- * triggers) inside a live request, so the instance stays up until it is done.
+ * Task-queue worker that runs the transcription inside a live request, so the
+ * instance stays up until it is done. Story generation runs as its own task
+ * afterwards, with its own time budget.
  * Not retried by Cloud Tasks: failures are written to Firestore instead, and a
  * re-run would redo every Gemini call.
  */
 export const transcribeAudioFastWorker = onTaskDispatched<TranscriptionTaskPayload>(
   {
-    timeoutSeconds: TRANSCRIPTION_WORKER_TIMEOUT_SECONDS,
-    memory: '1GiB',
+    timeoutSeconds: TASK_WORKER_TIMEOUT_SECONDS,
+    // Headroom for the stored recording + cut segments in /tmp (in-memory on Cloud Run).
+    memory: '2GiB',
     secrets: ['GOOGLE_AI_API_KEY', 'KANKA_API_TOKEN'],
     retryConfig: { maxAttempts: 1 },
   },
@@ -239,6 +287,7 @@ export const transcribeAudioFastWorker = onTaskDispatched<TranscriptionTaskPaylo
       campaignId,
       sessionId,
       segments,
+      recording,
       audioFileName,
       kankaEnabled,
       voiceIntro,
@@ -250,6 +299,7 @@ export const transcribeAudioFastWorker = onTaskDispatched<TranscriptionTaskPaylo
       campaignId,
       sessionId,
       segments,
+      recording ?? undefined,
       audioFileName,
       kankaEnabled,
       voiceIntro ?? undefined,
@@ -316,7 +366,8 @@ function buildVoiceIntroParts(
 async function processTranscriptionAsync(
   campaignId: string,
   sessionId: string,
-  segments: AudioSegmentRef[],
+  inputSegments: AudioSegmentRef[],
+  recording: AudioRecording | undefined,
   audioFileName: string,
   enableKankaContext: boolean,
   voiceIntro: CampaignVoiceIntroSettings | undefined,
@@ -340,7 +391,7 @@ async function processTranscriptionAsync(
     const transcriptionConfig = await getAiFeatureConfig('transcription');
     const segmentationConfig = await getTranscriptionSegmentationConfig();
     const model = transcriptionConfig.model;
-    const mimeType = resolveMimeType(audioFileName);
+    const mimeType = recording?.mimeType || resolveMimeType(audioFileName);
 
     logger.debug(`[Fast Transcription] Using model: ${model}`);
 
@@ -362,6 +413,9 @@ async function processTranscriptionAsync(
     //    A single segment (the common/legacy case) uses the full-session prompt;
     //    multiple segments each use a segment-aware prompt and are concatenated.
     const googleAi = new GoogleGenAI({ apiKey: googleAiKey });
+    const segments = recording
+      ? await prepareStoredSegments(googleAi, campaignId, sessionId, recording, segmentationConfig)
+      : inputSegments;
     const fullPrompt = buildRawStoryPrompt(kankaContext, { hasVoiceIntro });
     // Used when a segment has to be retried WITHOUT the intro audio: the voice-intro
     // prompt would then point the model at a reference it never receives.
@@ -505,18 +559,16 @@ async function processTranscriptionAsync(
       'Transcription complete, preparing story generation...'
     );
 
-    logger.debug(`[Fast Transcription] Triggering story generation worker...`);
+    logger.debug(`[Fast Transcription] Enqueueing story generation task...`);
 
-    // 7. Trigger story generation worker (pass pre-fetched Kanka context so it doesn't need to re-fetch)
-    const { storyGenerationWorkerHandler } = await import(
-      './workers/story-generation-worker'
-    );
-    await WorkerQueueService.triggerWorker(storyGenerationWorkerHandler, {
+    // 7. Story generation runs as its own task (own time budget). The payload
+    //    stays small: the task reads the raw story from the session and re-fetches
+    //    the Kanka context itself.
+    await enqueueWorkerTask(TASK_WORKERS.story, {
       campaignId,
       sessionId,
-      transcriptionText: rawStory,
-      kankaContext,
-      userCorrections,
+      enableKankaContext: enableKankaContext,
+      userCorrections: userCorrections ?? null,
     });
 
     logger.debug(`[Fast Transcription] Complete for session ${sessionId}`);
@@ -539,6 +591,49 @@ async function processTranscriptionAsync(
       'transcriptionFast.failedAt': FieldValue.serverTimestamp(),
     });
   }
+}
+
+/**
+ * Cut the stored recording into segments (using the current segmentation
+ * settings), upload them to Gemini and record the resulting fileUris on the session.
+ */
+async function prepareStoredSegments(
+  googleAi: GoogleGenAI,
+  campaignId: string,
+  sessionId: string,
+  recording: AudioRecording,
+  segmentationConfig: Awaited<ReturnType<typeof getTranscriptionSegmentationConfig>>
+): Promise<AudioSegmentRef[]> {
+  await ProgressTrackerService.updateProgress(
+    campaignId, sessionId, 'transcribing', 70, 'Preparing stored audio...'
+  );
+
+  const segments = await prepareSegmentsFromStorage(
+    googleAi,
+    recording,
+    segmentationConfig,
+    (uploaded, total) => ProgressTrackerService.updateProgress(
+      campaignId, sessionId, 'transcribing', 70,
+      total > 1 ? `Preparing audio segment ${uploaded} of ${total}...` : 'Preparing stored audio...'
+    )
+  );
+
+  await getFirestore()
+    .collection('campaigns').doc(campaignId)
+    .collection('audioSessions').doc(sessionId)
+    .update({
+      'transcriptionFast.fileUri': segments[0].fileUri,
+      'transcriptionFast.segmentCount': segments.length,
+      'transcriptionFast.segments': segments.map((s) => ({
+        index: s.index,
+        fileUri: s.fileUri,
+        startSec: s.startSec,
+        endSec: s.endSec,
+        status: 'pending',
+      })),
+    });
+
+  return segments;
 }
 
 /**

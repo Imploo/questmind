@@ -62,6 +62,15 @@ vi.mock('./audio/voice-intro.service', () => ({
   loadVoiceIntroAudio: (...args: unknown[]) => mockLoadVoiceIntroAudio(...args),
 }));
 
+const mockPrepareSegmentsFromStorage = vi.fn();
+vi.mock('./audio/stored-audio.service', async () => {
+  const actual = await vi.importActual<typeof import('./audio/stored-audio.service')>('./audio/stored-audio.service');
+  return {
+    ...actual,
+    prepareSegmentsFromStorage: (...args: unknown[]) => mockPrepareSegmentsFromStorage(...args),
+  };
+});
+
 vi.mock('./services/kanka.service', () => ({
   fetchKankaContextForTranscription: vi.fn(() => Promise.resolve(undefined)),
 }));
@@ -250,6 +259,7 @@ describe('transcribeAudioFast', () => {
         campaignId: 'campaign-1',
         sessionId: 'session-1',
         segments: [{ index: 0, fileUri: 'https://generativelanguage.googleapis.com/files/abc123' }],
+        recording: null,
         audioFileName: 'recording.mp3',
         kankaEnabled: false,
         voiceIntro: null,
@@ -269,6 +279,99 @@ describe('transcribeAudioFast', () => {
     mockEnqueue.mockRejectedValueOnce(new Error('PERMISSION_DENIED'));
 
     await expect(transcribeHandler(makeRequest())).rejects.toThrow('PERMISSION_DENIED');
+  });
+
+  it('should enqueue story generation as its own task after transcribing', async () => {
+    mockGet.mockResolvedValueOnce({ exists: true, data: () => ({}) });
+    mockGet.mockResolvedValueOnce({ exists: true, data: () => ({ settings: { kankaEnabled: false } }) });
+    mockUpdate.mockResolvedValue(undefined);
+    mockGenerateContent.mockResolvedValue({ text: 'DM [rustig]: Welkom terug, avonturiers. Jullie staan voor de poort.' });
+
+    await runTranscription(makeRequest({
+      auth: { uid: 'user-123' },
+      data: {
+        campaignId: 'campaign-1',
+        sessionId: 'session-1',
+        fileUri: 'https://generativelanguage.googleapis.com/files/abc123',
+        audioFileName: 'recording.mp3',
+        userCorrections: 'Thalia, niet Talia',
+      },
+    }));
+
+    expect(mockTaskQueue).toHaveBeenLastCalledWith('locations/europe-west1/functions/storyGenerationTaskWorker');
+    expect(mockEnqueue).toHaveBeenLastCalledWith(
+      {
+        campaignId: 'campaign-1',
+        sessionId: 'session-1',
+        enableKankaContext: false,
+        userCorrections: 'Thalia, niet Talia',
+      },
+      { dispatchDeadlineSeconds: 1800 }
+    );
+  });
+
+  // ── Stored recording ──
+
+  const recording = {
+    storagePath: 'campaigns/campaign-1/audio/session-1/recording.mp3',
+    fileName: 'recording.mp3',
+    mimeType: 'audio/mpeg',
+    sizeBytes: 1000,
+    durationSec: 3600,
+    uploadedAt: '2026-10-27T00:00:00.000Z',
+  };
+
+  function makeStorageRequest(storagePath = recording.storagePath) {
+    return makeRequest({
+      data: { campaignId: 'campaign-1', sessionId: 'session-1', storagePath, audioFileName: 'recording.mp3' },
+    });
+  }
+
+  function sessionWithRecording(stored: unknown = recording) {
+    return { exists: true, data: () => ({ audioRecording: stored }), get: () => stored };
+  }
+
+  it('should reject a storagePath outside this session', async () => {
+    const foreign = 'campaigns/other/audio/session-9/recording.mp3';
+    mockGet.mockResolvedValueOnce(sessionWithRecording({ ...recording, storagePath: foreign }));
+
+    await expect(transcribeHandler(makeStorageRequest(foreign))).rejects.toThrow(
+      expect.objectContaining({ code: 'invalid-argument' })
+    );
+    expect(mockEnqueue).not.toHaveBeenCalled();
+  });
+
+  it('should reject a storagePath that is not the session recording', async () => {
+    mockGet.mockResolvedValueOnce(sessionWithRecording());
+
+    await expect(
+      transcribeHandler(makeStorageRequest('campaigns/campaign-1/audio/session-1/other.mp3'))
+    ).rejects.toThrow(expect.objectContaining({ code: 'invalid-argument' }));
+  });
+
+  it('should transcribe segments prepared from the stored recording', async () => {
+    mockGet.mockResolvedValueOnce(sessionWithRecording());
+    mockGet.mockResolvedValueOnce({ exists: true, data: () => ({ settings: { kankaEnabled: false } }) });
+    mockUpdate.mockResolvedValue(undefined);
+    mockPrepareSegmentsFromStorage.mockResolvedValue([
+      { index: 0, fileUri: 'https://generativelanguage.googleapis.com/files/stored1', startSec: 0, endSec: 3600 },
+    ]);
+    mockGenerateContent.mockResolvedValue({ text: 'DM [rustig]: Welkom terug, avonturiers. Jullie staan voor de poort.' });
+
+    await runTranscription(makeStorageRequest());
+
+    expect(mockEnqueue.mock.calls[0][0]).toMatchObject({ segments: [], recording });
+    expect(mockPrepareSegmentsFromStorage).toHaveBeenCalledWith(
+      expect.anything(), recording, expect.anything(), expect.any(Function)
+    );
+    const parts = mockGenerateContent.mock.calls[0][0].contents[0].parts;
+    expect(parts.at(-1).fileData).toEqual({
+      mimeType: 'audio/mpeg',
+      fileUri: 'https://generativelanguage.googleapis.com/files/stored1',
+    });
+    expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      'transcriptionFast.segmentCount': 1,
+    }));
   });
 
   // ── Voice Intro (ticket #68) ──

@@ -120,7 +120,7 @@ export class AudioUploadPageComponent implements OnInit, OnDestroy {
       progress: {
         stage: 'compressing',
         progress: 0,
-        message: 'Starting compression...',
+        message: 'Preparing upload...',
         startedAt: new Date(),
         updatedAt: new Date(),
       } as SessionProgress,
@@ -146,7 +146,7 @@ export class AudioUploadPageComponent implements OnInit, OnDestroy {
 
   /**
    * Runs compression + upload in the background after navigation.
-   * Both AudioCompressionService and AudioCompleteProcessingService are
+   * AudioCompleteProcessingService (and the services it uses) are
    * root-level services that survive component destruction.
    */
   private async processInBackground(

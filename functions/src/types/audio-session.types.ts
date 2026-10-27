@@ -124,6 +124,13 @@ export interface TranscriptionSegmentationSettings {
   onSegmentFailure: 'gap' | 'fail';
 }
 
+/** Dynamic loudness normalization of uploaded session audio (ffmpeg dynaudnorm). */
+export interface AudioNormalizationSettings {
+  enabled: boolean;
+  /** Maximum amplification of quiet passages, in dB. */
+  maxGainDb: number;
+}
+
 export interface AISettings {
   defaultModel: string;
   availableModels?: string[];
@@ -131,6 +138,7 @@ export interface AISettings {
   cacheEnabled?: boolean;
   /** Audio segmentation tuning for fast transcription (ticket #67). */
   transcriptionSegmentation?: Partial<TranscriptionSegmentationSettings>;
+  audioNormalization?: Partial<AudioNormalizationSettings>;
   features?: {
     transcription?: TranscriptionFeatureConfig;
     storyGeneration?: AIFeatureConfig;
@@ -161,6 +169,7 @@ export type SessionProgressStage =
   | 'idle'
   | 'compressing'
   | 'uploading'
+  | 'processing-audio'
   | 'transcribing'
   | 'retranscribing'
   | 'generating-story'

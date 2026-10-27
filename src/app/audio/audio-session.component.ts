@@ -1,10 +1,12 @@
-import { Component, effect, signal, computed, inject, ChangeDetectionStrategy, Signal } from '@angular/core';
+import { Component, effect, signal, computed, inject, resource, ChangeDetectionStrategy, Signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router, ActivatedRoute } from '@angular/router';
 import { AudioSessionStateService } from './services/audio-session-state.service';
 import { AudioBackendOperationsService } from './services/audio-backend-operations.service';
 import { PodcastGenerationService } from './services/podcast-generation.service';
 import { CorrectionsSaveService } from './services/corrections-save.service';
+import { AudioCompleteProcessingService } from './services/audio-complete-processing.service';
+import { AudioStorageService } from './services/audio-storage.service';
 import { AuthService } from '../auth/auth.service';
 import { FormattingService } from '../shared/formatting.service';
 import * as logger from '../shared/logger';
@@ -17,6 +19,7 @@ import {
 } from './services/audio-session.models';
 import { SessionStoryComponent, SessionMetaUpdate } from './session-story.component';
 import { SessionProgressCardComponent } from './session-progress-card.component';
+import { SessionRecordingComponent } from './session-recording.component';
 import { SessionListSidebarComponent } from './session-list-sidebar.component';
 import { CampaignSelectorComponent } from '../campaign/campaign-selector.component';
 import { httpsCallable, Functions } from 'firebase/functions';
@@ -25,7 +28,7 @@ import { ToastService } from '../shared/services/toast.service';
 
 @Component({
   selector: 'app-audio-session',
-  imports: [SessionStoryComponent, SessionProgressCardComponent, SessionListSidebarComponent, CampaignSelectorComponent],
+  imports: [SessionStoryComponent, SessionProgressCardComponent, SessionRecordingComponent, SessionListSidebarComponent, CampaignSelectorComponent],
   providers: [PodcastGenerationService, CorrectionsSaveService],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -78,6 +81,18 @@ import { ToastService } from '../shared/services/toast.service';
                 (cancelled)="cancelCurrentOperation()"
                 (retry)="retryFailedOperation()"
               />
+
+              @if (currentSession()?.audioRecording; as recording) {
+                <app-session-recording
+                  [audioUrl]="recordingUrl.value() ?? null"
+                  [fileName]="recording.fileName"
+                  [durationSec]="recording.durationSec"
+                  [sizeBytes]="recording.sizeBytes"
+                  [canRetranscribe]="isSessionOwner()"
+                  [busy]="isBusy()"
+                  (retranscribe)="retranscribe()"
+                />
+              }
 
               <app-session-story
                 [title]="currentSession()?.title || 'Session Story'"
@@ -152,6 +167,8 @@ export class AudioSessionComponent {
   readonly formatting = inject(FormattingService);
   private readonly firebaseService = inject(FirebaseService);
   private readonly toastService = inject(ToastService);
+  private readonly completeProcessing = inject(AudioCompleteProcessingService);
+  private readonly audioStorage = inject(AudioStorageService);
   readonly podcastGen = inject(PodcastGenerationService);
   readonly correctionsSave = inject(CorrectionsSaveService);
   private functions: Functions;
@@ -169,6 +186,12 @@ export class AudioSessionComponent {
   });
 
   podcasts = computed(() => this.currentSession()?.podcasts || []);
+
+  /** Download URL of the stored recording, for playback. */
+  readonly recordingUrl = resource({
+    params: () => this.currentSession()?.audioRecording?.storagePath,
+    loader: ({ params }) => this.audioStorage.getDownloadUrl(params),
+  });
   isSessionOwner = computed(() => {
     const session = this.currentSession();
     const userId = this.userId();
@@ -394,6 +417,11 @@ export class AudioSessionComponent {
     const session = this.currentSession();
     if (!session) return;
     try {
+      if (session.audioRecording || session.audioSources?.length) {
+        await this.audioStorage.deleteSessionAudio(session.campaignId, session.id).catch((error: unknown) =>
+          logger.warn('Failed to delete stored audio, deleting session anyway:', error)
+        );
+      }
       await this.sessionStateService.deleteSession(session.id);
       this.selectedSessionId.set(null);
     } catch (error) {
@@ -456,9 +484,35 @@ export class AudioSessionComponent {
       return;
     }
 
-    // Reuse the segment fileUris uploaded on the original attempt — the audio
-    // bytes only ever lived in the browser, so a retry can't re-upload them
-    // (ticket #67). Falls back to the legacy single fileUri when present.
+    const recording = session.audioRecording;
+    if (recording) {
+      await this.startTranscription(session.id, () =>
+        this.completeProcessing.transcribeStoredRecording(
+          session.campaignId,
+          session.id,
+          recording,
+          this.correctionsSave.corrections() || undefined
+        )
+      );
+      return;
+    }
+
+    // Processing failed before the recording was stored: the uploaded sources
+    // are kept until it succeeds, so run the processing step again.
+    if (session.audioSources?.length) {
+      await this.startProcessing(session.id, () =>
+        this.completeProcessing.processUploadedSources(
+          session.campaignId,
+          session.id,
+          this.correctionsSave.corrections() || undefined
+        )
+      );
+      return;
+    }
+
+    // Sessions from before the recording was stored: reuse the segment fileUris
+    // uploaded on the original attempt (only valid while Gemini keeps the files,
+    // ~48h). Falls back to the legacy single fileUri when present.
     const fileUris = this.collectSegmentFileUris(session.transcriptionFast);
     if (fileUris.length === 0) {
       this.toastService.show(
@@ -474,6 +528,27 @@ export class AudioSessionComponent {
       fileUris,
       session.audioFileName || 'audio.mp3',
       this.correctionsSave.corrections() || undefined
+    );
+  }
+
+  /** Re-transcribe the stored recording and generate a new story from it. */
+  async retranscribe(): Promise<void> {
+    const session = this.currentSession();
+    const recording = session?.audioRecording;
+    if (!session || !recording || !this.isSessionOwner() || this.isBusy()) return;
+
+    const confirmed = await this.toastService.confirm(
+      'Transcribe the recording again? The current transcript and story will be replaced by new ones. Your corrections are kept and applied.'
+    );
+    if (!confirmed) return;
+
+    await this.startTranscription(session.id, () =>
+      this.completeProcessing.transcribeStoredRecording(
+        session.campaignId,
+        session.id,
+        recording,
+        this.correctionsSave.corrections() || undefined
+      )
     );
   }
 
@@ -498,61 +573,79 @@ export class AudioSessionComponent {
     return [];
   }
 
-  private async callTranscribeAudioFast(
+  /** Legacy retry path: transcribe Gemini fileUris from an earlier upload. */
+  private callTranscribeAudioFast(
     campaignId: string,
     sessionId: string,
     fileUris: { index: number; fileUri: string; startSec?: number | null; endSec?: number | null }[],
     audioFileName: string,
     userCorrections?: string
   ): Promise<void> {
+    const transcribeAudioFast = httpsCallable<
+      {
+        campaignId: string;
+        sessionId: string;
+        fileUris: { index: number; fileUri: string; startSec?: number | null; endSec?: number | null }[];
+        audioFileName: string;
+        audioFileSize?: number;
+        userCorrections?: string;
+      },
+      { success: boolean; message: string }
+    >(this.functions, 'transcribeAudioFast');
+
+    return this.startTranscription(sessionId, async () =>
+      (await transcribeAudioFast({ campaignId, sessionId, fileUris, audioFileName, userCorrections })).data
+    );
+  }
+
+  /** Mark the session as transcribing, start the backend job and surface failures. */
+  private startTranscription(
+    sessionId: string,
+    start: () => Promise<{ success: boolean; message: string }>
+  ): Promise<void> {
+    return this.startBackendJob(sessionId, 'transcribing', 70, 'Starting fast transcription...', start);
+  }
+
+  /** Mark the session as processing audio, start the backend job and surface failures. */
+  private startProcessing(
+    sessionId: string,
+    start: () => Promise<{ success: boolean; message: string }>
+  ): Promise<void> {
+    return this.startBackendJob(sessionId, 'processing-audio', 50, 'Starting audio processing...', start);
+  }
+
+  private async startBackendJob(
+    sessionId: string,
+    stage: SessionProgress['stage'],
+    progress: number,
+    message: string,
+    start: () => Promise<{ success: boolean; message: string }>
+  ): Promise<void> {
     try {
-      logger.debug('[TranscribeFast] Starting fast transcription', {
-        campaignId,
-        sessionId,
-        audioFileName,
-        segments: fileUris.length
-      });
+      logger.debug(`[BackendJob] Starting ${stage}`, { sessionId });
 
       await this.sessionStateService.persistSessionPatch(sessionId, {
         status: 'processing',
         progress: {
-          stage: 'transcribing',
-          progress: 70,
-          message: 'Starting fast transcription...',
+          stage,
+          progress,
+          message,
           startedAt: new Date(),
           updatedAt: new Date()
         } as SessionProgress
       });
 
-      const transcribeAudioFast = httpsCallable<
-        {
-          campaignId: string;
-          sessionId: string;
-          fileUris: { index: number; fileUri: string; startSec?: number | null; endSec?: number | null }[];
-          audioFileName: string;
-          audioFileSize?: number;
-          userCorrections?: string;
-        },
-        { success: boolean; message: string }
-      >(this.functions, 'transcribeAudioFast');
+      const result = await start();
 
-      const result = await transcribeAudioFast({
-        campaignId,
-        sessionId,
-        fileUris,
-        audioFileName,
-        userCorrections
-      });
-
-      if (result.data.success) {
-        logger.info('[TranscribeFast] Function call successful:', result.data.message);
+      if (result.success) {
+        logger.info('[BackendJob] Function call successful:', result.message);
       } else {
-        logger.error('[TranscribeFast] Function returned error:', result.data.message);
-        this.failSession(result.data.message);
+        logger.error('[BackendJob] Function returned error:', result.message);
+        this.failSession(result.message);
       }
     } catch (error: unknown) {
-      logger.error('[TranscribeFast] Failed to call transcribeAudioFast:', error);
-      this.failSession((error as Error)?.message || 'Failed to start transcription');
+      logger.error(`[BackendJob] Failed to start ${stage}:`, error);
+      this.failSession((error as Error)?.message || 'Failed to start processing');
     }
   }
 

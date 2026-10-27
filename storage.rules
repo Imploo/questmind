@@ -12,18 +12,31 @@ service firebase.storage {
       );
     }
 
+    function isAudioSessionOwner(campaignId, sessionId) {
+      return request.auth != null &&
+        firestore.get(/databases/(default)/documents/campaigns/$(campaignId)/audioSessions/$(sessionId)).data.ownerId == request.auth.uid;
+    }
+
     function isCampaignOwner(campaignId) {
       return request.auth != null &&
         firestore.get(/databases/(default)/documents/campaigns/$(campaignId)).data.ownerId == request.auth.uid;
     }
 
     // Voice intro per campaign (ticket #68): the group introducing themselves,
-    // used as a voice reference during transcription. Owner manages it, members can listen.
-    // Delete is a separate rule: request.resource is null on delete, so the size/type checks can't apply.
+    // used as a voice reference during transcription. The processed file is written by the
+    // backend (processVoiceIntro); the owner can remove it, members can listen.
     match /campaigns/{campaignId}/voice-intro/{filename} {
       allow read: if isCampaignMember(campaignId);
+      allow write: if false;
+      allow delete: if isCampaignOwner(campaignId);
+    }
+
+    // Uploaded voice-intro source (original, or browser-compressed WAV) awaiting processing;
+    // the backend removes it afterwards. 500 MB covers a WAV that couldn't be compressed in the browser. Delete is a separate rule: request.resource is null
+    // on delete, so the size/type checks can't apply.
+    match /campaigns/{campaignId}/voice-intro/source/{filename} {
       allow create, update: if isCampaignOwner(campaignId)
-                            && request.resource.size < 25 * 1024 * 1024
+                            && request.resource.size < 500 * 1024 * 1024
                             && request.resource.contentType.matches('audio/.*');
       allow delete: if isCampaignOwner(campaignId);
     }
@@ -32,11 +45,23 @@ service firebase.storage {
     // Write only requires authentication — session IDs are UUIDs (unguessable) and the
     // backend validates campaign membership before processing. Cross-service Firestore
     // reads in Storage rules are unreliable for write-gating.
+    // The session's processed recording (compressed + normalized MP3), written by the backend
+    // only, so it can be replayed and re-transcribed. Delete is limited to the session owner.
     match /campaigns/{campaignId}/audio/{sessionId}/{filename} {
       allow read: if isCampaignMember(campaignId);
-      allow write: if request.auth != null
-                   && request.resource.size < 500 * 1024 * 1024
-                   && request.resource.contentType.matches('audio/.*');
+      allow write: if false;
+      allow delete: if isAudioSessionOwner(campaignId, sessionId);
+    }
+
+    // Uploaded source files (original M4A/MP3, or browser-compressed WAV) awaiting backend
+    // processing; the backend removes them once the recording is stored. 4 GB covers a long
+    // WAV that couldn't be compressed in the browser.
+    match /campaigns/{campaignId}/audio/{sessionId}/source/{filename} {
+      allow read: if isCampaignMember(campaignId);
+      allow create, update: if request.auth != null
+                            && request.resource.size < 4 * 1024 * 1024 * 1024
+                            && request.resource.contentType.matches('audio/.*');
+      allow delete: if isAudioSessionOwner(campaignId, sessionId);
     }
 
     // Podcast files (campaigns)

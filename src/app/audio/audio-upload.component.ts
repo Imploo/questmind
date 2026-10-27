@@ -1,5 +1,11 @@
 import { ChangeDetectionStrategy, Component, signal, computed, input, output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { isWavFile } from './services/wav-to-mp3';
+
+/** Uploaded as-is (M4A, MP3, OGG). */
+const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
+/** WAV is compressed in the browser first (streaming, so size isn't a memory issue). */
+const MAX_WAV_BYTES = 4 * 1024 * 1024 * 1024;
 
 type Stage = 'idle' | 'compressing' | 'uploading' | 'transcribing' | 'generating' | 'completed' | 'failed';
 
@@ -22,7 +28,7 @@ export interface UploadRequestEvent {
       <div class="flex items-center justify-between mb-4">
         <div>
           <h3 class="text-lg font-semibold m-0">Upload Session Audio</h3>
-          <p class="text-sm text-gray-500 m-0">MP3, WAV, M4A, or OGG up to 500MB. Select multiple files to merge.</p>
+          <p class="text-sm text-gray-500 m-0">WAV up to 4GB; MP3, M4A or OGG up to 500MB. Select multiple files to merge.</p>
         </div>
         <span class="text-xs px-2 py-1 rounded-full" [class]="badgeClass()">
           {{ stageLabel() }}
@@ -321,10 +327,16 @@ export class AudioUploadComponent {
       'audio/x-m4a',
       'audio/ogg'
     ];
-    if (!validTypes.includes(file.type)) {
+    // Some browsers report no MIME type for M4A/WAV, so accept by extension too.
+    const validExtension = /\.(mp3|wav|m4a|ogg)$/i.test(file.name);
+    if (!validTypes.includes(file.type) && !validExtension) {
       return 'Unsupported file type. Please use MP3, WAV, M4A, or OGG.';
     }
-    if (file.size > 500 * 1024 * 1024) {
+    const isWav = isWavFile(file);
+    if (isWav && file.size > MAX_WAV_BYTES) {
+      return 'WAV file is too large. Maximum size is 4GB.';
+    }
+    if (!isWav && file.size > MAX_UPLOAD_BYTES) {
       return 'File is too large. Maximum size is 500MB.';
     }
     return null;
