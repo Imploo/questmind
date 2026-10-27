@@ -4,6 +4,7 @@ import { marked } from 'marked';
 import { PodcastVersion } from './services/audio-session.models';
 import { FormattingService } from '../shared/formatting.service';
 import { ToastService } from '../shared/services/toast.service';
+import { PodcastShareButtonComponent } from './podcast-share-button.component';
 
 export interface SessionMetaUpdate {
   title: string;
@@ -12,6 +13,7 @@ export interface SessionMetaUpdate {
 
 @Component({
   selector: 'app-session-story',
+  imports: [PodcastShareButtonComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="border border-gray-200 rounded-xl bg-white shadow-sm overflow-hidden relative">
@@ -368,6 +370,12 @@ export interface SessionMetaUpdate {
                       >
                         ⬇️ Download
                       </button>
+                      @if (campaignId() && sessionId()) {
+                        <app-podcast-share-button
+                          [target]="{ campaignId: campaignId(), sessionId: sessionId(), podcastVersion: podcast.version }"
+                          [disabled]="!podcast.audioUrl || podcast.status !== 'completed'"
+                        />
+                      }
                     </div>
                   </div>
 
@@ -422,6 +430,8 @@ export class SessionStoryComponent {
   correctionsStatus = input<'idle' | 'saving' | 'saved'>('idle');
 
   // Podcast inputs
+  campaignId = input('');
+  sessionId = input('');
   podcasts = input<PodcastVersion[]>([]);
   isGeneratingPodcast = input(false);
   podcastGenerationProgress = input('');

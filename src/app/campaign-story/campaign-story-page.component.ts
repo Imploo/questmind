@@ -102,6 +102,8 @@ import {
           (backToLatest)="selectedVersion.set(null)"
         />
         <app-campaign-story-podcasts
+          [campaignId]="campaignId() ?? ''"
+          [storyVersion]="version.version"
           [podcasts]="version.podcasts ?? []"
           [canGenerate]="isOwner()"
           [isGenerating]="isPodcastGenerating()"
@@ -139,6 +141,7 @@ export class CampaignStoryPageComponent {
   private readonly sessionState = inject(AudioSessionStateService);
 
   /** null = show the newest completed version */
+  readonly campaignId = this.campaignContext.selectedCampaignId;
   readonly selectedVersion = signal<number | null>(null);
   readonly drawerOpen = signal(false);
   readonly errorMessage = signal('');

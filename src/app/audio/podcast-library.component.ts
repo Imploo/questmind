@@ -6,6 +6,7 @@ import { CampaignContextService } from '../campaign/campaign-context.service';
 import { CampaignSelectorComponent } from '../campaign/campaign-selector.component';
 import { FormattingService } from '../shared/formatting.service';
 import { AudioSessionStateService } from './services/audio-session-state.service';
+import { PodcastShareButtonComponent } from './podcast-share-button.component';
 
 interface SessionWithPodcasts {
   sessionId: string;
@@ -16,7 +17,7 @@ interface SessionWithPodcasts {
 
 @Component({
   selector: 'app-podcast-library',
-  imports: [CampaignSelectorComponent],
+  imports: [CampaignSelectorComponent, PodcastShareButtonComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="max-w-5xl mx-auto">
@@ -114,6 +115,10 @@ interface SessionWithPodcasts {
                       >
                         ⬇️ Download
                       </button>
+                      <app-podcast-share-button
+                        [target]="{ campaignId: campaignId() ?? '', sessionId: session.sessionId, podcastVersion: podcast.version }"
+                        [disabled]="!podcast.audioUrl || podcast.status !== 'completed'"
+                      />
                     </div>
                   </div>
 

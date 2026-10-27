@@ -106,6 +106,8 @@ import { ToastService } from '../shared/services/toast.service';
                 [canEditCorrections]="canEditCorrections()"
                 [corrections]="correctionsSave.corrections()"
                 [correctionsStatus]="correctionsSave.saveStatus()"
+                [campaignId]="campaignId() || ''"
+                [sessionId]="currentSession()?.id || ''"
                 [podcasts]="podcasts()"
                 [isGeneratingPodcast]="podcastGen.isGenerating()"
                 [podcastGenerationProgress]="podcastGen.progressMessage()"

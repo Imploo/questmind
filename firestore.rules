@@ -130,6 +130,13 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Public podcast share links — anyone with the (unguessable) id can read one,
+    // listing is not allowed and only the backend (createPodcastShare) writes.
+    match /podcastShares/{shareId} {
+      allow get: if true;
+      allow list, write: if false;
+    }
+
     // Settings collection - read-only for authenticated users
     match /settings/{document} {
       allow read: if isAuthenticated();

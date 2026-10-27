@@ -54,3 +54,7 @@ export { resolveFeature } from './resolve-feature';
 // Campaign story (ticket #69): versioned summary of all sessions + podcast per version
 export { generateCampaignStory } from './generate-campaign-story';
 export { generateCampaignStoryPodcast } from './generate-campaign-story-podcast';
+
+// Public share links for podcasts
+export { createPodcastShare } from './create-podcast-share';
+export { podcastSharePage } from './podcast-share-page';
