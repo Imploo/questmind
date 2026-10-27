@@ -11,6 +11,11 @@ export const routes: Routes = [
     component: SignInPageComponent,
     canActivate: [noAuthGuard],
   },
+  // Shared podcast links are public — no auth guard and no app shell
+  {
+    path: 'share/podcast/:shareId',
+    loadComponent: () => import('./audio/podcast-share-page.component').then(m => m.PodcastSharePageComponent)
+  },
   // Character detail is publicly accessible — no auth guard
   {
     path: 'characters/:characterId',

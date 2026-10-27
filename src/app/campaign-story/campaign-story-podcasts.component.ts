@@ -1,10 +1,12 @@
 import { ChangeDetectionStrategy, Component, inject, input, output } from '@angular/core';
 import { FormattingService } from '../shared/formatting.service';
 import { PodcastVersion } from '../audio/services/audio-session.models';
+import { PodcastShareButtonComponent } from '../audio/podcast-share-button.component';
 
 /** Podcasts of one campaign story version (ticket #69). */
 @Component({
   selector: 'app-campaign-story-podcasts',
+  imports: [PodcastShareButtonComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="border border-purple-100 rounded-xl bg-white shadow-sm p-6 space-y-4">
@@ -70,15 +72,23 @@ import { PodcastVersion } from '../audio/services/audio-session.models';
             <audio controls preload="metadata" class="w-full" [src]="podcast.audioUrl">
               Je browser ondersteunt het audio element niet.
             </audio>
-            <a
-              class="inline-block text-sm font-medium text-purple-700 hover:underline"
-              [href]="podcast.audioUrl"
-              [attr.download]="downloadName() + '-podcast-' + podcast.version + '.mp3'"
-              target="_blank"
-              rel="noopener"
-            >
-              ⬇️ Download
-            </a>
+            <div class="flex flex-wrap items-center gap-4">
+              <a
+                class="inline-block text-sm font-medium text-purple-700 hover:underline"
+                [href]="podcast.audioUrl"
+                [attr.download]="downloadName() + '-podcast-' + podcast.version + '.mp3'"
+                target="_blank"
+                rel="noopener"
+              >
+                ⬇️ Download
+              </a>
+              @if (campaignId() && storyVersion()) {
+                <app-podcast-share-button
+                  [target]="{ campaignId: campaignId(), storyVersion: storyVersion(), podcastVersion: podcast.version }"
+                  [disabled]="podcast.status !== 'completed'"
+                />
+              }
+            </div>
           }
         </div>
       } @empty {
@@ -90,6 +100,8 @@ import { PodcastVersion } from '../audio/services/audio-session.models';
 export class CampaignStoryPodcastsComponent {
   readonly formatting = inject(FormattingService);
 
+  readonly campaignId = input('');
+  readonly storyVersion = input(0);
   readonly podcasts = input<PodcastVersion[]>([]);
   readonly canGenerate = input(false);
   readonly isGenerating = input(false);

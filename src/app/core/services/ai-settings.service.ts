@@ -37,9 +37,22 @@ export interface TranscriptionSegmentationSettings {
   onSegmentFailure: 'gap' | 'fail';
 }
 
+/** Dynamic loudness normalization applied by the backend audio pipeline (ffmpeg dynaudnorm). */
+export interface AudioNormalizationSettings {
+  enabled: boolean;
+  /** Maximum amplification of quiet passages, in dB. */
+  maxGainDb: number;
+}
+
+export const DEFAULT_AUDIO_NORMALIZATION: AudioNormalizationSettings = {
+  enabled: true,
+  maxGainDb: 20,
+};
+
 export interface AiSettings {
   cacheEnabled?: boolean;
   transcriptionSegmentation?: Partial<TranscriptionSegmentationSettings>;
+  audioNormalization?: Partial<AudioNormalizationSettings>;
   features: {
     transcription?: AiModelConfig;
     storyGeneration?: AiModelConfig;
@@ -74,27 +87,6 @@ export class AiSettingsService {
   private readonly defaultImageGenerationConfig: AiImageConfig = {
     model: 'fal-ai/flux/schnell'
   };
-
-  /** Defaults mirror the backend (functions ai-settings DEFAULT_SEGMENTATION). */
-  private readonly defaultSegmentationConfig: TranscriptionSegmentationSettings = {
-    enabled: true,
-    segmentMinutes: 30,
-    overlapSeconds: 15,
-    minSplitMinutes: 35,
-    concurrency: 4,
-    maxAttempts: 4,
-    onSegmentFailure: 'gap'
-  };
-
-  /**
-   * Get audio segmentation config (with fallback to defaults).
-   * Lets segment length/overlap/split-threshold be tuned via settings/ai
-   * without a deploy (ticket #67).
-   */
-  getTranscriptionSegmentationConfig(): TranscriptionSegmentationSettings {
-    const settings = this.data() as AiSettings | null;
-    return { ...this.defaultSegmentationConfig, ...settings?.transcriptionSegmentation };
-  }
 
   /**
    * Get character chat config (with fallback to defaults)

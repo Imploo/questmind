@@ -291,7 +291,6 @@ export class CampaignSettingsComponent {
       await this.voiceIntroService.upload(
         campaignId,
         file,
-        this.selectedCampaign()?.settings?.voiceIntro,
         (progress) => this.voiceIntroProgress.set(progress)
       );
       await this.campaignContext.refreshCampaigns();

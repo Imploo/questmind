@@ -1,14 +1,10 @@
 import {inject, Injectable} from '@angular/core';
 import {type Functions, httpsCallable} from 'firebase/functions';
 import {doc, type DocumentReference, type Firestore, updateDoc} from 'firebase/firestore';
-import {Auth, getIdToken} from 'firebase/auth';
 import {FirebaseService} from '../../core/firebase.service';
-import {AudioCompressionService, AudioSegmentResult, SegmentationOptions} from './audio-compression.service';
-import {AiSettingsService} from '../../core/services/ai-settings.service';
+import {AudioStorageService} from './audio-storage.service';
+import {PreparedUpload, isWavFile, prepareForUpload} from './wav-to-mp3';
 import * as logger from '../../shared/logger';
-
-/** 24 MB chunk size — must be a multiple of Gemini's 8 MB granularity (3 × 8 MB) */
-const UPLOAD_CHUNK_SIZE = 24 * 1024 * 1024;
 
 export interface StartProcessingOptions {
   sessionTitle: string;
@@ -22,7 +18,7 @@ export interface ProcessingResult {
 
 export type UploadStage = 'compressing' | 'uploading';
 
-import {UnifiedProgress} from './audio-session.models';
+import {AudioRecording, AudioSource, UnifiedProgress} from './audio-session.models';
 import {type Unsubscribe, onSnapshot, DocumentSnapshot} from 'firebase/firestore';
 
 @Injectable({
@@ -30,34 +26,30 @@ import {type Unsubscribe, onSnapshot, DocumentSnapshot} from 'firebase/firestore
 })
 export class AudioCompleteProcessingService {
   private firebase = inject(FirebaseService);
-  private audioCompression = inject(AudioCompressionService);
-  private aiSettings = inject(AiSettingsService);
+  private audioStorage = inject(AudioStorageService);
   private functions: Functions;
   private firestore: Firestore;
-  private auth: Auth;
 
   constructor() {
     this.functions = this.firebase.requireFunctions();
     this.firestore = this.firebase.requireFirestore();
-    this.auth = this.firebase.requireAuth();
   }
 
   /**
    * Start complete audio processing for one or more recordings:
-   * 1. Compress audio in the browser and split it into segments
-   *    (Web Audio API + lamejs MP3 @ 64 kbps / 24 kHz mono; ~30 min per segment).
-   *    Multiple files are concatenated into one continuous evening first, then
-   *    segmented (ticket #53 + #67).
-   * 2. Upload each segment to the Gemini Files API → one fileUri per segment
-   * 3. Call transcribeAudioFast with the ordered list of segment fileUris
-   *
-   * Splitting long recordings (ticket #67) keeps the model's attention high so
-   * the second half of long sessions stays as detailed and faithful as the first.
+   * 1. WAV files are compressed in the browser (streaming, mono 24 kHz MP3) so
+   *    the upload is 10–20× smaller. Other formats (M4A, MP3, …) are already
+   *    compressed and are uploaded as-is.
+   * 2. Upload the files to the session's `source/` folder in Firebase Storage.
+   * 3. Call processSessionAudio. From here everything runs in the backend, so
+   *    the browser can be closed: ffmpeg joins, downmixes, normalizes and
+   *    encodes the files into the stored recording, which is then transcribed
+   *    and turned into a story — each step its own task.
    *
    * Unified progress ranges:
-   *   Compressing: 0–60%
-   *   Uploading:  60–70%
-   *   (Transcribing 70-80% and Generating Story 80-100% are handled by backend)
+   *   Compressing (WAV only): 0–25%
+   *   Uploading:             25–50%
+   *   (Processing 50-70%, Transcribing 70-80% and Generating Story 80-100% run in the backend)
    */
   async startCompleteProcessing(
     campaignId: string,
@@ -75,149 +67,88 @@ export class AudioCompleteProcessingService {
       `campaigns/${campaignId}/audioSessions/${sessionId}`
     );
 
-    // ── 1. Compress + segment audio in the browser ──────────────────────────
-    logger.info(
-      `[AudioCompleteProcessing] Compressing + segmenting ${audioFiles.length} file(s) before upload...`
-    );
-
-    let lastFirestoreWrite = 0;
-    const segmented = await this.audioCompression.compressFilesToSegments(
-      audioFiles,
-      (compressionProgress) => {
-        onProgress?.('compressing', compressionProgress);
-        // Throttled Firestore write (every 2s)
-        const now = Date.now();
-        if (now - lastFirestoreWrite >= 2000 || compressionProgress >= 100) {
-          lastFirestoreWrite = now;
-          const overallProgress = Math.round(compressionProgress * 0.6);
-          this.writeProgress(sessionRef, 'compressing', overallProgress,
-            `Compressing audio... ${Math.round(compressionProgress)}%`);
-        }
-      },
-      {},
-      this.resolveSegmentationOptions(),
-    );
-
-    logger.info('[AudioCompleteProcessing] Compression complete', {
-      durationSeconds: Math.round(segmented.durationSeconds),
-      segments: segmented.segments.length,
-      originalMb: (segmented.originalSize / 1_048_576).toFixed(1),
-      compressedMb: (segmented.compressedSize / 1_048_576).toFixed(1),
+    // ── 1. Compress WAV files in the browser ────────────────────────────────
+    const prepared = await this.prepareUploads(audioFiles, (compressionProgress) => {
+      onProgress?.('compressing', compressionProgress);
+      this.writeProgressThrottled(sessionRef, 'compressing', Math.round(compressionProgress * 0.25),
+        `Compressing WAV audio... ${compressionProgress}%`, compressionProgress >= 100);
     });
 
-    // ── 2. Upload segments + transcribe ─────────────────────────────────────
-    return this.uploadSegmentsAndTranscribe(
-      campaignId,
-      sessionId,
-      segmented.segments,
-      replaceExtension(audioFiles[0].name, 'mp3'),
-      { originalSize: segmented.originalSize, compressedSize: segmented.compressedSize },
-      options,
-      (uploadProgress) => onProgress?.('uploading', uploadProgress),
-    );
-  }
-
-  /**
-   * Map the configurable segmentation settings (minutes) onto the compression
-   * service's SegmentationOptions (seconds). When segmentation is disabled the
-   * recording is never split (single segment = legacy flow).
-   */
-  private resolveSegmentationOptions(): Partial<SegmentationOptions> {
-    const cfg = this.aiSettings.getTranscriptionSegmentationConfig();
-    if (!cfg.enabled) {
-      return { minSplitSeconds: Number.POSITIVE_INFINITY };
+    // ── 2. Upload the files ─────────────────────────────────────────────────
+    const totalBytes = prepared.reduce((sum, p) => sum + p.blob.size, 0);
+    let uploadedBefore = 0;
+    const sources: AudioSource[] = [];
+    for (let i = 0; i < prepared.length; i++) {
+      const { blob, fileName } = prepared[i];
+      sources.push(await this.audioStorage.uploadSource(blob, campaignId, sessionId, i, fileName, (bytes) => {
+        const uploadProgress = Math.round(((uploadedBefore + bytes) / totalBytes) * 100);
+        onProgress?.('uploading', uploadProgress);
+        this.writeProgressThrottled(sessionRef, 'uploading', 25 + Math.round(uploadProgress * 0.25),
+          `Uploading audio... ${uploadProgress}%`, uploadProgress >= 100);
+      }));
+      uploadedBefore += blob.size;
     }
-    return {
-      segmentSeconds: cfg.segmentMinutes * 60,
-      overlapSeconds: cfg.overlapSeconds,
-      minSplitSeconds: cfg.minSplitMinutes * 60,
-    };
-  }
-
-  /**
-   * Upload pre-segmented audio and start segmented transcription.
-   *
-   * Each segment is uploaded to the Gemini Files API (one fileUri each), then
-   * transcribeAudioFast is called with the ordered list. A single segment is
-   * sent as a normal single-fileUri request (no behavioural change for short
-   * recordings).
-   */
-  async uploadSegmentsAndTranscribe(
-    campaignId: string,
-    sessionId: string,
-    segments: AudioSegmentResult[],
-    fileName: string,
-    sizeInfo: { originalSize: number; compressedSize: number },
-    options: StartProcessingOptions,
-    onProgress?: (progress: number) => void,
-  ): Promise<ProcessingResult> {
-    const sessionRef = doc(
-      this.firestore,
-      `campaigns/${campaignId}/audioSessions/${sessionId}`
-    );
-
-    onProgress?.(0);
-
-    const baseName = fileName.replace(/\.mp3$/i, '');
-    const total = segments.length;
-    const fileUris: { index: number; fileUri: string; startSec: number; endSec: number }[] = [];
-
-    logger.info(`[AudioCompleteProcessing] Uploading ${total} segment(s) to Gemini...`);
-
-    // Throttled Firestore progress write. The overall upload (across all
-    // segments) maps onto unified progress 60–70%, so a multi-segment upload
-    // advances monotonically instead of resetting 60→70 per segment.
-    let lastFirestoreWrite = 0;
-    const reportOverall = (overall: number) => {
-      onProgress?.(overall);
-      const now = Date.now();
-      if (now - lastFirestoreWrite >= 1000 || overall >= 100) {
-        lastFirestoreWrite = now;
-        this.writeProgress(sessionRef, 'uploading', 60 + Math.round(overall * 0.1),
-          total > 1
-            ? `Uploading audio... ${overall}% (${total} segments)`
-            : `Uploading audio... ${overall}%`);
-      }
-    };
-
-    for (let i = 0; i < total; i++) {
-      const seg = segments[i];
-      const segFileName = total > 1 ? `${baseName}-part${i + 1}.mp3` : `${baseName}.mp3`;
-
-      const fileUri = await this.uploadToGemini(
-        seg.blob,
-        'audio/mpeg',
-        segFileName,
-        (segUploadProgress) => {
-          // Map this segment's 0–100 upload onto the overall upload range.
-          const overall = Math.round(((i + segUploadProgress / 100) / total) * 100);
-          reportOverall(overall);
-        },
-      );
-
-      fileUris.push({ index: seg.index, fileUri, startSec: seg.startSec, endSec: seg.endSec });
-    }
-
-    reportOverall(100);
-    logger.info(`[AudioCompleteProcessing] Uploaded ${fileUris.length} segment(s)`);
 
     await updateDoc(sessionRef, {
-      audioCompressedSizeBytes: sizeInfo.compressedSize,
-      audioOriginalSizeBytes: sizeInfo.originalSize,
+      audioSources: sources,
+      audioOriginalSizeBytes: audioFiles.reduce((sum, f) => sum + f.size, 0),
       updatedAt: new Date(),
     });
 
-    const transcribe = httpsCallable(this.functions, 'transcribeAudioFast');
-    await transcribe({
-      campaignId,
-      sessionId,
-      fileUris,
-      audioFileName: fileName,
-      audioFileSize: sizeInfo.compressedSize,
-      userCorrections: options.userCorrections,
-    });
+    // ── 3. Hand over to the backend ─────────────────────────────────────────
+    await this.processUploadedSources(campaignId, sessionId, options.userCorrections);
 
     return { sessionId };
+  }
+
+  /**
+   * Start backend processing of the session's uploaded sources (also used to
+   * retry when processing failed — the sources are kept until it succeeds).
+   */
+  async processUploadedSources(
+    campaignId: string,
+    sessionId: string,
+    userCorrections?: string,
+  ): Promise<{ success: boolean; message: string }> {
+    const process = httpsCallable<
+      { campaignId: string; sessionId: string; userCorrections?: string },
+      { success: boolean; message: string }
+    >(this.functions, 'processSessionAudio');
+    const result = await process({ campaignId, sessionId, userCorrections });
+    return result.data;
+  }
+
+  /**
+   * Start (re-)transcription of a session from its stored recording. The
+   * backend cuts it into segments using the current segmentation settings.
+   */
+  async transcribeStoredRecording(
+    campaignId: string,
+    sessionId: string,
+    recording: AudioRecording,
+    userCorrections?: string,
+  ): Promise<{ success: boolean; message: string }> {
+    const transcribe = httpsCallable<
+      {
+        campaignId: string;
+        sessionId: string;
+        storagePath: string;
+        audioFileName: string;
+        audioFileSize: number;
+        userCorrections?: string;
+      },
+      { success: boolean; message: string }
+    >(this.functions, 'transcribeAudioFast');
+
+    const result = await transcribe({
+      campaignId,
+      sessionId,
+      storagePath: recording.storagePath,
+      audioFileName: recording.fileName,
+      audioFileSize: recording.sizeBytes,
+      userCorrections,
+    });
+    return result.data;
   }
 
   /**
@@ -268,129 +199,48 @@ export class AudioCompleteProcessingService {
     });
   }
 
-  /**
-   * Upload audio to Gemini via the uploadAudioToGemini Cloud Function proxy.
-   *
-   * Uses a chunked upload protocol (24 MB per chunk) to stay under the 32 MB
-   * Google Frontend request body limit:
-   *   1. ?action=init   — start a Gemini resumable upload session
-   *   2. ?action=upload  — send each chunk (≤25 MB) to the session
-   *
-   * Reports this upload's own 0–100 progress via `onProgress`; the caller maps
-   * it onto the overall (multi-segment) range and writes it to Firestore.
-   */
-  private async uploadToGemini(
-    blob: Blob,
-    mimeType: string,
-    fileName: string,
-    onProgress?: (progress: number) => void,
-  ): Promise<string> {
-    const token = await getIdToken(this.auth.currentUser!);
-    const functionUrl = this.firebase.getHttpFunctionUrl('uploadAudioToGemini');
+  private lastProgressWrite = 0;
 
-    // ── Phase 1: Init — start Gemini resumable upload session ─────────────
-    const initResponse = await fetch(`${functionUrl}?action=init`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        mimeType,
-        fileName: encodeURIComponent(fileName),
-        fileSize: blob.size,
-      }),
-    });
-
-    if (!initResponse.ok) {
-      const errorBody = await initResponse.text();
-      throw new Error(`Upload init failed: ${initResponse.status} ${errorBody}`);
+  /** Firestore progress write, at most once per second (always when `force`). */
+  private writeProgressThrottled(
+    sessionRef: DocumentReference,
+    stage: string,
+    progress: number,
+    message: string,
+    force: boolean,
+  ): void {
+    const now = Date.now();
+    if (force || now - this.lastProgressWrite >= 1000) {
+      this.lastProgressWrite = now;
+      this.writeProgress(sessionRef, stage, progress, message);
     }
-
-    const { uploadUrl } = (await initResponse.json()) as { uploadUrl: string };
-
-    // ── Phase 2: Upload chunks ───────────────────────────────────────────
-    const totalSize = blob.size;
-    const numChunks = Math.ceil(totalSize / UPLOAD_CHUNK_SIZE);
-    let offset = 0;
-
-    for (let i = 0; i < numChunks; i++) {
-      const end = Math.min(offset + UPLOAD_CHUNK_SIZE, totalSize);
-      const chunk = blob.slice(offset, end);
-      const isFinal = end === totalSize;
-
-      const fileUri = await this.uploadChunk(
-        functionUrl, token, uploadUrl, chunk,
-        offset, isFinal, mimeType, totalSize,
-        onProgress,
-      );
-
-      offset = end;
-
-      if (isFinal) {
-        if (!fileUri) {
-          throw new Error('Final chunk did not return a fileUri');
-        }
-        onProgress?.(100);
-        return fileUri;
-      }
-    }
-
-    throw new Error('Upload completed without receiving fileUri');
   }
 
-  /**
-   * Send a single chunk via XHR (for upload progress tracking).
-   * Returns the fileUri on the final chunk, null otherwise.
-   */
-  private uploadChunk(
-    functionUrl: string,
-    token: string,
-    uploadUrl: string,
-    chunk: Blob,
-    offset: number,
-    isFinal: boolean,
-    mimeType: string,
-    totalSize: number,
-    onProgress?: (progress: number) => void,
-  ): Promise<string | null> {
-    return new Promise<string | null>((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', `${functionUrl}?action=upload`);
-      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-      xhr.setRequestHeader('X-Upload-Url', uploadUrl);
-      xhr.setRequestHeader('X-Upload-Offset', String(offset));
-      xhr.setRequestHeader('X-Is-Final', String(isFinal));
-      xhr.setRequestHeader('X-Mime-Type', mimeType);
+  /** Prepare every file for upload; progress (0–100) is weighted by the size of the WAV files. */
+  private async prepareUploads(
+    files: File[],
+    onProgress: (progress: number) => void,
+  ): Promise<PreparedUpload[]> {
+    const wavBytes = files.filter(isWavFile).reduce((sum, f) => sum + f.size, 0);
+    let doneBytes = 0;
+    const prepared: PreparedUpload[] = [];
 
-      xhr.upload.addEventListener('progress', (event) => {
-        if (event.lengthComputable) {
-          const totalSent = offset + event.loaded;
-          const uploadPercent = Math.round((totalSent / totalSize) * 100);
-          // Report this upload's own progress; the caller maps it onto the
-          // overall (multi-segment) range and throttles the Firestore write.
-          onProgress?.(uploadPercent);
-        }
-      });
-
-      xhr.addEventListener('load', () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          if (isFinal) {
-            const body = JSON.parse(xhr.responseText) as { fileUri?: string };
-            resolve(body.fileUri ?? null);
-          } else {
-            resolve(null);
-          }
-        } else {
-          reject(new Error(`Chunk upload failed: ${xhr.status} ${xhr.responseText}`));
-        }
-      });
-
-      xhr.addEventListener('error', () => reject(new Error('Upload network error')));
-      xhr.addEventListener('abort', () => reject(new Error('Upload aborted')));
-
-      xhr.send(chunk);
-    });
+    for (const file of files) {
+      const upload = await prepareForUpload(file, (p) =>
+        onProgress(Math.round(((doneBytes + (p / 100) * file.size) / wavBytes) * 100))
+      );
+      if (isWavFile(file)) {
+        doneBytes += file.size;
+        logger.info('[AudioCompleteProcessing] Prepared WAV for upload', {
+          file: file.name,
+          compressed: upload.blob !== file,
+          originalMb: (file.size / 1_048_576).toFixed(1),
+          uploadMb: (upload.blob.size / 1_048_576).toFixed(1),
+        });
+      }
+      prepared.push(upload);
+    }
+    return prepared;
   }
 
   private writeProgress(
@@ -408,11 +258,4 @@ export class AudioCompleteProcessingService {
       },
     });
   }
-}
-
-/** Replace the file extension, e.g. "session.wav" → "session.mp3". */
-function replaceExtension(fileName: string, newExt: string): string {
-  const dotIndex = fileName.lastIndexOf('.');
-  const base = dotIndex >= 0 ? fileName.slice(0, dotIndex) : fileName;
-  return `${base}.${newExt}`;
 }

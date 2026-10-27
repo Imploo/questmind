@@ -1,5 +1,6 @@
 import * as logger from '../utils/logger';
 import {HttpsError} from 'firebase-functions/v2/https';
+import {onTaskDispatched} from 'firebase-functions/v2/tasks';
 import {getFirestore} from 'firebase-admin/firestore';
 import {ProgressTrackerService} from '../services/progress-tracker.service';
 import {WorkerQueueService, WorkerPayload} from '../services/worker-queue.service';
@@ -10,13 +11,15 @@ import {
 } from '../types/audio-session.types';
 import {fetchKankaContextForTranscription} from '../services/kanka.service';
 import {getAiFeatureConfig} from '../utils/ai-settings';
+import {TASK_WORKER_TIMEOUT_SECONDS} from '../services/task-queue.service';
 
 const MAX_PREVIOUS_STORIES_CHARS = 100_000;
 
 export interface StoryGenerationWorkerPayload extends WorkerPayload {
   campaignId: string;
   sessionId: string;
-  transcriptionText: string;
+  /** Raw transcript; when omitted the worker reads `rawStory` from the session. */
+  transcriptionText?: string;
   /** Pre-fetched Kanka context (e.g. from transcription function). Takes priority over enableKankaContext. */
   kankaContext?: KankaSearchResult;
   /** When true and no kankaContext provided, the worker fetches fresh context from Kanka API. */
@@ -82,10 +85,10 @@ export const storyGenerationWorkerHandler = async (data: WorkerPayload) => {
       userCorrections,
     } = data as StoryGenerationWorkerPayload;
 
-    if (!campaignId || !sessionId || !transcriptionText) {
+    if (!campaignId || !sessionId) {
       throw new HttpsError(
         'invalid-argument',
-        'Missing required fields: campaignId, sessionId, transcriptionText'
+        'Missing required fields: campaignId, sessionId'
       );
     }
 
@@ -121,6 +124,11 @@ export const storyGenerationWorkerHandler = async (data: WorkerPayload) => {
       const sessionSnap = await sessionRef.get();
       const sessionData = sessionSnap.data();
 
+      const storyInput = transcriptionText || (sessionData?.rawStory as string | undefined);
+      if (!storyInput) {
+        throw new Error('No transcription found for this session');
+      }
+
       // Resolve Kanka context:
       // 1. Use pre-fetched context from payload (e.g. from transcription function)
       // 2. If enableKankaContext is set (e.g. from frontend), fetch fresh context from Kanka API
@@ -155,7 +163,7 @@ export const storyGenerationWorkerHandler = async (data: WorkerPayload) => {
 
       // Generate story
       const storyContent = await generateStoryFromTranscription(
-        transcriptionText,
+        storyInput,
         storyConfig,
         kankaContext,
         userCorrections,
@@ -203,4 +211,26 @@ export const storyGenerationWorkerHandler = async (data: WorkerPayload) => {
 export const storyGenerationWorker = WorkerQueueService.createWorker(
   'storyGenerationWorker',
   storyGenerationWorkerHandler
+);
+
+/**
+ * Story generation as a task-queue step of the audio pipeline (process →
+ * transcribe → story). Runs in its own live request with its own time budget.
+ * Not retried by Cloud Tasks: failures are written to the session by the handler.
+ */
+export const storyGenerationTaskWorker = onTaskDispatched<StoryGenerationWorkerPayload>(
+  {
+    timeoutSeconds: TASK_WORKER_TIMEOUT_SECONDS,
+    memory: '1GiB',
+    secrets: ['GOOGLE_AI_API_KEY', 'KANKA_API_TOKEN'],
+    retryConfig: { maxAttempts: 1 },
+  },
+  async (request) => {
+    try {
+      await storyGenerationWorkerHandler(request.data);
+    } catch (error) {
+      // Already recorded on the session (markFailed); don't let Cloud Tasks log a 500.
+      logger.error(`[StoryGenerationTask] Failed for session ${request.data.sessionId}:`, error);
+    }
+  }
 );

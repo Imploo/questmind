@@ -59,16 +59,4 @@ export class FirebaseService {
     }
     return this.functions;
   }
-
-  /**
-   * Build the URL for an HTTP (onRequest) Cloud Function.
-   * Respects emulator configuration automatically.
-   */
-  getHttpFunctionUrl(functionName: string): string {
-    const projectId = this.app!.options.projectId;
-    if (environment.useEmulators) {
-      return `http://${EMULATOR_HOST}:${EMULATOR_PORT}/${projectId}/${FUNCTIONS_REGION}/${functionName}`;
-    }
-    return `https://${FUNCTIONS_REGION}-${projectId}.cloudfunctions.net/${functionName}`;
-  }
 }

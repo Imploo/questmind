@@ -2,6 +2,7 @@ import { getFirestore } from 'firebase-admin/firestore';
 import {
   AISettings,
   AIFeatureConfig,
+  AudioNormalizationSettings,
   PodcastVoiceSettings,
   TranscriptionSegmentationSettings,
 } from '../types/audio-session.types';
@@ -99,6 +100,17 @@ export async function getAiImageConfig(): Promise<{ model: string }> {
 export async function getPodcastVoiceConfig(): Promise<PodcastVoiceSettings> {
   const settings = await getCachedAiSettings();
   return { ...DEFAULT_PODCAST_VOICES, ...settings?.features?.podcastVoices };
+}
+
+/** Mirrors the frontend DEFAULT_AUDIO_NORMALIZATION (admin "Audio Transcriptie" page). */
+const DEFAULT_AUDIO_NORMALIZATION: AudioNormalizationSettings = {
+  enabled: true,
+  maxGainDb: 20,
+};
+
+export async function getAudioNormalizationConfig(): Promise<AudioNormalizationSettings> {
+  const settings = await getCachedAiSettings();
+  return { ...DEFAULT_AUDIO_NORMALIZATION, ...settings?.audioNormalization };
 }
 
 export async function getTranscriptionSegmentationConfig(): Promise<TranscriptionSegmentationSettings> {

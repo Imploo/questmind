@@ -26,15 +26,15 @@ initializeApp();
 // Podcast generation (kept separate from transcription flow)
 export { generatePodcastAudio } from './generate-podcast-audio';
 
-// Audio upload — browser compresses audio, then proxies through backend to Gemini
-// (Gemini resumable upload URLs block direct browser requests via CORS)
-export { uploadAudioToGemini } from './upload-audio-to-gemini';
+// Audio processing (ffmpeg: join, downmix, normalize, encode) → transcription
+export { processSessionAudio, processSessionAudioWorker } from './process-session-audio';
+export { processVoiceIntro } from './process-voice-intro';
 
 // Transcription
-export { transcribeAudioFast } from './transcribe-audio-fast';
+export { transcribeAudioFast, transcribeAudioFastWorker } from './transcribe-audio-fast';
 
 // Story generation (triggered after transcription)
-export { storyGenerationWorker } from './workers/story-generation-worker';
+export { storyGenerationWorker, storyGenerationTaskWorker } from './workers/story-generation-worker';
 
 // Character chat proxy (AI 1: text responder)
 export { characterChat } from './character-chat';
@@ -54,3 +54,7 @@ export { resolveFeature } from './resolve-feature';
 // Campaign story (ticket #69): versioned summary of all sessions + podcast per version
 export { generateCampaignStory } from './generate-campaign-story';
 export { generateCampaignStoryPodcast } from './generate-campaign-story-podcast';
+
+// Public share links for podcasts
+export { createPodcastShare } from './create-podcast-share';
+export { podcastSharePage } from './podcast-share-page';

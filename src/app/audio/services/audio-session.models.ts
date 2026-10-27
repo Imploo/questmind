@@ -127,6 +127,7 @@ export type SessionProgressStage =
   | 'idle'
   | 'compressing'           // Client-side audio compression
   | 'uploading'
+  | 'processing-audio'      // Backend ffmpeg: join, downmix, normalize, encode
   | 'transcribing'          // Fast transcription
   | 'batch-submitted'       // Batch transcription submitted
   | 'batch-processing'      // Batch transcription running
@@ -182,6 +183,24 @@ export interface TranscriptionFastMetadata {
   error?: string;
 }
 
+/** The session's processed recording (compressed + normalized MP3) in Firebase Storage. */
+export interface AudioRecording {
+  storagePath: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  durationSec: number;
+  uploadedAt: string;
+}
+
+/** An uploaded source file awaiting backend processing (original M4A/MP3, or browser-compressed WAV). */
+export interface AudioSource {
+  storagePath: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+}
+
 export interface AudioSessionRecord extends SessionStory {
   campaignId: string;
   ownerId: string;
@@ -192,6 +211,11 @@ export interface AudioSessionRecord extends SessionStory {
 
   // Storage - storageUrl is the primary field, storageMetadata for additional details
   storageUrl?: string; // gs:// URL for Cloud Functions
+
+  /** Stored recording used for playback and re-transcription. */
+  audioRecording?: AudioRecording;
+  /** Uploaded sources; removed by the backend once `audioRecording` is ready. */
+  audioSources?: AudioSource[];
 
   transcription?: TranscriptionResult;
   activeTranscriptionId?: string;

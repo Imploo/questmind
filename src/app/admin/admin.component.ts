@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, signal, computed, OnInit, inject } 
 import { FormsModule } from '@angular/forms';
 import { UserService } from '../core/user.service';
 import { AiSettingsRepository } from '../shared/repository/ai-settings.repository';
-import { type AiSettings, type AiModelConfig, type AiImageConfig, type CampaignStoryModelConfig, type PodcastVoiceSettings } from '../core/services/ai-settings.service';
+import { type AiSettings, type AiModelConfig, type AiImageConfig, type CampaignStoryModelConfig, type PodcastVoiceSettings, DEFAULT_AUDIO_NORMALIZATION } from '../core/services/ai-settings.service';
 import { ToastService } from '../shared/services/toast.service';
 import * as logger from '../shared/logger';
 
@@ -223,6 +223,50 @@ interface FeatureDefinition {
                             <option [value]="level">{{ level }}</option>
                           }
                         </select>
+                      </div>
+                    }
+                    @if (selectedFeature().key === 'transcription') {
+                      <div class="md:col-span-2 mt-2 pt-3 border-t border-gray-200">
+                        <h4 class="text-sm font-semibold text-gray-700">Audio-normalisatie</h4>
+                        <p class="text-xs text-gray-500">
+                          Trekt zachte en luide sprekers (bv. spelers verder van de microfoon) gelijk vóór upload.
+                          Geldt voor sessie-audio en de voice intro.
+                        </p>
+                      </div>
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Normalisatie</label>
+                        <div class="flex items-center gap-2 h-[42px]">
+                          <button
+                            type="button"
+                            (click)="toggleAudioNormalization()"
+                            class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors"
+                            [class]="audioNormalization().enabled ? 'bg-green-500' : 'bg-gray-300'"
+                          >
+                            <span
+                              class="inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform"
+                              [class]="audioNormalization().enabled ? 'translate-x-4.5' : 'translate-x-0.5'"
+                            ></span>
+                          </button>
+                          <span class="text-xs text-gray-500">{{ audioNormalization().enabled ? 'Aan' : 'Uit' }}</span>
+                        </div>
+                      </div>
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">
+                          Max. versterking (dB)
+                          <span class="text-xs font-normal text-gray-400">(0-40, lager = minder ruis)</span>
+                        </label>
+                        <input
+                          type="number"
+                          [ngModel]="audioNormalization().maxGainDb"
+                          (ngModelChange)="setAudioNormalizationMaxGain($event)"
+                          name="audioNormalization-maxGainDb"
+                          (blur)="onFieldBlur()"
+                          [disabled]="!audioNormalization().enabled"
+                          step="1"
+                          min="0"
+                          max="40"
+                          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent disabled:bg-gray-100 disabled:text-gray-400"
+                        />
                       </div>
                     }
                   </div>
@@ -462,6 +506,10 @@ export class AdminComponent implements OnInit {
   selectedFeature = signal<FeatureDefinition>(this.featureDefinitions[0]);
   saveIndicator = signal<'idle' | 'saving' | 'saved' | 'error'>('idle');
   cacheEnabled = computed(() => this.aiSettings()?.cacheEnabled ?? true);
+  audioNormalization = computed(() => ({
+    ...DEFAULT_AUDIO_NORMALIZATION,
+    ...this.aiSettings()?.audioNormalization,
+  }));
 
   private saveTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -481,6 +529,23 @@ export class AdminComponent implements OnInit {
       return { ...settings, cacheEnabled: !(settings.cacheEnabled ?? true) };
     });
     void this.autoSave();
+  }
+
+  toggleAudioNormalization(): void {
+    this.aiSettings.update(settings => {
+      if (!settings) return settings;
+      const current = this.audioNormalization();
+      return { ...settings, audioNormalization: { ...current, enabled: !current.enabled } };
+    });
+    void this.autoSave();
+  }
+
+  setAudioNormalizationMaxGain(value: number | null): void {
+    this.aiSettings.update(settings => {
+      if (!settings || value === null || !Number.isFinite(value)) return settings;
+      const maxGainDb = Math.min(40, Math.max(0, value));
+      return { ...settings, audioNormalization: { ...this.audioNormalization(), maxGainDb } };
+    });
   }
 
   currentModelIsGemini3(): boolean {
