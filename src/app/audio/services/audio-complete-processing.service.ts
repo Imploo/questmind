@@ -3,7 +3,7 @@ import {type Functions, httpsCallable} from 'firebase/functions';
 import {doc, type DocumentReference, type Firestore, updateDoc} from 'firebase/firestore';
 import {Auth, getIdToken} from 'firebase/auth';
 import {FirebaseService} from '../../core/firebase.service';
-import {AudioCompressionService, AudioSegmentResult, SegmentationOptions} from './audio-compression.service';
+import {AudioCompressionService, AudioSegmentResult, SegmentationOptions, toNormalizationOptions} from './audio-compression.service';
 import {AiSettingsService} from '../../core/services/ai-settings.service';
 import * as logger from '../../shared/logger';
 
@@ -94,7 +94,7 @@ export class AudioCompleteProcessingService {
             `Compressing audio... ${Math.round(compressionProgress)}%`);
         }
       },
-      {},
+      toNormalizationOptions(this.aiSettings.getAudioNormalizationConfig()),
       this.resolveSegmentationOptions(),
     );
 

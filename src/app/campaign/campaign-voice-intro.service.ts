@@ -8,7 +8,8 @@ import {
 } from 'firebase/storage';
 import { AuthService } from '../auth/auth.service';
 import { FirebaseService } from '../core/firebase.service';
-import { AudioCompressionService, type CompressionResult } from '../audio/services/audio-compression.service';
+import { AudioCompressionService, toNormalizationOptions, type CompressionResult } from '../audio/services/audio-compression.service';
+import { AiSettingsService } from '../core/services/ai-settings.service';
 import { CampaignService } from './campaign.service';
 import { CampaignVoiceIntro } from './campaign.models';
 import * as logger from '../shared/logger';
@@ -34,6 +35,7 @@ export class CampaignVoiceIntroService {
   private readonly authService = inject(AuthService);
   private readonly campaignService = inject(CampaignService);
   private readonly compression = inject(AudioCompressionService);
+  private readonly aiSettings = inject(AiSettingsService);
 
   /** Returns an error message, or null when the file can be used. */
   validateFile(file: File): string | null {
@@ -69,8 +71,10 @@ export class CampaignVoiceIntroService {
 
     let compressed: CompressionResult;
     try {
-      compressed = await this.compression.compress(file, (p) =>
-        onProgress(Math.round((p / 100) * COMPRESSION_PROGRESS_SHARE))
+      compressed = await this.compression.compress(
+        file,
+        (p) => onProgress(Math.round((p / 100) * COMPRESSION_PROGRESS_SHARE)),
+        toNormalizationOptions(this.aiSettings.getAudioNormalizationConfig())
       );
     } catch (error: unknown) {
       logger.error('[VoiceIntro] Could not decode audio file:', error);

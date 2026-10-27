@@ -1,6 +1,8 @@
 import { Injectable } from '@angular/core';
 import { Mp3Encoder } from '@breezystack/lamejs';
 import * as logger from '../../shared/logger';
+import { normalizeLoudness, type NormalizationOptions } from './audio-normalization';
+import type { AudioNormalizationSettings } from '../../core/services/ai-settings.service';
 
 export interface CompressionOptions {
   /** Target bitrate in bps (default: 64_000) */
@@ -9,6 +11,10 @@ export interface CompressionOptions {
   targetSampleRate: number;
   /** Number of output channels (default: 1 — mono) */
   channels: 1 | 2;
+  /** Apply dynamic loudness normalization before encoding (default: true) */
+  normalize: boolean;
+  /** Tuning passed to normalizeLoudness() (default: its own defaults) */
+  normalization: Partial<NormalizationOptions>;
 }
 
 export interface CompressionResult {
@@ -63,7 +69,24 @@ const DEFAULT_OPTIONS: CompressionOptions = {
   targetBitrate: 64_000,
   targetSampleRate: 24_000,
   channels: 1,
+  // Evens out loud and soft speakers (e.g. players far from the mic) so the
+  // transcription model hears everyone at a similar level.
+  normalize: true,
+  normalization: {},
 };
+
+/** Upper bound for the admin-configurable max gain — beyond this it's mostly noise. */
+const MAX_NORMALIZATION_GAIN_DB = 40;
+
+/** Map the admin audio-normalization settings onto CompressionOptions. */
+export function toNormalizationOptions(cfg: AudioNormalizationSettings): Partial<CompressionOptions> {
+  const db = Number(cfg.maxGainDb);
+  const maxGainDb = Number.isFinite(db) ? Math.min(MAX_NORMALIZATION_GAIN_DB, Math.max(0, db)) : 20;
+  return {
+    normalize: cfg.enabled !== false,
+    normalization: { maxGain: Math.pow(10, maxGainDb / 20) },
+  };
+}
 
 const DEFAULT_SEGMENTATION: SegmentationOptions = {
   segmentSeconds: 30 * 60,   // 30 min — longer clips keep narrative context for the story
@@ -79,7 +102,8 @@ const MP3_CHUNK_SIZE = 1152; // PCM samples per MPEG Layer-3 frame
  * Pipeline:
  *   1. Decode source audio via AudioContext.decodeAudioData()
  *   2. Resample + downmix to mono 24 kHz via OfflineAudioContext
- *   3. Encode to MP3 at 64 kbps via lamejs
+ *   3. Dynamic loudness normalization (see audio-normalization.ts)
+ *   4. Encode to MP3 at 64 kbps via lamejs
  *
  * Typical result: 300 MB WAV → ~45 MB MP3 (~7× reduction).
  * If the encoded output is larger than the original the original file is returned unchanged.
@@ -130,6 +154,9 @@ export class AudioCompressionService {
     const encoder = new Mp3Encoder(opts.channels, opts.targetSampleRate, kbps);
 
     const pcmFloat = resampledBuffer.getChannelData(0); // mono channel
+    if (opts.normalize) {
+      normalizeLoudness(pcmFloat, opts.targetSampleRate, opts.normalization);
+    }
     const pcm16 = floatTo16BitPcm(pcmFloat);
 
     const mp3Parts: ArrayBuffer[] = [];
@@ -258,6 +285,12 @@ export class AudioCompressionService {
     const pcmFloat = concatFloat32(decoded);
     // Release the per-file buffers now that they're joined.
     decoded.length = 0;
+
+    // Normalize over the full timeline so the level is consistent across
+    // file and segment boundaries.
+    if (opts.normalize) {
+      normalizeLoudness(pcmFloat, sampleRate, opts.normalization);
+    }
 
     // ── Step 2: slice into segments + encode each to MP3 (20–100%) ────────────
     const durationSeconds = pcmFloat.length / sampleRate;

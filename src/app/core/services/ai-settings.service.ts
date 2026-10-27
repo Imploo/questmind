@@ -37,9 +37,22 @@ export interface TranscriptionSegmentationSettings {
   onSegmentFailure: 'gap' | 'fail';
 }
 
+/** Dynamic loudness normalization applied to uploads before encoding. */
+export interface AudioNormalizationSettings {
+  enabled: boolean;
+  /** Maximum amplification of quiet passages, in dB. */
+  maxGainDb: number;
+}
+
+export const DEFAULT_AUDIO_NORMALIZATION: AudioNormalizationSettings = {
+  enabled: true,
+  maxGainDb: 20,
+};
+
 export interface AiSettings {
   cacheEnabled?: boolean;
   transcriptionSegmentation?: Partial<TranscriptionSegmentationSettings>;
+  audioNormalization?: Partial<AudioNormalizationSettings>;
   features: {
     transcription?: AiModelConfig;
     storyGeneration?: AiModelConfig;
@@ -94,6 +107,12 @@ export class AiSettingsService {
   getTranscriptionSegmentationConfig(): TranscriptionSegmentationSettings {
     const settings = this.data() as AiSettings | null;
     return { ...this.defaultSegmentationConfig, ...settings?.transcriptionSegmentation };
+  }
+
+  /** Get audio normalization config (with fallback to defaults). */
+  getAudioNormalizationConfig(): AudioNormalizationSettings {
+    const settings = this.data() as AiSettings | null;
+    return { ...DEFAULT_AUDIO_NORMALIZATION, ...settings?.audioNormalization };
   }
 
   /**

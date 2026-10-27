@@ -5,6 +5,7 @@ import { FirebaseService } from '../core/firebase.service';
 import { AuthService } from '../auth/auth.service';
 import { CampaignService } from './campaign.service';
 import { AudioCompressionService } from '../audio/services/audio-compression.service';
+import { AiSettingsService } from '../core/services/ai-settings.service';
 
 describe('CampaignVoiceIntroService', () => {
   let service: CampaignVoiceIntroService;
@@ -15,7 +16,8 @@ describe('CampaignVoiceIntroService', () => {
         { provide: FirebaseService, useValue: { storage: null } },
         { provide: AuthService, useValue: { currentUser: () => ({ uid: 'user-1' }) } },
         { provide: CampaignService, useValue: {} },
-        { provide: AudioCompressionService, useValue: {} }
+        { provide: AudioCompressionService, useValue: {} },
+        { provide: AiSettingsService, useValue: {} }
       ]
     });
     service = TestBed.inject(CampaignVoiceIntroService);
