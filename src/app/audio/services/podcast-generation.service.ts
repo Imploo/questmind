@@ -1,20 +1,47 @@
-import { Injectable, OnDestroy, effect, signal, inject, Injector, runInInjectionContext } from '@angular/core';
-import { PodcastAudioService, PodcastProgress } from './podcast-audio.service';
-import { AudioSessionRecord, PodcastVersion } from './audio-session.models';
+import { Injectable, inject, signal } from '@angular/core';
+import { PodcastAudioService } from './podcast-audio.service';
+import { AudioSessionRecord, SessionProgressStage } from './audio-session.models';
+import { toDisplayProgress } from './session-progress.utils';
+import { ToastService } from '../../shared/services/toast.service';
+import { callableErrorCode, isPermissionDenied, PERMISSION_DENIED_MESSAGE } from '../../shared/utils/callable-error';
 import * as logger from '../../shared/logger';
 
-@Injectable()
-export class PodcastGenerationService implements OnDestroy {
-  private readonly podcastAudioService = inject(PodcastAudioService);
-  private readonly injector = inject(Injector);
+export interface PodcastGenerationStatus {
+  isGenerating: boolean;
+  message: string;
+  percent: number;
+}
 
-  readonly isGenerating = signal(false);
-  readonly progress = signal<PodcastProgress | null>(null);
-  readonly progressMessage = signal('');
-  readonly progressPercent = signal(0);
+const PODCAST_STAGES: SessionProgressStage[] = ['generating-podcast-script', 'generating-podcast-audio'];
+const IDLE: PodcastGenerationStatus = { isGenerating: false, message: '', percent: 0 };
+
+/**
+ * Session podcast generation. Progress is derived from the session document
+ * (`session.progress`, streamed by AudioSessionStateService); the server
+ * allocates the podcast version.
+ */
+@Injectable()
+export class PodcastGenerationService {
+  private readonly podcastAudioService = inject(PodcastAudioService);
+  private readonly toastService = inject(ToastService);
+
+  /** Session whose generation request is in flight (before/while the backend reports progress). */
+  private readonly startingSessionId = signal<string | null>(null);
   readonly error = signal('');
 
-  private podcastProgressUnsubscribe?: () => void;
+  /** Generation status of a session; reactive when used inside `computed()`. */
+  statusFor(session: AudioSessionRecord | null): PodcastGenerationStatus {
+    if (!session) return IDLE;
+
+    const progress = toDisplayProgress(session);
+    if (progress && PODCAST_STAGES.includes(progress.stage)) {
+      return { isGenerating: true, message: progress.message, percent: progress.progress ?? 0 };
+    }
+    if (this.startingSessionId() === session.id) {
+      return { isGenerating: true, message: 'Starting podcast generation...', percent: 0 };
+    }
+    return IDLE;
+  }
 
   async generate(session: AudioSessionRecord): Promise<void> {
     if (!session.content || !session.id) {
@@ -26,86 +53,33 @@ export class PodcastGenerationService implements OnDestroy {
       return;
     }
 
-    this.isGenerating.set(true);
-    this.progressMessage.set('Starting podcast generation...');
-    this.progressPercent.set(0);
     this.error.set('');
-
+    this.startingSessionId.set(session.id);
     try {
-      const version = (session.podcasts?.length || 0) + 1;
-
-      // Step 1: Start listening BEFORE generation
-      const { progress, unsubscribe } = this.podcastAudioService.listenToPodcastProgress(
+      await this.podcastAudioService.startPodcastGeneration(
         session.campaignId,
         session.id,
-        version
-      );
-
-      this.podcastProgressUnsubscribe = unsubscribe;
-
-      // Step 2: Create effect to watch progress
-      const progressEffect = runInInjectionContext(this.injector, () => effect(() => {
-        const currentProgress = progress();
-        if (currentProgress) {
-          this.progress.set(currentProgress);
-          this.progressMessage.set(currentProgress.message);
-          this.progressPercent.set(currentProgress.progress);
-
-          if (currentProgress.error) {
-            this.error.set(currentProgress.error);
-          }
-
-          if (currentProgress.status === 'completed' || currentProgress.status === 'failed') {
-            setTimeout(() => {
-              this.isGenerating.set(false);
-              this.cleanupProgressListener();
-              progressEffect.destroy();
-            }, 3000);
-          }
-        }
-      }));
-
-      // Step 3: Fire-and-forget — progress is tracked via Firestore listener above
-      this.podcastAudioService.startPodcastGeneration(
-        session.campaignId,
-        session.id,
-        version,
-        session.content,
         session.title || 'Untitled Session',
         session.sessionDate
-      ).catch(err => {
-        // The callable may time out on the client side, but the Cloud Function
-        // keeps running. Progress tracking via Firestore listener continues.
-        logger.warn('Podcast callable returned error (generation may still be running):', err);
-      });
-
+      );
     } catch (error: unknown) {
-      logger.error('Failed to set up podcast generation:', error);
-      this.error.set((error as Error)?.message || 'Failed to start podcast generation');
-      this.progressMessage.set('');
-      this.progressPercent.set(0);
-      this.isGenerating.set(false);
-      this.cleanupProgressListener();
+      this.error.set(this.toErrorMessage(error));
+    } finally {
+      this.startingSessionId.set(null);
     }
   }
 
-  download(podcast: PodcastVersion, sessionTitle: string): void {
-    if (!podcast.audioUrl) {
-      this.error.set('Audio not available for download.');
-      return;
+  private toErrorMessage(error: unknown): string {
+    if (isPermissionDenied(error)) {
+      logger.warn('Podcast generation refused: permission denied');
+      this.toastService.showCallableError(error);
+      return PERMISSION_DENIED_MESSAGE;
     }
-    const filename = `${sessionTitle || 'podcast'}-v${podcast.version}.mp3`;
-    this.podcastAudioService.downloadPodcastMP3(podcast.audioUrl, filename);
-  }
-
-  ngOnDestroy(): void {
-    this.cleanupProgressListener();
-  }
-
-  private cleanupProgressListener(): void {
-    if (this.podcastProgressUnsubscribe) {
-      this.podcastProgressUnsubscribe();
-      this.podcastProgressUnsubscribe = undefined;
+    if (callableErrorCode(error) === 'failed-precondition') {
+      // e.g. a podcast is already being generated for this session
+      return (error as Error).message;
     }
+    logger.error('Failed to generate podcast:', error);
+    return 'Failed to start podcast generation. Please try again.';
   }
 }

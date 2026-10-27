@@ -111,6 +111,15 @@ export class AudioSessionStateService {
     await repo.patch(id as SessionRecord['id'], { ...patch, updatedAt });
   }
 
+  /**
+   * Patch a session document of any campaign, also when it is not (yet) in
+   * `sessions()` — e.g. progress writes during an upload. Fields are written as
+   * given (no automatic `updatedAt`).
+   */
+  async patchSessionDoc(campaignId: string, sessionId: string, patch: Record<string, unknown>): Promise<void> {
+    await this.sessionRepoFactory.create(campaignId).patch(sessionId, patch);
+  }
+
   private defaultTitle(fileName: string): string {
     const base = fileName.replace(/\.[^/.]+$/, '');
     return `Session: ${base}`;

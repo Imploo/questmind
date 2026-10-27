@@ -6,6 +6,8 @@ import { CampaignContextService } from '../campaign/campaign-context.service';
 import { CampaignStoryRepositoryFactory } from '../shared/repository/campaign-story.repository';
 import { CampaignStoryVersion } from './campaign-story.models';
 import * as logger from '../shared/logger';
+import { ToastService } from '../shared/services/toast.service';
+import { callableErrorCode, isPermissionDenied, PERMISSION_DENIED_MESSAGE } from '../shared/utils/callable-error';
 
 interface CallableResult {
   success: boolean;
@@ -22,6 +24,7 @@ export class CampaignStoryService {
   private readonly authService = inject(AuthService);
   private readonly campaignContext = inject(CampaignContextService);
   private readonly repoFactory = inject(CampaignStoryRepositoryFactory);
+  private readonly toastService = inject(ToastService);
 
   private readonly repo = resource({
     params: () => {
@@ -76,14 +79,18 @@ export class CampaignStoryService {
     try {
       await call();
     } catch (error) {
-      const code = (error as { code?: string })?.code;
+      const code = callableErrorCode(error);
       // Long generations outlive the client-side callable timeout while the Cloud
       // Function keeps running; real failures are reported via Firestore.
-      if (code === 'functions/deadline-exceeded') {
+      if (code === 'deadline-exceeded') {
         logger.debug(`${label} callable timed out client-side; generation continues in background`);
         return;
       }
-      if (code === 'functions/failed-precondition') {
+      if (isPermissionDenied(error)) {
+        this.toastService.showCallableError(error);
+        throw new Error(PERMISSION_DENIED_MESSAGE);
+      }
+      if (code === 'failed-precondition') {
         throw new Error((error as Error).message);
       }
       logger.error(`Error starting ${label} generation:`, error);

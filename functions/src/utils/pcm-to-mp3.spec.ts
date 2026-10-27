@@ -1,29 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parsePcmSampleRate, pcmToMp3, DEFAULT_PCM_SAMPLE_RATE } from './pcm-to-mp3';
-
-describe('parsePcmSampleRate', () => {
-  it('parses the rate from a Gemini TTS mimeType', () => {
-    expect(parsePcmSampleRate('audio/L16;codec=pcm;rate=24000')).toBe(24000);
-  });
-
-  it('parses non-default rates', () => {
-    expect(parsePcmSampleRate('audio/L16;codec=pcm;rate=16000')).toBe(16000);
-  });
-
-  it('is case-insensitive', () => {
-    expect(parsePcmSampleRate('AUDIO/L16;RATE=48000')).toBe(48000);
-  });
-
-  it('falls back to the default when the rate is missing', () => {
-    expect(parsePcmSampleRate('audio/L16;codec=pcm')).toBe(DEFAULT_PCM_SAMPLE_RATE);
-  });
-
-  it('falls back to the default for empty/undefined input', () => {
-    expect(parsePcmSampleRate(undefined)).toBe(DEFAULT_PCM_SAMPLE_RATE);
-    expect(parsePcmSampleRate(null)).toBe(DEFAULT_PCM_SAMPLE_RATE);
-    expect(parsePcmSampleRate('')).toBe(DEFAULT_PCM_SAMPLE_RATE);
-  });
-});
+import { pcmToMp3 } from './pcm-to-mp3';
 
 describe('pcmToMp3', () => {
   it('transcodes raw PCM into a valid, non-empty MP3 buffer', async () => {

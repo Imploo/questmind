@@ -1,35 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// eslint-friendly stand-in for `Function` in handler mocks
+type CallableFn = (...args: unknown[]) => Promise<unknown>;
+
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
-const mockGet = vi.fn();
-const mockUpdate = vi.fn();
-const mockDoc = vi.fn(() => ({ get: mockGet, update: mockUpdate, collection: vi.fn(() => ({ doc: vi.fn(() => ({ get: mockGet, update: mockUpdate })) })) }));
-const mockCollection = vi.fn(() => ({ doc: mockDoc }));
-vi.mock('firebase-admin/firestore', () => ({
-  getFirestore: () => ({ collection: mockCollection, doc: mockDoc }),
-}));
-
-const mockGenerateContent = vi.fn();
-vi.mock('@google/genai', () => ({
-  GoogleGenAI: class {
-    models = { generateContent: mockGenerateContent };
-  },
-}));
-
-vi.mock('./utils/ai-settings', () => ({
-  getAiFeatureConfig: vi.fn(() => Promise.resolve({
-    model: 'gemini-test',
-    maxOutputTokens: 4096,
-  })),
+const mockResolve = vi.fn();
+vi.mock('./character/resolve-character-entry', () => ({
+  resolveCharacterEntry: (...args: unknown[]) => mockResolve(...args),
 }));
 
 vi.mock('./utils/sentry-error-handler', () => ({
-  wrapCallable: (_name: string, handler: Function) => handler,
-}));
-
-vi.mock('./index', () => ({
-  SHARED_CORS: ['http://localhost:4200'],
+  wrapCallable: (_name: string, handler: CallableFn) => handler,
 }));
 
 vi.mock('./utils/logger', () => ({
@@ -39,12 +21,12 @@ vi.mock('./utils/logger', () => ({
   warn: vi.fn(),
 }));
 
-let resolveFeatureHandler: Function;
+let resolveFeatureHandler: CallableFn;
 vi.mock('firebase-functions/v2/https', async () => {
   const actual = await vi.importActual<typeof import('firebase-functions/v2/https')>('firebase-functions/v2/https');
   return {
     ...actual,
-    onCall: (_config: unknown, handler: Function) => {
+    onCall: (_config: unknown, handler: CallableFn) => {
       resolveFeatureHandler = handler;
       return handler;
     },
@@ -112,76 +94,12 @@ describe('resolveFeature', () => {
     );
   });
 
-  // ── Ownership Tests ──
+  // ── Delegation ──
 
-  it('should reject if character does not exist', async () => {
-    mockGet.mockResolvedValueOnce({ exists: false, data: () => null });
+  it('delegates to resolveCharacterEntry with optional context in the prompt', async () => {
+    mockResolve.mockResolvedValueOnce({ description: 'Test feature description' });
 
-    const request = makeRequest();
-    await expect(resolveFeatureHandler(request)).rejects.toThrow(
-      expect.objectContaining({ code: 'permission-denied' })
-    );
-  });
-
-  it('should reject if caller does not own the character', async () => {
-    mockGet.mockResolvedValueOnce({
-      exists: true,
-      data: () => ({ userId: 'other-user' }),
-    });
-
-    const request = makeRequest();
-    await expect(resolveFeatureHandler(request)).rejects.toThrow(
-      expect.objectContaining({ code: 'permission-denied' })
-    );
-  });
-
-  // ── API Key Tests ──
-
-  it('should reject if API key is not configured', async () => {
-    delete process.env.GOOGLE_AI_API_KEY;
-
-    mockGet.mockResolvedValueOnce({
-      exists: true,
-      data: () => ({ userId: 'user-123' }),
-    });
-
-    const request = makeRequest();
-    await expect(resolveFeatureHandler(request)).rejects.toThrow(
-      expect.objectContaining({ code: 'failed-precondition' })
-    );
-  });
-
-  // ── Happy Path Tests ──
-
-  it('should return parsed AI response for a valid request', async () => {
-    mockGet.mockResolvedValueOnce({
-      exists: true,
-      data: () => ({ userId: 'user-123', activeVersionId: null }),
-    });
-
-    mockGenerateContent.mockResolvedValueOnce({
-      text: JSON.stringify({ description: 'You can see in the dark up to 60 feet.' }),
-    });
-
-    const request = makeRequest();
-    const result = await resolveFeatureHandler(request);
-
-    expect(result).toEqual({
-      description: 'You can see in the dark up to 60 feet.',
-    });
-  });
-
-  it('should pass optional context (source, class, race) to AI prompt', async () => {
-    mockGet.mockResolvedValueOnce({
-      exists: true,
-      data: () => ({ userId: 'user-123', activeVersionId: null }),
-    });
-
-    mockGenerateContent.mockResolvedValueOnce({
-      text: JSON.stringify({ description: 'Test feature description' }),
-    });
-
-    const request = makeRequest({
+    const result = await resolveFeatureHandler(makeRequest({
       data: {
         characterId: 'char-1',
         featureName: 'Action Surge',
@@ -189,62 +107,15 @@ describe('resolveFeature', () => {
         characterClass: 'Fighter',
         characterRace: 'Human',
       },
-    });
+    }));
 
-    const result = await resolveFeatureHandler(request);
     expect(result).toEqual({ description: 'Test feature description' });
-
-    // Verify context was included in the AI call
-    expect(mockGenerateContent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        contents: expect.stringContaining('source: Class Feature'),
-      })
-    );
-  });
-
-  it('should strip markdown code fences from AI response', async () => {
-    mockGet.mockResolvedValueOnce({
-      exists: true,
-      data: () => ({ userId: 'user-123', activeVersionId: null }),
-    });
-
-    mockGenerateContent.mockResolvedValueOnce({
-      text: '```json\n{"description": "Test"}\n```',
-    });
-
-    const request = makeRequest();
-    const result = await resolveFeatureHandler(request);
-
-    expect(result).toEqual({ description: 'Test' });
-  });
-
-  it('should throw internal error for unparseable AI response', async () => {
-    mockGet.mockResolvedValueOnce({
-      exists: true,
-      data: () => ({ userId: 'user-123', activeVersionId: null }),
-    });
-
-    mockGenerateContent.mockResolvedValueOnce({ text: 'not json' });
-
-    const request = makeRequest();
-    await expect(resolveFeatureHandler(request)).rejects.toThrow(
-      expect.objectContaining({ code: 'internal' })
-    );
-  });
-
-  it('should throw internal error when description field is missing', async () => {
-    mockGet.mockResolvedValueOnce({
-      exists: true,
-      data: () => ({ userId: 'user-123', activeVersionId: null }),
-    });
-
-    mockGenerateContent.mockResolvedValueOnce({
-      text: JSON.stringify({ name: 'no description field' }),
-    });
-
-    const request = makeRequest();
-    await expect(resolveFeatureHandler(request)).rejects.toThrow(
-      expect.objectContaining({ code: 'internal' })
-    );
+    expect(mockResolve).toHaveBeenCalledWith(expect.objectContaining({
+      featureKey: 'featureResolution',
+      listPath: 'featuresAndTraits',
+      matchName: 'Action Surge',
+      fields: ['description'],
+      prompt: expect.stringContaining('source: Class Feature, class: Fighter, race: Human'),
+    }));
   });
 });

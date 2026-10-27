@@ -1,41 +1,7 @@
 import * as logger from '../utils/logger';
 import {firestore} from 'firebase-admin';
-import {Timestamp} from 'firebase-admin/firestore';
 import {SessionProgress, SessionProgressStage} from '../types/audio-session.types';
-
-/**
- * @deprecated Use SessionProgress from audio-session.types instead
- */
-export type ProgressStage =
-  | 'uploading'
-  | 'submitted'
-  | 'downloading'
-  | 'chunking'
-  | 'transcribing'
-  | 'generating-story'
-  | 'completed'
-  | 'failed';
-
-/**
- * @deprecated Use SessionProgress from audio-session.types instead
- */
-export interface ProgressFailure {
-  stage: string;
-  error: string;
-  timestamp: Timestamp;
-  details?: unknown;
-}
-
-/**
- * @deprecated Use SessionProgress from audio-session.types instead
- */
-export interface AudioSessionProgress {
-  stage: ProgressStage;
-  progress: number; // 0-100 percentage
-  currentStep?: string; // Optional detailed step description
-  failure?: ProgressFailure;
-  updatedAt: Timestamp;
-}
+import {sessionRef} from '../utils/session-ref';
 
 /**
  * Service for tracking progress of audio session processing (Ticket #43)
@@ -52,15 +18,10 @@ export class ProgressTrackerService {
     message: string,
     estimatedCompletionAt?: Date
   ): Promise<void> {
-    const db = firestore();
-    const sessionRef = db
-      .collection('campaigns')
-      .doc(campaignId)
-      .collection('audioSessions')
-      .doc(sessionId);
+    const ref = sessionRef(firestore(), campaignId, sessionId);
 
     // Get existing progress to preserve startedAt if stage hasn't changed
-    const sessionDoc = await sessionRef.get();
+    const sessionDoc = await ref.get();
     const existingProgress = sessionDoc.data()?.progress as SessionProgress | undefined;
     const stageChanged = !existingProgress || existingProgress.stage !== stage;
 
@@ -77,7 +38,7 @@ export class ProgressTrackerService {
       progressData.estimatedCompletionAt = estimatedCompletionAt;
     }
 
-    await sessionRef.update({
+    await ref.update({
       progress: progressData,
     });
 
@@ -87,7 +48,8 @@ export class ProgressTrackerService {
   }
 
   /**
-   * Mark session as failed with error details
+   * Mark session as failed with error details. Only logs a warning: the caller
+   * that caught the error reports it to Sentry (one event per failure).
    */
   static async markFailed(
     campaignId: string,
@@ -96,13 +58,6 @@ export class ProgressTrackerService {
     error: Error | string,
     details?: unknown
   ): Promise<void> {
-    const db = firestore();
-    const sessionRef = db
-      .collection('campaigns')
-      .doc(campaignId)
-      .collection('audioSessions')
-      .doc(sessionId);
-
     const errorMessage = error instanceof Error ? error.message : error;
     const errorDetails = details || (error instanceof Error ? error.stack : undefined);
 
@@ -116,11 +71,11 @@ export class ProgressTrackerService {
       updatedAt: now,
     };
 
-    await sessionRef.update({
+    await sessionRef(firestore(), campaignId, sessionId).update({
       progress: progressData,
     });
 
-    logger.error(
+    logger.warn(
       `[Progress] Session ${sessionId} FAILED at ${stage}:`,
       errorMessage
     );
@@ -141,49 +96,5 @@ export class ProgressTrackerService {
       100,
       message
     );
-  }
-
-  /**
-   * Clear progress (set to idle)
-   */
-  static async clearProgress(
-    campaignId: string,
-    sessionId: string
-  ): Promise<void> {
-    const db = firestore();
-    const sessionRef = db
-      .collection('campaigns')
-      .doc(campaignId)
-      .collection('audioSessions')
-      .doc(sessionId);
-
-    await sessionRef.update({
-      progress: firestore.FieldValue.delete(),
-    });
-
-    logger.debug(`[Progress] Session ${sessionId}: Progress cleared`);
-  }
-
-  /**
-   * Get current progress for a session
-   */
-  static async getProgress(
-    campaignId: string,
-    sessionId: string
-  ): Promise<SessionProgress | null> {
-    const db = firestore();
-    const sessionRef = db
-      .collection('campaigns')
-      .doc(campaignId)
-      .collection('audioSessions')
-      .doc(sessionId);
-    const doc = await sessionRef.get();
-
-    if (!doc.exists) {
-      return null;
-    }
-
-    const data = doc.data();
-    return data?.progress || null;
   }
 }

@@ -3,14 +3,18 @@ import { GoogleGenAI, Part } from '@google/genai';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { onTaskDispatched } from 'firebase-functions/v2/tasks';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
+import { SHARED_CORS } from './config/cors';
 import { ProgressTrackerService } from './services/progress-tracker.service';
 import { getAiFeatureConfig, getTranscriptionSegmentationConfig } from './utils/ai-settings';
-import { buildGenerationParams } from './utils/gemini-config';
+import { generateText, getGeminiApiKey, getGeminiClient } from './utils/gemini-client';
 import { AIFeatureConfig } from './types/audio-session.types';
 import { TASK_WORKERS, TASK_WORKER_TIMEOUT_SECONDS, enqueueWorkerTask } from './services/task-queue.service';
 import { buildRawStoryPrompt, buildSegmentRawStoryPrompt } from './audio/transcription-prompt';
-import { fetchKankaContextForTranscription } from './services/kanka.service';
-import { captureException, wrapCallable } from './utils/sentry-error-handler';
+import { fetchKankaContext, kankaCampaignIdFrom } from './services/kanka.service';
+import { captureException, captureFunctionError, wrapCallable } from './utils/sentry-error-handler';
+import { ensureAuthForTesting } from './utils/emulator-helpers';
+import { assertValidId, loadSessionForMember, requireAuthUid } from './utils/access';
+import { sessionRef } from './utils/session-ref';
 import { sanitizeSessionLog } from './audio/session-log-sanitizer';
 import {
   CampaignVoiceIntroSettings,
@@ -20,77 +24,32 @@ import {
 import { buildVoiceIntroReferencePrompt } from './prompts/raw-story-transcription.prompt';
 import {
   AudioRecording,
+  PreparedSegment,
   prepareSegmentsFromStorage,
   sessionAudioPrefix,
 } from './audio/stored-audio.service';
 
-/** One audio segment to transcribe (a time-slice of a longer recording). */
 /** Base delay between transcription attempts of one segment (multiplied by the attempt number). */
 const RETRY_BACKOFF_MS = 5000;
-
-export interface AudioSegmentRef {
-  /** 0-based order of this segment within the recording. */
-  index: number;
-  /** Gemini Files API URI for this segment's audio. */
-  fileUri: string;
-  /** Approximate start offset within the full recording, in seconds. */
-  startSec?: number;
-  /** Approximate end offset within the full recording, in seconds. */
-  endSec?: number;
-}
 
 export interface TranscribeAudioFastRequest {
   campaignId: string;
   sessionId: string;
-  /** Single-segment (legacy) audio reference. */
-  fileUri?: string;
-  /** Multi-segment audio references (ticket #67). Takes priority over fileUri. */
-  fileUris?: AudioSegmentRef[];
   /**
    * Storage path of the session's stored recording (`audioRecording` on the
-   * session). Takes priority over fileUri(s): the worker cuts and uploads the
-   * segments itself, so a session can be re-transcribed at any time.
+   * session). The worker cuts and uploads the segments itself, so a session
+   * can be re-transcribed at any time.
    */
-  storagePath?: string;
-  audioFileName: string;
+  storagePath: string;
+  audioFileName?: string;
   audioFileSize?: number;
   userCorrections?: string;
 }
 
 /**
- * Normalize the request's audio references into an ordered segment list.
- * Filters out empty URIs and falls back to the legacy single `fileUri`.
- */
-function normalizeSegments(
-  fileUris: AudioSegmentRef[] | undefined,
-  fileUri: string | undefined
-): AudioSegmentRef[] {
-  if (Array.isArray(fileUris) && fileUris.length > 0) {
-    return fileUris
-      .filter((s): s is AudioSegmentRef => !!s && typeof s.fileUri === 'string' && s.fileUri.length > 0)
-      .map((s, i) => ({
-        index: typeof s.index === 'number' ? s.index : i,
-        fileUri: s.fileUri,
-        startSec: s.startSec,
-        endSec: s.endSec,
-      }))
-      .sort((a, b) => a.index - b.index);
-  }
-  if (typeof fileUri === 'string' && fileUri.length > 0) {
-    return [{ index: 0, fileUri }];
-  }
-  return [];
-}
-
-interface GeminiFileStateResponse {
-  state?: string | { name?: string };
-  error?: unknown;
-}
-
-/**
  * Fast transcription using direct Gemini API call
  *
- * 1. Validates input and updates progress
+ * 1. Validates input (membership, the session's own recording) and updates progress
  * 2. Enqueues the work on the `transcribeAudioFastWorker` task queue
  * 3. Returns immediately to frontend (which monitors Firestore)
  *
@@ -100,84 +59,47 @@ interface GeminiFileStateResponse {
  */
 export const transcribeAudioFast = onCall(
   {
+    cors: SHARED_CORS,
     memory: '1GiB',
     secrets: ['GOOGLE_AI_API_KEY', 'KANKA_API_TOKEN'],
   },
   wrapCallable<TranscribeAudioFastRequest, { success: boolean; message: string }>(
     'transcribeAudioFast',
     async (request): Promise<{ success: boolean; message: string }> => {
-    if (!request.auth?.uid) {
-      throw new HttpsError('unauthenticated', 'Authentication required');
-    }
+      ensureAuthForTesting(request);
+      const uid = requireAuthUid(request);
 
-    const {
-      campaignId,
-      sessionId,
-      fileUri,
-      fileUris,
-      storagePath,
-      audioFileName,
-      userCorrections,
-    } = request.data;
+      const { storagePath, audioFileName, userCorrections } = request.data ?? {};
+      const campaignId = assertValidId(request.data?.campaignId, 'campaignId');
+      const sessionId = assertValidId(request.data?.sessionId, 'sessionId');
+      if (typeof storagePath !== 'string' || storagePath.length === 0) {
+        throw new HttpsError('invalid-argument', 'Missing required field: storagePath');
+      }
 
-    const segments = storagePath ? [] : normalizeSegments(fileUris, fileUri);
+      // Fail fast instead of enqueueing work that can never run.
+      getGeminiApiKey();
 
-    // Validate required fields
-    if (!campaignId || !sessionId || (!storagePath && segments.length === 0) || !audioFileName) {
-      throw new HttpsError(
-        'invalid-argument',
-        'Missing required fields: campaignId, sessionId, storagePath/fileUri/fileUris, audioFileName'
-      );
-    }
+      const session = await loadSessionForMember(getFirestore(), campaignId, sessionId, uid);
 
-    const googleAiKey = process.env.GOOGLE_AI_API_KEY;
-    if (!googleAiKey) {
-      throw new HttpsError(
-        'failed-precondition',
-        'Google AI API key not configured'
-      );
-    }
-
-    const db = getFirestore();
-    const sessionRef = db
-      .collection('campaigns')
-      .doc(campaignId)
-      .collection('audioSessions')
-      .doc(sessionId);
-
-    // Validate session exists
-    const sessionSnap = await sessionRef.get();
-    if (!sessionSnap.exists) {
-      throw new HttpsError(
-        'not-found',
-        `Audio session ${sessionId} not found`
-      );
-    }
-
-    // The recording must be this session's own stored file — never read an
-    // arbitrary bucket path on behalf of the caller.
-    let recording: AudioRecording | null = null;
-    if (storagePath) {
-      const stored = sessionSnap.get('audioRecording') as AudioRecording | undefined;
+      // The recording must be this session's own stored file — never read an
+      // arbitrary bucket path on behalf of the caller.
+      const recording = session.audioRecording as AudioRecording | undefined;
       if (
         !storagePath.startsWith(sessionAudioPrefix(campaignId, sessionId)) ||
-        stored?.storagePath !== storagePath
+        recording?.storagePath !== storagePath
       ) {
         throw new HttpsError('invalid-argument', 'storagePath does not belong to this session');
       }
-      recording = stored;
-    }
 
-    await enqueueTranscription({
-      campaignId,
-      sessionId,
-      segments,
-      recording,
-      audioFileName,
-      userCorrections: userCorrections ?? null,
-    });
+      await enqueueTranscription({
+        campaignId,
+        sessionId,
+        recording,
+        audioFileName: audioFileName || recording.fileName,
+        userCorrections: userCorrections ?? null,
+      });
 
-    // Return immediately - frontend will monitor Firestore for updates
+      // Return immediately - frontend will monitor Firestore for updates
       return {
         success: true,
         message: 'Fast transcription started',
@@ -188,18 +110,18 @@ export const transcribeAudioFast = onCall(
 
 /**
  * Record the transcription metadata on the session and enqueue the
- * transcription task. Used by the callable (upload / retry / re-transcribe) and
- * by the audio processing task once the stored recording is ready.
+ * transcription task. Used by the callable (retry / re-transcribe) and by the
+ * audio processing task once the stored recording is ready.
  */
 export async function enqueueTranscription(params: {
   campaignId: string;
   sessionId: string;
-  segments: AudioSegmentRef[];
-  recording: AudioRecording | null;
+  recording: AudioRecording;
   audioFileName: string;
   userCorrections: string | null;
 }): Promise<void> {
-  const { campaignId, sessionId, segments, recording, audioFileName, userCorrections } = params;
+  const { campaignId, sessionId, recording, audioFileName, userCorrections } = params;
+  const db = getFirestore();
 
   // Update progress to transcribing (70-80% range)
   await ProgressTrackerService.updateProgress(
@@ -210,42 +132,32 @@ export async function enqueueTranscription(params: {
     'Fast transcription started...'
   );
 
-  // Fetch Kanka + voice-intro settings from campaign settings
-  const { kankaEnabled, voiceIntro, voiceIntroRoster } = await getCampaignTranscriptionSettings(campaignId);
+  // Kanka + voice-intro settings, read once here and handed to the task.
+  const { kankaEnabled, kankaCampaignId, voiceIntro, voiceIntroRoster } =
+    await getCampaignTranscriptionSettings(campaignId);
 
   // Store fast transcription metadata
-  await getFirestore()
-    .collection('campaigns').doc(campaignId)
-    .collection('audioSessions').doc(sessionId)
-    .update({
-      transcriptionFast: {
-        mode: 'fast',
-        enableKankaContext: kankaEnabled,
-        userCorrections,
-        source: recording ? 'storage' : 'fileUris',
-        storagePath: recording?.storagePath ?? null,
-        fileUri: segments[0]?.fileUri ?? null, // first segment — kept for backward compatibility
-        segmentCount: segments.length,
-        segments: segments.map((s) => ({
-          index: s.index,
-          fileUri: s.fileUri,
-          startSec: s.startSec ?? null,
-          endSec: s.endSec ?? null,
-          status: 'pending',
-        })),
-        audioFileName,
-        submittedAt: FieldValue.serverTimestamp(),
-        status: 'processing',
-      },
-    });
+  await sessionRef(db, campaignId, sessionId).update({
+    transcriptionFast: {
+      mode: 'fast',
+      enableKankaContext: kankaEnabled,
+      userCorrections,
+      source: 'storage',
+      storagePath: recording.storagePath,
+      segmentCount: 0,
+      audioFileName,
+      submittedAt: FieldValue.serverTimestamp(),
+      status: 'processing',
+    },
+  });
 
   const payload: TranscriptionTaskPayload = {
     campaignId,
     sessionId,
-    segments,
     recording,
     audioFileName,
     kankaEnabled,
+    kankaCampaignId: kankaCampaignId ?? null,
     voiceIntro: voiceIntro ?? null,
     voiceIntroRoster: voiceIntroRoster ?? null,
     userCorrections,
@@ -257,11 +169,12 @@ export async function enqueueTranscription(params: {
 interface TranscriptionTaskPayload {
   campaignId: string;
   sessionId: string;
-  segments: AudioSegmentRef[];
-  /** When set, segments are cut from this stored recording instead of `segments`. */
-  recording: AudioRecording | null;
+  /** The stored recording the segments are cut from. */
+  recording: AudioRecording;
   audioFileName: string;
   kankaEnabled: boolean;
+  /** Kanka campaign id from the campaign settings (saves the worker a campaign read). */
+  kankaCampaignId: string | null;
   voiceIntro: CampaignVoiceIntroSettings | null;
   voiceIntroRoster: string | null;
   userCorrections: string | null;
@@ -283,35 +196,13 @@ export const transcribeAudioFastWorker = onTaskDispatched<TranscriptionTaskPaylo
     retryConfig: { maxAttempts: 1 },
   },
   async (request) => {
-    const {
-      campaignId,
-      sessionId,
-      segments,
-      recording,
-      audioFileName,
-      kankaEnabled,
-      voiceIntro,
-      voiceIntroRoster,
-      userCorrections,
-    } = request.data;
-
-    await processTranscriptionAsync(
-      campaignId,
-      sessionId,
-      segments,
-      recording ?? undefined,
-      audioFileName,
-      kankaEnabled,
-      voiceIntro ?? undefined,
-      voiceIntroRoster ?? undefined,
-      userCorrections ?? undefined,
-      process.env.GOOGLE_AI_API_KEY ?? ''
-    );
+    await processTranscriptionAsync(request.data);
   }
 );
 
 interface CampaignTranscriptionSettings {
   kankaEnabled: boolean;
+  kankaCampaignId?: string;
   voiceIntro?: CampaignVoiceIntroSettings;
   /** Free-text speaking order of the voice intro, written by the campaign owner. */
   voiceIntroRoster?: string;
@@ -319,14 +210,12 @@ interface CampaignTranscriptionSettings {
 
 /**
  * Helper function to fetch the transcription-related campaign settings
- * (Kanka context toggle and voice-intro reference, ticket #68)
+ * (Kanka context toggle + Kanka campaign id, and voice-intro reference, ticket #68)
  */
 async function getCampaignTranscriptionSettings(
   campaignId: string
 ): Promise<CampaignTranscriptionSettings> {
-  const db = getFirestore();
-  const campaignRef = db.collection('campaigns').doc(campaignId);
-  const campaignSnap = await campaignRef.get();
+  const campaignSnap = await getFirestore().doc(`campaigns/${campaignId}`).get();
 
   if (!campaignSnap.exists) {
     logger.warn(`Campaign ${campaignId} not found, defaulting kankaEnabled to false`);
@@ -336,6 +225,7 @@ async function getCampaignTranscriptionSettings(
   const settings = campaignSnap.data()?.settings;
   return {
     kankaEnabled: settings?.kankaEnabled ?? false,
+    kankaCampaignId: kankaCampaignIdFrom(campaignSnap.data()),
     voiceIntro: settings?.voiceIntro?.storagePath ? settings.voiceIntro : undefined,
     voiceIntroRoster:
       typeof settings?.voiceIntroRoster === 'string' ? settings.voiceIntroRoster : undefined,
@@ -361,26 +251,22 @@ function buildVoiceIntroParts(
 
 /**
  * Run the transcription for all segments, store the raw story and trigger story generation.
- * Never throws: failures are written to the session in Firestore.
+ * Never throws: failures are written to the session in Firestore and reported
+ * to Sentry once, here.
  */
-async function processTranscriptionAsync(
-  campaignId: string,
-  sessionId: string,
-  inputSegments: AudioSegmentRef[],
-  recording: AudioRecording | undefined,
-  audioFileName: string,
-  enableKankaContext: boolean,
-  voiceIntro: CampaignVoiceIntroSettings | undefined,
-  voiceIntroRoster: string | undefined,
-  userCorrections: string | undefined,
-  googleAiKey: string
-): Promise<void> {
-  const db = getFirestore();
-  const sessionRef = db
-    .collection('campaigns')
-    .doc(campaignId)
-    .collection('audioSessions')
-    .doc(sessionId);
+async function processTranscriptionAsync(task: TranscriptionTaskPayload): Promise<void> {
+  const {
+    campaignId,
+    sessionId,
+    recording,
+    audioFileName,
+    kankaEnabled,
+    kankaCampaignId,
+    voiceIntro,
+    voiceIntroRoster,
+    userCorrections,
+  } = task;
+  const ref = sessionRef(getFirestore(), campaignId, sessionId);
 
   const startTime = Date.now();
 
@@ -391,31 +277,27 @@ async function processTranscriptionAsync(
     const transcriptionConfig = await getAiFeatureConfig('transcription');
     const segmentationConfig = await getTranscriptionSegmentationConfig();
     const model = transcriptionConfig.model;
-    const mimeType = recording?.mimeType || resolveMimeType(audioFileName);
+    const mimeType = recording.mimeType || resolveMimeType(audioFileName);
 
     logger.debug(`[Fast Transcription] Using model: ${model}`);
 
     // 2. Fetch Kanka context if enabled
-    const kankaContext = await fetchKankaContextForTranscription(
-      campaignId,
-      sessionId,
-      enableKankaContext
-    );
+    const kankaContext = kankaEnabled
+      ? await fetchKankaContext(campaignId, kankaCampaignId ?? undefined)
+      : undefined;
 
     // 3. Load the campaign's voice intro (ticket #68). Optional and non-fatal:
     //    without it the transcription behaves exactly as before.
-    const voiceIntroAudio = await loadVoiceIntroAudio(campaignId, voiceIntro);
+    const voiceIntroAudio = await loadVoiceIntroAudio(campaignId, voiceIntro ?? undefined);
     const hasVoiceIntro = voiceIntroAudio !== null;
-    const voiceIntroParts = buildVoiceIntroParts(voiceIntroAudio, voiceIntroRoster);
-    await sessionRef.update({ 'transcriptionFast.voiceIntroUsed': hasVoiceIntro });
+    const voiceIntroParts = buildVoiceIntroParts(voiceIntroAudio, voiceIntroRoster ?? undefined);
+    await ref.update({ 'transcriptionFast.voiceIntroUsed': hasVoiceIntro });
 
     // 4. Transcribe each segment with its own Gemini call, then join in order.
-    //    A single segment (the common/legacy case) uses the full-session prompt;
-    //    multiple segments each use a segment-aware prompt and are concatenated.
-    const googleAi = new GoogleGenAI({ apiKey: googleAiKey });
-    const segments = recording
-      ? await prepareStoredSegments(googleAi, campaignId, sessionId, recording, segmentationConfig)
-      : inputSegments;
+    //    A single segment uses the full-session prompt; multiple segments each
+    //    use a segment-aware prompt and are concatenated.
+    const googleAi = getGeminiClient();
+    const segments = await prepareStoredSegments(googleAi, campaignId, sessionId, recording, segmentationConfig);
     const fullPrompt = buildRawStoryPrompt(kankaContext, { hasVoiceIntro });
     // Used when a segment has to be retried WITHOUT the intro audio: the voice-intro
     // prompt would then point the model at a reference it never receives.
@@ -448,20 +330,17 @@ async function processTranscriptionAsync(
 
       let segmentText: string;
       try {
-        const segmentResult = await transcribeSegment(
-          googleAi,
-          model,
-          segmentPrompt,
-          segmentPromptWithoutIntro,
+        const segmentResult = await transcribeSegment(googleAi, {
+          prompt: segmentPrompt,
+          promptWithoutReference: segmentPromptWithoutIntro,
           mimeType,
-          seg.fileUri,
-          voiceIntroParts,
-          transcriptionConfig,
-          googleAiKey,
-          segmentationConfig.maxAttempts,
-          i + 1,
-          total
-        );
+          segment: seg,
+          referenceParts: voiceIntroParts,
+          config: transcriptionConfig,
+          maxAttempts: segmentationConfig.maxAttempts,
+          segmentNumber: i + 1,
+          totalSegments: total,
+        });
         segmentText = segmentResult.text;
         if (segmentResult.voiceIntroDropped) {
           voiceIntroFallbackSegments.push(i + 1);
@@ -516,7 +395,7 @@ async function processTranscriptionAsync(
     });
 
     if (voiceIntroFallbackSegments.length > 0) {
-      await sessionRef.update({
+      await ref.update({
         'transcriptionFast.voiceIntroFallbackSegments': voiceIntroFallbackSegments.sort((a, b) => a - b),
       });
     }
@@ -541,7 +420,7 @@ async function processTranscriptionAsync(
     );
 
     // 6. Update Firestore with raw story
-    await sessionRef.update({
+    await ref.update({
       rawStory,
       transcriptionCompletedAt: FieldValue.serverTimestamp(),
       'transcriptionFast.status': 'completed',
@@ -567,27 +446,27 @@ async function processTranscriptionAsync(
     await enqueueWorkerTask(TASK_WORKERS.story, {
       campaignId,
       sessionId,
-      enableKankaContext: enableKankaContext,
+      enableKankaContext: kankaEnabled,
       userCorrections: userCorrections ?? null,
     });
 
     logger.debug(`[Fast Transcription] Complete for session ${sessionId}`);
   } catch (error: unknown) {
-    logger.error('[Fast Transcription] Processing error:', error);
-
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const err = error instanceof Error ? error : new Error(String(error));
+    // The single Sentry event for this failure (markFailed only warns).
+    captureFunctionError('transcribeAudioFastWorker', err, { campaignId, sessionId });
 
     // Update session with failure
     await ProgressTrackerService.markFailed(
       campaignId,
       sessionId,
       'transcribing',
-      errorMessage
+      err.message
     );
 
-    await sessionRef.update({
+    await ref.update({
       'transcriptionFast.status': 'failed',
-      'transcriptionFast.error': errorMessage,
+      'transcriptionFast.error': err.message,
       'transcriptionFast.failedAt': FieldValue.serverTimestamp(),
     });
   }
@@ -595,7 +474,7 @@ async function processTranscriptionAsync(
 
 /**
  * Cut the stored recording into segments (using the current segmentation
- * settings), upload them to Gemini and record the resulting fileUris on the session.
+ * settings), upload them to Gemini and record the segment count on the session.
  */
 async function prepareStoredSegments(
   googleAi: GoogleGenAI,
@@ -603,7 +482,7 @@ async function prepareStoredSegments(
   sessionId: string,
   recording: AudioRecording,
   segmentationConfig: Awaited<ReturnType<typeof getTranscriptionSegmentationConfig>>
-): Promise<AudioSegmentRef[]> {
+): Promise<PreparedSegment[]> {
   await ProgressTrackerService.updateProgress(
     campaignId, sessionId, 'transcribing', 70, 'Preparing stored audio...'
   );
@@ -618,20 +497,9 @@ async function prepareStoredSegments(
     )
   );
 
-  await getFirestore()
-    .collection('campaigns').doc(campaignId)
-    .collection('audioSessions').doc(sessionId)
-    .update({
-      'transcriptionFast.fileUri': segments[0].fileUri,
-      'transcriptionFast.segmentCount': segments.length,
-      'transcriptionFast.segments': segments.map((s) => ({
-        index: s.index,
-        fileUri: s.fileUri,
-        startSec: s.startSec,
-        endSec: s.endSec,
-        status: 'pending',
-      })),
-    });
+  await sessionRef(getFirestore(), campaignId, sessionId).update({
+    'transcriptionFast.segmentCount': segments.length,
+  });
 
   return segments;
 }
@@ -671,6 +539,19 @@ interface SegmentTranscription {
   voiceIntroDropped: boolean;
 }
 
+interface SegmentRequest {
+  prompt: string;
+  /** Prompt for the fallback attempt without `referenceParts`. */
+  promptWithoutReference: string;
+  mimeType: string;
+  segment: PreparedSegment;
+  referenceParts: Part[];
+  config: AIFeatureConfig;
+  maxAttempts: number;
+  segmentNumber: number;
+  totalSegments: number;
+}
+
 /**
  * Transcribe one audio segment via Gemini. `referenceParts` (e.g. the campaign
  * voice intro) are sent before `prompt`. If every attempt WITH reference parts
@@ -678,123 +559,65 @@ interface SegmentTranscription {
  * them, using `promptWithoutReference`, so a bad voice intro can never sink the
  * session (ticket #68) and the model is never told about a reference it does not get.
  */
-async function transcribeSegment(
-  googleAi: GoogleGenAI,
-  model: string,
-  prompt: string,
-  promptWithoutReference: string,
-  mimeType: string,
-  fileUri: string,
-  referenceParts: Part[],
-  config: AIFeatureConfig,
-  apiKey: string,
-  maxAttempts: number,
-  segmentNumber: number,
-  totalSegments: number
-): Promise<SegmentTranscription> {
+async function transcribeSegment(googleAi: GoogleGenAI, req: SegmentRequest): Promise<SegmentTranscription> {
   try {
-    const text = await transcribeSegmentWithRetries(
-      googleAi, model, prompt, mimeType, fileUri, referenceParts,
-      config, apiKey, maxAttempts, segmentNumber, totalSegments
-    );
+    const text = await transcribeSegmentWithRetries(googleAi, req);
     return { text, voiceIntroDropped: false };
   } catch (error) {
-    if (referenceParts.length === 0) {
+    if (req.referenceParts.length === 0) {
       throw error;
     }
     logger.warn(
-      `[Fast Transcription] Segment ${segmentNumber}/${totalSegments} failed with voice intro, retrying once without it`,
+      `[Fast Transcription] Segment ${req.segmentNumber}/${req.totalSegments} failed with voice intro, retrying once without it`,
       error
     );
     captureException(error instanceof Error ? error : new Error(String(error)), {
       feature: 'voiceIntro',
-      segment: `${segmentNumber}/${totalSegments}`,
+      segment: `${req.segmentNumber}/${req.totalSegments}`,
     });
-    const text = await transcribeSegmentWithRetries(
-      googleAi, model, promptWithoutReference, mimeType, fileUri, [],
-      config, apiKey, 1, segmentNumber, totalSegments
-    );
+    const text = await transcribeSegmentWithRetries(googleAi, {
+      ...req,
+      prompt: req.promptWithoutReference,
+      referenceParts: [],
+      maxAttempts: 1,
+    });
     return { text, voiceIntroDropped: true };
   }
 }
 
 /**
  * Transcribe one audio segment via Gemini, with a small retry budget.
- * Waits for the Gemini file to become ACTIVE, logs usage/truncation, and
- * returns the raw response text. Throws if all attempts fail.
+ * Waits for the Gemini file to become ACTIVE and returns the raw response
+ * text (usage/truncation are logged by the shared client). Throws if all attempts fail.
  */
-async function transcribeSegmentWithRetries(
-  googleAi: GoogleGenAI,
-  model: string,
-  prompt: string,
-  mimeType: string,
-  fileUri: string,
-  referenceParts: Part[],
-  config: AIFeatureConfig,
-  apiKey: string,
-  maxAttempts: number,
-  segmentNumber: number,
-  totalSegments: number
-): Promise<string> {
+async function transcribeSegmentWithRetries(googleAi: GoogleGenAI, req: SegmentRequest): Promise<string> {
+  const { segment, segmentNumber, totalSegments } = req;
   let lastError: unknown;
-  const attempts = Math.max(1, maxAttempts);
+  const attempts = Math.max(1, req.maxAttempts);
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
       // Gemini Files can take a short time to become ACTIVE after upload finalize.
-      await waitForGeminiFileToBecomeActive(fileUri, apiKey);
+      await waitForGeminiFileToBecomeActive(googleAi, segment.fileName);
 
-      const result = await googleAi.models.generateContent({
-        model,
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              ...referenceParts,
-              { text: prompt },
-              { fileData: { mimeType, fileUri } },
-            ],
-          },
-        ],
-        config: {
-          ...buildGenerationParams(config),
+      return await generateText(
+        {
+          config: req.config,
+          label: '[Fast Transcription]',
+          logContext: { segment: `${segmentNumber}/${totalSegments}` },
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                ...req.referenceParts,
+                { text: req.prompt },
+                { fileData: { mimeType: req.mimeType, fileUri: segment.fileUri } },
+              ],
+            },
+          ],
         },
-      });
-
-      if (!result.text) {
-        // Surface WHY Gemini returned nothing (safety block, recitation, other) — without
-        // this an empty response is undiagnosable from the logs.
-        const candidate = result.candidates?.[0];
-        throw new Error(
-          'No response text from Gemini API ' +
-            JSON.stringify({
-              finishReason: candidate?.finishReason,
-              finishMessage: candidate?.finishMessage,
-              blockReason: result.promptFeedback?.blockReason,
-              blockReasonMessage: result.promptFeedback?.blockReasonMessage,
-              safetyRatings: candidate?.safetyRatings?.filter((r) => r.blocked),
-            })
-        );
-      }
-
-      const usage = result.usageMetadata;
-      const finishReason = result.candidates?.[0]?.finishReason;
-      logger.info('[Fast Transcription] Gemini usage metadata', {
-        segment: `${segmentNumber}/${totalSegments}`,
-        promptTokenCount: usage?.promptTokenCount,
-        candidatesTokenCount: usage?.candidatesTokenCount,
-        totalTokenCount: usage?.totalTokenCount,
-        configuredMaxOutputTokens: config.maxOutputTokens,
-        finishReason,
-      });
-
-      if (finishReason === 'MAX_TOKENS') {
-        logger.warn(
-          `[Fast Transcription] Segment ${segmentNumber}/${totalSegments} hit maxOutputTokens — output may be truncated.`
-        );
-      }
-
-      return result.text;
+        googleAi
+      );
     } catch (error) {
       lastError = error;
       logger.warn(
@@ -832,38 +655,22 @@ function resolveMimeType(audioFileName: string): string {
   }
 }
 
-async function waitForGeminiFileToBecomeActive(
-  fileUri: string,
-  apiKey: string
-): Promise<void> {
+/**
+ * Poll the Gemini Files API (via the SDK, so the API key never ends up in a
+ * URL) until the uploaded segment is ACTIVE.
+ */
+async function waitForGeminiFileToBecomeActive(googleAi: GoogleGenAI, fileName: string): Promise<void> {
   const maxAttempts = 15;
   const delayMs = 2000;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const response = await fetch(`${fileUri}?key=${apiKey}`, {
-      method: 'GET',
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(
-        `Failed to read Gemini file state (${response.status}): ${errorText}`
-      );
-    }
-
-    const payload = (await response.json()) as GeminiFileStateResponse;
-    const rawState = payload.state;
-    const state =
-      typeof rawState === 'string'
-        ? rawState
-        : rawState && typeof rawState === 'object'
-          ? rawState.name
-          : undefined;
+    const file = await googleAi.files.get({ name: fileName });
+    const state = file.state as string | undefined;
 
     logger.debug('[Fast Transcription] Gemini file state check', {
       attempt,
       maxAttempts,
-      fileUri,
+      fileName,
       state,
     });
 
@@ -873,7 +680,7 @@ async function waitForGeminiFileToBecomeActive(
 
     if (state === 'FAILED') {
       throw new Error(
-        `Gemini file processing failed before transcription: ${JSON.stringify(payload)}`
+        `Gemini file processing failed before transcription: ${JSON.stringify(file.error ?? {})}`
       );
     }
 
@@ -882,9 +689,7 @@ async function waitForGeminiFileToBecomeActive(
     }
   }
 
-  throw new Error(
-    `Gemini file did not become ACTIVE in time: ${fileUri}`
-  );
+  throw new Error(`Gemini file did not become ACTIVE in time: ${fileName}`);
 }
 
 function sleep(ms: number): Promise<void> {

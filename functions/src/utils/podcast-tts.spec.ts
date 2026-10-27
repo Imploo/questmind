@@ -27,8 +27,8 @@ import {
   generatePodcastAudioBuffer,
   chunkSegmentsByChars,
   buildTurns,
-  type PodcastSegment,
 } from './podcast-tts';
+import type { PodcastSegment } from '../types/audio-session.types';
 
 function voiceConfig(overrides: Partial<PodcastVoiceSettings> = {}): PodcastVoiceSettings {
   return {

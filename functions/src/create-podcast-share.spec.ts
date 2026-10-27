@@ -1,11 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// eslint-friendly stand-in for `Function` in handler mocks
+type CallableFn = (...args: unknown[]) => Promise<unknown>;
+
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
 const docGet = vi.fn();
 const existingGet = vi.fn();
 const shareCreate = vi.fn();
-const shareDoc = vi.fn((_id: string) => ({ create: shareCreate }));
+const shareDoc = vi.fn<(id: string) => { create: typeof shareCreate }>(() => ({ create: shareCreate }));
 
 const mockDb = {
   doc: vi.fn((path: string) => ({ get: () => docGet(path) })),
@@ -18,16 +21,16 @@ const mockDb = {
 vi.mock('firebase-admin/firestore', () => ({ getFirestore: () => mockDb }));
 vi.mock('./utils/emulator-helpers', () => ({ ensureAuthForTesting: vi.fn() }));
 vi.mock('./utils/sentry-error-handler', () => ({
-  wrapCallable: (_name: string, handler: Function) => handler,
+  wrapCallable: (_name: string, handler: CallableFn) => handler,
 }));
 vi.mock('./index', () => ({ SHARED_CORS: [] }));
 
-let handler: Function;
+let handler: CallableFn;
 vi.mock('firebase-functions/v2/https', async () => {
   const actual = await vi.importActual<typeof import('firebase-functions/v2/https')>('firebase-functions/v2/https');
   return {
     ...actual,
-    onCall: (_config: unknown, fn: Function) => {
+    onCall: (_config: unknown, fn: CallableFn) => {
       handler = fn;
       return fn;
     },
@@ -58,7 +61,7 @@ describe('createPodcastShare', () => {
   });
 
   it('creates a share for a session podcast with a random id', async () => {
-    const result = await handler(request({ campaignId: 'c1', sessionId: 's1', podcastVersion: 2 }));
+    const result = (await handler(request({ campaignId: 'c1', sessionId: 's1', podcastVersion: 2 }))) as { shareId: string };
 
     expect(result.shareId).toMatch(/^[\w-]{22}$/);
     expect(shareDoc).toHaveBeenCalledWith(result.shareId);
@@ -86,7 +89,7 @@ describe('createPodcastShare', () => {
   it('returns the existing share instead of creating a new one', async () => {
     existingGet.mockResolvedValue({ empty: false, docs: [{ id: 'existing-share' }] });
 
-    const result = await handler(request({ campaignId: 'c1', sessionId: 's1', podcastVersion: 2 }));
+    const result = (await handler(request({ campaignId: 'c1', sessionId: 's1', podcastVersion: 2 }))) as { shareId: string };
 
     expect(result).toEqual({ shareId: 'existing-share' });
     expect(shareCreate).not.toHaveBeenCalled();

@@ -1,12 +1,11 @@
-import { ChangeDetectionStrategy, Component, signal, inject, effect } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { AuthService } from '../auth/auth.service';
-import { PodcastAudioService } from './services/podcast-audio.service';
-import { PodcastVersion, AudioSessionRecord } from './services/audio-session.models';
+import { PodcastVersion } from './services/audio-session.models';
 import { CampaignContextService } from '../campaign/campaign-context.service';
 import { CampaignSelectorComponent } from '../campaign/campaign-selector.component';
-import { FormattingService } from '../shared/formatting.service';
 import { AudioSessionStateService } from './services/audio-session-state.service';
-import { PodcastShareButtonComponent } from './podcast-share-button.component';
+import { PodcastVersionItemComponent } from '../shared/components/podcast-version-item.component';
+import { toMillis } from '../shared/utils/date.utils';
 
 interface SessionWithPodcasts {
   sessionId: string;
@@ -17,7 +16,7 @@ interface SessionWithPodcasts {
 
 @Component({
   selector: 'app-podcast-library',
-  imports: [CampaignSelectorComponent, PodcastShareButtonComponent],
+  imports: [CampaignSelectorComponent, PodcastVersionItemComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="max-w-5xl mx-auto">
@@ -40,14 +39,7 @@ interface SessionWithPodcasts {
         </div>
       }
 
-      @if (loading() && campaignId()) {
-        <div class="text-center py-12">
-          <div class="animate-spin h-12 w-12 border-4 border-purple-600 border-t-transparent rounded-full mx-auto"></div>
-          <p class="mt-4 text-gray-600 m-0">Podcasts laden...</p>
-        </div>
-      }
-
-      @if (!loading() && campaignId() && sessions().length === 0) {
+      @if (campaignId() && sessions().length === 0) {
         <div class="text-center py-12 bg-gray-50 rounded-lg">
           <div class="text-6xl mb-4">🎙️</div>
           <p class="text-gray-600 m-0">Nog geen podcasts gegenereerd.</p>
@@ -57,7 +49,7 @@ interface SessionWithPodcasts {
         </div>
       }
 
-      @if (!loading() && campaignId() && sessions().length > 0) {
+      @if (campaignId() && sessions().length > 0) {
         <div class="space-y-6">
           @for (session of sessions(); track session.sessionId) {
             <div class="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
@@ -73,87 +65,22 @@ interface SessionWithPodcasts {
 
               <div class="space-y-3">
                 @for (podcast of session.podcasts; track podcast.version) {
-                  <div class="flex items-center gap-4 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg border border-purple-100">
-                    <div class="flex-shrink-0">
-                      <span class="inline-flex items-center justify-center w-10 h-10 bg-purple-600 text-white rounded-full font-semibold text-sm">
-                        v{{ podcast.version }}
-                      </span>
-                    </div>
-
-                    <div class="flex-1 min-w-0">
-                      <div class="flex items-center gap-2">
-                        <span class="text-sm font-medium text-gray-900">
-                          Podcast versie {{ podcast.version }}
-                        </span>
-                        @if (podcast.status === 'pending' || podcast.status === 'generating_audio' || podcast.status === 'uploading') {
-                          <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">{{ podcast.progressMessage || 'Generating...' }}</span>
-                        } @else if (podcast.status === 'failed') {
-                          <span class="text-xs bg-red-100 text-red-700 px-2 py-1 rounded">Failed</span>
-                        } @else if (podcast.status === 'completed') {
-                          <span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
-                            {{ podcast.audioUrl ? 'Audio Ready' : 'Audio Pending' }}
-                          </span>
-                        }
-                      </div>
-                      <div class="flex items-center gap-3 mt-1 text-xs text-gray-500">
-                        <span>{{ formatting.formatDuration(podcast.duration) }}</span>
-                        @if (podcast.fileSize) {
-                          <span>•</span>
-                          <span>{{ formatting.formatFileSize(podcast.fileSize) }}</span>
-                        }
-                        <span>•</span>
-                        <span>{{ formatting.formatDate(podcast.createdAt) }}</span>
-                      </div>
-                    </div>
-
-                    <div class="flex items-center gap-2">
-                      <button
-                        (click)="downloadPodcast(podcast, session.sessionTitle)"
-                        [disabled]="!podcast.audioUrl"
-                        class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
-                        title="Podcast downloaden"
-                      >
-                        ⬇️ Download
-                      </button>
-                      <app-podcast-share-button
-                        [target]="{ campaignId: campaignId() ?? '', sessionId: session.sessionId, podcastVersion: podcast.version }"
-                        [disabled]="!podcast.audioUrl || podcast.status !== 'completed'"
-                      />
-                    </div>
-                  </div>
-
-                  <!-- Native HTML5 Audio Player -->
-                  @if (podcast.audioUrl) {
-                    <div class="mt-4 bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-4 border border-purple-200">
-                      <audio
-                        controls
-                        [src]="podcast.audioUrl"
-                        class="w-full"
-                        preload="metadata"
-                      >
-                        Je browser ondersteunt het audio element niet.
-                      </audio>
-                    </div>
-                  }
+                  <app-podcast-version-item
+                    [podcast]="podcast"
+                    [shareTarget]="{ campaignId: campaignId() ?? '', sessionId: session.sessionId, podcastVersion: podcast.version }"
+                    [downloadName]="session.sessionTitle"
+                  />
                 }
               </div>
             </div>
           }
         </div>
-      }
 
-      @if (!loading() && campaignId() && sessions().length > 0) {
         <div class="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
           <p class="text-sm text-blue-700 m-0">
-            <strong>💡 Info:</strong> Podcasts worden opgeslagen als MP3 en gebruiken Gemini 2.5 Pro TTS voor hoogwaardige
-            Nederlandse stemmen met natuurlijke intonatie.
+            <strong>💡 Info:</strong> Podcasts worden opgeslagen als MP3 en gebruiken AI-stemmen voor
+            Nederlandse audio met natuurlijke intonatie.
           </p>
-        </div>
-      }
-
-      @if (errorMessage()) {
-        <div class="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-          <p class="text-sm text-red-700 m-0">{{ errorMessage() }}</p>
         </div>
       }
     </div>
@@ -161,72 +88,23 @@ interface SessionWithPodcasts {
 })
 export class PodcastLibraryComponent {
   private readonly authService = inject(AuthService);
-  private readonly podcastAudioService = inject(PodcastAudioService);
   private readonly campaignContext = inject(CampaignContextService);
   private readonly sessionStateService = inject(AudioSessionStateService);
-  public readonly formatting = inject(FormattingService);
 
-  loading = signal(false);
-  sessions = signal<SessionWithPodcasts[]>([]);
-  errorMessage = signal<string>('');
-  campaignId = this.campaignContext.selectedCampaignId;
+  readonly campaignId = this.campaignContext.selectedCampaignId;
 
-  constructor() {
-    // Use AudioSessionStateService's real-time data to build podcast list
-    effect(() => {
-      const campaignId = this.campaignContext.selectedCampaignId();
-      if (!campaignId || !this.authService.currentUser()?.uid) {
-        this.sessions.set([]);
-        return;
-      }
+  /** Sessions with at least one podcast, newest play date first. */
+  readonly sessions = computed<SessionWithPodcasts[]>(() => {
+    if (!this.campaignId() || !this.authService.currentUser()?.uid) return [];
 
-      const allSessions = this.sessionStateService.sessions() as AudioSessionRecord[];
-      this.buildPodcastList(allSessions);
-    });
-  }
-
-  private buildPodcastList(allSessions: AudioSessionRecord[]): void {
-    const sessions: SessionWithPodcasts[] = [];
-
-    for (const session of allSessions) {
-      const podcasts = session.podcasts;
-      if (podcasts && Array.isArray(podcasts) && podcasts.length > 0) {
-        sessions.push({
-          sessionId: session.id,
-          sessionTitle: session.title || 'Untitled Session',
-          sessionDate: session.sessionDate || 'Unknown',
-          podcasts: podcasts.map((p) => {
-            const toDate = (val: unknown): Date =>
-              val && typeof val === 'object' && 'toDate' in val
-                ? (val as { toDate: () => Date }).toDate()
-                : new Date(val as string);
-            return {
-              ...p,
-              createdAt: toDate(p.createdAt),
-              scriptGeneratedAt: toDate(p.scriptGeneratedAt),
-              audioGeneratedAt: p.audioGeneratedAt ? toDate(p.audioGeneratedAt) : undefined
-            };
-          })
-        });
-      }
-    }
-
-    // Sort by date (most recent first)
-    sessions.sort((a, b) => {
-      const dateA = new Date(a.sessionDate).getTime();
-      const dateB = new Date(b.sessionDate).getTime();
-      return dateB - dateA;
-    });
-
-    this.sessions.set(sessions);
-  }
-
-  downloadPodcast(podcast: PodcastVersion, sessionTitle: string): void {
-    if (!podcast.audioUrl) {
-      this.errorMessage.set('Audio not available for download.');
-      return;
-    }
-    const filename = `${sessionTitle}-v${podcast.version}.mp3`;
-    this.podcastAudioService.downloadPodcastMP3(podcast.audioUrl, filename);
-  }
+    return this.sessionStateService.sessions()
+      .filter(session => Array.isArray(session.podcasts) && session.podcasts.length > 0)
+      .map(session => ({
+        sessionId: session.id,
+        sessionTitle: session.title || 'Untitled Session',
+        sessionDate: session.sessionDate || 'Unknown',
+        podcasts: session.podcasts ?? [],
+      }))
+      .sort((a, b) => toMillis(b.sessionDate) - toMillis(a.sessionDate));
+  });
 }

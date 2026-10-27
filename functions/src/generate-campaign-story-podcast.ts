@@ -1,19 +1,14 @@
-import * as logger from './utils/logger';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { getFirestore } from 'firebase-admin/firestore';
-import { getStorage } from 'firebase-admin/storage';
-import { SHARED_CORS } from './index';
+import { SHARED_CORS } from './config/cors';
 import { ensureAuthForTesting } from './utils/emulator-helpers';
-import { wrapCallable, captureFunctionError } from './utils/sentry-error-handler';
-import { getAiFeatureConfig, getPodcastVoiceConfig } from './utils/ai-settings';
-import { generatePodcastAudioBuffer } from './utils/podcast-tts';
-import { PodcastEntry } from './types/audio-session.types';
-import { generatePodcastScript, upsertPodcast, uploadPodcastMp3 } from './podcast/podcast-pipeline';
-import {
-  campaignStoryDocPath,
-  campaignStoryPodcastStoragePath,
-  isActiveGeneration,
-} from './campaign-story/campaign-story-paths';
+import { wrapCallable } from './utils/sentry-error-handler';
+import { assertCampaignOwner, assertValidId, requireAuthUid } from './utils/access';
+import { getGeminiApiKey } from './utils/gemini-client';
+import { createDocPodcastEntryStore, runPodcastGeneration } from './podcast/run-podcast-generation';
+import { campaignStoryDocPath, campaignStoryPodcastStoragePath } from './campaign-story/campaign-story-paths';
+import { CAMPAIGN_STORY_PODCAST_TIMEOUT_SECONDS } from './utils/generation-timeouts';
+import { toDate } from './utils/timestamp';
 
 interface CampaignStoryPodcastRequest {
   campaignId: string;
@@ -29,130 +24,50 @@ export const generateCampaignStoryPodcast = onCall(
   {
     cors: SHARED_CORS,
     secrets: ['GOOGLE_AI_API_KEY'],
+    timeoutSeconds: CAMPAIGN_STORY_PODCAST_TIMEOUT_SECONDS,
   },
   wrapCallable<CampaignStoryPodcastRequest, unknown>('generateCampaignStoryPodcast', async (request) => {
     ensureAuthForTesting(request);
+    const uid = requireAuthUid(request);
 
-    const { auth, data } = request;
-    if (!auth?.uid) {
-      throw new HttpsError('unauthenticated', 'User must be authenticated.');
-    }
-
-    const { campaignId, storyVersion } = data ?? {};
-    if (!campaignId || typeof campaignId !== 'string') {
-      throw new HttpsError('invalid-argument', 'Missing campaignId.');
-    }
-    if (!storyVersion || typeof storyVersion !== 'number') {
+    const campaignId = assertValidId(request.data?.campaignId, 'campaignId');
+    const { storyVersion } = request.data;
+    if (!storyVersion || typeof storyVersion !== 'number' || !Number.isInteger(storyVersion)) {
       throw new HttpsError('invalid-argument', 'Missing storyVersion.');
     }
 
     const db = getFirestore();
-    const campaignSnap = await db.doc(`campaigns/${campaignId}`).get();
-    if (!campaignSnap.exists) {
-      throw new HttpsError('not-found', 'Campaign not found.');
-    }
-    if (campaignSnap.data()?.ownerId !== auth.uid) {
-      throw new HttpsError('permission-denied', 'Only the campaign owner can generate campaign story podcasts.');
-    }
+    await assertCampaignOwner(db, campaignId, uid);
+    getGeminiApiKey();
 
-    const storyRef = db.doc(campaignStoryDocPath(campaignId, storyVersion));
-
-    // Allocate the podcast version atomically and register a pending entry
-    const { podcastVersion, title, content, createdAt } = await db.runTransaction(async (tx) => {
-      const snap = await tx.get(storyRef);
-      if (!snap.exists) {
-        throw new HttpsError('not-found', 'Campaign story version not found.');
-      }
-      const story = snap.data() ?? {};
-      if (story.status !== 'completed' || !story.content) {
-        throw new HttpsError('failed-precondition', 'Deze versie van het verhaal is nog niet klaar.');
-      }
-      const podcasts: PodcastEntry[] = Array.isArray(story.podcasts) ? story.podcasts : [];
-      const inProgress = podcasts.some(p =>
-        (p.status === 'pending' || p.status === 'script_complete') && isActiveGeneration(p.createdAt)
-      );
-      if (inProgress) {
-        throw new HttpsError('failed-precondition', 'Er wordt al een podcast gegenereerd voor deze versie.');
-      }
-      const nextVersion = (story.latestPodcastVersion ?? podcasts.length) + 1;
-      tx.update(storyRef, {
-        podcasts: upsertPodcast(podcasts, {
-          version: nextVersion,
-          createdAt: new Date(),
-          storyVersion,
-          status: 'pending',
-          progress: 0,
-          progressMessage: 'Podcast generatie starten...',
-        }),
-        latestPodcastVersion: nextVersion,
-      });
-      return {
-        podcastVersion: nextVersion,
-        title: String(story.title ?? 'Het verhaal tot nu toe'),
-        content: String(story.content),
-        createdAt: story.createdAt?.toDate ? (story.createdAt.toDate() as Date) : undefined,
-      };
+    const store = createDocPodcastEntryStore(db, db.doc(campaignStoryDocPath(campaignId, storyVersion)), {
+      storyVersion: () => storyVersion,
+      readSource: (story) => {
+        if (story.status !== 'completed' || !story.content) {
+          throw new HttpsError('failed-precondition', 'Deze versie van het verhaal is nog niet klaar.');
+        }
+        return {
+          kind: 'campaign',
+          title: String(story.title ?? 'Het verhaal tot nu toe'),
+          date: toDate(story.createdAt)?.toISOString().slice(0, 10),
+          body: String(story.content),
+        };
+      },
     });
 
-    // Read-modify-write in a transaction so concurrent updates to other entries aren't lost
-    const updateEntry = (patch: Partial<PodcastEntry>) => db.runTransaction(async (tx) => {
-      const snap = await tx.get(storyRef);
-      const podcasts: PodcastEntry[] = Array.isArray(snap.data()?.podcasts) ? snap.data()?.podcasts : [];
-      tx.update(storyRef, { podcasts: upsertPodcast(podcasts, { version: podcastVersion, ...patch }) });
-    });
-
-    try {
-      const voiceConfig = await getPodcastVoiceConfig();
-      const scriptConfig = await getAiFeatureConfig('podcastScript');
-
-      await updateEntry({ progress: 10, progressMessage: 'Podcast script schrijven...' });
-      const script = await generatePodcastScript(
-        { kind: 'campaign', title, date: createdAt?.toISOString().slice(0, 10), body: content },
-        scriptConfig,
-        voiceConfig.maxCharacters
-      );
-      await updateEntry({
-        status: 'script_complete',
-        script,
-        scriptGeneratedAt: new Date(),
-        duration: script.estimatedDuration,
-        modelUsed: scriptConfig.model,
-        progress: 50,
-        progressMessage: 'Audio genereren...',
-      });
-
-      const audioBuffer = await generatePodcastAudioBuffer(
-        script.segments,
-        voiceConfig,
-        (progress, message) => updateEntry({ progress, progressMessage: message })
-      );
-
-      await updateEntry({ progress: 85, progressMessage: 'Podcast opslaan...' });
-      const storagePath = campaignStoryPodcastStoragePath(campaignId, storyVersion, podcastVersion);
-      const { audioUrl, fileSize } = await uploadPodcastMp3(getStorage().bucket(), storagePath, audioBuffer, {
+    const { version } = await runPodcastGeneration({
+      store,
+      functionName: 'generateCampaignStoryPodcast',
+      context: { campaignId, storyVersion },
+      storagePath: (v) => campaignStoryPodcastStoragePath(campaignId, storyVersion, v),
+      uploadMetadata: (v) => ({
         campaignId,
         storyVersion: storyVersion.toString(),
-        version: podcastVersion.toString(),
-        userId: auth.uid,
-      });
+        version: v.toString(),
+        userId: uid,
+      }),
+    });
 
-      await updateEntry({
-        status: 'completed',
-        audioUrl,
-        fileSize,
-        audioGeneratedAt: new Date(),
-        progress: 100,
-        progressMessage: 'Klaar',
-        error: null,
-      });
-      logger.debug(`Campaign story podcast completed: ${storagePath}`);
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      captureFunctionError('generateCampaignStoryPodcast', err, { campaignId, storyVersion, podcastVersion });
-      await updateEntry({ status: 'failed', error: err.message, progressMessage: 'Mislukt' });
-      // Don't throw — the failure is persisted on the PodcastEntry
-    }
-
-    return { success: true, version: podcastVersion };
+    return { success: true, version };
   })
 );

@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// eslint-friendly stand-in for `Function` in handler mocks
+type CallableFn = (...args: unknown[]) => Promise<unknown>;
+
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
 const campaignGet = vi.fn();
@@ -31,18 +34,17 @@ vi.mock('./utils/ai-settings', () => ({
 }));
 vi.mock('./utils/emulator-helpers', () => ({ ensureAuthForTesting: vi.fn() }));
 vi.mock('./utils/sentry-error-handler', () => ({
-  wrapCallable: (_name: string, handler: Function) => handler,
+  wrapCallable: (_name: string, handler: CallableFn) => handler,
   captureFunctionError: vi.fn(),
 }));
-vi.mock('./index', () => ({ SHARED_CORS: [] }));
 vi.mock('./utils/logger', () => ({ error: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn() }));
 
-let handler: Function;
+let handler: CallableFn;
 vi.mock('firebase-functions/v2/https', async () => {
   const actual = await vi.importActual<typeof import('firebase-functions/v2/https')>('firebase-functions/v2/https');
   return {
     ...actual,
-    onCall: (_config: unknown, fn: Function) => {
+    onCall: (_config: unknown, fn: CallableFn) => {
       handler = fn;
       return fn;
     },
@@ -60,6 +62,7 @@ const storySnap = (data: Record<string, unknown>) => ({ exists: true, data: () =
 describe('generateCampaignStoryPodcast', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    process.env.GOOGLE_AI_API_KEY = 'test-key';
     await import('./generate-campaign-story-podcast');
     campaignGet.mockResolvedValue({ exists: true, data: () => ({ ownerId: 'owner-1' }) });
     txGet.mockResolvedValue(storySnap({ status: 'completed', title: 'De val', content: 'Tekst', podcasts: [] }));
@@ -76,6 +79,18 @@ describe('generateCampaignStoryPodcast', () => {
   it('rejects callers that are not the campaign owner', async () => {
     campaignGet.mockResolvedValue({ exists: true, data: () => ({ ownerId: 'someone-else' }) });
     await expect(handler(request())).rejects.toThrow(expect.objectContaining({ code: 'permission-denied' }));
+  });
+
+  it('rejects members who are not the owner, and unauthenticated callers', async () => {
+    campaignGet.mockResolvedValue({ exists: true, data: () => ({ ownerId: 'someone-else', members: ['owner-1'] }) });
+    await expect(handler(request())).rejects.toThrow(expect.objectContaining({ code: 'permission-denied' }));
+    await expect(handler(request({ auth: null }))).rejects.toThrow(expect.objectContaining({ code: 'unauthenticated' }));
+  });
+
+  it('rejects a campaign id with a slash', async () => {
+    await expect(handler(request({ data: { campaignId: 'a/b', storyVersion: 2 } }))).rejects.toThrow(
+      expect.objectContaining({ code: 'invalid-argument' })
+    );
   });
 
   it('rejects a story version that is not completed', async () => {

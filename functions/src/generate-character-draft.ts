@@ -1,12 +1,13 @@
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
-import { GoogleGenAI } from '@google/genai';
 import { DndCharacterSchema, DndCharacter } from './schemas/dnd-character.schema';
 import { CHARACTER_JSON_GENERATOR_PROMPT } from './prompts/character-json-generator.prompt';
 import { wrapCallable } from './utils/sentry-error-handler';
 import { getAiFeatureConfig } from './utils/ai-settings';
-import { buildGenerationParams } from './utils/gemini-config';
-import { SHARED_CORS } from './index';
+import { GeminiEmptyResponseError, generateJson, getGeminiClient } from './utils/gemini-client';
+import { SHARED_CORS } from './config/cors';
+import { ensureAuthForTesting } from './utils/emulator-helpers';
+import { assertCharacterOwner, requireAuthUid } from './utils/access';
 import * as logger from './utils/logger';
 import { ChatHistoryMessage } from './types/chat.types';
 
@@ -19,8 +20,8 @@ export interface GenerateCharacterDraftPayload {
 }
 
 /**
- * Core logic for AI 2: generates a character draft from chat context.
- * Extracted so it can be called both from Cloud Tasks and directly as fallback.
+ * Core logic for AI 2: generates a character draft from chat context and stores
+ * it as a draft version. Called by the callable below after its auth/owner checks.
  */
 export async function executeGenerateCharacterDraft(payload: GenerateCharacterDraftPayload): Promise<void> {
   const { characterId, currentCharacter, chatHistory, ai1Response, pdfAttachment } = payload;
@@ -30,12 +31,7 @@ export async function executeGenerateCharacterDraft(payload: GenerateCharacterDr
     return;
   }
 
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
-  if (!apiKey) {
-    throw new Error('Google AI API key not configured');
-  }
-
-  const ai = new GoogleGenAI({ apiKey });
+  const client = getGeminiClient();
   const config = await getAiFeatureConfig('characterDraft');
 
   // AI 2: JSON generator — build messages with full context
@@ -47,7 +43,7 @@ export async function executeGenerateCharacterDraft(payload: GenerateCharacterDr
   ].join('\n\n');
 
   // Build content parts — include PDF as inline data when available for accurate extraction
-  const contentParts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [
+  const contentParts: ({ text: string } | { inlineData: { mimeType: string; data: string } })[] = [
     { text: conversationText },
   ];
 
@@ -59,55 +55,31 @@ export async function executeGenerateCharacterDraft(payload: GenerateCharacterDr
 
   logger.info('generateCharacterDraft: calling Gemini', {
     model: config.model,
-    maxOutputTokens: config.maxOutputTokens,
     hasPdf: Boolean(pdfAttachment),
     contentPartsCount: contentParts.length,
     characterId,
   });
 
-  const response = await ai.models.generateContent({
-    model: config.model,
-    contents: contentParts,
-    config: {
-      systemInstruction: CHARACTER_JSON_GENERATOR_PROMPT,
-      responseMimeType: 'application/json',
-      ...buildGenerationParams(config),
-    },
-  });
-
-  const finishReason = response.candidates?.[0]?.finishReason;
-  const usageMetadata = response.usageMetadata;
-
-  logger.info('generateCharacterDraft: Gemini response received', {
-    finishReason,
-    promptTokenCount: usageMetadata?.promptTokenCount,
-    candidatesTokenCount: usageMetadata?.candidatesTokenCount,
-    totalTokenCount: usageMetadata?.totalTokenCount,
-    hasText: response.text != null,
-    textLength: response.text?.length ?? 0,
-  });
-
-  // Clear the generating flag so the frontend hides the loader
-  const db = getFirestore();
-  await db.collection('characters').doc(characterId).update({ isGenerating: false });
-
-  const text = response.text ?? '';
-
-  if (!text) {
-    throw new Error('No response from AI model');
-  }
-
-  // Parse and validate JSON
   let parsed: unknown;
   try {
-    parsed = JSON.parse(text);
-  } catch {
-    logger.error('Failed to parse character draft JSON', {
-      responseText: text.slice(0, 500),
-      responseLength: text.length,
-      finishReason,
-    });
-    throw new Error('AI model returned invalid JSON. The response may have been truncated.');
+    parsed = await generateJson<unknown>(
+      {
+        config,
+        label: 'generateCharacterDraft',
+        contents: contentParts,
+        systemInstruction: CHARACTER_JSON_GENERATOR_PROMPT,
+        logContext: { characterId },
+      },
+      client
+    );
+  } catch (error) {
+    if (error instanceof GeminiEmptyResponseError) {
+      throw new Error('No response from AI model');
+    }
+    throw error;
+  } finally {
+    // Clear the generating flag so the frontend hides the loader
+    await getFirestore().collection('characters').doc(characterId).update({ isGenerating: false });
   }
 
   logger.info('generateCharacterDraft: JSON parsed successfully, validating schema');
@@ -129,9 +101,8 @@ export const generateCharacterDraftCallable = onCall(
   wrapCallable<GenerateCharacterDraftPayload, { success: boolean }>(
     'generateCharacterDraftCallable',
     async (request): Promise<{ success: boolean }> => {
-      if (!request.auth?.uid) {
-        throw new HttpsError('unauthenticated', 'Authentication required');
-      }
+      ensureAuthForTesting(request);
+      const uid = requireAuthUid(request);
 
       const payload = request.data;
 
@@ -140,6 +111,7 @@ export const generateCharacterDraftCallable = onCall(
       }
 
       const db = getFirestore();
+      await assertCharacterOwner(db, payload.characterId, uid);
       await db.collection('characters').doc(payload.characterId).update({ isGenerating: true });
 
       try {
@@ -147,7 +119,7 @@ export const generateCharacterDraftCallable = onCall(
         return { success: true };
       } catch (error) {
         await db.collection('characters').doc(payload.characterId)
-          .update({ isGenerating: false }).catch(() => {});
+          .update({ isGenerating: false }).catch(() => undefined);
         throw error;
       }
     }

@@ -8,23 +8,27 @@ import { CorrectionsSaveService } from './services/corrections-save.service';
 import { AudioCompleteProcessingService } from './services/audio-complete-processing.service';
 import { AudioStorageService } from './services/audio-storage.service';
 import { AuthService } from '../auth/auth.service';
-import { FormattingService } from '../shared/formatting.service';
 import * as logger from '../shared/logger';
 import { CampaignContextService } from '../campaign/campaign-context.service';
 import { CampaignService } from '../campaign/campaign.service';
 import {
   AudioSessionRecord,
-  PodcastVersion,
-  SessionProgress
+  SessionProgress,
+  SessionProgressStage
 } from './services/audio-session.models';
+import { isActiveStage, toDisplayProgress } from './services/session-progress.utils';
 import { SessionStoryComponent, SessionMetaUpdate } from './session-story.component';
 import { SessionProgressCardComponent } from './session-progress-card.component';
 import { SessionRecordingComponent } from './session-recording.component';
 import { SessionListSidebarComponent } from './session-list-sidebar.component';
 import { CampaignSelectorComponent } from '../campaign/campaign-selector.component';
-import { httpsCallable, Functions } from 'firebase/functions';
-import { FirebaseService } from '../core/firebase.service';
 import { ToastService } from '../shared/services/toast.service';
+import { isPermissionDenied, PERMISSION_DENIED_MESSAGE } from '../shared/utils/callable-error';
+
+/** Shown instead of a retry button when a failed session has no stored audio to retry from. */
+export const NO_STORED_AUDIO_MESSAGE = 'Geen opgeslagen audio; upload de opname opnieuw.';
+
+const PODCAST_STAGES: SessionProgressStage[] = ['generating-podcast-script', 'generating-podcast-audio'];
 
 @Component({
   selector: 'app-audio-session',
@@ -78,6 +82,7 @@ import { ToastService } from '../shared/services/toast.service';
             @if (currentSession()) {
               <app-session-progress-card
                 [progress]="displayProgress()"
+                [retryUnavailableMessage]="retryUnavailableMessage()"
                 (cancelled)="cancelCurrentOperation()"
                 (retry)="retryFailedOperation()"
               />
@@ -109,18 +114,15 @@ import { ToastService } from '../shared/services/toast.service';
                 [campaignId]="campaignId() || ''"
                 [sessionId]="currentSession()?.id || ''"
                 [podcasts]="podcasts()"
-                [isGeneratingPodcast]="podcastGen.isGenerating()"
-                [podcastGenerationProgress]="podcastGen.progressMessage()"
-                [podcastGenerationProgressPercent]="podcastGen.progressPercent()"
+                [isGeneratingPodcast]="podcastStatus().isGenerating"
+                [podcastGenerationProgress]="podcastStatus().message"
+                [podcastGenerationProgressPercent]="podcastStatus().percent"
                 [podcastError]="podcastGen.error()"
                 [canGeneratePodcast]="canGeneratePodcast()"
-                [hasActiveBackgroundJob]="hasActiveBackgroundJob()"
-                [backgroundJobMessage]="backgroundJobMessage()"
                 (storyUpdated)="saveStoryEdits($event)"
                 (regenerate)="regenerateStory()"
                 (correctionsChanged)="correctionsSave.onInput($event)"
                 (generatePodcast)="generatePodcast()"
-                (downloadPodcast)="downloadPodcast($event)"
                 (metaUpdated)="saveSessionMeta($event)"
                 (deleteSession)="deleteCurrentSession()"
               ></app-session-story>
@@ -166,14 +168,11 @@ export class AudioSessionComponent {
   private readonly sessionStateService = inject(AudioSessionStateService);
   private readonly backendOperations = inject(AudioBackendOperationsService);
   readonly authService = inject(AuthService);
-  readonly formatting = inject(FormattingService);
-  private readonly firebaseService = inject(FirebaseService);
   private readonly toastService = inject(ToastService);
   private readonly completeProcessing = inject(AudioCompleteProcessingService);
   private readonly audioStorage = inject(AudioStorageService);
   readonly podcastGen = inject(PodcastGenerationService);
   readonly correctionsSave = inject(CorrectionsSaveService);
-  private functions: Functions;
 
   userId = computed(() => this.authService.currentUser()?.uid || null);
   campaignId = computed(() => this.campaignContext.selectedCampaignId());
@@ -188,6 +187,7 @@ export class AudioSessionComponent {
   });
 
   podcasts = computed(() => this.currentSession()?.podcasts || []);
+  podcastStatus = computed(() => this.podcastGen.statusFor(this.currentSession()));
 
   /** Download URL of the stored recording, for playback. */
   readonly recordingUrl = resource({
@@ -200,25 +200,6 @@ export class AudioSessionComponent {
     return !!session && this.campaignService.isSessionOwner(session, userId);
   });
 
-  // Background job tracking
-  hasActiveBackgroundJob = computed(() => {
-    const session = this.currentSession();
-    const batchStatus = session?.transcriptionBatch?.status;
-    return batchStatus === 'submitted' || batchStatus === 'running';
-  });
-
-  backgroundJobMessage = computed(() => {
-    const session = this.currentSession();
-    const batchStatus = session?.transcriptionBatch?.status;
-    if (batchStatus === 'submitted') {
-      return 'Batch job submitted, waiting to start...';
-    }
-    if (batchStatus === 'running') {
-      return 'Processing audio transcription in background...';
-    }
-    return '';
-  });
-
   canRegenerateStory = computed(() => this.isSessionOwner());
   canGeneratePodcast = computed(() => this.isSessionOwner());
   canEditStory = computed(() => this.isSessionOwner());
@@ -227,64 +208,29 @@ export class AudioSessionComponent {
   sessions: Signal<AudioSessionRecord[]>;
   sortedSessions: Signal<(AudioSessionRecord & Record<string, unknown>)[]>;
 
-  // Progress display (handles both unified and legacy sessions)
+  // Progress display (handles both unified and legacy sessions, and stale progress)
   displayProgress = computed(() => {
     const session = this.currentSession();
-    if (!session) return null;
-
-    if (session.progress) {
-      const stage = session.progress.stage;
-      const isActiveStage = !['idle', 'completed', 'failed'].includes(stage);
-      if (isActiveStage && session.progress.updatedAt) {
-        const updatedAt = session.progress.updatedAt instanceof Date
-          ? session.progress.updatedAt
-          : new Date(session.progress.updatedAt);
-        const staleThresholdMs = 45 * 60 * 1000;
-        if (Date.now() - updatedAt.getTime() > staleThresholdMs) {
-          return {
-            ...session.progress,
-            stage: 'failed' as const,
-            progress: 0,
-            message: 'Operation timed out. Click retry to try again.',
-            error: `Operation stalled at "${stage}" (last update: ${updatedAt.toLocaleString()})`,
-          };
-        }
-      }
-      return session.progress;
-    }
-
-    // Synthetic progress from legacy status field
-    if (session.status === 'failed') {
-      return {
-        stage: 'failed' as const,
-        progress: 0,
-        message: 'Transcription failed. Click retry to try again.',
-        error: undefined,
-        startedAt: new Date(session.createdAt),
-        updatedAt: new Date(session.updatedAt || session.createdAt)
-      };
-    }
-
-    if (session.status === 'processing') {
-      return {
-        stage: 'transcribing' as const,
-        progress: 50,
-        message: 'Processing...',
-        startedAt: new Date(session.createdAt),
-        updatedAt: new Date(session.updatedAt || session.createdAt)
-      };
-    }
-
-    return null;
+    return session ? toDisplayProgress(session) : null;
   });
 
-  isBusy = computed(() => {
-    const p = this.displayProgress();
-    return !!p && !['idle', 'completed', 'failed'].includes(p.stage);
+  /**
+   * Reason a failed operation cannot be retried: a failed transcription or story
+   * needs the stored recording (or the uploaded sources) to start again.
+   */
+  retryUnavailableMessage = computed(() => {
+    const session = this.currentSession();
+    const progress = this.displayProgress();
+    if (!session || progress?.stage !== 'failed') return null;
+    const failedStage = session.progress?.stage;
+    if (failedStage && PODCAST_STAGES.includes(failedStage)) return null;
+    if (session.audioRecording || session.audioSources?.length) return null;
+    return NO_STORED_AUDIO_MESSAGE;
   });
+
+  isBusy = computed(() => isActiveStage(this.displayProgress()?.stage));
 
   constructor() {
-    this.functions = this.firebaseService.requireFunctions();
     this.sessions = this.sessionStateService.sessions;
     this.sortedSessions = this.sessionStateService.sortedSessions;
 
@@ -392,8 +338,7 @@ export class AudioSessionComponent {
         }
       );
     } catch (error: unknown) {
-      logger.error('Failed to start story regeneration:', error);
-      this.failSession((error as Error)?.message || 'Failed to start story regeneration');
+      this.failSession(this.callableFailureMessage(error, 'Failed to start story regeneration'));
     }
   }
 
@@ -439,10 +384,6 @@ export class AudioSessionComponent {
     await this.podcastGen.generate(session);
   }
 
-  downloadPodcast(podcast: PodcastVersion): void {
-    this.podcastGen.download(podcast, this.currentSession()?.title || 'podcast');
-  }
-
   // --- Progress operations ---
 
   cancelCurrentOperation(): void {
@@ -460,9 +401,8 @@ export class AudioSessionComponent {
     }
 
     const originalStage = session?.progress?.stage;
-    const podcastStages = ['generating-podcast-script', 'generating-podcast-audio'];
 
-    if (originalStage && podcastStages.includes(originalStage)) {
+    if (originalStage && PODCAST_STAGES.includes(originalStage)) {
       logger.debug('[Retry] Clearing stuck podcast progress for session:', session?.id);
       if (session) {
         await this.sessionStateService.persistSessionPatch(session.id, {
@@ -512,25 +452,9 @@ export class AudioSessionComponent {
       return;
     }
 
-    // Sessions from before the recording was stored: reuse the segment fileUris
-    // uploaded on the original attempt (only valid while Gemini keeps the files,
-    // ~48h). Falls back to the legacy single fileUri when present.
-    const fileUris = this.collectSegmentFileUris(session.transcriptionFast);
-    if (fileUris.length === 0) {
-      this.toastService.show(
-        'Cannot retry: the uploaded audio is no longer available. Please re-upload the recording.',
-        'error'
-      );
-      return;
-    }
-
-    await this.callTranscribeAudioFast(
-      session.campaignId,
-      session.id,
-      fileUris,
-      session.audioFileName || 'audio.mp3',
-      this.correctionsSave.corrections() || undefined
-    );
+    // Sessions without stored audio (e.g. from before recordings were stored)
+    // cannot be transcribed again.
+    this.toastService.show(NO_STORED_AUDIO_MESSAGE, 'error');
   }
 
   /** Re-transcribe the stored recording and generate a new story from it. */
@@ -551,52 +475,6 @@ export class AudioSessionComponent {
         recording,
         this.correctionsSave.corrections() || undefined
       )
-    );
-  }
-
-  /** Build the ordered segment list for a retry from stored fast-transcription metadata. */
-  private collectSegmentFileUris(
-    meta: AudioSessionRecord['transcriptionFast']
-  ): { index: number; fileUri: string; startSec?: number | null; endSec?: number | null }[] {
-    const segments = meta?.segments?.filter((s) => !!s?.fileUri) ?? [];
-    if (segments.length > 0) {
-      return segments
-        .map((s, i) => ({
-          index: typeof s.index === 'number' ? s.index : i,
-          fileUri: s.fileUri,
-          startSec: s.startSec ?? null,
-          endSec: s.endSec ?? null,
-        }))
-        .sort((a, b) => a.index - b.index);
-    }
-    if (meta?.fileUri) {
-      return [{ index: 0, fileUri: meta.fileUri }];
-    }
-    return [];
-  }
-
-  /** Legacy retry path: transcribe Gemini fileUris from an earlier upload. */
-  private callTranscribeAudioFast(
-    campaignId: string,
-    sessionId: string,
-    fileUris: { index: number; fileUri: string; startSec?: number | null; endSec?: number | null }[],
-    audioFileName: string,
-    userCorrections?: string
-  ): Promise<void> {
-    const transcribeAudioFast = httpsCallable<
-      {
-        campaignId: string;
-        sessionId: string;
-        fileUris: { index: number; fileUri: string; startSec?: number | null; endSec?: number | null }[];
-        audioFileName: string;
-        audioFileSize?: number;
-        userCorrections?: string;
-      },
-      { success: boolean; message: string }
-    >(this.functions, 'transcribeAudioFast');
-
-    return this.startTranscription(sessionId, async () =>
-      (await transcribeAudioFast({ campaignId, sessionId, fileUris, audioFileName, userCorrections })).data
     );
   }
 
@@ -646,9 +524,19 @@ export class AudioSessionComponent {
         this.failSession(result.message);
       }
     } catch (error: unknown) {
-      logger.error(`[BackendJob] Failed to start ${stage}:`, error);
-      this.failSession((error as Error)?.message || 'Failed to start processing');
+      this.failSession(this.callableFailureMessage(error, 'Failed to start processing'));
     }
+  }
+
+  /** Message for a failed callable; permission errors also get a toast. */
+  private callableFailureMessage(error: unknown, fallback: string): string {
+    if (isPermissionDenied(error)) {
+      logger.warn('[BackendJob] Permission denied by the backend');
+      this.toastService.showCallableError(error);
+      return PERMISSION_DENIED_MESSAGE;
+    }
+    logger.error(`[BackendJob] ${fallback}:`, error);
+    return (error as Error)?.message || fallback;
   }
 
   private failSession(message: string): void {

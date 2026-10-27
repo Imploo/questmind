@@ -1,5 +1,5 @@
 import { inject, Injectable, signal } from '@angular/core';
-import { from, Observable, throwError } from 'rxjs';
+import { from, Observable, throwError, timer } from 'rxjs';
 import { catchError, map, retry } from 'rxjs/operators';
 import { httpsCallable } from 'firebase/functions';
 import { IMAGE_GENERATION_SYSTEM_PROMPT } from '../prompts/image-generation.prompt';
@@ -15,6 +15,8 @@ import { AiSettingsService } from '../core/services/ai-settings.service';
 import { CharacterImageService } from '../core/services/character-image.service';
 import { FirebaseService } from '../core/firebase.service';
 import * as logger from '../shared/logger';
+import { ToastService } from '../shared/services/toast.service';
+import { isPermissionDenied } from '../shared/utils/callable-error';
 
 export type { ChatHistoryMessage, ChatAttachment };
 
@@ -62,6 +64,7 @@ export class ChatService {
   private readonly firebase = inject(FirebaseService);
   private readonly aiSettingsService = inject(AiSettingsService);
   private readonly characterImageService = inject(CharacterImageService);
+  private readonly toastService = inject(ToastService);
 
   private messages = signal<Message[]>([]);
   private conversationHistory: ChatHistoryMessage[] = [];
@@ -158,7 +161,8 @@ export class ChatService {
 
     return from(callable(payload)).pipe(
       map(result => result.data),
-      retry({ count: 3, delay: 2000 }),
+      // Retry transient failures; a permission error will not go away by retrying.
+      retry({ count: 3, delay: (error: unknown) => isPermissionDenied(error) ? throwError(() => error) : timer(2000) }),
       catchError(error => throwError(() => this.formatError(error)))
     );
   }
@@ -225,7 +229,12 @@ export class ChatService {
       errorMessage = 'AI service error. Please try again later.';
     }
 
-    logger.error('ChatService Error:', { message: errorMessage, error: err });
+    if (isPermissionDenied(err)) {
+      logger.warn('ChatService: permission denied by the backend');
+      this.toastService.showCallableError(err);
+    } else {
+      logger.error('ChatService Error:', { message: errorMessage, error: err });
+    }
 
     return {
       status: err?.status ?? 500,
@@ -236,10 +245,5 @@ export class ChatService {
 
   getMessages(): Message[] {
     return this.messages();
-  }
-
-  clearHistory(): void {
-    this.messages.set([]);
-    this.conversationHistory = [];
   }
 }

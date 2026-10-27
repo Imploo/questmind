@@ -1,18 +1,16 @@
 import * as logger from './utils/logger';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { getFirestore } from 'firebase-admin/firestore';
-import { SHARED_CORS } from './index';
+import { SHARED_CORS } from './config/cors';
 import { ensureAuthForTesting } from './utils/emulator-helpers';
+import { assertCampaignOwner, assertValidId, requireAuthUid } from './utils/access';
+import { CAMPAIGN_STORY_TIMEOUT_SECONDS, isActiveGeneration } from './utils/generation-timeouts';
 import { wrapCallable, captureFunctionError } from './utils/sentry-error-handler';
 import { getCampaignStoryConfig } from './utils/ai-settings';
 import { selectCampaignStorySources, SessionDocForCampaignStory } from './campaign-story/campaign-story-sources';
 import { generateCampaignStory as generateCampaignStoryText } from './campaign-story/campaign-story-generator.service';
 import { CampaignStoryVersion } from './types/campaign-story.types';
-import {
-  campaignStoriesCollectionPath,
-  campaignStoryDocPath,
-  isActiveGeneration,
-} from './campaign-story/campaign-story-paths';
+import { campaignStoriesCollectionPath, campaignStoryDocPath } from './campaign-story/campaign-story-paths';
 
 interface GenerateCampaignStoryRequest {
   campaignId: string;
@@ -26,30 +24,17 @@ export const generateCampaignStory = onCall(
   {
     cors: SHARED_CORS,
     secrets: ['GOOGLE_AI_API_KEY'],
-    timeoutSeconds: 540,
+    timeoutSeconds: CAMPAIGN_STORY_TIMEOUT_SECONDS,
   },
   wrapCallable<GenerateCampaignStoryRequest, unknown>('generateCampaignStory', async (request) => {
     ensureAuthForTesting(request);
 
-    const { auth, data } = request;
-    if (!auth?.uid) {
-      throw new HttpsError('unauthenticated', 'User must be authenticated.');
-    }
-
-    const { campaignId } = data ?? {};
-    if (!campaignId || typeof campaignId !== 'string') {
-      throw new HttpsError('invalid-argument', 'Missing campaignId.');
-    }
+    const uid = requireAuthUid(request);
+    const campaignId = assertValidId(request.data?.campaignId, 'campaignId');
 
     const db = getFirestore();
+    await assertCampaignOwner(db, campaignId, uid);
     const campaignRef = db.doc(`campaigns/${campaignId}`);
-    const campaignSnap = await campaignRef.get();
-    if (!campaignSnap.exists) {
-      throw new HttpsError('not-found', 'Campaign not found.');
-    }
-    if (campaignSnap.data()?.ownerId !== auth.uid) {
-      throw new HttpsError('permission-denied', 'Only the campaign owner can generate the campaign story.');
-    }
 
     const generatingSnap = await db.collection(campaignStoriesCollectionPath(campaignId))
       .where('status', '==', 'generating')
@@ -77,7 +62,7 @@ export const generateCampaignStory = onCall(
         status: 'generating',
         sourceSessions: sources,
         skippedSessions: skipped,
-        createdBy: auth.uid,
+        createdBy: uid,
         createdAt: new Date(),
         progress: 10,
         progressMessage: 'Sessieverhalen verzamelen...',

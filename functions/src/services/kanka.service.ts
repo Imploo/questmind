@@ -6,7 +6,7 @@
  */
 
 import * as logger from '../utils/logger';
-import { getFirestore } from 'firebase-admin/firestore';
+import { DocumentData, getFirestore } from 'firebase-admin/firestore';
 import { KankaSearchResult } from '../types/audio-session.types';
 
 export type KankaEntityType = 'characters' | 'locations' | 'quests' | 'organisations';
@@ -28,37 +28,24 @@ export interface KankaApiResponse<T> {
 const DEFAULT_TYPES: KankaEntityType[] = ['characters', 'locations', 'quests', 'organisations'];
 const KANKA_API_BASE = 'https://api.kanka.io/1.0';
 
+/** Kanka campaign id from a campaign document (`settings.kankaCampaignId`), if set. */
+export function kankaCampaignIdFrom(campaign: DocumentData | undefined): string | undefined {
+  const id = campaign?.settings?.kankaCampaignId;
+  return typeof id === 'string' && id.length > 0 ? id : undefined;
+}
+
 /**
- * Fetch Kanka context for transcription
+ * Fetch the Kanka entities of a campaign whose Kanka integration is enabled.
  *
- * This is a convenience method that handles:
- * 1. Reading campaign settings from Firestore
- * 2. Fetching Kanka entities if enabled
- *
- * @param campaignId - The campaign ID
- * @param sessionId - The audio session ID (used for logging)
- * @param enableKankaContext - Whether Kanka is enabled for this transcription
- * @param sessionDate - Optional session date (ISO string) for journal date filtering
- * @returns KankaSearchResult if fetched, undefined if not enabled
- * @throws Error if Kanka is enabled but cannot fetch data
+ * @param campaignId - The campaign ID (for logging)
+ * @param kankaCampaignId - The linked Kanka campaign, from the campaign settings
+ * @returns KankaSearchResult, or undefined when no Kanka campaign is linked
+ * @throws Error if Kanka is linked but the API token is missing or the fetch fails
  */
-export async function fetchKankaContextForTranscription(
+export async function fetchKankaContext(
   campaignId: string,
-  sessionId: string,
-  enableKankaContext: boolean
+  kankaCampaignId: string | undefined
 ): Promise<KankaSearchResult | undefined> {
-  if (!enableKankaContext) {
-    return undefined;
-  }
-
-  const db = getFirestore();
-  const campaignRef = db.collection('campaigns').doc(campaignId);
-
-  // Get campaign settings
-  const campaignSnap = await campaignRef.get();
-  const campaignData = campaignSnap.data();
-  const kankaCampaignId = campaignData?.settings?.kankaCampaignId;
-
   if (!kankaCampaignId) {
     logger.warn(
       `[Kanka] Kanka is enabled for campaign ${campaignId} but kankaCampaignId is not set in settings`
@@ -72,13 +59,69 @@ export async function fetchKankaContextForTranscription(
     throw new Error('Kanka integration is enabled but KANKA_API_TOKEN is not configured');
   }
 
-  // Fetch entities
-  logger.debug(`[Kanka] Fetching entities for campaign ${kankaCampaignId} (session ${sessionId})...`);
-  const kankaService = new KankaService(kankaToken);
-  const kankaContext = await kankaService.getAllEntities(kankaCampaignId);
+  logger.debug(`[Kanka] Fetching entities for Kanka campaign ${kankaCampaignId} (campaign ${campaignId})...`);
+  const kankaContext = await new KankaService(kankaToken).getAllEntities(kankaCampaignId);
 
   logger.debug('[Kanka] Entities fetched successfully');
   return kankaContext;
+}
+
+/**
+ * Fetch Kanka context for a session: reads the campaign settings, then fetches
+ * the entities when Kanka is enabled. For callers that don't have the campaign
+ * document yet (the transcription task gets the Kanka campaign id in its payload).
+ *
+ * @param campaignId - The campaign ID
+ * @param sessionId - The audio session ID (used for logging)
+ * @param enableKankaContext - Whether Kanka is enabled for this session
+ * @returns KankaSearchResult if fetched, undefined if not enabled
+ */
+export async function fetchKankaContextForSession(
+  campaignId: string,
+  sessionId: string,
+  enableKankaContext: boolean
+): Promise<KankaSearchResult | undefined> {
+  if (!enableKankaContext) {
+    return undefined;
+  }
+  logger.debug(`[Kanka] Loading Kanka settings for session ${sessionId}`);
+  const campaignSnap = await getFirestore().doc(`campaigns/${campaignId}`).get();
+  return fetchKankaContext(campaignId, kankaCampaignIdFrom(campaignSnap.data()));
+}
+
+/**
+ * Campaign reference block appended to the transcription and story prompts, so
+ * names and places are spelled correctly. Empty when there is nothing to list.
+ */
+export function buildKankaContextBlock(context: KankaSearchResult | undefined): string {
+  if (!context) {
+    return '';
+  }
+
+  const sections: string[] = [];
+  const addSection = (label: string, entities: { name: string }[] | undefined) => {
+    const names = (entities ?? [])
+      .map(entity => entity.name)
+      .filter(Boolean)
+      .join(', ');
+    if (names) {
+      sections.push(`${label}: ${names}`);
+    }
+  };
+
+  addSection('Characters', context.characters);
+  addSection('Locations', context.locations);
+  addSection('Quests', context.quests);
+  addSection('Organisations', context.organisations);
+
+  if (sections.length === 0) {
+    return '';
+  }
+
+  return `CAMPAIGN REFERENCE (for name/place accuracy only):
+${sections.join('\n')}
+
+Remember: Use this context ONLY to spell names and places correctly when you hear them. Do not add information that wasn't spoken, and never use this list to decide who is speaking.`;
 }
 
 export class KankaService {

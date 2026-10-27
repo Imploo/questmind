@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// eslint-friendly stand-in for `Function` in handler mocks
+type CallableFn = (...args: unknown[]) => Promise<unknown>;
 import type { DndCharacter } from './schemas/dnd-character.schema';
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
@@ -52,18 +55,24 @@ vi.mock('./prompts/character-json-generator.prompt', () => ({
 
 vi.mock('./utils/sentry-error-handler', () => ({
   captureFunctionError: vi.fn(),
-  wrapCallable: (_name: string, handler: Function) => handler,
+  wrapCallable: (_name: string, handler: CallableFn) => handler,
 }));
 
-vi.mock('./index', () => ({
-  SHARED_CORS: ['http://localhost:4200'],
-}));
+const mockAssertCharacterOwner = vi.fn();
+vi.mock('./utils/access', async () => {
+  const actual = await vi.importActual<typeof import('./utils/access')>('./utils/access');
+  return { ...actual, assertCharacterOwner: (...args: unknown[]) => mockAssertCharacterOwner(...args) };
+});
 
+let callableHandler: CallableFn;
 vi.mock('firebase-functions/v2/https', async () => {
   const actual = await vi.importActual<typeof import('firebase-functions/v2/https')>('firebase-functions/v2/https');
   return {
     ...actual,
-    onCall: (_config: unknown, handler: Function) => handler,
+    onCall: (_config: unknown, handler: CallableFn) => {
+      callableHandler = handler;
+      return handler;
+    },
   };
 });
 
@@ -100,7 +109,7 @@ describe('executeGenerateCharacterDraft', () => {
 
     await executeGenerateCharacterDraft({
       characterId: '',
-      currentCharacter: null as any,
+      currentCharacter: null as unknown as DndCharacter,
       chatHistory: [],
       ai1Response: '',
     });
@@ -157,5 +166,50 @@ describe('executeGenerateCharacterDraft', () => {
     await expect(executeGenerateCharacterDraft(makePayload())).rejects.toThrow(
       'Zod validation failed'
     );
+  });
+});
+
+describe('generateCharacterDraftCallable', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    process.env.GOOGLE_AI_API_KEY = 'test-api-key';
+    await import('./generate-character-draft');
+  });
+
+  const request = (overrides: Record<string, unknown> = {}) => ({
+    auth: { uid: 'user-123' },
+    data: {
+      characterId: 'char-1',
+      currentCharacter: { name: 'Gandalf' },
+      chatHistory: [{ role: 'user', content: 'Hi' }],
+      ai1Response: 'Ok',
+    },
+    ...overrides,
+  });
+
+  it('rejects unauthenticated callers', async () => {
+    await expect(callableHandler(request({ auth: null }))).rejects.toThrow(
+      expect.objectContaining({ code: 'unauthenticated' })
+    );
+  });
+
+  it('rejects non-owners without touching the character', async () => {
+    const { HttpsError } = await import('firebase-functions/v2/https');
+    mockAssertCharacterOwner.mockRejectedValueOnce(new HttpsError('permission-denied', 'Not authorized'));
+
+    await expect(callableHandler(request())).rejects.toThrow(
+      expect.objectContaining({ code: 'permission-denied' })
+    );
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockGenerateContent).not.toHaveBeenCalled();
+  });
+
+  it('generates the draft for the owner', async () => {
+    mockAssertCharacterOwner.mockResolvedValueOnce({ userId: 'user-123' });
+    mockGenerateContent.mockResolvedValueOnce({ text: JSON.stringify({ name: 'Gandalf' }) });
+
+    await expect(callableHandler(request())).resolves.toEqual({ success: true });
+    expect(mockUpdate).toHaveBeenCalledWith({ isGenerating: true });
+    expect(mockUpdate).toHaveBeenCalledWith({ isGenerating: false });
   });
 });

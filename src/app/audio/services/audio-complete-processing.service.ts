@@ -1,9 +1,10 @@
 import {inject, Injectable} from '@angular/core';
 import {type Functions, httpsCallable} from 'firebase/functions';
-import {doc, type DocumentReference, type Firestore, updateDoc} from 'firebase/firestore';
 import {FirebaseService} from '../../core/firebase.service';
 import {AudioStorageService} from './audio-storage.service';
+import {AudioSessionStateService} from './audio-session-state.service';
 import {PreparedUpload, isWavFile, prepareForUpload} from './wav-to-mp3';
+import {AudioRecording, AudioSource} from './audio-session.models';
 import * as logger from '../../shared/logger';
 
 export interface StartProcessingOptions {
@@ -18,8 +19,8 @@ export interface ProcessingResult {
 
 export type UploadStage = 'compressing' | 'uploading';
 
-import {AudioRecording, AudioSource, UnifiedProgress} from './audio-session.models';
-import {type Unsubscribe, onSnapshot, DocumentSnapshot} from 'firebase/firestore';
+/** Writes to one session document. */
+type SessionPatcher = (patch: Record<string, unknown>) => Promise<void>;
 
 @Injectable({
   providedIn: 'root'
@@ -27,12 +28,11 @@ import {type Unsubscribe, onSnapshot, DocumentSnapshot} from 'firebase/firestore
 export class AudioCompleteProcessingService {
   private firebase = inject(FirebaseService);
   private audioStorage = inject(AudioStorageService);
+  private sessionState = inject(AudioSessionStateService);
   private functions: Functions;
-  private firestore: Firestore;
 
   constructor() {
     this.functions = this.firebase.requireFunctions();
-    this.firestore = this.firebase.requireFirestore();
   }
 
   /**
@@ -62,15 +62,13 @@ export class AudioCompleteProcessingService {
       throw new Error('startCompleteProcessing requires at least one audio file');
     }
 
-    const sessionRef = doc(
-      this.firestore,
-      `campaigns/${campaignId}/audioSessions/${sessionId}`
-    );
+    const patchSession: SessionPatcher = (patch) =>
+      this.sessionState.patchSessionDoc(campaignId, sessionId, patch);
 
     // ── 1. Compress WAV files in the browser ────────────────────────────────
     const prepared = await this.prepareUploads(audioFiles, (compressionProgress) => {
       onProgress?.('compressing', compressionProgress);
-      this.writeProgressThrottled(sessionRef, 'compressing', Math.round(compressionProgress * 0.25),
+      this.writeProgressThrottled(patchSession, 'compressing', Math.round(compressionProgress * 0.25),
         `Compressing WAV audio... ${compressionProgress}%`, compressionProgress >= 100);
     });
 
@@ -83,13 +81,13 @@ export class AudioCompleteProcessingService {
       sources.push(await this.audioStorage.uploadSource(blob, campaignId, sessionId, i, fileName, (bytes) => {
         const uploadProgress = Math.round(((uploadedBefore + bytes) / totalBytes) * 100);
         onProgress?.('uploading', uploadProgress);
-        this.writeProgressThrottled(sessionRef, 'uploading', 25 + Math.round(uploadProgress * 0.25),
+        this.writeProgressThrottled(patchSession, 'uploading', 25 + Math.round(uploadProgress * 0.25),
           `Uploading audio... ${uploadProgress}%`, uploadProgress >= 100);
       }));
       uploadedBefore += blob.size;
     }
 
-    await updateDoc(sessionRef, {
+    await patchSession({
       audioSources: sources,
       audioOriginalSizeBytes: audioFiles.reduce((sum, f) => sum + f.size, 0),
       updatedAt: new Date(),
@@ -152,42 +150,10 @@ export class AudioCompleteProcessingService {
   }
 
   /**
-   * Listen to unified progress updates via Firestore onSnapshot.
-   */
-  listenToProgress(
-    campaignId: string,
-    sessionId: string,
-    callback: (progress: UnifiedProgress | null) => void
-  ): Unsubscribe {
-    const sessionRef = doc(
-      this.firestore,
-      `campaigns/${campaignId}/audioSessions/${sessionId}`
-    );
-
-    return onSnapshot(sessionRef, (snapshot: DocumentSnapshot) => {
-      if (!snapshot.exists()) {
-        logger.warn(`Session ${sessionId} does not exist`);
-        callback(null);
-        return;
-      }
-      const data = snapshot.data();
-      const progress = data?.['progress'] as UnifiedProgress | undefined;
-      callback(progress || null);
-    }, (error: unknown) => {
-      logger.error('Error listening to progress:', error);
-      callback(null);
-    });
-  }
-
-  /**
    * Write a failure to Firestore progress field.
    */
   async writeFailure(campaignId: string, sessionId: string, error: string): Promise<void> {
-    const sessionRef = doc(
-      this.firestore,
-      `campaigns/${campaignId}/audioSessions/${sessionId}`
-    );
-    await updateDoc(sessionRef, {
+    await this.sessionState.patchSessionDoc(campaignId, sessionId, {
       progress: {
         stage: 'failed',
         progress: 0,
@@ -203,7 +169,7 @@ export class AudioCompleteProcessingService {
 
   /** Firestore progress write, at most once per second (always when `force`). */
   private writeProgressThrottled(
-    sessionRef: DocumentReference,
+    patchSession: SessionPatcher,
     stage: string,
     progress: number,
     message: string,
@@ -212,7 +178,7 @@ export class AudioCompleteProcessingService {
     const now = Date.now();
     if (force || now - this.lastProgressWrite >= 1000) {
       this.lastProgressWrite = now;
-      this.writeProgress(sessionRef, stage, progress, message);
+      this.writeProgress(patchSession, stage, progress, message);
     }
   }
 
@@ -244,18 +210,18 @@ export class AudioCompleteProcessingService {
   }
 
   private writeProgress(
-    sessionRef: DocumentReference,
+    patchSession: SessionPatcher,
     stage: string,
     progress: number,
     message: string,
   ): void {
-    void updateDoc(sessionRef, {
+    void patchSession({
       progress: {
         stage,
         progress,
         message,
         updatedAt: new Date(),
       },
-    });
+    }).catch((error: unknown) => logger.warn('[AudioCompleteProcessing] Failed to write progress', error));
   }
 }

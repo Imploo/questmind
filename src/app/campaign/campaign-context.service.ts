@@ -1,31 +1,16 @@
-import { Injectable, computed, effect, inject, resource, signal, untracked } from '@angular/core';
+import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import type { User } from 'firebase/auth';
 import { AuthService } from '../auth/auth.service';
 import { Campaign, UserProfile } from './campaign.models';
 import { CampaignService } from './campaign.service';
-import { UserProfileService } from './user-profile.service';
-import { UserProfileRepositoryFactory } from '../shared/repository/user-profile.repository';
+import { UserService } from '../core/user.service';
 import * as logger from '../shared/logger';
 
 @Injectable({ providedIn: 'root' })
 export class CampaignContextService {
   private readonly authService = inject(AuthService);
   private readonly campaignService = inject(CampaignService);
-  private readonly userProfileService = inject(UserProfileService);
-  private readonly profileRepoFactory = inject(UserProfileRepositoryFactory);
-
-  private readonly profileResource = resource({
-    params: () => {
-      const user = this.authService.currentUser();
-      if (!user?.uid) return undefined;
-      return { userId: user.uid };
-    },
-    loader: async ({ params }) => {
-      const repo = this.profileRepoFactory.create(params.userId);
-      await repo.waitForData();
-      return repo;
-    },
-  });
+  private readonly userService = inject(UserService);
 
   campaigns = signal<Campaign[]>([]);
   selectedCampaignId = signal<string | null>(null);
@@ -40,14 +25,6 @@ export class CampaignContextService {
   });
 
   constructor() {
-    // Cleanup repo on resource change
-    effect((onCleanup) => {
-      const repo = this.profileResource.value();
-      if (repo) {
-        onCleanup(() => repo.destroy());
-      }
-    });
-
     // Clear state when user logs out
     effect(() => {
       const user = this.authService.currentUser();
@@ -63,10 +40,9 @@ export class CampaignContextService {
 
     // React to profile data changes and load campaigns
     effect(() => {
-      const repo = this.profileResource.value();
-      if (!repo) return;
+      const profile = this.userService.storedProfile();
+      if (profile === undefined) return;
 
-      const profile = repo.get() as UserProfile | null;
       const user = untracked(() => this.authService.currentUser());
       if (!user) return;
 
@@ -96,21 +72,14 @@ export class CampaignContextService {
       return;
     }
     this.selectedCampaignId.set(campaignId);
-    await this.userProfileService.setDefaultCampaign(user.uid, campaignId);
-  }
-
-  canCreateSessions(userId: string | null | undefined): boolean {
-    const campaign = this.selectedCampaign();
-    if (!campaign || !userId) return false;
-    if (campaign.ownerId === userId) return true;
-    return campaign.settings?.allowMembersToCreateSessions ?? true;
+    await this.userService.setDefaultCampaign(user.uid, campaignId);
   }
 
   private async loadForUser(user: User): Promise<void> {
     this.isLoading.set(true);
     this.error.set(null);
     try {
-      const profile = await this.userProfileService.ensureProfile(user);
+      const profile = await this.userService.ensureProfile(user);
       await this.loadCampaignsFromProfile(user, profile);
     } catch (error: unknown) {
       logger.error('Failed to load campaigns:', error);
@@ -161,7 +130,7 @@ export class CampaignContextService {
 
       this.selectedCampaignId.set(selectedId);
       if (selectedId && selectedId !== profile.defaultCampaignId) {
-        await this.userProfileService.setDefaultCampaign(user.uid, selectedId);
+        await this.userService.setDefaultCampaign(user.uid, selectedId);
       }
     } catch (error: unknown) {
       logger.error('Failed to load campaigns from profile:', error);

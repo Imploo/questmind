@@ -716,5 +716,22 @@ Start here for immediate impact with minimal risk:
 
 ---
 
-**Last Updated:** 2026-10-22
+## 🧹 Codebase-review 2026-10-27
+
+| Ticket | Title | Priority | Status | Effort | Dependencies |
+|--------|-------|----------|--------|--------|--------------|
+| [#70](./done/70-codebase-cleanup-security-dead-code-duplication.md) | Codebase-opschoning — beveiliging, dead code, duplicatie en consistentie | High (beveiliging: Critical) | Done | 3-5 dagen | — |
+| [#71](./71-podcast-share-hardening.md) | Podcast-share afmaken — dedup, intrekken, vervaldatum, auto-opruimen en validatie | High | Todo | 1-2 dagen | #70 (A6 `access.ts`) |
+
+**Key Changes:**
+- **Ticket 70**: alle bevindingen van de volledige codebase-review in één ticket, met checkboxes per punt
+  - Beveiliging: Gemini API-key-lek via een `fileUri` van de client, `storyGenerationWorker` zonder auth, ontbrekende lidmaatschaps- en eigenaarschecks, gedeelde `utils/access.ts`, CORS gelijktrekken (daarna de API-key roteren)
+  - Dead code (~2.500 regels): batch-transcriptie, het legacy fileUri-retry-pad, de oude sidebar, Zod-schema's, ongebruikte utils, types en servicemethodes
+  - Duplicatie: Gemini-client-helper, podcast-orkestratie, resolve-spell/feature, het podcast-versiecomponent, datum-util, user-profile-services
+  - E-mail-login (inloggen, registreren, wachtwoord vergeten) ingebouwd in `sign-in-page`
+- **Ticket 71**: het podcast-share-feature (7ff9788) afmaken: transactionele dedup, "Link intrekken", vervaldatum van 90 dagen (rules + TTL), automatisch opruimen bij verwijderen of regenereren, invoervalidatie, echte audioduur
+
+---
+
+**Last Updated:** 2026-10-27
 **Status:** Planning Complete, Ready to Begin

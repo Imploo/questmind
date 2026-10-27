@@ -12,15 +12,15 @@ import {
   type Firestore
 } from 'firebase/firestore';
 import { AuthService } from '../auth/auth.service';
-import { Campaign, CampaignMember, CampaignRole, CampaignSettings, CampaignVoiceIntro } from './campaign.models';
-import { UserProfileService } from './user-profile.service';
+import { Campaign, CampaignMember, CampaignVoiceIntro } from './campaign.models';
+import { UserService } from '../core/user.service';
 import { FirebaseService } from '../core/firebase.service';
 import * as logger from '../shared/logger';
 
 @Injectable({ providedIn: 'root' })
 export class CampaignService {
   private readonly authService = inject(AuthService);
-  private readonly userProfileService = inject(UserProfileService);
+  private readonly userService = inject(UserService);
   private readonly firebase = inject(FirebaseService);
   private readonly db: Firestore | null;
 
@@ -64,8 +64,8 @@ export class CampaignService {
 
     const campaignRef = doc(this.db, 'campaigns', campaignId);
     await setDoc(campaignRef, campaign);
-    await this.userProfileService.addCampaign(user.uid, campaignId);
-    await this.userProfileService.setDefaultCampaign(user.uid, campaignId);
+    await this.userService.addCampaign(user.uid, campaignId);
+    await this.userService.setDefaultCampaign(user.uid, campaignId);
 
     return campaignId;
   }
@@ -102,10 +102,6 @@ export class CampaignService {
       ...updates,
       updatedAt: new Date().toISOString()
     });
-  }
-
-  async updateCampaignSettings(campaignId: string, settings: CampaignSettings): Promise<void> {
-    await this.updateCampaign(campaignId, { settings });
   }
 
   /**
@@ -182,7 +178,7 @@ export class CampaignService {
       },
       updatedAt: now
     });
-    await this.userProfileService.addCampaign(targetUser.uid, campaignId);
+    await this.userService.addCampaign(targetUser.uid, campaignId);
   }
 
   async removeMember(campaignId: string, memberId: string): Promise<void> {
@@ -212,7 +208,7 @@ export class CampaignService {
       members: nextMembers,
       updatedAt: new Date().toISOString()
     });
-    await this.userProfileService.removeCampaign(memberId, campaignId);
+    await this.userService.removeCampaign(memberId, campaignId);
   }
 
   async getCampaignMembers(campaignId: string): Promise<(CampaignMember & { userId: string })[]> {
@@ -229,11 +225,6 @@ export class CampaignService {
   isCampaignOwner(campaign: Campaign, userId: string | null | undefined): boolean {
     if (!userId) return false;
     return campaign.ownerId === userId;
-  }
-
-  getUserRole(campaign: Campaign, userId: string | null | undefined): CampaignRole | null {
-    if (!userId) return null;
-    return campaign.members?.[userId]?.role || null;
   }
 
   isSessionOwner(session: { ownerId?: string }, userId: string | null | undefined): boolean {

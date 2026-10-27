@@ -1,13 +1,12 @@
-import { Component, output, input } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component, output, input } from '@angular/core';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 
 @Component({
   selector: 'app-character-draft-preview',
-  standalone: true,
-  imports: [CommonModule, MatCardModule, MatButtonModule, MatProgressSpinnerModule],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [MatCardModule, MatButtonModule, MatProgressSpinnerModule],
   template: `
     <div class="w-full">
       <mat-card class="rounded-lg overflow-hidden">

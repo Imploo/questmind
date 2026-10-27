@@ -2,28 +2,6 @@
  * Shared types for audio session processing
  */
 
-export interface TranscriptionSegment {
-  timeSeconds: number;
-  text: string;
-  speaker?: string;
-}
-
-export interface TranscriptionChunk {
-  index: number;
-  startTimeSeconds: number;
-  endTimeSeconds: number;
-  durationSeconds: number;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
-  segments?: TranscriptionSegment[];
-  completedAt?: Date;
-  error?: string;
-  failedAt?: Date;
-  retryCount?: number;
-  tokensUsed?: number;
-  thoughtsTokens?: number;
-  processingTimeMs?: number;
-}
-
 export interface KankaCharacter {
   name: string;
   entry?: string;
@@ -55,21 +33,6 @@ export interface KankaSearchResult {
   organisations?: KankaOrganisation[];
 }
 
-export type RetranscribeStatus =
-  | 'loading_context'
-  | 'transcribing'
-  | 'transcription_complete'
-  | 'generating_story'
-  | 'story_complete'
-  | 'completed'
-  | 'failed';
-
-export type RegenerateStoryStatus =
-  | 'loading_context'
-  | 'generating_story'
-  | 'completed'
-  | 'failed';
-
 /** Gemini 3.x reasoning effort. Maps to the SDK `ThinkingLevel` enum. */
 export type GeminiThinkingLevel = 'low' | 'medium' | 'high';
 
@@ -87,28 +50,13 @@ export interface PodcastVoiceSettings {
   host2VoiceName: string;   // Gemini prebuilt voice (e.g. 'Leda')
 }
 
-export interface TranscriptionModeConfig {
-  enabled: boolean;
-  maxFileSizeMB?: number;
-  costMultiplier?: number;
-  timeoutSeconds?: number;
-  expectedProcessingMinutes?: number;
-}
-
-export interface TranscriptionFeatureConfig extends AIFeatureConfig {
-  modes?: {
-    fast?: TranscriptionModeConfig;
-    batch?: TranscriptionModeConfig;
-  };
-}
-
 /**
  * Controls how long recordings are split into shorter segments for transcription
  * (ticket #67). Overridable via `settings/ai.transcriptionSegmentation` so segment
  * length, overlap and failure policy can be tuned without a deploy.
  */
 export interface TranscriptionSegmentationSettings {
-  /** Master switch — when false the frontend uploads a single segment (legacy flow). */
+  /** Master switch — when false the backend transcribes the recording as a single segment. */
   enabled: boolean;
   /** Target length of each segment, in minutes. */
   segmentMinutes: number;
@@ -140,25 +88,18 @@ export interface AISettings {
   transcriptionSegmentation?: Partial<TranscriptionSegmentationSettings>;
   audioNormalization?: Partial<AudioNormalizationSettings>;
   features?: {
-    transcription?: TranscriptionFeatureConfig;
+    transcription?: AIFeatureConfig;
     storyGeneration?: AIFeatureConfig;
     podcastScript?: AIFeatureConfig;
     /** Campaign story (ticket #69); targetWords is the desired length */
     campaignStory?: AIFeatureConfig & { targetWords?: number };
     podcastVoices?: PodcastVoiceSettings;
-    characterChat?: AIFeatureConfig;
     characterChatText?: AIFeatureConfig;
     characterDraft?: AIFeatureConfig;
     spellResolution?: AIFeatureConfig;
     featureResolution?: AIFeatureConfig;
     imagePromptGeneration?: AIFeatureConfig;
     imageGeneration?: { model: string };
-  };
-  // Legacy support
-  modelConfig?: {
-    [key: string]: {
-      maxOutputTokens: number;
-    };
   };
 }
 
@@ -171,9 +112,7 @@ export type SessionProgressStage =
   | 'uploading'
   | 'processing-audio'
   | 'transcribing'
-  | 'retranscribing'
   | 'generating-story'
-  | 'regenerating-story'
   | 'generating-podcast-script'
   | 'generating-podcast-audio'
   | 'completed'
@@ -195,6 +134,17 @@ export interface SessionProgress {
 
 export type PodcastStatus = 'pending' | 'script_complete' | 'completed' | 'failed';
 
+/** One turn of a two-host podcast script. */
+export interface PodcastSegment {
+  speaker: 'host1' | 'host2';
+  text: string;
+}
+
+export interface PodcastScript {
+  segments: PodcastSegment[];
+  estimatedDuration: number;
+}
+
 export interface PodcastEntry {
   version: number;
   createdAt?: Date;
@@ -202,10 +152,7 @@ export interface PodcastEntry {
   status: PodcastStatus;
   progress?: number;
   progressMessage?: string;
-  script?: {
-    segments: { speaker: 'host1' | 'host2'; text: string }[];
-    estimatedDuration: number;
-  };
+  script?: PodcastScript;
   scriptGeneratedAt?: Date;
   duration?: number;
   modelUsed?: string;
@@ -213,33 +160,6 @@ export interface PodcastEntry {
   fileSize?: number;
   audioGeneratedAt?: Date;
   error?: string | null;
-}
-
-export interface ProcessAudioSessionRequest {
-  campaignId: string;
-  sessionId: string;
-  storageUrl: string;
-  audioFileName: string;
-  audioFileSize: number;
-  sessionTitle: string;
-  sessionDate?: string;
-  enableKankaContext?: boolean;
-  userCorrections?: string;
-}
-
-export interface RetranscribeAudioRequest {
-  campaignId: string;
-  sessionId: string;
-  enableKankaContext?: boolean;
-  userCorrections?: string;
-  regenerateStoryAfterTranscription?: boolean;
-}
-
-export interface RegenerateStoryRequest {
-  campaignId: string;
-  sessionId: string;
-  enableKankaContext?: boolean;
-  userCorrections?: string;
 }
 
 export interface PreviousStory {

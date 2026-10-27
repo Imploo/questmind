@@ -5,16 +5,6 @@ import { initializeApp } from 'firebase-admin/app';
 // Initialize Sentry before everything else
 initSentry();
 
-/**
- * Shared CORS configuration for all callable functions
- */
-export const SHARED_CORS = [
-  'https://questmind.nl',
-  'http://localhost:4200',
-  /^https:\/\/.*\.web\.app$/,
-  /^https:\/\/.*\.firebaseapp\.com$/
-];
-
 setGlobalOptions({
   region: 'europe-west1',
   timeoutSeconds: 1200,

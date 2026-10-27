@@ -1,42 +1,30 @@
 import * as Sentry from '@sentry/node';
+import * as functionsLogger from 'firebase-functions/logger';
+import { isEmulator } from './emulator-helpers';
 
-const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true';
+/**
+ * App logger. Writes structured entries to Cloud Logging via the Firebase
+ * Functions logger; `error` additionally reports to Sentry (outside the emulator).
+ */
 
 export function warn(message: string, context?: unknown): void {
-  if (context !== undefined) {
-    console.warn(`[WARN] ${message}`, context);
-  } else {
-    console.warn(`[WARN] ${message}`);
-  }
+  write(functionsLogger.warn, `[WARN] ${message}`, context);
 }
 
 export function info(message: string, context?: unknown): void {
-  if (context !== undefined) {
-    console.info(`[INFO] ${message}`, context);
-  } else {
-    console.info(`[INFO] ${message}`);
-  }
+  write(functionsLogger.info, `[INFO] ${message}`, context);
 }
 
 export function debug(message: string, context?: unknown): void {
-  if (!isEmulator) return;
-
-  if (context !== undefined) {
-    console.log(`[DEBUG] ${message}`, context);
-  } else {
-    console.log(`[DEBUG] ${message}`);
-  }
+  if (!isEmulator()) return;
+  write(functionsLogger.debug, `[DEBUG] ${message}`, context);
 }
 
 export function error(message: string, context?: unknown): void {
-  if (context !== undefined) {
-    console.error(`[ERROR] ${message}`, context);
-  } else {
-    console.error(`[ERROR] ${message}`);
-  }
+  logErrorOnly(message, context);
 
   // Send errors to Sentry in production
-  if (!isEmulator) {
+  if (!isEmulator()) {
     if (context instanceof Error) {
       Sentry.captureException(context, {
         extra: { message },
@@ -47,5 +35,18 @@ export function error(message: string, context?: unknown): void {
         extra: context !== undefined ? { context } : undefined,
       });
     }
+  }
+}
+
+/** Error-level log line WITHOUT a Sentry event — for callers that capture themselves. */
+export function logErrorOnly(message: string, context?: unknown): void {
+  write(functionsLogger.error, `[ERROR] ${message}`, context);
+}
+
+function write(sink: (...args: unknown[]) => void, message: string, context: unknown): void {
+  if (context !== undefined) {
+    sink(message, context);
+  } else {
+    sink(message);
   }
 }

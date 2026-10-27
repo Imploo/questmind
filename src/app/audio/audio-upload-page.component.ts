@@ -8,6 +8,8 @@ import { AuthService } from '../auth/auth.service';
 import { CampaignContextService } from '../campaign/campaign-context.service';
 import { AudioUpload, AudioSessionRecord, SessionProgress } from './services/audio-session.models';
 import * as logger from '../shared/logger';
+import { ToastService } from '../shared/services/toast.service';
+import { isPermissionDenied, PERMISSION_DENIED_MESSAGE } from '../shared/utils/callable-error';
 
 @Component({
   selector: 'app-audio-upload-page',
@@ -51,6 +53,7 @@ export class AudioUploadPageComponent implements OnInit, OnDestroy {
   private completeProcessingService = inject(AudioCompleteProcessingService);
   private authService = inject(AuthService);
   private campaignContextService = inject(CampaignContextService);
+  private toastService = inject(ToastService);
   private wakeLockSentinel: WakeLockSentinel | null = null;
   private processingInBackground = false;
   private readonly visibilityHandler = () => {
@@ -167,8 +170,14 @@ export class AudioUploadPageComponent implements OnInit, OnDestroy {
         },
       );
     } catch (error) {
-      logger.error('Error in background processing:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Upload failed';
+      let errorMessage = error instanceof Error ? error.message : 'Upload failed';
+      if (isPermissionDenied(error)) {
+        logger.warn('Audio processing refused: permission denied');
+        this.toastService.showCallableError(error);
+        errorMessage = PERMISSION_DENIED_MESSAGE;
+      } else {
+        logger.error('Error in background processing:', error);
+      }
       await this.completeProcessingService.writeFailure(campaignId, sessionId, errorMessage);
     }
   }

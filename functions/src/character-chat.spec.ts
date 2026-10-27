@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// eslint-friendly stand-in for `Function` in handler mocks
+type CallableFn = (...args: unknown[]) => Promise<unknown>;
+import { HttpsError } from 'firebase-functions/v2/https';
+
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
 const mockGenerateContent = vi.fn();
@@ -26,12 +30,16 @@ vi.mock('./schemas/dnd-character.schema', () => ({
 }));
 
 vi.mock('./utils/sentry-error-handler', () => ({
-  wrapCallable: (_name: string, handler: Function) => handler,
+  wrapCallable: (_name: string, handler: CallableFn) => handler,
 }));
 
-vi.mock('./index', () => ({
-  SHARED_CORS: ['http://localhost:4200'],
-}));
+vi.mock('firebase-admin/firestore', () => ({ getFirestore: () => ({}) }));
+
+const mockAssertCharacterOwner = vi.fn();
+vi.mock('./utils/access', async () => {
+  const actual = await vi.importActual<typeof import('./utils/access')>('./utils/access');
+  return { ...actual, assertCharacterOwner: (...args: unknown[]) => mockAssertCharacterOwner(...args) };
+});
 
 vi.mock('./utils/logger', () => ({
   error: vi.fn(),
@@ -40,12 +48,12 @@ vi.mock('./utils/logger', () => ({
   warn: vi.fn(),
 }));
 
-let characterChatHandler: Function;
+let characterChatHandler: CallableFn;
 vi.mock('firebase-functions/v2/https', async () => {
   const actual = await vi.importActual<typeof import('firebase-functions/v2/https')>('firebase-functions/v2/https');
   return {
     ...actual,
-    onCall: (_config: unknown, handler: Function) => {
+    onCall: (_config: unknown, handler: CallableFn) => {
       characterChatHandler = handler;
       return handler;
     },
@@ -58,6 +66,7 @@ describe('characterChat', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.GOOGLE_AI_API_KEY = 'test-google-key';
+    mockAssertCharacterOwner.mockResolvedValue({ userId: 'user-123' });
   });
 
   beforeEach(async () => {
@@ -128,6 +137,26 @@ describe('characterChat', () => {
 
     const request = makeRequest();
     await expect(characterChatHandler(request)).rejects.toThrow(
+      expect.objectContaining({ code: 'failed-precondition' })
+    );
+  });
+
+  // ── Ownership ──
+
+  it('should reject callers who do not own the character, before calling Gemini', async () => {
+    mockAssertCharacterOwner.mockRejectedValueOnce(new HttpsError('permission-denied', 'Not authorized'));
+
+    await expect(characterChatHandler(makeRequest())).rejects.toThrow(
+      expect.objectContaining({ code: 'permission-denied' })
+    );
+    expect(mockAssertCharacterOwner).toHaveBeenCalledWith(expect.anything(), 'char-1', 'user-123');
+    expect(mockGenerateContent).not.toHaveBeenCalled();
+  });
+
+  it('should throw internal when the AI returns invalid JSON', async () => {
+    mockGenerateContent.mockResolvedValueOnce({ text: '{"text": "cut off' });
+
+    await expect(characterChatHandler(makeRequest())).rejects.toThrow(
       expect.objectContaining({ code: 'internal' })
     );
   });

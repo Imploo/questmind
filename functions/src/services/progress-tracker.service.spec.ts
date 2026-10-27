@@ -5,29 +5,20 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mockUpdate = vi.fn().mockResolvedValue(undefined);
 const mockGet = vi.fn();
 const mockSessionRef = { get: mockGet, update: mockUpdate };
-const mockDoc = vi.fn(() => ({
-  collection: vi.fn(() => ({
-    doc: vi.fn(() => mockSessionRef),
-  })),
-}));
-const mockCollection = vi.fn(() => ({ doc: mockDoc }));
-const mockFirestore = vi.fn(() => ({ collection: mockCollection }));
-(mockFirestore as any).FieldValue = { delete: () => 'FIELD_DELETE' };
+const mockDoc = vi.fn<(path: string) => typeof mockSessionRef>(() => mockSessionRef);
+const mockFirestore = vi.fn(() => ({ doc: mockDoc }));
 
 vi.mock('firebase-admin', () => ({
   firestore: mockFirestore,
 }));
 
-vi.mock('firebase-admin/firestore', () => ({
-  Timestamp: { now: () => 'TIMESTAMP_NOW' },
-}));
-
-vi.mock('../utils/logger', () => ({
+const mockLogger = vi.hoisted(() => ({
   error: vi.fn(),
   debug: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
 }));
+vi.mock('../utils/logger', () => mockLogger);
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
@@ -126,35 +117,20 @@ describe('ProgressTrackerService', () => {
     });
   });
 
-  it('clearProgress should delete the progress field', async () => {
+  it('markFailed only warns, so the caller reports the error to Sentry once', async () => {
     const { ProgressTrackerService } = await import('./progress-tracker.service');
 
-    await ProgressTrackerService.clearProgress('c1', 's1');
+    await ProgressTrackerService.markFailed('c1', 's1', 'transcribing', new Error('boom'));
 
-    expect(mockUpdate).toHaveBeenCalledWith({
-      progress: 'FIELD_DELETE',
-    });
+    expect(mockLogger.warn).toHaveBeenCalled();
+    expect(mockLogger.error).not.toHaveBeenCalled();
   });
 
-  it('getProgress should return null for non-existent session', async () => {
-    mockGet.mockResolvedValueOnce({ exists: false, data: () => null });
-
+  it('writes to the session document of the campaign', async () => {
     const { ProgressTrackerService } = await import('./progress-tracker.service');
-    const result = await ProgressTrackerService.getProgress('c1', 's1');
 
-    expect(result).toBeNull();
-  });
+    await ProgressTrackerService.updateProgress('c1', 's1', 'transcribing', 50, 'Working...');
 
-  it('getProgress should return progress data for existing session', async () => {
-    const progressData = { stage: 'transcribing', progress: 50, message: 'Working...' };
-    mockGet.mockResolvedValueOnce({
-      exists: true,
-      data: () => ({ progress: progressData }),
-    });
-
-    const { ProgressTrackerService } = await import('./progress-tracker.service');
-    const result = await ProgressTrackerService.getProgress('c1', 's1');
-
-    expect(result).toEqual(progressData);
+    expect(mockDoc).toHaveBeenCalledWith('campaigns/c1/audioSessions/s1');
   });
 });

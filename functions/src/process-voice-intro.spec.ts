@@ -1,9 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// eslint-friendly stand-in for `Function` in handler mocks
+type CallableFn = (...args: unknown[]) => Promise<unknown>;
+
 const mockGet = vi.fn();
 const mockUpdate = vi.fn();
 vi.mock('firebase-admin/firestore', () => ({
-  getFirestore: () => ({ collection: () => ({ doc: () => ({ get: mockGet, update: mockUpdate }) }) }),
+  getFirestore: () => ({ doc: () => ({ get: mockGet, update: mockUpdate }) }),
 }));
 
 const mockProcess = vi.fn();
@@ -17,15 +20,15 @@ vi.mock('./utils/storage-cleanup', () => ({
 }));
 
 vi.mock('./utils/sentry-error-handler', () => ({
-  wrapCallable: (_name: string, handler: Function) => handler,
+  wrapCallable: (_name: string, handler: CallableFn) => handler,
 }));
 
-let handler: Function;
+let handler: CallableFn;
 vi.mock('firebase-functions/v2/https', async () => {
   const actual = await vi.importActual<typeof import('firebase-functions/v2/https')>('firebase-functions/v2/https');
   return {
     ...actual,
-    onCall: (_config: unknown, fn: Function) => {
+    onCall: (_config: unknown, fn: CallableFn) => {
       handler = fn;
       return fn;
     },
@@ -39,10 +42,7 @@ function request(overrides: Record<string, unknown> = {}) {
 }
 
 function campaign(data: Record<string, unknown>) {
-  return {
-    exists: true,
-    get: (field: string) => field.split('.').reduce<unknown>((v, k) => (v as Record<string, unknown>)?.[k], data),
-  };
+  return { exists: true, data: () => data };
 }
 
 describe('processVoiceIntro', () => {
@@ -57,11 +57,29 @@ describe('processVoiceIntro', () => {
     expect(mockProcess).not.toHaveBeenCalled();
   });
 
-  it('only lets the campaign owner set the intro, and removes the source', async () => {
-    mockGet.mockResolvedValue(campaign({ ownerId: 'someone-else' }));
+  it('rejects unauthenticated callers', async () => {
+    await expect(handler(request({ auth: null }))).rejects.toThrow(expect.objectContaining({ code: 'unauthenticated' }));
+  });
+
+  it('rejects a campaign id with a slash', async () => {
+    await expect(handler(request({ data: { campaignId: 'c1/x', sourcePath: SOURCE } })))
+      .rejects.toThrow(expect.objectContaining({ code: 'invalid-argument' }));
+  });
+
+  it('only lets the campaign owner set the intro, and leaves the pending upload alone otherwise', async () => {
+    mockGet.mockResolvedValue(campaign({ ownerId: 'someone-else', members: ['owner-1'] }));
 
     await expect(handler(request())).rejects.toThrow(expect.objectContaining({ code: 'permission-denied' }));
     expect(mockProcess).not.toHaveBeenCalled();
+    // A non-owner must not be able to make the backend delete the owner's upload.
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
+
+  it('removes the source after processing, also when processing fails', async () => {
+    mockGet.mockResolvedValue(campaign({ ownerId: 'owner-1' }));
+    mockProcess.mockRejectedValue(new Error('ffmpeg failed'));
+
+    await expect(handler(request())).rejects.toThrow('ffmpeg failed');
     expect(mockDelete).toHaveBeenCalledWith([SOURCE]);
   });
 

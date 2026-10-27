@@ -1,14 +1,10 @@
 import { promises as fs } from 'fs';
-import { tmpdir } from 'os';
 import { join } from 'path';
-import { randomUUID } from 'crypto';
-import ffmpeg from 'fluent-ffmpeg';
-import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
 import { getStorage } from 'firebase-admin/storage';
 import { AudioNormalizationSettings } from '../types/audio-session.types';
 import { getAudioNormalizationConfig } from '../utils/ai-settings';
-
-ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+import { ffmpeg, withTempDir } from '../utils/ffmpeg';
+import { newDownloadToken } from '../utils/storage-url';
 
 /**
  * Output format of the stored session recording. Tuned for transcription
@@ -104,8 +100,7 @@ export async function processSourcesToRecording(
   destinationPath: string,
   onStep?: (step: ProcessingStep) => Promise<void> | void
 ): Promise<{ sizeBytes: number; durationSec: number }> {
-  const workDir = await fs.mkdtemp(join(tmpdir(), 'process-audio-'));
-  try {
+  return withTempDir('process-audio-', async (workDir) => {
     const bucket = getStorage().bucket();
 
     await onStep?.('downloading');
@@ -124,14 +119,12 @@ export async function processSourcesToRecording(
       destination: destinationPath,
       metadata: {
         contentType: 'audio/mpeg',
-        metadata: { firebaseStorageDownloadTokens: randomUUID() },
+        metadata: { firebaseStorageDownloadTokens: newDownloadToken() },
       },
     });
     const { size } = await fs.stat(outputPath);
     return { sizeBytes: size, durationSec };
-  } finally {
-    await fs.rm(workDir, { recursive: true, force: true });
-  }
+  });
 }
 
 /** Parse an ffmpeg timemark ("HH:MM:SS.xx") into seconds; 0 when unparseable. */

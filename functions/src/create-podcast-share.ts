@@ -1,7 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
-import { getFirestore, DocumentData } from 'firebase-admin/firestore';
-import { SHARED_CORS } from './index';
+import { getFirestore } from 'firebase-admin/firestore';
+import { SHARED_CORS } from './config/cors';
+import { assertCampaignMember, assertValidId, requireAuthUid } from './utils/access';
+import { sessionDocPath } from './utils/session-ref';
 import { ensureAuthForTesting } from './utils/emulator-helpers';
 import { wrapCallable } from './utils/sentry-error-handler';
 import { PodcastEntry } from './types/audio-session.types';
@@ -52,15 +54,10 @@ export const createPodcastShare = onCall(
   wrapCallable<CreatePodcastShareRequest, CreatePodcastShareResponse>('createPodcastShare', async (request) => {
     ensureAuthForTesting(request);
 
-    const uid = request.auth?.uid;
-    if (!uid) {
-      throw new HttpsError('unauthenticated', 'User must be authenticated.');
-    }
+    const uid = requireAuthUid(request);
 
-    const { campaignId, sessionId, storyVersion, podcastVersion } = request.data ?? {};
-    if (!campaignId || typeof campaignId !== 'string') {
-      throw new HttpsError('invalid-argument', 'Missing campaignId.');
-    }
+    const { sessionId, storyVersion, podcastVersion } = request.data ?? {};
+    const campaignId = assertValidId(request.data?.campaignId, 'campaignId');
     if (typeof podcastVersion !== 'number') {
       throw new HttpsError('invalid-argument', 'Missing podcastVersion.');
     }
@@ -70,18 +67,15 @@ export const createPodcastShare = onCall(
       throw new HttpsError('invalid-argument', 'Provide either sessionId or storyVersion.');
     }
 
-    const db = getFirestore();
-    const campaignSnap = await db.doc(`campaigns/${campaignId}`).get();
-    if (!campaignSnap.exists) {
-      throw new HttpsError('not-found', 'Campaign not found.');
-    }
-    const campaign = campaignSnap.data() ?? {};
-    if (!isCampaignMember(campaign, uid)) {
-      throw new HttpsError('permission-denied', 'Only campaign members can share podcasts.');
+    if (hasSession) {
+      assertValidId(sessionId, 'sessionId');
     }
 
+    const db = getFirestore();
+    const campaign = await assertCampaignMember(db, campaignId, uid);
+
     const source: PodcastSource = hasSession
-      ?{ docPath: `campaigns/${campaignId}/audioSessions/${sessionId}`, title: 'Sessie' }
+      ? { docPath: sessionDocPath(campaignId, sessionId as string), title: 'Sessie' }
       : { docPath: campaignStoryDocPath(campaignId, storyVersion as number), title: 'Campagneverhaal' };
 
     const sourceSnap = await db.doc(source.docPath).get();
@@ -117,14 +111,6 @@ export const createPodcastShare = onCall(
     return { shareId };
   })
 );
-
-/** Campaign `members` is a uid list in newer documents and a uid map in older ones. */
-function isCampaignMember(campaign: DocumentData, uid: string): boolean {
-  if (campaign.ownerId === uid) return true;
-  const members = campaign.members;
-  if (Array.isArray(members)) return members.includes(uid);
-  return !!members && typeof members === 'object' && !!members[uid];
-}
 
 function buildSubtitle(campaignName: unknown, sessionDate: unknown, podcastVersion: number): string {
   return [

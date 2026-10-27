@@ -2,9 +2,8 @@ import { ChangeDetectionStrategy, Component, SecurityContext, effect, inject, in
 import { DomSanitizer } from '@angular/platform-browser';
 import { marked } from 'marked';
 import { PodcastVersion } from './services/audio-session.models';
-import { FormattingService } from '../shared/formatting.service';
 import { ToastService } from '../shared/services/toast.service';
-import { PodcastShareButtonComponent } from './podcast-share-button.component';
+import { PodcastVersionItemComponent } from '../shared/components/podcast-version-item.component';
 
 export interface SessionMetaUpdate {
   title: string;
@@ -13,27 +12,10 @@ export interface SessionMetaUpdate {
 
 @Component({
   selector: 'app-session-story',
-  imports: [PodcastShareButtonComponent],
+  imports: [PodcastVersionItemComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="border border-gray-200 rounded-xl bg-white shadow-sm overflow-hidden relative">
-      <!-- Background Job Loader Overlay -->
-      @if (hasActiveBackgroundJob()) {
-        <div class="absolute inset-0 bg-white/80 backdrop-blur-sm z-50 flex items-center justify-center">
-          <div class="max-w-md text-center">
-            <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
-              <svg class="animate-spin h-8 w-8 text-blue-600" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-            </div>
-            <h3 class="text-lg font-semibold text-gray-800 mb-2">Processing in Background</h3>
-            <p class="text-sm text-gray-600">{{ backgroundJobMessage() }}</p>
-            <p class="text-xs text-gray-500 mt-3">This may take a few minutes. You can leave this page and come back later.</p>
-          </div>
-        </div>
-      }
-
       <!-- Card Header -->
       <div class="p-6 pb-0">
         <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between mb-4">
@@ -328,70 +310,11 @@ export interface SessionMetaUpdate {
                   Gegenereerde Podcasts ({{ podcasts().length }})
                 </h5>
                 @for (podcast of podcasts(); track podcast.version) {
-                  <div class="flex items-center gap-4 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg border border-purple-100 hover:border-purple-300 transition-colors">
-                    <div class="flex-shrink-0">
-                      <span class="inline-flex items-center justify-center w-10 h-10 bg-purple-600 text-white rounded-full font-semibold text-sm">
-                        v{{ podcast.version }}
-                      </span>
-                    </div>
-
-                    <div class="flex-1 min-w-0">
-                      <div class="flex items-center gap-2">
-                        <span class="text-sm font-medium text-gray-900">
-                          Podcast v{{ podcast.version }}
-                        </span>
-                        @if (podcast.status === 'pending' || podcast.status === 'generating_audio' || podcast.status === 'uploading') {
-                          <span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">{{ podcast.progressMessage || 'Generating...' }}</span>
-                        } @else if (podcast.status === 'failed') {
-                          <span class="text-xs bg-red-100 text-red-700 px-2 py-1 rounded">Failed</span>
-                        } @else if (podcast.status === 'completed') {
-                          <span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
-                            {{ podcast.audioUrl ? 'Audio Ready' : 'Audio Pending' }}
-                          </span>
-                        }
-                      </div>
-                      <div class="flex items-center gap-3 mt-1 text-xs text-gray-500">
-                        <span>{{ formatting.formatDuration(podcast.duration) }}</span>
-                        @if (podcast.fileSize) {
-                          <span>•</span>
-                          <span>{{ formatting.formatFileSize(podcast.fileSize) }}</span>
-                        }
-                        <span>•</span>
-                        <span>{{ formatting.formatDate(podcast.createdAt) }}</span>
-                      </div>
-                    </div>
-
-                    <div class="flex items-center gap-2">
-                      <button
-                        (click)="downloadPodcast.emit(podcast)"
-                        [disabled]="!podcast.audioUrl"
-                        class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
-                        title="Podcast downloaden"
-                      >
-                        ⬇️ Download
-                      </button>
-                      @if (campaignId() && sessionId()) {
-                        <app-podcast-share-button
-                          [target]="{ campaignId: campaignId(), sessionId: sessionId(), podcastVersion: podcast.version }"
-                          [disabled]="!podcast.audioUrl || podcast.status !== 'completed'"
-                        />
-                      }
-                    </div>
-                  </div>
-
-                  <!-- Native HTML5 Audio Player -->
-                  @if (podcast.audioUrl) {
-                    <div class="mt-3 bg-white rounded-lg p-3 border border-purple-200">
-                      <audio
-                        controls
-                        [src]="podcast.audioUrl"
-                        class="w-full"
-                        preload="metadata"
-                      >
-                        Je browser ondersteunt het audio element niet.
-                      </audio>
-                    </div>
-                  }
+                  <app-podcast-version-item
+                    [podcast]="podcast"
+                    [shareTarget]="campaignId() && sessionId() ? { campaignId: campaignId(), sessionId: sessionId(), podcastVersion: podcast.version } : null"
+                    [downloadName]="title() || 'podcast'"
+                  />
                 }
               </div>
             }
@@ -402,7 +325,7 @@ export interface SessionMetaUpdate {
                   Nog geen podcasts gegenereerd. Klik op "Genereer Podcast" om te beginnen.
                 </p>
                 <p class="text-xs text-gray-400 m-0 mt-1">
-                  Podcasts gebruiken Gemini 2.5 Flash TTS met natuurlijk klinkende Nederlandse stemmen
+                  Podcasts gebruiken AI-stemmen die natuurlijk klinkend Nederlands spreken
                 </p>
               </div>
             }
@@ -415,7 +338,6 @@ export interface SessionMetaUpdate {
 export class SessionStoryComponent {
   private readonly sanitizer = inject(DomSanitizer);
   private readonly toastService = inject(ToastService);
-  public readonly formatting = inject(FormattingService);
 
   title = input('Session Story');
   subtitle = input('');
@@ -439,15 +361,10 @@ export class SessionStoryComponent {
   podcastError = input('');
   canGeneratePodcast = input(false);
 
-  // Background job tracking
-  hasActiveBackgroundJob = input(false);
-  backgroundJobMessage = input('');
-
   storyUpdated = output<string>();
   regenerate = output<void>();
   correctionsChanged = output<string>();
   generatePodcast = output<void>();
-  downloadPodcast = output<PodcastVersion>();
   metaUpdated = output<SessionMetaUpdate>();
   deleteSession = output<void>();
 

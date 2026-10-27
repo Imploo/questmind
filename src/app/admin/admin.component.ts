@@ -490,7 +490,6 @@ export class AdminComponent implements OnInit {
     storyGeneration: { model: 'gemini-3.8-flash', maxOutputTokens: 60000, thinkingLevel: 'medium' },
     podcastScript: { model: 'gemini-3.8-flash', maxOutputTokens: 32768, thinkingLevel: 'medium' },
     campaignStory: { model: 'gemini-3.8-flash', maxOutputTokens: 16384, thinkingLevel: 'medium', targetWords: 1200 },
-    characterChat: { model: 'gemini-3.8-flash', maxOutputTokens: 8192, thinkingLevel: 'low' },
     podcastVoices: {
       maxCharacters: 5000,
       geminiModel: 'gemini-3.8-flash-tts',
@@ -656,14 +655,6 @@ export class AdminComponent implements OnInit {
       const existing = features[def.key] as Record<string, unknown> | undefined;
       const defaults = this.defaultConfigs[def.key];
       normalized[def.key] = { ...defaults, ...existing };
-    }
-
-    // Preserve characterChat for backward compatibility
-    if (features['characterChat']) {
-      normalized['characterChat'] = {
-        ...this.defaultConfigs['characterChat'],
-        ...(features['characterChat'] as Record<string, unknown>),
-      };
     }
 
     return { ...settings, features: normalized as AiSettings['features'] };
