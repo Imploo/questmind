@@ -1,11 +1,9 @@
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
-import { GoogleGenAI } from '@google/genai';
-import { getFirestore } from 'firebase-admin/firestore';
 import { wrapCallable } from './utils/sentry-error-handler';
-import { getAiFeatureConfig } from './utils/ai-settings';
-import { buildGenerationParams } from './utils/gemini-config';
-import { SHARED_CORS } from './index';
-import * as logger from './utils/logger';
+import { SHARED_CORS } from './config/cors';
+import { ensureAuthForTesting } from './utils/emulator-helpers';
+import { requireAuthUid } from './utils/access';
+import { resolveCharacterEntry } from './character/resolve-character-entry';
 
 interface ResolveFeatureRequest {
   characterId: string;
@@ -27,30 +25,14 @@ export const resolveFeature = onCall(
   wrapCallable<ResolveFeatureRequest, ResolveFeatureResponse>(
     'resolveFeature',
     async (request): Promise<ResolveFeatureResponse> => {
-      if (!request.auth?.uid) {
-        throw new HttpsError('unauthenticated', 'Authentication required');
-      }
+      ensureAuthForTesting(request);
+      const uid = requireAuthUid(request);
 
       const { characterId, featureName, featureSource, characterClass, characterRace } = request.data;
 
-      if (!characterId || !featureName) {
+      if (!characterId || !featureName || typeof featureName !== 'string') {
         throw new HttpsError('invalid-argument', 'Missing required fields: characterId, featureName');
       }
-
-      // Verify caller owns this character
-      const db = getFirestore();
-      const charSnap = await db.collection('characters').doc(characterId).get();
-      if (!charSnap.exists || charSnap.data()?.['userId'] !== request.auth.uid) {
-        throw new HttpsError('permission-denied', 'Not authorized for this character');
-      }
-
-      const apiKey = process.env.GOOGLE_AI_API_KEY;
-      if (!apiKey) {
-        throw new HttpsError('failed-precondition', 'AI API key not configured');
-      }
-
-      const ai = new GoogleGenAI({ apiKey });
-      const config = await getAiFeatureConfig('featureResolution');
 
       const contextParts: string[] = [];
       if (featureSource) contextParts.push(`source: ${featureSource}`);
@@ -58,62 +40,20 @@ export const resolveFeature = onCall(
       if (characterRace) contextParts.push(`race: ${characterRace}`);
       const contextText = contextParts.length > 0 ? ` (${contextParts.join(', ')})` : '';
 
-      const result = await ai.models.generateContent({
-        model: config.model,
-        contents: `Return a JSON object (no markdown) for the D&D 5e feature/trait "${featureName}"${contextText}.
+      return resolveCharacterEntry<ResolveFeatureResponse>({
+        label: 'resolveFeature',
+        uid,
+        characterId,
+        featureKey: 'featureResolution',
+        listPath: 'featuresAndTraits',
+        matchName: featureName,
+        fields: ['description'],
+        prompt: `Return a JSON object (no markdown) for the D&D 5e feature/trait "${featureName}"${contextText}.
 Fields:
 - "description": full feature text from the rules, including any mechanical effects and level-based improvements
 
 Return only valid JSON like: {"description": "..."}`,
-        config: {
-          responseMimeType: 'application/json',
-          ...buildGenerationParams(config),
-        },
       });
-
-      let text = (result.text ?? '').trim();
-
-      // Strip markdown code fences if present
-      if (text.startsWith('```')) {
-        text = text.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
-      }
-
-      let details: ResolveFeatureResponse;
-      try {
-        details = JSON.parse(text) as ResolveFeatureResponse;
-        if (!details.description) {
-          throw new Error('Missing required fields in response');
-        }
-      } catch (parseError) {
-        logger.error('resolveFeature: Failed to parse AI response:', text);
-        throw new HttpsError('internal', 'Failed to parse feature details from AI response');
-      }
-
-      // Patch Firestore active version (best-effort)
-      try {
-        const activeVersionId = charSnap.data()?.['activeVersionId'] as string | undefined;
-
-        if (activeVersionId) {
-          const vRef = db.collection('characters').doc(characterId).collection('versions').doc(activeVersionId);
-          const vSnap = await vRef.get();
-
-          if (vSnap.exists) {
-            const features = (vSnap.data()?.['character']?.['featuresAndTraits'] ?? []) as Array<string | Record<string, unknown>>;
-            const updated = features.map(f => {
-              if (typeof f === 'string') return f;
-              if ((f['name'] as string)?.toLowerCase() === featureName.toLowerCase()) {
-                return { ...f, description: details.description };
-              }
-              return f;
-            });
-            await vRef.update({ 'character.featuresAndTraits': updated });
-          }
-        }
-      } catch (e) {
-        logger.error('resolveFeature: Firestore patch failed (non-fatal):', e);
-      }
-
-      return details;
     }
   )
 );

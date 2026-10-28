@@ -1,3 +1,4 @@
+import { toMillis as toMillisOrNull } from '../utils/timestamp';
 import {
   CampaignStoryInput,
   CampaignStorySkippedSession,
@@ -79,17 +80,9 @@ function sortKey(session: SessionDocForCampaignStory): number {
   return toMillis(session.createdAt);
 }
 
+/** Missing dates sort last. */
 function toMillis(value: unknown): number {
-  if (!value) return Number.MAX_SAFE_INTEGER;
-  if (value instanceof Date) return value.getTime();
-  if (typeof value === 'object' && 'toDate' in value && typeof (value as { toDate: unknown }).toDate === 'function') {
-    return (value as { toDate: () => Date }).toDate().getTime();
-  }
-  if (typeof value === 'string' || typeof value === 'number') {
-    const millis = new Date(value).getTime();
-    return Number.isNaN(millis) ? Number.MAX_SAFE_INTEGER : millis;
-  }
-  return Number.MAX_SAFE_INTEGER;
+  return toMillisOrNull(value) ?? Number.MAX_SAFE_INTEGER;
 }
 
 function toIsoDate(value: unknown): string | null {

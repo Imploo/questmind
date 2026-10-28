@@ -1,9 +1,12 @@
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
-import { GoogleGenAI, Part } from '@google/genai';
+import type { Part } from '@google/genai';
+import { getFirestore } from 'firebase-admin/firestore';
 import { wrapCallable } from './utils/sentry-error-handler';
 import { getAiFeatureConfig } from './utils/ai-settings';
-import { buildGenerationParams } from './utils/gemini-config';
-import { SHARED_CORS } from './index';
+import { GeminiEmptyResponseError, GeminiJsonError, generateJson } from './utils/gemini-client';
+import { SHARED_CORS } from './config/cors';
+import { ensureAuthForTesting } from './utils/emulator-helpers';
+import { assertCharacterOwner, requireAuthUid } from './utils/access';
 import { CHARACTER_RESPONDER_PROMPT } from './prompts/character-responder.prompt';
 import { DndCharacter } from './schemas/dnd-character.schema';
 import * as logger from './utils/logger';
@@ -31,9 +34,8 @@ export const characterChat = onCall(
   wrapCallable<CharacterChatRequest, CharacterChatResponse>(
     'characterChat',
     async (request): Promise<CharacterChatResponse> => {
-      if (!request.auth?.uid) {
-        throw new HttpsError('unauthenticated', 'Authentication required');
-      }
+      ensureAuthForTesting(request);
+      const uid = requireAuthUid(request);
 
       const { characterId, currentCharacter, chatHistory, attachments } = request.data;
 
@@ -51,18 +53,12 @@ export const characterChat = onCall(
         }
       }
 
-      const apiKey = process.env.GOOGLE_AI_API_KEY;
+      await assertCharacterOwner(getFirestore(), characterId, uid);
 
-      if (!apiKey) {
-        logger.error('Missing GOOGLE_AI_API_KEY');
-        throw new HttpsError('internal', 'AI service not configured');
-      }
-
-      const ai = new GoogleGenAI({ apiKey });
       const config = await getAiFeatureConfig('characterChatText');
 
       // AI 1: Text responder — build Gemini contents with character context
-      const contents: Array<{ role: string; parts: Part[] }> = [
+      const contents: { role: string; parts: Part[] }[] = [
         { role: 'user', parts: [{ text: `Huidig karakter:\n${JSON.stringify(currentCharacter)}` }] },
         { role: 'model', parts: [{ text: 'Karakter ontvangen, zal het inlezen.' }] },
       ];
@@ -93,81 +89,46 @@ export const characterChat = onCall(
       try {
         logger.info('characterChat: calling Gemini', {
           model: config.model,
-          maxOutputTokens: config.maxOutputTokens,
           hasAttachments: Boolean(attachments?.length),
           attachmentCount: attachments?.length ?? 0,
           contentParts: contents.length,
         });
 
-        const response = await ai.models.generateContent({
-          model: config.model,
+        const parsed = await generateJson<{ text?: string; shouldUpdateCharacter?: boolean }>({
+          config,
+          label: 'characterChat',
           contents,
-          config: {
-            systemInstruction: CHARACTER_RESPONDER_PROMPT,
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: 'object' as const,
-              properties: {
-                text: { type: 'string' as const },
-                shouldUpdateCharacter: { type: 'boolean' as const },
-              },
-              required: ['text', 'shouldUpdateCharacter'],
+          systemInstruction: CHARACTER_RESPONDER_PROMPT,
+          schema: {
+            type: 'object' as const,
+            properties: {
+              text: { type: 'string' as const },
+              shouldUpdateCharacter: { type: 'boolean' as const },
             },
-            ...buildGenerationParams(config),
+            required: ['text', 'shouldUpdateCharacter'],
           },
         });
 
-        const finishReason = response.candidates?.[0]?.finishReason;
-        const usageMetadata = response.usageMetadata;
-
-        logger.info('characterChat: Gemini response received', {
-          finishReason,
-          promptTokenCount: usageMetadata?.promptTokenCount,
-          candidatesTokenCount: usageMetadata?.candidatesTokenCount,
-          totalTokenCount: usageMetadata?.totalTokenCount,
-          hasText: response.text != null,
-          textLength: response.text?.length ?? 0,
-        });
-
-        const responseText = response.text?.trim() ?? null;
-
-        if (!responseText) {
-          logger.error('AI model returned empty response', { finishReason });
-          throw new HttpsError('internal', 'No response from AI model');
-        }
-
-        let parsed: { text: string; shouldUpdateCharacter: boolean };
-        try {
-          parsed = JSON.parse(responseText);
-        } catch {
-          logger.error('Failed to parse AI response as JSON', {
-            responseText: responseText.slice(0, 500),
-            responseLength: responseText.length,
-            finishReason,
-          });
-          throw new HttpsError('internal', 'AI model returned invalid JSON. The response may have been truncated.');
-        }
-
-        const text: string = parsed.text;
-        const shouldUpdateCharacter: boolean = parsed.shouldUpdateCharacter === true;
-
+        const text = parsed?.text;
         if (!text) {
-          logger.error('AI model returned empty text field');
           throw new HttpsError('internal', 'No response from AI model');
         }
 
-        return { text, shouldUpdateCharacter };
+        return { text, shouldUpdateCharacter: parsed.shouldUpdateCharacter === true };
       } catch (error) {
         if (error instanceof HttpsError) {
           throw error;
         }
+        if (error instanceof GeminiJsonError) {
+          throw new HttpsError('internal', 'AI model returned invalid JSON. The response may have been truncated.');
+        }
+        if (error instanceof GeminiEmptyResponseError) {
+          throw new HttpsError('internal', 'No response from AI model');
+        }
         if (error instanceof Error && error.message?.includes('429')) {
           throw new HttpsError('resource-exhausted', 'Rate limit exceeded. Please wait a moment before trying again.');
         }
-        logger.error('characterChat: unexpected error', {
-          errorMessage: error instanceof Error ? error.message : String(error),
-          errorName: error instanceof Error ? error.name : 'unknown',
-        });
+        // Reported once by wrapCallable.
         throw error;
       }
     }

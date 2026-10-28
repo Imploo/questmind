@@ -1,11 +1,11 @@
-import { Component, input, output } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import { DatePipe } from '@angular/common';
 import { CharacterVersion } from '../../../../core/models/schemas/character.schema';
 
 @Component({
   selector: 'app-character-version-history',
-  standalone: true,
-  imports: [CommonModule],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [DatePipe],
   template: `
     <div class="fixed inset-0 bg-black/50 z-50 flex justify-end" (click)="closed.emit()">
       <div class="w-96 bg-base-100 h-full shadow-xl overflow-y-auto p-6" (click)="$event.stopPropagation()">

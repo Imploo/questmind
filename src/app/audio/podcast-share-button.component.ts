@@ -41,7 +41,9 @@ export class PodcastShareButtonComponent {
       setTimeout(() => this.copied.set(false), 3000);
       this.toastService.show('Link gekopieerd — iedereen met deze link kan de podcast beluisteren.', 'success');
     } catch {
+      let shareError: unknown = null;
       const shareUrl = await url.catch((error: unknown) => {
+        shareError = error;
         logger.error('Failed to create podcast share link:', error);
         return null;
       });
@@ -49,7 +51,7 @@ export class PodcastShareButtonComponent {
         // Clipboard blocked (permissions/browser): let the user copy it by hand.
         window.prompt('Kopieer de deelbare link:', shareUrl);
       } else {
-        this.toastService.show('Deelbare link maken is mislukt. Probeer het opnieuw.', 'error');
+        this.toastService.showCallableError(shareError, 'Deelbare link maken is mislukt. Probeer het opnieuw.');
       }
     } finally {
       this.busy.set(false);

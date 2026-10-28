@@ -4,16 +4,6 @@ export interface AudioUpload {
   sessionDate?: string;
   userId: string;
   campaignId: string;
-  transcriptionMode?: 'fast' | 'batch';
-}
-
-export interface StorageMetadata {
-  storagePath: string;
-  downloadUrl: string;
-  fileSize: number;
-  contentType: string;
-  uploadedAt: string;
-  durationSeconds?: number;
 }
 
 export interface TranscriptionTimestamp {
@@ -27,44 +17,12 @@ export interface TranscriptionSegment {
   speaker?: string;
 }
 
-export interface TranscriptionChunk {
-  index: number;
-  startTimeSeconds: number;
-  endTimeSeconds: number;
-  durationSeconds: number;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
-  segments?: TranscriptionSegment[];
-  completedAt?: Date;
-  error?: string;
-  failedAt?: Date;
-  retryCount?: number;
-  tokensUsed?: number;
-  thoughtsTokens?: number;
-  processingTimeMs?: number;
-}
-
 export interface TranscriptionResult {
   id: string;
   rawTranscript: string;
   timestamps: TranscriptionTimestamp[];
   status: 'processing' | 'completed' | 'failed';
-  storageMetadata: StorageMetadata;
   segments?: TranscriptionSegment[];
-}
-
-export interface TranscriptionRecord {
-  id: string;
-  sessionId: string;
-  rawTranscript: string;
-  timestamps: TranscriptionTimestamp[];
-  status: 'processing' | 'completed' | 'failed';
-  createdAt: string;
-  label?: string;
-  isComplete?: boolean;
-  completedChunks?: number;
-  totalChunks?: number;
-  lastProcessedChunkIndex?: number;
-  chunks?: TranscriptionChunk[];
 }
 
 export interface SessionStory {
@@ -87,6 +45,8 @@ export interface PodcastScript {
   estimatedDuration: number; // seconds
 }
 
+export type PodcastStatus = 'pending' | 'script_complete' | 'completed' | 'failed';
+
 export interface PodcastVersion {
   version: number;
   createdAt: Date;
@@ -98,21 +58,15 @@ export interface PodcastVersion {
   storyVersion?: number;
   script?: PodcastScript;
 
-  // @deprecated Progress fields (Ticket #43) - Use session.progress instead
-  // These fields are still used for completed/failed podcasts but should not be used for in-progress tracking
-  status:
-    | 'pending'
-    | 'loading_context'      // NEW: 0-10%
-    | 'generating_script'    // NEW: 10-50%
-    | 'script_complete'      // NEW: 50%
-    | 'generating_audio'     // 50-80%
-    | 'uploading'            // 80-95%
-    | 'completed'            // 100%
-    | 'failed';
+  /**
+   * Statuses the backend writes: pending → script_complete → completed, or failed.
+   * Live progress is tracked on `session.progress` (Ticket #43).
+   */
+  status: PodcastStatus;
   /** @deprecated Use session.progress instead (Ticket #43) */
-  progress: number; // 0-100
+  progress?: number; // 0-100
   /** @deprecated Use session.progress.message instead (Ticket #43) */
-  progressMessage: string; // e.g., "Generating audio with text-to-dialogue..."
+  progressMessage?: string; // e.g., "Generating audio with text-to-dialogue..."
   /** @deprecated Use session.progress.error instead (Ticket #43) */
   error?: string;
 
@@ -129,11 +83,7 @@ export type SessionProgressStage =
   | 'uploading'
   | 'processing-audio'      // Backend ffmpeg: join, downmix, normalize, encode
   | 'transcribing'          // Fast transcription
-  | 'batch-submitted'       // Batch transcription submitted
-  | 'batch-processing'      // Batch transcription running
-  | 'retranscribing'
   | 'generating-story'
-  | 'regenerating-story'
   | 'generating-podcast-script'
   | 'generating-podcast-audio'
   | 'completed'
@@ -153,32 +103,11 @@ export interface SessionProgress {
   updatedAt: Date;                     // Last update timestamp
 }
 
-export interface TranscriptionBatchMetadata {
-  batchJobName?: string;
-  status?: 'submitted' | 'running' | 'completed' | 'failed';
-  error?: string;
-  lastCheckedAt?: unknown; // Firestore timestamp
-  enableKankaContext?: boolean;
-  userCorrections?: string;
-}
-
-/** One transcribed audio segment's reference + status (ticket #67). */
-export interface AudioSegmentRecord {
-  index: number;
-  fileUri: string;
-  startSec?: number | null;
-  endSec?: number | null;
-  status?: 'pending' | 'completed' | 'failed';
-}
-
 /** Fast-transcription metadata persisted on the session (ticket #67). */
 export interface TranscriptionFastMetadata {
   mode?: string;
   status?: 'processing' | 'completed' | 'failed';
-  /** First segment's fileUri — kept for backward compatibility. */
-  fileUri?: string;
   segmentCount?: number;
-  segments?: AudioSegmentRecord[];
   audioFileName?: string;
   error?: string;
 }
@@ -209,17 +138,12 @@ export interface AudioSessionRecord extends SessionStory {
   status: 'uploading' | 'processing' | 'completed' | 'failed';
   updatedAt: string;
 
-  // Storage - storageUrl is the primary field, storageMetadata for additional details
-  storageUrl?: string; // gs:// URL for Cloud Functions
-
   /** Stored recording used for playback and re-transcription. */
   audioRecording?: AudioRecording;
   /** Uploaded sources; removed by the backend once `audioRecording` is ready. */
   audioSources?: AudioSource[];
 
   transcription?: TranscriptionResult;
-  activeTranscriptionId?: string;
-  transcriptions?: TranscriptionRecord[];
   userCorrections?: string;
   correctionsUpdatedAt?: string;
   rawStory?: string;
@@ -228,16 +152,12 @@ export interface AudioSessionRecord extends SessionStory {
   podcasts?: PodcastVersion[];
   latestPodcastVersion?: number;
 
-  // Batch transcription tracking
   transcriptionCompletedAt?: string;
 
   // Story generation tracking
   storyGeneratedAt?: string;
 
-  // Batch job tracking
-  transcriptionBatch?: TranscriptionBatchMetadata;
-
-  // Fast transcription tracking (segment fileUris reused on retry — ticket #67)
+  // Fast transcription tracking (ticket #67)
   transcriptionFast?: TranscriptionFastMetadata;
 
   // Unified progress tracking (Ticket #43)
@@ -260,6 +180,3 @@ export interface AudioSessionRecord extends SessionStory {
   processingDurationMs?: number;
 
 }
-
-// Re-export types from schema for backward compatibility
-export type { UploadProgress, UnifiedProgress } from '../../core/models/schemas/audio-session.schema';

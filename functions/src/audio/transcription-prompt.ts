@@ -5,6 +5,7 @@ import {
   TranscriptionPromptOptions,
 } from '../prompts/raw-story-transcription.prompt';
 import {KankaSearchResult} from '../types/audio-session.types';
+import {buildKankaContextBlock} from '../services/kanka.service';
 
 export function buildRawStoryPrompt(
   kankaContext?: KankaSearchResult,
@@ -29,50 +30,6 @@ function appendKankaContext(
   basePrompt: string,
   kankaContext?: KankaSearchResult
 ): string {
-  if (!kankaContext || Object.keys(kankaContext).length === 0) {
-    return basePrompt;
-  }
-
-  const contextPrompt = buildKankaContextPrompt(kankaContext);
-  if (!contextPrompt) {
-    return basePrompt;
-  }
-
-  return `${basePrompt}\n\n${contextPrompt}`;
-}
-
-function buildKankaContextPrompt(context: KankaSearchResult): string {
-  const sections: string[] = [];
-
-  const addSection = (
-    label: string,
-    entities:
-      | {name: string; entry?: string; entry_parsed?: string}[]
-      | undefined
-  ) => {
-    if (!entities?.length) {
-      return;
-    }
-    const names = entities
-      .map(entity => entity.name)
-      .filter(Boolean)
-      .join(', ');
-    if (names) {
-      sections.push(`${label}: ${names}`);
-    }
-  };
-
-  addSection('Characters', context.characters);
-  addSection('Locations', context.locations);
-  addSection('Quests', context.quests);
-  addSection('Organisations', context.organisations);
-
-  if (sections.length === 0) {
-    return '';
-  }
-
-  return `CAMPAIGN REFERENCE (for name/place accuracy only):
-${sections.join('\n')}
-
-Remember: Use this context ONLY to spell names and places correctly when you hear them. Do not add information that wasn't spoken, and never use this list to decide who is speaking.`;
+  const contextPrompt = buildKankaContextBlock(kankaContext);
+  return contextPrompt ? `${basePrompt}\n\n${contextPrompt}` : basePrompt;
 }

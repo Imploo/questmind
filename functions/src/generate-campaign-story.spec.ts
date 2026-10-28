@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// eslint-friendly stand-in for `Function` in handler mocks
+type CallableFn = (...args: unknown[]) => Promise<unknown>;
+
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
 const campaignGet = vi.fn();
@@ -34,18 +37,18 @@ vi.mock('./utils/ai-settings', () => ({
 vi.mock('./utils/emulator-helpers', () => ({ ensureAuthForTesting: vi.fn() }));
 const captureFunctionError = vi.fn();
 vi.mock('./utils/sentry-error-handler', () => ({
-  wrapCallable: (_name: string, handler: Function) => handler,
+  wrapCallable: (_name: string, handler: CallableFn) => handler,
   captureFunctionError: (...args: unknown[]) => captureFunctionError(...args),
 }));
 vi.mock('./index', () => ({ SHARED_CORS: [] }));
 vi.mock('./utils/logger', () => ({ error: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn() }));
 
-let handler: Function;
+let handler: CallableFn;
 vi.mock('firebase-functions/v2/https', async () => {
   const actual = await vi.importActual<typeof import('firebase-functions/v2/https')>('firebase-functions/v2/https');
   return {
     ...actual,
-    onCall: (_config: unknown, fn: Function) => {
+    onCall: (_config: unknown, fn: CallableFn) => {
       handler = fn;
       return fn;
     },

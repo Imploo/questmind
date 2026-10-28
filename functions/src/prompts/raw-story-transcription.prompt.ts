@@ -7,7 +7,7 @@
  * (see session-story-generator.prompt.ts), which also has the previous sessions as context.
  *
  * Two variants share the same format, faithfulness and attribution rules:
- *  - RAW_STORY_TRANSCRIPTION_PROMPT: a full session in a single pass.
+ *  - buildFullTranscriptionPrompt(): a full session in a single pass.
  *  - buildSegmentTranscriptionPrompt(): one time-segment of a longer session
  *    (used when the recording is split into shorter clips so each clip gets the
  *    model's full attention and its own output budget — see ticket #67).
@@ -168,8 +168,6 @@ ${buildLogRules(!!options.hasVoiceIntro)}
 
 ${ERROR_HANDLING}`;
 }
-
-export const RAW_STORY_TRANSCRIPTION_PROMPT = buildFullTranscriptionPrompt();
 
 export interface SegmentPromptMeta {
   /** 1-based position of this segment. */

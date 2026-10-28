@@ -1,185 +1,61 @@
-import { Injectable, signal, Signal, inject } from '@angular/core';
-import { doc, onSnapshot, DocumentSnapshot } from 'firebase/firestore';
-import { httpsCallable, type Functions } from 'firebase/functions';
+import { Injectable, inject } from '@angular/core';
+import { httpsCallable } from 'firebase/functions';
 import { FirebaseService } from '../../core/firebase.service';
-import { PodcastVersion } from './audio-session.models';
 import * as logger from '../../shared/logger';
 
-/**
- * @deprecated Use SessionProgress instead (Ticket #43)
- * Use SessionProgressCardComponent for displaying progress
- */
-export interface PodcastProgress {
-  status:
-    | 'pending'
-    | 'loading_context'      // NEW
-    | 'generating_script'    // NEW
-    | 'script_complete'      // NEW
-    | 'generating_audio'
-    | 'uploading'
-    | 'completed'
-    | 'failed';
-  progress: number;
-  message: string;
-  error?: string;
+interface GeneratePodcastRequest {
+  campaignId: string;
+  sessionId: string;
+  sessionTitle?: string;
+  sessionDate?: string;
 }
 
-/**
- * Service for generating and playing stored podcast MP3 files.
- */
+interface GeneratePodcastResponse {
+  success: boolean;
+  message?: string;
+  /** Podcast version allocated by the server. */
+  version?: number;
+}
+
+/** Calls the session podcast Cloud Function. */
 @Injectable({
   providedIn: 'root'
 })
 export class PodcastAudioService {
   private readonly firebase = inject(FirebaseService);
-  private readonly functions: Functions;
-  private currentAudio: HTMLAudioElement | null = null;
-
-  constructor() {
-    this.functions = this.firebase.requireFunctions();
-  }
 
   /**
-   * Start complete podcast generation (script + audio).
-   * Returns immediately. Use listenToPodcastProgress() to monitor.
+   * Generate a podcast (script + audio) for a session. The server reads the story
+   * from the session and allocates the podcast version; progress is written to
+   * the session document. Resolves with the version once the backend is done, or
+   * with null when the call outlived the client-side timeout (generation then
+   * continues in the background). Other errors are rethrown with their code.
    */
   async startPodcastGeneration(
     campaignId: string,
     sessionId: string,
-    version: number,
-    story: string,
-    sessionTitle: string,
+    sessionTitle?: string,
     sessionDate?: string
-  ): Promise<void> {
+  ): Promise<number | null> {
+    const generateAudio = httpsCallable<GeneratePodcastRequest, GeneratePodcastResponse>(
+      this.firebase.requireFunctions(),
+      'generatePodcastAudio'
+    );
+
     try {
-      const generateAudio = httpsCallable<
-        {
-          campaignId: string;
-          sessionId: string;
-          version: number;
-          story: string;
-          sessionTitle: string;
-          sessionDate?: string;
-        },
-        { success: boolean; message: string; }
-      >(this.functions, 'generatePodcastAudio');
-
-      const result = await generateAudio({
-        campaignId,
-        sessionId,
-        version,
-        story,
-        sessionTitle,
-        sessionDate
-      });
-
+      const result = await generateAudio({ campaignId, sessionId, sessionTitle, sessionDate });
       if (!result.data?.success) {
-        throw new Error('Failed to start podcast generation');
+        throw new Error(result.data?.message || 'Failed to start podcast generation');
       }
-
+      return result.data.version ?? null;
     } catch (error) {
       // Long podcasts outlive the client-side callable timeout while the Cloud
       // Function keeps running; real failures are reported via Firestore.
       if ((error as { code?: string })?.code === 'functions/deadline-exceeded') {
         logger.debug('Podcast callable timed out client-side; generation continues in background');
-        return;
+        return null;
       }
-      logger.error('Error starting podcast generation:', error);
-      throw new Error('Failed to start podcast generation. Please try again.');
-    }
-  }
-
-  /**
-   * @deprecated Use SessionProgressCardComponent instead (Ticket #43)
-   * Listen to podcast generation progress in real-time.
-   * Returns a signal that updates with progress and an unsubscribe function.
-   */
-  listenToPodcastProgress(
-    campaignId: string,
-    sessionId: string,
-    version: number
-  ): { progress: Signal<PodcastProgress | null>; unsubscribe: () => void } {
-    const progressSignal = signal<PodcastProgress | null>(null);
-    const firestore = this.firebase.requireFirestore();
-
-    const sessionRef = doc(
-      firestore,
-      `campaigns/${campaignId}/audioSessions/${sessionId}`
-    );
-
-    const unsubscribe = onSnapshot(
-      sessionRef,
-      (snapshot: DocumentSnapshot) => {
-        if (!snapshot.exists()) {
-          progressSignal.set({
-            status: 'failed',
-            progress: 0,
-            message: 'Session not found',
-            error: 'Session document does not exist'
-          });
-          return;
-        }
-
-        const data = snapshot.data();
-        const podcasts = data?.['podcasts'] || [];
-        const podcast = (podcasts as PodcastVersion[]).find((p) => p.version === version);
-
-        if (!podcast) {
-          progressSignal.set({
-            status: 'pending',
-            progress: 0,
-            message: 'Waiting to start...'
-          });
-          return;
-        }
-
-        progressSignal.set({
-          status: podcast.status || 'pending',
-          progress: podcast.progress || 0,
-          message: podcast.progressMessage || 'Processing...',
-          error: podcast.error
-        });
-      },
-      (error: Error) => {
-        logger.error('Error listening to podcast progress:', error);
-        progressSignal.set({
-          status: 'failed',
-          progress: 0,
-          message: 'Failed to monitor progress',
-          error: error.message
-        });
-      }
-    );
-
-    return {
-      progress: progressSignal.asReadonly(),
-      unsubscribe
-    };
-  }
-
-  /**
-   * Play a single segment (for preview)
-   */
-  playPodcastMP3(audioUrl: string): HTMLAudioElement {
-    this.stopPlayback();
-    const audio = new Audio(audioUrl);
-    this.currentAudio = audio;
-    void audio.play();
-    return audio;
-  }
-
-  downloadPodcastMP3(audioUrl: string, filename: string): void {
-    const link = document.createElement('a');
-    link.href = audioUrl;
-    link.download = filename;
-    link.click();
-  }
-
-  stopPlayback(): void {
-    if (this.currentAudio) {
-      this.currentAudio.pause();
-      this.currentAudio.currentTime = 0;
-      this.currentAudio = null;
+      throw error;
     }
   }
 }

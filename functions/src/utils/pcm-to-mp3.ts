@@ -1,26 +1,8 @@
-import ffmpeg from 'fluent-ffmpeg';
-import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
 import { PassThrough, Readable } from 'stream';
-
-ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+import { ffmpeg } from './ffmpeg';
 
 /** Gemini TTS default output sample rate (Hz). */
 export const DEFAULT_PCM_SAMPLE_RATE = 24000;
-
-/**
- * Parse the PCM sample rate from a Gemini TTS mimeType
- * (e.g. `audio/L16;codec=pcm;rate=24000`).
- *
- * Preview models can change the rate, so we read it from the response
- * instead of hardcoding. Falls back to {@link DEFAULT_PCM_SAMPLE_RATE}
- * when the rate is absent or unparseable.
- */
-export function parsePcmSampleRate(mimeType: string | undefined | null): number {
-  if (!mimeType) return DEFAULT_PCM_SAMPLE_RATE;
-  const match = /rate=(\d+)/i.exec(mimeType);
-  const rate = match ? Number.parseInt(match[1], 10) : NaN;
-  return Number.isFinite(rate) && rate > 0 ? rate : DEFAULT_PCM_SAMPLE_RATE;
-}
 
 /**
  * Transcode raw signed-16-bit little-endian mono PCM to MP3.

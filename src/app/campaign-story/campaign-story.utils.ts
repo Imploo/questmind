@@ -1,5 +1,6 @@
 import { AudioSessionRecord } from '../audio/services/audio-session.models';
 import { CampaignStoryVersion } from './campaign-story.models';
+import { toMillis } from '../shared/utils/date.utils';
 
 /** A session counts for the campaign story once its own story is completed (mirrors the backend). */
 export function isUsableSession(session: Pick<AudioSessionRecord, 'status' | 'content'>): boolean {
@@ -30,18 +31,6 @@ export function latestCompletedVersion(versions: CampaignStoryVersion[]): Campai
 
 /** Matches the backend: a generation still running after this long is considered abandoned. */
 export const STALE_GENERATION_MS = 15 * 60 * 1000;
-
-export function toMillis(value: unknown): number {
-  if (value instanceof Date) return value.getTime();
-  if (typeof value === 'string' || typeof value === 'number') {
-    const millis = new Date(value).getTime();
-    return Number.isNaN(millis) ? 0 : millis;
-  }
-  if (value && typeof value === 'object' && 'toDate' in value && typeof (value as { toDate: unknown }).toDate === 'function') {
-    return (value as { toDate: () => Date }).toDate().getTime();
-  }
-  return 0;
-}
 
 export function isActiveGeneration(createdAt: unknown, now = Date.now()): boolean {
   return now - toMillis(createdAt) < STALE_GENERATION_MS;

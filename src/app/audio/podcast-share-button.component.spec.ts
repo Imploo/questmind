@@ -8,6 +8,7 @@ describe('PodcastShareButtonComponent', () => {
   let fixture: ComponentFixture<PodcastShareButtonComponent>;
   const createShareUrl = vi.fn();
   const show = vi.fn();
+  const showCallableError = vi.fn();
   const writeText = vi.fn();
   const target = { campaignId: 'c1', sessionId: 's1', podcastVersion: 2 };
 
@@ -21,7 +22,7 @@ describe('PodcastShareButtonComponent', () => {
     TestBed.configureTestingModule({
       providers: [
         { provide: PodcastShareService, useValue: { createShareUrl } },
-        { provide: ToastService, useValue: { show } },
+        { provide: ToastService, useValue: { show, showCallableError } },
       ],
     });
     fixture = TestBed.createComponent(PodcastShareButtonComponent);
@@ -63,6 +64,6 @@ describe('PodcastShareButtonComponent', () => {
     await click();
 
     expect(writeText).not.toHaveBeenCalled();
-    expect(show).toHaveBeenCalledWith(expect.stringContaining('mislukt'), 'error');
+    expect(showCallableError).toHaveBeenCalledWith(expect.any(Error), expect.stringContaining('mislukt'));
   });
 });

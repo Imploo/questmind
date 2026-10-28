@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
+// eslint-friendly stand-in for `Function` in handler mocks
+type CallableFn = (...args: unknown[]) => Promise<unknown>;
+
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
 const shareGet = vi.fn();
@@ -9,12 +12,12 @@ vi.mock('firebase-admin/firestore', () => ({
 vi.mock('./utils/sentry-error-handler', () => ({ captureException: vi.fn(), wrapCallable: vi.fn() }));
 vi.mock('./index', () => ({ SHARED_CORS: [] }));
 
-let handler: Function;
+let handler: CallableFn;
 vi.mock('firebase-functions/v2/https', async () => {
   const actual = await vi.importActual<typeof import('firebase-functions/v2/https')>('firebase-functions/v2/https');
   return {
     ...actual,
-    onRequest: (_config: unknown, fn: Function) => {
+    onRequest: (_config: unknown, fn: CallableFn) => {
       handler = fn;
       return fn;
     },

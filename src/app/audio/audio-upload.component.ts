@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, signal, computed, input, output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { isWavFile } from './services/wav-to-mp3';
+import { formatFileSize } from '../shared/formatting.service';
 
 /** Uploaded as-is (M4A, MP3, OGG). */
 const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
@@ -342,11 +343,5 @@ export class AudioUploadComponent {
     return null;
   }
 
-  formatFileSize(bytes: number): string {
-    if (!bytes) {
-      return '0 MB';
-    }
-    const mb = bytes / (1024 * 1024);
-    return `${mb.toFixed(1)} MB`;
-  }
+  readonly formatFileSize = formatFileSize;
 }

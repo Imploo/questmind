@@ -1,4 +1,4 @@
-import { Injectable, inject, computed } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { AiSettingsRepository } from '../../shared/repository/ai-settings.repository';
 
 export type GeminiThinkingLevel = 'low' | 'medium' | 'high';
@@ -58,7 +58,6 @@ export interface AiSettings {
     storyGeneration?: AiModelConfig;
     podcastScript?: AiModelConfig;
     campaignStory?: CampaignStoryModelConfig;
-    characterChat?: AiModelConfig;
     characterChatText?: AiModelConfig;
     characterDraft?: AiModelConfig;
     spellResolution?: AiModelConfig;
@@ -75,26 +74,10 @@ export interface AiSettings {
 export class AiSettingsService {
   private readonly repo = inject(AiSettingsRepository);
   private readonly data = this.repo.get;
-  private readonly errorSignal = this.repo.error;
-
-  // Default fallback values
-  private readonly defaultCharacterChatConfig: AiModelConfig = {
-    model: 'gemini-3.8-flash',
-    maxOutputTokens: 8192,
-    thinkingLevel: 'low'
-  };
 
   private readonly defaultImageGenerationConfig: AiImageConfig = {
     model: 'fal-ai/flux/schnell'
   };
-
-  /**
-   * Get character chat config (with fallback to defaults)
-   */
-  getCharacterChatConfig(): AiModelConfig {
-    const settings = this.data() as AiSettings | null;
-    return settings?.features?.characterChat ?? this.defaultCharacterChatConfig;
-  }
 
   /**
    * Get image generation config (with fallback to defaults)
@@ -105,26 +88,9 @@ export class AiSettingsService {
   }
 
   /**
-   * Get all settings (readonly signal)
-   */
-  getSettings() {
-    return computed(() => this.data() as unknown as AiSettings | null);
-  }
-
-  /**
    * Get loading state
    */
   isLoading() {
     return this.repo.loading;
-  }
-
-  /**
-   * Get error state
-   */
-  getError() {
-    return computed(() => {
-      const error = this.errorSignal();
-      return error?.message ?? null;
-    });
   }
 }

@@ -20,7 +20,6 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
 
 @Component({
   selector: 'app-character-builder-page',
-  standalone: true,
   host: {
     '(window:keydown)': 'onWindowKeydown($event)',
     '(window:resize)': 'onWindowResize()'

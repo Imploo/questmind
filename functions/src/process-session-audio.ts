@@ -1,8 +1,11 @@
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { onTaskDispatched } from 'firebase-functions/v2/tasks';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
-import * as logger from './utils/logger';
-import { wrapCallable } from './utils/sentry-error-handler';
+import { SHARED_CORS } from './config/cors';
+import { captureFunctionError, wrapCallable } from './utils/sentry-error-handler';
+import { ensureAuthForTesting } from './utils/emulator-helpers';
+import { assertValidId, loadSessionForMember, requireAuthUid } from './utils/access';
+import { sessionRef } from './utils/session-ref';
 import { ProgressTrackerService } from './services/progress-tracker.service';
 import { TASK_WORKERS, TASK_WORKER_TIMEOUT_SECONDS, enqueueWorkerTask } from './services/task-queue.service';
 import { AudioRecording, sessionAudioPrefix } from './audio/stored-audio.service';
@@ -39,27 +42,23 @@ export function sessionSourcePrefix(campaignId: string, sessionId: string): stri
  * Start processing a session's uploaded source files (`audioSources` on the
  * session): join, downmix, normalize and encode them into the stored recording,
  * then transcribe it. Returns immediately; the frontend follows progress in Firestore.
+ * Any campaign member may start or retry this (the UI shows retry to every member).
  */
 export const processSessionAudio = onCall(
-  { memory: '256MiB' },
+  { cors: SHARED_CORS, memory: '256MiB' },
   wrapCallable<ProcessSessionAudioRequest, { success: boolean; message: string }>(
     'processSessionAudio',
     async (request) => {
-      if (!request.auth?.uid) {
-        throw new HttpsError('unauthenticated', 'Authentication required');
-      }
+      ensureAuthForTesting(request);
+      const uid = requireAuthUid(request);
 
-      const { campaignId, sessionId, userCorrections } = request.data;
-      if (!campaignId || !sessionId) {
-        throw new HttpsError('invalid-argument', 'Missing required fields: campaignId, sessionId');
-      }
+      const campaignId = assertValidId(request.data?.campaignId, 'campaignId');
+      const sessionId = assertValidId(request.data?.sessionId, 'sessionId');
+      const { userCorrections } = request.data;
 
-      const sessionSnap = await sessionDoc(campaignId, sessionId).get();
-      if (!sessionSnap.exists) {
-        throw new HttpsError('not-found', `Audio session ${sessionId} not found`);
-      }
+      const session = await loadSessionForMember(getFirestore(), campaignId, sessionId, uid);
       // Validated here so the worker never touches files outside this session.
-      loadSources(campaignId, sessionId, sessionSnap.get('audioSources'));
+      loadSources(campaignId, sessionId, session.audioSources);
 
       await ProgressTrackerService.updateProgress(
         campaignId, sessionId, 'processing-audio', 50, 'Queued for audio processing...'
@@ -96,8 +95,8 @@ export const processSessionAudioWorker = onTaskDispatched<ProcessAudioTaskPayloa
     const { campaignId, sessionId, userCorrections } = request.data;
 
     try {
-      const sessionRef = sessionDoc(campaignId, sessionId);
-      const sessionSnap = await sessionRef.get();
+      const ref = sessionRef(getFirestore(), campaignId, sessionId);
+      const sessionSnap = await ref.get();
       const sources = loadSources(campaignId, sessionId, sessionSnap.get('audioSources'));
 
       const fileName = `${sources[0].fileName.replace(/\.[^/.]+$/, '')}.mp3`;
@@ -118,7 +117,7 @@ export const processSessionAudioWorker = onTaskDispatched<ProcessAudioTaskPayloa
         durationSec: Math.round(durationSec),
         uploadedAt: new Date().toISOString(),
       };
-      await sessionRef.update({
+      await ref.update({
         audioRecording: recording,
         audioCompressedSizeBytes: sizeBytes,
         audioOriginalSizeBytes: sources.reduce((sum, s) => sum + s.sizeBytes, 0),
@@ -131,19 +130,15 @@ export const processSessionAudioWorker = onTaskDispatched<ProcessAudioTaskPayloa
       await enqueueTranscription({
         campaignId,
         sessionId,
-        segments: [],
         recording,
         audioFileName: fileName,
         userCorrections,
       });
     } catch (error) {
-      logger.error(`[Process Audio] Failed for session ${sessionId}:`, error);
-      await ProgressTrackerService.markFailed(
-        campaignId,
-        sessionId,
-        'processing-audio',
-        error instanceof Error ? error.message : String(error)
-      );
+      const err = error instanceof Error ? error : new Error(String(error));
+      // The single Sentry event for this failure (markFailed only warns).
+      captureFunctionError('processSessionAudioWorker', err, { campaignId, sessionId });
+      await ProgressTrackerService.markFailed(campaignId, sessionId, 'processing-audio', err.message);
     }
   }
 );
@@ -153,12 +148,6 @@ const STEP_PROGRESS: Record<ProcessingStep, { progress: number; message: string 
   processing: { progress: 58, message: 'Compressing and normalizing audio...' },
   storing: { progress: 66, message: 'Storing processed recording...' },
 };
-
-function sessionDoc(campaignId: string, sessionId: string) {
-  return getFirestore()
-    .collection('campaigns').doc(campaignId)
-    .collection('audioSessions').doc(sessionId);
-}
 
 /** Read and validate the session's source list (all files must be in its source folder). */
 export function loadSources(campaignId: string, sessionId: string, raw: unknown): AudioSource[] {

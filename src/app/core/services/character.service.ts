@@ -69,12 +69,4 @@ export class CharacterService {
       updatedAt: Timestamp.now()
     });
   }
-
-  async linkCampaign(characterId: string, campaignId: string): Promise<void> {
-    await this.updateCharacter(characterId, { campaignId });
-  }
-
-  async unlinkCampaign(characterId: string): Promise<void> {
-    await this.updateCharacter(characterId, { campaignId: null });
-  }
 }

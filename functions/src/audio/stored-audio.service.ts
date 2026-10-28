@@ -1,19 +1,14 @@
-import { promises as fs } from 'fs';
-import { tmpdir } from 'os';
 import { join } from 'path';
-import ffmpeg from 'fluent-ffmpeg';
-import ffmpegInstaller from '@ffmpeg-installer/ffmpeg';
 import { GoogleGenAI } from '@google/genai';
 import { getStorage } from 'firebase-admin/storage';
 import * as logger from '../utils/logger';
+import { ffmpeg, withTempDir } from '../utils/ffmpeg';
 import { TranscriptionSegmentationSettings } from '../types/audio-session.types';
 
-ffmpeg.setFfmpegPath(ffmpegInstaller.path);
-
 /**
- * The session's processed recording (compressed + normalized MP3) as stored in
- * Firebase Storage by the frontend. Lets a session be re-listened to and
- * re-transcribed without uploading the audio again.
+ * The session's processed recording (compressed + normalized MP3), written to
+ * Firebase Storage by the backend audio pipeline (processSessionAudioWorker).
+ * Lets a session be re-listened to and re-transcribed without uploading the audio again.
  */
 export interface AudioRecording {
   storagePath: string;
@@ -33,7 +28,10 @@ export interface SegmentRange {
 /** A segment uploaded to the Gemini Files API, ready for transcription. */
 export interface PreparedSegment extends SegmentRange {
   index: number;
+  /** Gemini Files API URI, used in the transcription request. */
   fileUri: string;
+  /** Gemini Files API resource name (`files/...`), used to poll the file state. */
+  fileName: string;
 }
 
 /** Storage path a session's recording must live under (checked before reading it). */
@@ -78,10 +76,8 @@ export async function prepareSegmentsFromStorage(
   segmentation: TranscriptionSegmentationSettings,
   onSegmentUploaded?: (uploaded: number, total: number) => Promise<void> | void
 ): Promise<PreparedSegment[]> {
-  const workDir = await fs.mkdtemp(join(tmpdir(), 'session-audio-'));
-  const sourcePath = join(workDir, 'source.mp3');
-
-  try {
+  return withTempDir('session-audio-', async (workDir) => {
+    const sourcePath = join(workDir, 'source.mp3');
     await getStorage().bucket().file(recording.storagePath).download({ destination: sourcePath });
 
     // A missing duration (shouldn't happen) degrades to one segment over the whole file.
@@ -115,18 +111,22 @@ export async function prepareSegmentsFromStorage(
           displayName: single ? `${baseName}.mp3` : `${baseName}-part${i + 1}.mp3`,
         },
       });
-      if (!file.uri) {
+      if (!file.uri || !file.name) {
         throw new Error(`Gemini upload of segment ${i + 1} returned no file URI`);
       }
       uploaded += 1;
       await onSegmentUploaded?.(uploaded, ranges.length);
-      return { index: i, fileUri: file.uri, startSec, endSec: single ? recording.durationSec : endSec };
+      return {
+        index: i,
+        fileUri: file.uri,
+        fileName: file.name,
+        startSec,
+        endSec: single ? recording.durationSec : endSec,
+      };
     }));
 
     return segments;
-  } finally {
-    await fs.rm(workDir, { recursive: true, force: true });
-  }
+  });
 }
 
 /** Cut [startSec, startSec + durationSec) out of an MP3 without re-encoding. */

@@ -3,15 +3,10 @@ import { KankaService } from './kanka.service';
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
+const mockCampaignGet = vi.fn();
 vi.mock('firebase-admin/firestore', () => ({
   getFirestore: () => ({
-    collection: vi.fn(() => ({
-      doc: vi.fn(() => ({
-        get: vi.fn().mockResolvedValue({
-          data: () => ({ settings: { kankaCampaignId: 'kanka-123' } }),
-        }),
-      })),
-    })),
+    doc: vi.fn(() => ({ get: mockCampaignGet })),
   }),
 }));
 
@@ -152,15 +147,57 @@ describe('KankaService', () => {
   });
 });
 
-describe('fetchKankaContextForTranscription', () => {
+describe('fetchKankaContextForSession', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ data: [] }) }));
+    process.env.KANKA_API_TOKEN = 'token';
   });
 
-  it('should return undefined when kanka is disabled', async () => {
-    const { fetchKankaContextForTranscription } = await import('./kanka.service');
-    const result = await fetchKankaContextForTranscription('campaign-1', 'session-1', false);
+  it('should return undefined without reading the campaign when kanka is disabled', async () => {
+    const { fetchKankaContextForSession } = await import('./kanka.service');
+    const result = await fetchKankaContextForSession('campaign-1', 'session-1', false);
 
     expect(result).toBeUndefined();
+    expect(mockCampaignGet).not.toHaveBeenCalled();
+  });
+
+  it('should read the Kanka campaign id from the campaign settings', async () => {
+    mockCampaignGet.mockResolvedValue({ data: () => ({ settings: { kankaCampaignId: 'kanka-123' } }) });
+    const { fetchKankaContextForSession } = await import('./kanka.service');
+
+    const result = await fetchKankaContextForSession('campaign-1', 'session-1', true);
+
+    expect(mockCampaignGet).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ characters: [], locations: [], quests: [], organisations: [] });
+  });
+});
+
+describe('fetchKankaContext', () => {
+  it('should return undefined when no Kanka campaign is linked', async () => {
+    const { fetchKankaContext } = await import('./kanka.service');
+    expect(await fetchKankaContext('campaign-1', undefined)).toBeUndefined();
+  });
+});
+
+describe('buildKankaContextBlock', () => {
+  it('should list entity names per type and skip empty names and types', async () => {
+    const { buildKankaContextBlock } = await import('./kanka.service');
+    const block = buildKankaContextBlock({
+      characters: [{ name: 'Thalia' }, { name: '' }],
+      locations: [],
+      quests: [{ name: 'The Lost Mine' }],
+    });
+
+    expect(block).toContain('CAMPAIGN REFERENCE');
+    expect(block).toContain('Characters: Thalia\n');
+    expect(block).toContain('Quests: The Lost Mine');
+    expect(block).not.toContain('Locations');
+  });
+
+  it('should return an empty string when there is nothing to list', async () => {
+    const { buildKankaContextBlock } = await import('./kanka.service');
+    expect(buildKankaContextBlock(undefined)).toBe('');
+    expect(buildKankaContextBlock({ characters: [{ name: '' }] })).toBe('');
   });
 });

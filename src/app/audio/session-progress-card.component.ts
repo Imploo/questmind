@@ -1,10 +1,9 @@
 import { Component, input, output, computed, ChangeDetectionStrategy } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { SessionProgress, SessionProgressStage } from './services/audio-session.models';
+import { toDate } from '../shared/utils/date.utils';
 
 @Component({
   selector: 'app-session-progress-card',
-  imports: [CommonModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (shouldShow()) {
@@ -92,6 +91,12 @@ import { SessionProgress, SessionProgressStage } from './services/audio-session.
           </div>
         }
 
+        @if (isFailed() && retryUnavailableMessage()) {
+          <div class="px-6 py-3 border-t border-red-100 text-sm text-red-700" data-testid="retry-unavailable">
+            {{ retryUnavailableMessage() }}
+          </div>
+        }
+
         <!-- Error details (only show if failed) -->
         @if (isFailed() && progress()?.error) {
           <div class="px-6 py-4 bg-red-50 border-t border-red-100">
@@ -110,6 +115,8 @@ import { SessionProgress, SessionProgressStage } from './services/audio-session.
 export class SessionProgressCardComponent {
   // Inputs
   progress = input<SessionProgress | null | undefined>();
+  /** When set, a failed operation cannot be retried; this message replaces the retry button. */
+  retryUnavailableMessage = input<string | null>(null);
 
   // Outputs
   cancelled = output<void>();
@@ -137,10 +144,7 @@ export class SessionProgressCardComponent {
     return stage && !['idle', 'completed', 'failed'].includes(stage);
   });
 
-  canRetry = computed(() => {
-    // Can retry when failed
-    return this.isFailed();
-  });
+  canRetry = computed(() => this.isFailed() && !this.retryUnavailableMessage());
 
   isBackgroundUpload = computed(() => {
     const p = this.progress();
@@ -158,11 +162,7 @@ export class SessionProgressCardComponent {
       'uploading': '📤',
       'processing-audio': '🎛️',
       'transcribing': '🎙️',
-      'batch-submitted': '📋',
-      'batch-processing': '⚙️',
-      'retranscribing': '🔄',
       'generating-story': '📝',
-      'regenerating-story': '🔄',
       'generating-podcast-script': '🎬',
       'generating-podcast-audio': '🎧',
       'completed': '✅',
@@ -182,11 +182,7 @@ export class SessionProgressCardComponent {
       'uploading': 'Uploading File',
       'processing-audio': 'Processing Audio',
       'transcribing': 'Transcribing Audio',
-      'batch-submitted': 'Transcription Queued',
-      'batch-processing': 'Processing Transcription',
-      'retranscribing': 'Re-transcribing',
       'generating-story': 'Generating Story',
-      'regenerating-story': 'Regenerating Story',
       'generating-podcast-script': 'Generating Podcast Script',
       'generating-podcast-audio': 'Generating Podcast Audio',
       'completed': 'Completed',
@@ -200,9 +196,9 @@ export class SessionProgressCardComponent {
     const p = this.progress();
     if (!p?.estimatedCompletionAt) return null;
 
-    const now = new Date();
-    const completion = new Date(p.estimatedCompletionAt);
-    const remainingMs = completion.getTime() - now.getTime();
+    const completion = toDate(p.estimatedCompletionAt);
+    if (!completion) return null;
+    const remainingMs = completion.getTime() - Date.now();
 
     if (remainingMs <= 0) return 'Almost done...';
 

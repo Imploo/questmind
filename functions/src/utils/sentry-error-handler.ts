@@ -1,10 +1,22 @@
 import * as Sentry from '@sentry/node';
 import { HttpsError, type CallableRequest } from 'firebase-functions/v2/https';
 import type { IncomingHttpHeaders } from 'http';
-import type { Request, Response } from 'express';
+import { logErrorOnly, warn } from './logger';
 
 type CallableHandler<TRequest, TResponse> = (request: CallableRequest<TRequest>) => Promise<TResponse>;
-type HttpHandler = (req: Request, res: Response) => Promise<void> | void;
+
+/**
+ * HttpsError codes that signal a bad or unauthorized request, not a bug. They
+ * are expected in normal use, so they become a breadcrumb instead of an event.
+ */
+const EXPECTED_CLIENT_ERROR_CODES = new Set<string>([
+  'invalid-argument',
+  'unauthenticated',
+  'permission-denied',
+  'not-found',
+  'failed-precondition',
+  'already-exists',
+]);
 
 const getHeaderValue = (
   headers: IncomingHttpHeaders | undefined,
@@ -31,8 +43,12 @@ const getDataKeys = (data: unknown): string[] | undefined => {
   return Object.keys(data as Record<string, unknown>);
 };
 
+export function isExpectedClientError(error: unknown): error is HttpsError {
+  return error instanceof HttpsError && EXPECTED_CLIENT_ERROR_CODES.has(error.code);
+}
+
 export function captureException(error: Error, context?: Record<string, unknown>): void {
-  console.error('Error captured:', error);
+  logErrorOnly('Error captured:', error);
   Sentry.captureException(error, { extra: context });
 }
 
@@ -41,29 +57,11 @@ export function captureFunctionError(
   error: Error,
   context?: Record<string, unknown>,
 ): void {
-  console.error(`[${functionName}] Error:`, error);
+  logErrorOnly(`[${functionName}] Error:`, error);
   Sentry.captureException(error, {
     tags: { functionName },
     extra: context,
   });
-}
-
-export function handleHttpsError(
-  error: unknown,
-  functionName: string,
-  defaultMessage = 'An error occurred',
-): never {
-  if (error instanceof HttpsError) {
-    captureFunctionError(functionName, error);
-    throw error;
-  }
-
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  const httpsError = new HttpsError('internal', `${defaultMessage}: ${errorMessage}`);
-
-  captureFunctionError(functionName, httpsError, { originalError: error });
-
-  throw httpsError;
 }
 
 export function wrapCallable<TRequest, TResponse>(
@@ -94,6 +92,16 @@ export function wrapCallable<TRequest, TResponse>(
     try {
       return await handler(request);
     } catch (error) {
+      if (isExpectedClientError(error)) {
+        warn(`[${functionName}] ${error.code}: ${error.message}`);
+        Sentry.addBreadcrumb({
+          category: 'callable',
+          level: 'warning',
+          message: `${functionName}: ${error.code}`,
+          data: { message: error.message },
+        });
+        throw error;
+      }
       const normalizedError = normalizeError(error);
       captureFunctionError(functionName, normalizedError, {
         requestId,
@@ -101,47 +109,6 @@ export function wrapCallable<TRequest, TResponse>(
         dataKeys,
       });
       await Sentry.flush(2000);
-      throw error;
-    } finally {
-      Sentry.setUser(null);
-    }
-  };
-}
-
-export function wrapHttp(functionName: string, handler: HttpHandler): HttpHandler {
-  return async (req, res) => {
-    const traceHeader = getHeaderValue(req.headers, 'x-cloud-trace-context');
-    const requestId = getHeaderValue(req.headers, 'x-request-id');
-    const bodyKeys = getDataKeys(req.body);
-
-    Sentry.setContext('function', {
-      name: functionName,
-      region: process.env.FUNCTION_REGION ?? process.env.GCLOUD_REGION ?? 'unknown',
-      requestId,
-      trace: traceHeader,
-    });
-
-    Sentry.setContext('request', {
-      method: req.method,
-      path: req.path,
-      userAgent: getHeaderValue(req.headers, 'user-agent'),
-      bodyKeys,
-    });
-
-    try {
-      await handler(req, res);
-    } catch (error) {
-      const normalizedError = normalizeError(error);
-      captureFunctionError(functionName, normalizedError, {
-        requestId,
-        trace: traceHeader,
-        bodyKeys,
-      });
-      await Sentry.flush(2000);
-      if (!res.headersSent) {
-        res.status(500).json({ error: 'Internal server error' });
-        return;
-      }
       throw error;
     } finally {
       Sentry.setUser(null);

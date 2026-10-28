@@ -5,6 +5,7 @@ import {
   DocumentReference,
   Firestore,
   FirestoreError,
+  getDoc,
   onSnapshot,
   setDoc,
   Unsubscribe,
@@ -42,6 +43,12 @@ export abstract class FirestoreDocumentRepository<T extends Record<string, unkno
   get error(): Signal<FirestoreError | null> {
     this.ensureListening();
     return this._error.asReadonly();
+  }
+
+  /** One-time read of the document, without starting the live listener; null when it does not exist. */
+  public async fetch(): Promise<T | null> {
+    const snapshot = await getDoc(this.docRef);
+    return snapshot.exists() ? this.mapDocToModel(snapshot.data()) : null;
   }
 
   public async update(data: Partial<T>): Promise<void> {

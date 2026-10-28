@@ -21,8 +21,8 @@ export interface VoiceIntroAudio {
 }
 
 /**
- * Upper bound for the inline payload. The intro is compressed client-side to
- * ~64 kbps mono (5 min ≈ 2.4 MB), so anything larger is unexpected. Base64 adds
+ * Upper bound for the inline payload. The intro is encoded by the backend
+ * (processVoiceIntro) to 64 kbps mono (5 min ≈ 2.4 MB), so anything larger is unexpected. Base64 adds
  * a third, so 10 MB raw stays well under Gemini's ~20 MB inline request limit.
  */
 const MAX_VOICE_INTRO_BYTES = 10 * 1024 * 1024;

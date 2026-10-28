@@ -1,12 +1,7 @@
-import { GoogleGenAI } from '@google/genai';
 import * as logger from './logger';
-import { PodcastVoiceSettings } from '../types/audio-session.types';
+import { PodcastSegment, PodcastVoiceSettings } from '../types/audio-session.types';
 import { pcmToMp3, DEFAULT_PCM_SAMPLE_RATE } from './pcm-to-mp3';
-
-export interface PodcastSegment {
-  speaker: 'host1' | 'host2';
-  text: string;
-}
+import { getGeminiClient } from './gemini-client';
 
 /** Speaker names used in the per-turn speech_metadata and the Gemini speaker→voice config. */
 const SPEAKER_LABELS: Record<'host1' | 'host2', string> = {
@@ -81,13 +76,8 @@ export async function generatePodcastAudioBuffer(
   voiceConfig: PodcastVoiceSettings,
   onProgress?: ProgressFn
 ): Promise<Buffer> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
-  if (!apiKey) {
-    throw new Error('Google AI API key is not configured');
-  }
-
+  const googleAi = getGeminiClient();
   const model = voiceConfig.geminiModel || DEFAULT_GEMINI_TTS_MODEL;
-  const googleAi = new GoogleGenAI({ apiKey });
   const chunks = chunkSegmentsByChars(segments, GEMINI_CHUNK_CHAR_LIMIT);
 
   logger.debug(
@@ -100,7 +90,7 @@ export async function generatePodcastAudioBuffer(
   for (let i = 0; i < chunks.length; i++) {
     await onProgress?.(
       65 + Math.round((i / chunks.length) * 10),
-      `Generating podcast audio with Gemini (part ${i + 1}/${chunks.length})...`
+      `Audio genereren (deel ${i + 1}/${chunks.length})...`
     );
 
     // Request headerless PCM (l16): unary default is WAV, and concatenating WAV
@@ -135,7 +125,7 @@ export async function generatePodcastAudioBuffer(
     throw new Error('Empty PCM buffer from Gemini TTS');
   }
 
-  await onProgress?.(78, 'Transcoding audio to MP3...');
+  await onProgress?.(78, 'Audio omzetten naar MP3...');
   const mp3Buffer = await pcmToMp3(pcmBuffer, sampleRate);
   if (mp3Buffer.length === 0) {
     throw new Error('PCM to MP3 transcode produced an empty buffer');

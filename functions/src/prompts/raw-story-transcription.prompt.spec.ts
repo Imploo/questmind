@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import {
-  RAW_STORY_TRANSCRIPTION_PROMPT,
   VOICE_INTRO_ROSTER_MAX_LENGTH,
   buildFullTranscriptionPrompt,
   buildSegmentTranscriptionPrompt,
@@ -12,8 +11,7 @@ const meta = { index: 2, total: 5, startSec: 1800, endSec: 3600 };
 describe('raw story transcription prompts', () => {
   describe('without voice intro', () => {
     it('keeps the full prompt unchanged', () => {
-      expect(buildFullTranscriptionPrompt()).toBe(RAW_STORY_TRANSCRIPTION_PROMPT);
-      expect(buildFullTranscriptionPrompt({ hasVoiceIntro: false })).toBe(RAW_STORY_TRANSCRIPTION_PROMPT);
+      expect(buildFullTranscriptionPrompt({ hasVoiceIntro: false })).toBe(buildFullTranscriptionPrompt());
     });
 
     it('only allows names the audio itself makes clear', () => {
