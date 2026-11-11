@@ -196,6 +196,47 @@ export class CharacterVersionService {
     repo.destroy();
   }
 
+  /**
+   * Store looked-up spell and feature texts on a version in one write. Used after
+   * resolving many entries at once, so the separate per-entry patches (which each
+   * rewrite the whole list) cannot overwrite each other.
+   */
+  async patchResolvedEntries(
+    characterId: string,
+    versionId: string,
+    spells: Map<string, { description: string; usage?: string }>,
+    features: Map<string, { description: string }>
+  ): Promise<void> {
+    if (!spells.size && !features.size) return;
+    const repo = this.versionRepoFactory.create(characterId);
+    await repo.waitForData();
+    const version = await repo.getByKey(versionId) as CharacterVersion | null;
+    if (!version) {
+      repo.destroy();
+      return;
+    }
+    const patch: Record<string, unknown> = {};
+    const currentSpells = version.character.spellcasting?.spells;
+    if (spells.size && currentSpells) {
+      patch['character.spellcasting.spells'] = currentSpells.map(spell => {
+        if (typeof spell === 'string' || spell.description) return spell;
+        const details = spells.get(spell.name.toLowerCase());
+        return details ? { ...spell, ...details } : spell;
+      });
+    }
+    if (features.size && version.character.featuresAndTraits) {
+      patch['character.featuresAndTraits'] = version.character.featuresAndTraits.map(feature => {
+        if (typeof feature === 'string' || feature.description) return feature;
+        const details = features.get(feature.name.toLowerCase());
+        return details ? { ...feature, ...details } : feature;
+      });
+    }
+    if (Object.keys(patch).length) {
+      await repo.patch(versionId, patch);
+    }
+    repo.destroy();
+  }
+
   async commitDraft(characterId: string, draftVersionId: string): Promise<void> {
     const repo = this.versionRepoFactory.create(characterId);
     await repo.patch(draftVersionId, { isDraft: false });

@@ -10,6 +10,17 @@ import { ensureAuthForTesting } from './utils/emulator-helpers';
 import { assertCharacterOwner, requireAuthUid } from './utils/access';
 import * as logger from './utils/logger';
 import { ChatHistoryMessage } from './types/chat.types';
+import {
+  AbilityScoreIssue,
+  abilityScoresChanged,
+  fixAbilityModifiers,
+  formatAbilityFeedback,
+  validateAbilityScores,
+} from './character/ability-score-validation';
+import { recalculateDerivedStats } from './character/derived-stats';
+
+/** Extra generator calls when the ability scores break the rules. */
+const MAX_ABILITY_SCORE_RETRIES = 2;
 
 export interface GenerateCharacterDraftPayload {
   characterId: string;
@@ -43,7 +54,7 @@ export async function executeGenerateCharacterDraft(payload: GenerateCharacterDr
   ].join('\n\n');
 
   // Build content parts — include PDF as inline data when available for accurate extraction
-  const contentParts: ({ text: string } | { inlineData: { mimeType: string; data: string } })[] = [
+  const contentParts: ContentPart[] = [
     { text: conversationText },
   ];
 
@@ -60,34 +71,92 @@ export async function executeGenerateCharacterDraft(payload: GenerateCharacterDr
     characterId,
   });
 
-  let parsed: unknown;
+  let result: CheckedDraft;
   try {
-    parsed = await generateJson<unknown>(
-      {
-        config,
-        label: 'generateCharacterDraft',
-        contents: contentParts,
-        systemInstruction: CHARACTER_JSON_GENERATOR_PROMPT,
-        logContext: { characterId },
-      },
-      client
-    );
-  } catch (error) {
-    if (error instanceof GeminiEmptyResponseError) {
-      throw new Error('No response from AI model');
+    const generate = async (parts: ContentPart[]): Promise<CheckedDraft> => {
+      let parsed: unknown;
+      try {
+        parsed = await generateJson<unknown>(
+          {
+            config,
+            label: 'generateCharacterDraft',
+            contents: parts,
+            systemInstruction: CHARACTER_JSON_GENERATOR_PROMPT,
+            logContext: { characterId },
+          },
+          client
+        );
+      } catch (error) {
+        if (error instanceof GeminiEmptyResponseError) {
+          throw new Error('No response from AI model');
+        }
+        throw error;
+      }
+      logger.info('generateCharacterDraft: JSON parsed successfully, validating schema');
+      return checkAbilityScores(DndCharacterSchema.parse(parsed));
+    };
+
+    result = await generate(contentParts);
+
+    // Feed rule violations back to the generator, but only when this draft touched the
+    // ability scores: an untouched, already-wrong character should not trigger new AI calls.
+    for (
+      let attempt = 1;
+      attempt <= MAX_ABILITY_SCORE_RETRIES && result.issues.length && abilityScoresChanged(currentCharacter, result.character);
+      attempt++
+    ) {
+      logger.info('generateCharacterDraft: ability scores break the rules, asking for a correction', {
+        characterId,
+        attempt,
+        issues: result.issues.map(issue => issue.code),
+      });
+      result = await generate([
+        ...contentParts,
+        { text: `Previous JSON:\n${JSON.stringify(result.character)}` },
+        { text: formatAbilityFeedback(result.issues) },
+      ]);
     }
-    throw error;
   } finally {
     // Clear the generating flag so the frontend hides the loader
     await getFirestore().collection('characters').doc(characterId).update({ isGenerating: false });
   }
 
-  logger.info('generateCharacterDraft: JSON parsed successfully, validating schema');
-  const validatedCharacter = DndCharacterSchema.parse(parsed);
+  if (result.issues.length) {
+    logger.warn('generateCharacterDraft: ability score issues remain, saving draft with warnings', {
+      characterId,
+      issues: result.issues.map(issue => issue.code),
+    });
+  }
 
   // Save as draft version in Firestore
   logger.info('generateCharacterDraft: saving draft version');
-  await saveDraftVersion(characterId, validatedCharacter);
+  await saveDraftVersion(characterId, result.character, {
+    abilityScoreWarnings: result.issues.map(issue => issue.message),
+    derivedStatCorrections: result.corrections,
+  });
+}
+
+type ContentPart = { text: string } | { inlineData: { mimeType: string; data: string } };
+
+interface CheckedDraft {
+  character: DndCharacter;
+  issues: AbilityScoreIssue[];
+  /** Values that were recalculated, e.g. "Initiative +4 -> +2". */
+  corrections: string[];
+}
+
+/**
+ * Fix the arithmetic (ability modifiers, then everything derived from them), then
+ * report what is still against the ability score rules.
+ */
+function checkAbilityScores(draft: DndCharacter): CheckedDraft {
+  const modifiers = fixAbilityModifiers(draft);
+  const derived = recalculateDerivedStats(modifiers.character);
+  const corrections = [...modifiers.fixes, ...derived.corrections];
+  if (corrections.length) {
+    logger.info('generateCharacterDraft: recalculated derived values', { corrections });
+  }
+  return { character: derived.character, issues: validateAbilityScores(derived.character), corrections };
 }
 
 /**
@@ -126,7 +195,12 @@ export const generateCharacterDraftCallable = onCall(
   )
 );
 
-async function saveDraftVersion(characterId: string, character: DndCharacter): Promise<void> {
+interface DraftCheckResults {
+  abilityScoreWarnings: string[];
+  derivedStatCorrections: string[];
+}
+
+async function saveDraftVersion(characterId: string, character: DndCharacter, checks: DraftCheckResults): Promise<void> {
   const db = getFirestore();
   const versionsRef = db
     .collection('characters').doc(characterId)
@@ -142,6 +216,7 @@ async function saveDraftVersion(characterId: string, character: DndCharacter): P
     // Latest version is already a draft — overwrite it
     await lastVersionSnap.docs[0].ref.update({
       character,
+      ...checks,
       updatedAt: FieldValue.serverTimestamp(),
     });
   } else {
@@ -155,6 +230,7 @@ async function saveDraftVersion(characterId: string, character: DndCharacter): P
       id: newDocRef.id,
       versionNumber: nextNumber,
       character,
+      ...checks,
       commitMessage: 'Draft via AI chat',
       source: 'ai',
       isDraft: true,

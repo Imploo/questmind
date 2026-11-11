@@ -1,100 +1,60 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { provideZonelessChangeDetection } from '@angular/core';
-import { PdfGeneratorService } from './pdf-generator.service';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { readFileSync } from 'node:fs';
+import { PDFDocument } from 'pdf-lib';
+import { PdfGeneratorService, toPlainText } from './pdf-generator.service';
 import { DndCharacter } from '../models/dnd-character.model';
 
-function createMinimalCharacter(): DndCharacter {
+function createCharacter(): DndCharacter {
   return {
     name: 'Test Hero',
-    class: 'Fighter',
-    level: 1,
+    class: 'Wizard',
+    level: 3,
     race: 'Human',
     experiencePoints: 0,
     abilities: {
-      strength: { score: 16, modifier: 3 },
-      dexterity: { score: 12, modifier: 1 },
-      constitution: { score: 14, modifier: 2 },
-      intelligence: { score: 10, modifier: 0 },
-      wisdom: { score: 8, modifier: -1 },
+      strength: { score: 10, modifier: 0 },
+      dexterity: { score: 10, modifier: 0 },
+      constitution: { score: 10, modifier: 0 },
+      intelligence: { score: 16, modifier: 3 },
+      wisdom: { score: 10, modifier: 0 },
       charisma: { score: 10, modifier: 0 },
     },
     skills: [],
     savingThrows: {
-      strength: { proficient: true, modifier: 5 },
-      dexterity: { proficient: false, modifier: 1 },
-      constitution: { proficient: true, modifier: 4 },
-      intelligence: { proficient: false, modifier: 0 },
-      wisdom: { proficient: false, modifier: -1 },
+      strength: { proficient: false, modifier: 0 },
+      dexterity: { proficient: false, modifier: 0 },
+      constitution: { proficient: false, modifier: 0 },
+      intelligence: { proficient: true, modifier: 5 },
+      wisdom: { proficient: true, modifier: 2 },
       charisma: { proficient: false, modifier: 0 },
     },
-    passiveWisdom: 9,
-    proficiencies: ['Light Armor', 'Heavy Armor'],
-    languages: ['Common', 'Dwarvish'],
-    armorClass: 18,
-    initiative: 1,
+    passiveWisdom: 10,
+    proficiencies: [],
+    languages: ['Common'],
+    armorClass: 10,
+    initiative: 0,
     speed: 30,
-    hitPoints: { max: 12, current: 12, temp: 0 },
-    hitDice: { total: 1, current: 1, die: 'd10' },
+    hitPoints: { max: 14, current: 14, temp: 0 },
+    hitDice: { total: 3, current: 3, die: 'd6' },
     deathSaves: { successes: 0, failures: 0 },
     attacks: [],
-    equipment: ['Longsword', 'Shield'],
-    coins: { cp: 0, sp: 0, ep: 0, gp: 15, pp: 0 },
+    equipment: [],
+    coins: { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 },
     featuresAndTraits: [],
   };
 }
 
-function createFullCharacter(): DndCharacter {
-  return {
-    ...createMinimalCharacter(),
-    name: 'Gandara the Wise',
-    class: 'Wizard',
-    level: 5,
-    background: 'Sage',
-    alignment: 'Neutral Good',
-    playerName: 'John',
-    experiencePoints: 6500,
-    skills: [
-      { name: 'Arcana', proficient: true, modifier: 6 },
-      { name: 'History', proficient: true, modifier: 6 },
-    ],
-    attacks: [
-      { name: 'Quarterstaff', bonus: 2, damage: '1d6', type: 'bludgeoning' },
-      { name: 'Fire Bolt', bonus: 6, damage: '2d10', type: 'fire' },
-    ],
-    spellcasting: {
-      spellSaveDc: 14,
-      spellAttackBonus: 6,
-      slots: [
-        { level: 1, total: 4, expended: 1 },
-        { level: 2, total: 3, expended: 0 },
-        { level: 3, total: 2, expended: 0 },
-      ],
-      spells: [
-        { name: 'Fire Bolt', level: 0, school: 'Evocation', description: 'A mote of fire' },
-        { name: 'Shield', level: 1, school: 'Abjuration' },
-        'Magic Missile',
-      ],
-    },
-    featuresAndTraits: [
-      { name: 'Arcane Recovery', description: 'Recover spell slots on short rest', source: 'Wizard' },
-      { name: 'Evocation Savant', description: 'Halved cost for evocation spells', source: 'Wizard' },
-    ],
-    personalityTraits: 'Always curious about new knowledge.',
-    ideals: 'Knowledge is the path to power.',
-    bonds: 'My spellbook is my most treasured possession.',
-    flaws: 'I speak without thinking.',
-    appearance: {
-      age: '120',
-      height: "5'8\"",
-      weight: '140 lbs',
-      eyes: 'Blue',
-      skin: 'Fair',
-      hair: 'Silver',
-      description: 'A wise elf with piercing blue eyes.',
-    },
-    backstory: 'Gandara spent decades studying in the great library of Candlekeep.',
-  };
+/** All text in a pdfmake content tree, flattened. */
+function collectText(content: unknown): string[] {
+  if (content === undefined || content === null) return [];
+  if (typeof content === 'string') return [content];
+  if (Array.isArray(content)) return content.flatMap(c => collectText(c));
+  const node = content as { text?: unknown; stack?: unknown };
+  return [...collectText(node.text), ...collectText(node.stack)];
 }
 
 describe('PdfGeneratorService', () => {
@@ -102,93 +62,106 @@ describe('PdfGeneratorService', () => {
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [provideZonelessChangeDetection()],
+      providers: [provideZonelessChangeDetection(), provideHttpClient(), provideHttpClientTesting()],
     });
     service = TestBed.inject(PdfGeneratorService);
   });
 
-  it('should be created', () => {
-    expect(service).toBeTruthy();
-  });
-
-  describe('buildDocDefinition', () => {
-    it('should build a valid doc definition for a minimal character', () => {
-      const character = createMinimalCharacter();
-      const doc = service.buildDocDefinition(character);
-
-      expect(doc.pageSize).toBe('A4');
-      expect(doc.content).toBeDefined();
-      expect(Array.isArray(doc.content)).toBe(true);
+  describe('buildAppendixDefinition', () => {
+    it('returns null when there is nothing to describe', () => {
+      expect(service.buildAppendixDefinition(createCharacter(), [], [])).toBeNull();
     });
 
-    it('should include character name in the header', () => {
-      const character = createMinimalCharacter();
-      const doc = service.buildDocDefinition(character);
-      const content = doc.content as unknown as Record<string, unknown>[];
+    it('describes every feature, with a placeholder when the text is missing', () => {
+      const doc = service.buildAppendixDefinition(createCharacter(), [], [
+        { name: 'Arcane Recovery', source: 'Wizard', description: 'Once per day, **recover** spell slots.' },
+        { name: 'Mystery Trait' },
+      ])!;
+      const text = collectText(doc.content);
 
-      // First element is the header stack
-      const header = content[0] as { stack: { text: string }[] };
-      expect(header.stack[0].text).toBe('Test Hero');
+      expect(doc.pageSize).toBe('LETTER');
+      expect(text).toContain('Features & Traits');
+      expect(text).toContain('Arcane Recovery');
+      expect(text).toContain('Once per day, recover spell slots.');
+      expect(text).toContain('Mystery Trait');
+      expect(text).toContain('No description available.');
     });
 
-    it('should include race and class in subtitle', () => {
-      const character = createMinimalCharacter();
-      const doc = service.buildDocDefinition(character);
-      const content = doc.content as unknown as Record<string, unknown>[];
+    it('groups spells by level and includes usage and description', () => {
+      const doc = service.buildAppendixDefinition(createCharacter(), [
+        { name: 'Shield', level: 1, school: 'abjuration', usage: 'Casting Time: 1 reaction\nRange: Self', description: 'An invisible barrier.' },
+        { name: 'Fire Bolt', level: 0, school: 'evocation', description: 'A mote of fire.' },
+        { name: 'Homebrew Zap' },
+      ], [])!;
+      const text = collectText(doc.content);
 
-      const header = content[0] as { stack: { text: string }[] };
-      expect(header.stack[1].text).toBe('Human Fighter (Level 1)');
+      expect(text.indexOf('Cantrips')).toBeLessThan(text.indexOf('Level 1'));
+      expect(text.indexOf('Fire Bolt')).toBeLessThan(text.indexOf('Shield'));
+      expect(text).toContain('Level 1 • Abjuration');
+      expect(text).toContain('Casting Time:');
+      expect(text).toContain(' 1 reaction');
+      expect(text).toContain('An invisible barrier.');
+      expect(text).toContain('Other spells');
+      expect(text).toContain('Homebrew Zap');
     });
 
-    it('should build a valid doc definition for a full character', () => {
-      const character = createFullCharacter();
-      const doc = service.buildDocDefinition(character);
+    it('repeats sheet text that did not fit', () => {
+      const doc = service.buildAppendixDefinition(createCharacter(), [], [], [
+        { title: 'Appearance & Backstory', text: 'A very long story.' },
+      ])!;
+      const text = collectText(doc.content);
 
-      expect(doc.content).toBeDefined();
-      const content = doc.content as unknown as Record<string, unknown>[];
-      // Should have: header, quick stats, ability scores, main content, + full-width sections
-      expect(content.length).toBeGreaterThan(4);
-    });
-
-    it('should include background and alignment when present', () => {
-      const character = createFullCharacter();
-      const doc = service.buildDocDefinition(character);
-      const content = doc.content as unknown as Record<string, unknown>[];
-
-      const header = content[0] as { stack: { text: string }[] };
-      const detailLine = header.stack[2].text;
-      expect(detailLine).toContain('Sage');
-      expect(detailLine).toContain('Neutral Good');
-    });
-
-    it('should include player name when present', () => {
-      const character = createFullCharacter();
-      const doc = service.buildDocDefinition(character);
-      const content = doc.content as unknown as Record<string, unknown>[];
-
-      const header = content[0] as { stack: { text: string }[] };
-      const playerLine = header.stack.find(l => typeof l.text === 'string' && l.text.includes('Player:'));
-      expect(playerLine).toBeDefined();
+      expect(text).toContain('Appearance & Backstory');
+      expect(text).toContain('A very long story.');
     });
   });
 
-  describe('generateCharacterPdf', () => {
-    it('should dynamically import pdfmake and call createPdf', async () => {
-      const mockDownload = vi.fn();
-      const mockCreatePdf = vi.fn().mockReturnValue({ download: mockDownload });
+  describe('buildCharacterPdf', () => {
+    it('fills the official template and appends the description pages', async () => {
+      const character: DndCharacter = {
+        ...createCharacter(),
+        backstory: 'Born in Waterdeep \u2212 raised by wolves \u2192 became a wizard.',
+        spellcasting: { spellSaveDc: 13, spellAttackBonus: 5, slots: [{ level: 1, total: 4, expended: 0 }] },
+      };
+      const pending = service.buildCharacterPdf(
+        character,
+        [{ name: 'Magic Missile', level: 1, usage: 'Casting Time: 1 action', description: 'Three darts.' }],
+        [{ name: 'Arcane Recovery', description: 'Recover spell slots.' }]
+      );
+      const http = TestBed.inject(HttpTestingController);
+      const url = '/templates/dnd-5e-character-sheet.pdf';
+      // pdf-lib is imported dynamically first, so the request is not sent synchronously.
+      let requests = http.match(url);
+      for (let i = 0; i < 100 && !requests.length; i++) {
+        await new Promise(resolve => setTimeout(resolve, 20));
+        requests = http.match(url);
+      }
+      expect(requests.length).toBe(1);
+      const template = Uint8Array.from(readFileSync('public/templates/dnd-5e-character-sheet.pdf'));
+      requests[0].flush(template.buffer);
 
-      vi.doMock('pdfmake/build/pdfmake', () => ({
-        default: { createPdf: mockCreatePdf },
-        createPdf: mockCreatePdf,
-      }));
+      const result = await PDFDocument.load(await pending);
+      const form = result.getForm();
 
-      const character = createMinimalCharacter();
-      // Since dynamic import mocking is complex with Vitest, we verify buildDocDefinition works
-      const doc = service.buildDocDefinition(character);
-      expect(doc).toBeDefined();
-      expect(doc.pageSize).toBe('A4');
+      expect(result.getPageCount()).toBeGreaterThan(3);
+      expect(form.getTextField('CharacterName').getText()).toBe('Test Hero');
+      expect(form.getTextField('ClassLevel').getText()).toBe('Wizard 3');
+      expect(form.getTextField('Spells 1015').getText()).toBe('Magic Missile');
+      expect(form.getTextField('Features and Traits').getText()).toContain('Arcane Recovery');
+      expect(form.getTextField('Backstory').getText()).toBe('Born in Waterdeep - raised by wolves -> became a wizard.');
+      expect(form.getCheckBox('Check Box 20').isChecked()).toBe(true);
+      http.verify();
+    });
+  });
 
-      vi.doUnmock('pdfmake/build/pdfmake');
+  describe('toPlainText', () => {
+    it('strips markdown emphasis, headings, links and table separators', () => {
+      const md = '## Title\n**Bold** and *italic* and _under_ [link](http://x)\n| a | b |\n|---|---|\n| 1 | 2 |\n- item';
+      expect(toPlainText(md)).toBe('Title\nBold and italic and under link\na   b\n1   2\n• item');
+    });
+
+    it('keeps dice expressions and asterisks inside words intact', () => {
+      expect(toPlainText('Deal 2d6 + 3 damage')).toBe('Deal 2d6 + 3 damage');
     });
   });
 });

@@ -20,5 +20,9 @@ export interface CharacterVersion {
   source: 'ai' | 'restore' | 'manual';
   restoredFromVersionId?: string;
   isDraft?: boolean;
+  /** Ability score rule violations the AI could not fix (set on AI drafts). */
+  abilityScoreWarnings?: string[];
+  /** Derived values (saves, skills, initiative, ...) that were recalculated on an AI draft. */
+  derivedStatCorrections?: string[];
   createdAt: Timestamp;
 }
