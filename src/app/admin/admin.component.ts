@@ -480,7 +480,7 @@ export class AdminComponent implements OnInit {
   ] as const;
 
   private readonly defaultConfigs: Record<string, AiModelConfig | CampaignStoryModelConfig | AiImageConfig | PodcastVoiceSettings> = {
-    characterChatText: { model: 'gemini-3.8-flash', maxOutputTokens: 4096, thinkingLevel: 'low' },
+    characterChatText: { model: 'gemini-3.8-flash', maxOutputTokens: 8192, thinkingLevel: 'low' },
     characterDraft: { model: 'gemini-3.8-flash', maxOutputTokens: 8192, thinkingLevel: 'medium' },
     spellResolution: { model: 'gemini-3.8-flash', maxOutputTokens: 4096, thinkingLevel: 'low' },
     featureResolution: { model: 'gemini-3.8-flash', maxOutputTokens: 4096, thinkingLevel: 'low' },
