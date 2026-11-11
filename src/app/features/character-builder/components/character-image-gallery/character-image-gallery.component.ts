@@ -13,9 +13,9 @@ import { ToastService } from '../../../../shared/services/toast.service';
       <app-image-lightbox [url]="lightboxUrl()!" (closed)="closeLightbox()" />
     }
 
-    <div class="card bg-base-100 shadow-sm border border-base-200">
-      <div class="card-body p-4">
-        <h3 class="card-title text-sm uppercase tracking-wider border-b pb-2 mb-3">Afbeeldingen Galerij</h3>
+    <div class="panel">
+      <div>
+        <h3 class="section-title">Galerij</h3>
 
         @if (images().length === 0) {
           <div class="text-center py-8 text-sm opacity-60">
@@ -26,9 +26,9 @@ import { ToastService } from '../../../../shared/services/toast.service';
             <p class="text-xs mt-1">Genereer afbeeldingen via de chat met 🎨</p>
           </div>
         } @else {
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
             @for (image of images(); track image.id) {
-              <div class="rounded-lg border border-base-300 hover:border-primary transition-all duration-200 shadow-sm hover:shadow-md overflow-hidden">
+              <div class="tile group/tile">
                 <div
                   class="relative group cursor-pointer overflow-hidden"
                   [class.pointer-events-none]="!image.url"
@@ -37,7 +37,7 @@ import { ToastService } from '../../../../shared/services/toast.service';
                   <img
                     [src]="image.url"
                     [alt]="'Karakter afbeelding ' + ($index + 1)"
-                    class="w-full h-40 object-cover transition-transform duration-200 group-hover:scale-105"
+                    class="w-full aspect-square object-cover transition-transform duration-300 group-hover:scale-105"
                     loading="lazy"
                   />
                   <div class="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
@@ -54,9 +54,11 @@ import { ToastService } from '../../../../shared/services/toast.service';
                 </div>
 
                 @if (canDelete()) {
-                  <div class="flex items-center justify-center px-2 py-1 bg-base-200">
+                  <div class="absolute top-1.5 right-1.5 opacity-100 sm:opacity-0 sm:group-hover/tile:opacity-100 transition-opacity">
                     <button
-                      class="p-1 rounded opacity-50 hover:opacity-100 hover:bg-red-600 hover:text-white transition-all"
+                      type="button"
+                      class="p-1.5 rounded-full bg-black/45 text-white hover:bg-red-700 transition-colors"
+                      aria-label="Verwijder afbeelding"
                       title="Verwijder afbeelding"
                       (click)="onDeleteClick($event, image)"
                     >
@@ -80,6 +82,52 @@ import { ToastService } from '../../../../shared/services/toast.service';
   styles: [`
     :host {
       display: block;
+      --line: #e8dcc5;
+      --gold: #b48a3c;
+      --gold-deep: #8a6623;
+    }
+    .panel {
+      background: #fffdf8;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 1.25rem;
+      box-shadow: 0 1px 2px rgba(60, 40, 10, 0.04), 0 4px 16px -8px rgba(60, 40, 10, 0.12);
+    }
+    .section-title {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-family: 'Cinzel', Georgia, serif;
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--gold-deep);
+      margin-bottom: 0.9rem;
+    }
+    .section-title::before {
+      content: '';
+      width: 7px;
+      height: 7px;
+      background: var(--gold);
+      transform: rotate(45deg);
+    }
+    .section-title::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(to right, var(--line), transparent);
+    }
+    .tile {
+      position: relative;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .tile:hover {
+      border-color: var(--gold);
+      box-shadow: 0 6px 18px -8px rgba(90, 60, 10, 0.4);
     }
   `]
 })
