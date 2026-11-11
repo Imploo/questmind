@@ -153,12 +153,23 @@ describe('characterChat', () => {
     expect(mockGenerateContent).not.toHaveBeenCalled();
   });
 
-  it('should throw internal when the AI returns invalid JSON', async () => {
-    mockGenerateContent.mockResolvedValueOnce({ text: '{"text": "cut off' });
+  it('should throw internal when the AI returns invalid JSON twice', async () => {
+    mockGenerateContent.mockResolvedValue({ text: '{"text": "cut off' });
 
     await expect(characterChatHandler(makeRequest())).rejects.toThrow(
       expect.objectContaining({ code: 'internal' })
     );
+  });
+
+  it('should recover when a truncated response succeeds on retry', async () => {
+    mockGenerateContent
+      .mockResolvedValueOnce({ text: '{"text": "cut off', candidates: [{ finishReason: 'MAX_TOKENS' }] })
+      .mockResolvedValueOnce({ text: JSON.stringify({ text: 'Charisma is nu 15.', shouldUpdateCharacter: true }) });
+
+    const result = await characterChatHandler(makeRequest());
+
+    expect(result).toEqual({ text: 'Charisma is nu 15.', shouldUpdateCharacter: true });
+    expect(mockGenerateContent).toHaveBeenCalledTimes(2);
   });
 
   // ── Happy Path Tests ──

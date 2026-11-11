@@ -81,9 +81,42 @@ describe('gemini-client', () => {
     });
   });
 
-  it('generateJson throws GeminiJsonError on invalid JSON', async () => {
+  it('generateJson throws GeminiJsonError when the retry is still invalid JSON', async () => {
     mockGenerateContent.mockResolvedValue({ text: 'not json' });
     await expect(generateJson({ config, label: 'test', contents: 'prompt' })).rejects.toBeInstanceOf(GeminiJsonError);
+    expect(mockGenerateContent).toHaveBeenCalledTimes(2);
+  });
+
+  it('generateJson retries invalid JSON once with the same token budget', async () => {
+    mockGenerateContent
+      .mockResolvedValueOnce({ text: '{"a": 1,,}', candidates: [{ finishReason: 'STOP' }] })
+      .mockResolvedValueOnce({ text: '{"a": 1}', candidates: [{ finishReason: 'STOP' }] });
+
+    const result = await generateJson<{ a: number }>({ config, label: 'test', contents: 'prompt' });
+
+    expect(result).toEqual({ a: 1 });
+    expect(mockGenerateContent.mock.calls[1][0].config.maxOutputTokens).toBe(1000);
+  });
+
+  it('generateJson doubles maxOutputTokens when retrying a MAX_TOKENS-truncated response', async () => {
+    mockGenerateContent
+      .mockResolvedValueOnce({ text: '{"a": "cut', candidates: [{ finishReason: 'MAX_TOKENS' }] })
+      .mockResolvedValueOnce({ text: '{"a": "whole"}', candidates: [{ finishReason: 'STOP' }] });
+
+    const result = await generateJson<{ a: string }>({ config, label: 'test', contents: 'prompt' });
+
+    expect(result).toEqual({ a: 'whole' });
+    expect(mockGenerateContent.mock.calls[0][0].config.maxOutputTokens).toBe(1000);
+    expect(mockGenerateContent.mock.calls[1][0].config.maxOutputTokens).toBe(2000);
+  });
+
+  it('generateJson does not retry when jsonRetries is 0, and reports the finish reason', async () => {
+    mockGenerateContent.mockResolvedValue({ text: '{"a": "cut', candidates: [{ finishReason: 'MAX_TOKENS' }] });
+
+    const promise = generateJson({ config, label: 'test', contents: 'prompt', jsonRetries: 0 });
+    await expect(promise).rejects.toMatchObject({ finishReason: 'MAX_TOKENS' });
+    await expect(promise).rejects.toThrow('truncated at maxOutputTokens');
+    expect(mockGenerateContent).toHaveBeenCalledTimes(1);
   });
 
   it('stripCodeFences removes ``` and ```json fences only', () => {
