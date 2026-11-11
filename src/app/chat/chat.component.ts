@@ -105,7 +105,7 @@ const MAX_PDF_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
           }
         }
 
-        @if (isLoading()) {
+        @if (isLoading() && !isStreaming()) {
           <div class="max-w-[85%] p-3 rounded-lg self-start bg-white border border-gray-200 animate-slide-in text-sm">
             <div class="leading-relaxed">
               <div class="flex gap-1 py-1">
@@ -246,6 +246,8 @@ export class ChatComponent {
   messages = signal<Message[]>([]);
   newMessage = signal<string>('');
   isLoading = signal<boolean>(false);
+  /** True while a streamed AI reply is visible; replaces the typing indicator. */
+  isStreaming = signal<boolean>(false);
   error = signal<string>('');
   messagesContainer = viewChild<ElementRef<HTMLDivElement>>('messagesContainer');
   messageInput = viewChild<ElementRef<HTMLInputElement>>('messageInput');
@@ -336,6 +338,11 @@ export class ChatComponent {
     this.chatService.sendMessage(displayText, attachments).subscribe({
       next: (response) => {
         this.updateMessage(aiMessageId, response.text, response.images);
+        // An empty partial (e.g. after a backend retry reset) shows the typing indicator again.
+        this.isStreaming.set(Boolean(response.partial && response.text));
+        if (response.partial) {
+          return;
+        }
 
         if (response.shouldUpdateCharacter) {
           this.lastAttachments = attachments;
@@ -343,10 +350,14 @@ export class ChatComponent {
         }
       },
       complete: () => {
+        this.isStreaming.set(false);
         this.isLoading.set(false);
       },
       error: (err) => {
         logger.error('AI Service Error:', err);
+        // Drop text streamed before the failure; the error message replaces it.
+        this.updateMessage(aiMessageId, '');
+        this.isStreaming.set(false);
         const errorMessage = this.getErrorMessage(err);
         this.error.set(errorMessage);
 

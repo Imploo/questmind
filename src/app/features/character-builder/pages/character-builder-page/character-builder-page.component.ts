@@ -38,7 +38,7 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
     ChatDrawerComponent,
   ],
   template: `
-    <div class="flex min-h-screen bg-base-200">
+    <div class="flex min-h-screen bg-[#f4eee2]">
         <div class="flex w-full items-start">
           <!-- Center Character Sheet -->
           <div
@@ -60,13 +60,13 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
               <div class="flex-1">
                 @if (selectedCharacterId()) {
                   @if (latestVersion()) {
-                    <mat-card class="bg-base-100 shadow-xl border border-base-300 relative">
+                    <div class="relative p-3 sm:p-6">
                       @if (isGenerating()) {
-                        <div class="absolute inset-0 z-10 flex items-center justify-center bg-white/70 rounded-[inherit]">
+                        <div class="absolute inset-0 z-10 flex items-center justify-center bg-[#f4eee2]/70 rounded-2xl">
                           <mat-spinner diameter="30"></mat-spinner>
                         </div>
                       }
-                      <mat-card-content class="p-6">
+                      <div>
                         <app-character-sheet
                           [character]="latestVersion()!.character"
                           [characterName]="selectedCharacter()?.name || 'Unknown'"
@@ -81,8 +81,8 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
                           (spellResolved)="onSpellResolved($event)"
                           (featureResolved)="onFeatureResolved($event)"
                         ></app-character-sheet>
-                      </mat-card-content>
-                    </mat-card>
+                      </div>
+                    </div>
                   } @else {
                     <mat-card class="bg-base-100 shadow-lg border border-base-300">
                       <mat-card-content class="flex items-center justify-center min-h-[320px]">
@@ -110,7 +110,7 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
                   [character]="latestVersion()?.character ?? null"
               ></app-chat-drawer>
             } @else {
-              <div class="w-1/3 bg-base-200 p-4 sticky top-4 h-[calc(100vh-2rem)]">
+              <div class="w-1/3 p-4 sticky top-4 h-[calc(100vh-2rem)]">
                 <mat-card class="h-full bg-base-100 shadow-xl border border-base-300">
                   <mat-card-content class="p-4 h-full">
                     @if (latestVersion()) {

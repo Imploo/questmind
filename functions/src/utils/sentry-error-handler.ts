@@ -1,9 +1,12 @@
 import * as Sentry from '@sentry/node';
-import { HttpsError, type CallableRequest } from 'firebase-functions/v2/https';
+import { HttpsError, type CallableRequest, type CallableResponse } from 'firebase-functions/v2/https';
 import type { IncomingHttpHeaders } from 'http';
 import { logErrorOnly, warn } from './logger';
 
-type CallableHandler<TRequest, TResponse> = (request: CallableRequest<TRequest>) => Promise<TResponse>;
+type CallableHandler<TRequest, TResponse, TStream = unknown> = (
+  request: CallableRequest<TRequest>,
+  response?: CallableResponse<TStream>,
+) => Promise<TResponse>;
 
 /**
  * HttpsError codes that signal a bad or unauthorized request, not a bug. They
@@ -64,11 +67,11 @@ export function captureFunctionError(
   });
 }
 
-export function wrapCallable<TRequest, TResponse>(
+export function wrapCallable<TRequest, TResponse, TStream = unknown>(
   functionName: string,
-  handler: CallableHandler<TRequest, TResponse>,
-): CallableHandler<TRequest, TResponse> {
-  return async (request) => {
+  handler: CallableHandler<TRequest, TResponse, TStream>,
+): CallableHandler<TRequest, TResponse, TStream> {
+  return async (request, response) => {
     const traceHeader = getHeaderValue(request.rawRequest?.headers, 'x-cloud-trace-context');
     const requestId = getHeaderValue(request.rawRequest?.headers, 'x-request-id');
     const dataKeys = getDataKeys(request.data);
@@ -90,7 +93,7 @@ export function wrapCallable<TRequest, TResponse>(
     }
 
     try {
-      return await handler(request);
+      return await handler(request, response);
     } catch (error) {
       if (isExpectedClientError(error)) {
         warn(`[${functionName}] ${error.code}: ${error.message}`);
