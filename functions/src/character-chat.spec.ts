@@ -6,10 +6,21 @@ import { HttpsError } from 'firebase-functions/v2/https';
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
+// Non-stream responses from `mockGenerateContent` are replayed as a one-chunk stream;
+// `mockStreamChunks` queues multi-chunk streams instead.
 const mockGenerateContent = vi.fn();
+const mockStreamChunks: Record<string, unknown>[][] = [];
 vi.mock('@google/genai', () => ({
   GoogleGenAI: class {
-    models = { generateContent: mockGenerateContent };
+    models = {
+      generateContent: mockGenerateContent,
+      generateContentStream: async (...args: unknown[]) => {
+        const chunks = mockStreamChunks.shift() ?? [await mockGenerateContent(...args)];
+        return (async function* () {
+          yield* chunks;
+        })();
+      },
+    };
   },
   Part: {},
 }));
@@ -65,6 +76,8 @@ vi.mock('firebase-functions/v2/https', async () => {
 describe('characterChat', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGenerateContent.mockReset();
+    mockStreamChunks.length = 0;
     process.env.GOOGLE_AI_API_KEY = 'test-google-key';
     mockAssertCharacterOwner.mockResolvedValue({ userId: 'user-123' });
   });
@@ -279,5 +292,58 @@ describe('characterChat', () => {
     await expect(characterChatHandler(request)).rejects.toThrow(
       expect.objectContaining({ code: 'resource-exhausted' })
     );
+  });
+
+  // ── Streaming ──
+
+  function streamingRequest() {
+    const chunks: unknown[] = [];
+    const response = { sendChunk: vi.fn(async (chunk: unknown) => { chunks.push(chunk); return true; }) };
+    return { request: makeRequest({ acceptsStreaming: true }), response, chunks };
+  }
+
+  it('streams the reply text as deltas while the JSON is generated', async () => {
+    mockStreamChunks.push([
+      { text: '{"text": "Je Cha' },
+      { text: 'risma is nu 15.\\nKlaar' },
+      { text: '", "shouldUpdateCharacter": true}', candidates: [{ finishReason: 'STOP' }] },
+    ]);
+    const { request, response, chunks } = streamingRequest();
+
+    const result = await characterChatHandler(request, response);
+
+    expect(result).toEqual({ text: 'Je Charisma is nu 15.\nKlaar', shouldUpdateCharacter: true });
+    expect(chunks).toEqual([
+      { type: 'text', text: 'Je Cha' },
+      { type: 'text', text: 'risma is nu 15.\nKlaar' },
+    ]);
+    expect(mockGenerateContent).not.toHaveBeenCalled();
+  });
+
+  it('sends a reset before the retry streams its reply again', async () => {
+    mockStreamChunks.push(
+      [{ text: '{"text": "Half antw', candidates: [{ finishReason: 'MAX_TOKENS' }] }],
+      [{ text: '{"text": "Heel antwoord", "shouldUpdateCharacter": false}' }],
+    );
+    const { request, response, chunks } = streamingRequest();
+
+    const result = await characterChatHandler(request, response);
+
+    expect(result).toEqual({ text: 'Heel antwoord', shouldUpdateCharacter: false });
+    expect(chunks).toEqual([
+      { type: 'text', text: 'Half antw' },
+      { type: 'reset' },
+      { type: 'text', text: 'Heel antwoord' },
+    ]);
+  });
+
+  it('does not send chunks to clients that do not accept streaming', async () => {
+    mockStreamChunks.push([{ text: '{"text": "Hoi", "shouldUpdateCharacter": false}' }]);
+    const response = { sendChunk: vi.fn() };
+
+    const result = await characterChatHandler(makeRequest({ acceptsStreaming: false }), response);
+
+    expect(result).toEqual({ text: 'Hoi', shouldUpdateCharacter: false });
+    expect(response.sendChunk).not.toHaveBeenCalled();
   });
 });

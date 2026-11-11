@@ -1,11 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockGenerateContent = vi.fn();
+const mockGenerateContentStream = vi.fn();
 vi.mock('@google/genai', () => ({
   GoogleGenAI: class {
-    models = { generateContent: mockGenerateContent };
+    models = { generateContent: mockGenerateContent, generateContentStream: mockGenerateContentStream };
   },
 }));
+
+const streamOf = (...chunks: Record<string, unknown>[]) =>
+  (async function* () {
+    yield* chunks;
+  })();
 
 const mockLogger = vi.hoisted(() => ({ error: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn() }));
 vi.mock('./logger', () => mockLogger);
@@ -13,9 +19,11 @@ vi.mock('./logger', () => mockLogger);
 import {
   GeminiEmptyResponseError,
   GeminiJsonError,
+  extractPartialJsonString,
   generateJson,
   generateText,
   getGeminiClient,
+  streamJson,
   stripCodeFences,
 } from './gemini-client';
 
@@ -123,5 +131,66 @@ describe('gemini-client', () => {
     expect(stripCodeFences('```json\n{"a":1}\n```')).toBe('{"a":1}');
     expect(stripCodeFences('```\n[1]\n```')).toBe('[1]');
     expect(stripCodeFences(' {"a":1} ')).toBe('{"a":1}');
+  });
+
+  it('streamJson reports accumulated text per chunk and parses the result', async () => {
+    mockGenerateContentStream.mockResolvedValue(
+      streamOf({ text: '{"a":' }, { text: '' }, { text: ' 1}', candidates: [{ finishReason: 'STOP' }] })
+    );
+    const progress: string[] = [];
+
+    const result = await streamJson<{ a: number }>({
+      config,
+      label: 'test',
+      contents: 'prompt',
+      schema: { type: 'object' },
+      onProgress: (raw) => { progress.push(raw); },
+    });
+
+    expect(result).toEqual({ a: 1 });
+    expect(progress).toEqual(['{"a":', '{"a": 1}']);
+    expect(mockGenerateContentStream.mock.calls[0][0].config).toMatchObject({
+      responseMimeType: 'application/json',
+      responseSchema: { type: 'object' },
+      maxOutputTokens: 1000,
+    });
+  });
+
+  it('streamJson calls onRetry and doubles the budget after a truncated stream', async () => {
+    mockGenerateContentStream
+      .mockResolvedValueOnce(streamOf({ text: '{"a": "cu', candidates: [{ finishReason: 'MAX_TOKENS' }] }))
+      .mockResolvedValueOnce(streamOf({ text: '{"a": "ok"}' }));
+    const events: string[] = [];
+
+    const result = await streamJson<{ a: string }>({
+      config,
+      label: 'test',
+      contents: 'prompt',
+      onProgress: (raw) => { events.push(raw); },
+      onRetry: () => { events.push('RETRY'); },
+    });
+
+    expect(result).toEqual({ a: 'ok' });
+    expect(events).toEqual(['{"a": "cu', 'RETRY', '{"a": "ok"}']);
+    expect(mockGenerateContentStream.mock.calls[1][0].config.maxOutputTokens).toBe(2000);
+  });
+
+  it('streamJson throws GeminiEmptyResponseError for an empty stream', async () => {
+    mockGenerateContentStream.mockResolvedValue(streamOf({ text: '', candidates: [{ finishReason: 'SAFETY' }] }));
+    const promise = streamJson({ config, label: 'test', contents: 'prompt', onProgress: vi.fn() });
+    await expect(promise).rejects.toBeInstanceOf(GeminiEmptyResponseError);
+    await expect(promise).rejects.toThrow('SAFETY');
+  });
+
+  it('extractPartialJsonString decodes the growing value of a string field', () => {
+    expect(extractPartialJsonString('{"te', 'text')).toBeUndefined();
+    expect(extractPartialJsonString('{"text":', 'text')).toBeUndefined();
+    expect(extractPartialJsonString('{"text": "', 'text')).toBe('');
+    expect(extractPartialJsonString('{"text": "Hallo \\"Gimli\\"\\nen', 'text')).toBe('Hallo "Gimli"\nen');
+    expect(extractPartialJsonString('{"text":"a\\', 'text')).toBe('a');
+    expect(extractPartialJsonString('{"text":"caf\\u00e', 'text')).toBe('caf');
+    expect(extractPartialJsonString('{"text":"caf\\u00e9!"', 'text')).toBe('café!');
+    expect(extractPartialJsonString('{"text":"klaar","shouldUpdateCharacter":true}', 'text')).toBe('klaar');
+    expect(extractPartialJsonString('{"shouldUpdateCharacter":false, "text" : "x', 'text')).toBe('x');
   });
 });

@@ -30,6 +30,25 @@ interface CharacterChatRequest {
   attachments?: ChatAttachment[];
 }
 
+interface CharacterChatResponse {
+  text: string;
+  shouldUpdateCharacter: boolean;
+}
+
+/** Streamed by `characterChat`: `text` appends to the reply so far, `reset` discards it (backend retry). */
+type CharacterChatChunk = { type: 'text'; text: string } | { type: 'reset' };
+
+/**
+ * A chat reply. `partial` replies carry the text streamed so far and are
+ * followed by the final reply (without `partial`).
+ */
+export interface ChatReply {
+  text: string;
+  images?: MessageImage[];
+  shouldUpdateCharacter?: boolean;
+  partial?: boolean;
+}
+
 interface GenerateImageRequest {
   chatRequest: ImageChatRequest;
   model: string;
@@ -86,7 +105,7 @@ export class ChatService {
     return IMAGE_TRIGGER_REGEX.test(message);
   }
 
-  sendMessage(userMessage: string, attachments?: ChatAttachment[]): Observable<{ text: string; images?: MessageImage[]; shouldUpdateCharacter?: boolean }> {
+  sendMessage(userMessage: string, attachments?: ChatAttachment[]): Observable<ChatReply> {
     if (!this.currentCharacter || !this.characterId) {
       return throwError(() => ({
         status: 400,
@@ -111,13 +130,26 @@ export class ChatService {
       ...(attachments?.length && { attachments }),
     };
 
-    const characterChat = httpsCallable<CharacterChatRequest, { text: string; shouldUpdateCharacter: boolean }>(
+    const characterChat = httpsCallable<CharacterChatRequest, CharacterChatResponse, CharacterChatChunk>(
       functions, 'characterChat', { timeout: CALLABLE_TIMEOUT_MS }
     );
 
-    return from(characterChat(payload)).pipe(
-      map(result => {
-        const { text, shouldUpdateCharacter } = result.data;
+    return new Observable<ChatReply>(subscriber => {
+      const abort = new AbortController();
+      let done = false;
+
+      (async () => {
+        const { stream, data } = await characterChat.stream(payload, { signal: abort.signal });
+        // The stream rejects too on failure; keep `data` from becoming an unhandled rejection.
+        data.catch(() => undefined);
+
+        let streamed = '';
+        for await (const chunk of stream) {
+          streamed = chunk.type === 'reset' ? '' : streamed + chunk.text;
+          subscriber.next({ text: streamed, partial: true });
+        }
+
+        const { text, shouldUpdateCharacter } = await data;
 
         // Store only text in conversation history (not attachment data)
         this.conversationHistory.push(
@@ -129,10 +161,20 @@ export class ChatService {
           this.conversationHistory = this.conversationHistory.slice(-20);
         }
 
-        return { text, shouldUpdateCharacter };
-      }),
-      catchError(error => throwError(() => this.formatError(error)))
-    );
+        done = true;
+        subscriber.next({ text, shouldUpdateCharacter });
+        subscriber.complete();
+      })().catch(error => {
+        done = true;
+        subscriber.error(this.formatError(error));
+      });
+
+      return () => {
+        if (!done) {
+          abort.abort();
+        }
+      };
+    });
   }
 
   generateCharacterDraft(ai1Response: string, attachments?: ChatAttachment[]): Observable<{ success: boolean }> {

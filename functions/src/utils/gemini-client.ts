@@ -68,6 +68,12 @@ async function requestText(
 /** Upper bound for the doubled token budget used when retrying a truncated JSON response. */
 const MAX_RETRY_OUTPUT_TOKENS = 65536;
 
+export interface JsonOpts extends GenerateOpts {
+  schema?: object;
+  /** How often invalid JSON is retried (default 1). */
+  jsonRetries?: number;
+}
+
 /**
  * Generate JSON (`responseMimeType: application/json`, optional schema) and
  * parse it. Invalid JSON is retried (`jsonRetries`, default 1); when Gemini
@@ -75,27 +81,49 @@ const MAX_RETRY_OUTPUT_TOKENS = 65536;
  * tokens share that budget on Gemini 3.x. Throws a `GeminiJsonError` when the
  * last attempt still isn't valid JSON.
  */
-export async function generateJson<T>(
-  opts: GenerateOpts & { schema?: object; jsonRetries?: number },
-  client: GoogleGenAI = getGeminiClient()
+export async function generateJson<T>(opts: JsonOpts, client: GoogleGenAI = getGeminiClient()): Promise<T> {
+  return withJsonRetries<T>(opts, (attemptOpts) => requestText(attemptOpts, client));
+}
+
+export interface StreamJsonOpts extends JsonOpts {
+  /** Called with the raw JSON text received so far, after every streamed chunk. */
+  onProgress: (rawSoFar: string) => void | Promise<void>;
+  /** Called before a retry starts, so streamed output of the failed attempt can be discarded. */
+  onRetry?: () => void | Promise<void>;
+}
+
+/**
+ * Like `generateJson`, but streams the response (`generateContentStream`) and
+ * reports the raw text received so far through `onProgress`. A retry calls
+ * `onRetry` first, after which progress starts again from an empty string.
+ */
+export async function streamJson<T>(opts: StreamJsonOpts, client: GoogleGenAI = getGeminiClient()): Promise<T> {
+  return withJsonRetries<T>(
+    opts,
+    (attemptOpts) => requestTextStream(attemptOpts, opts.onProgress, client),
+    opts.onRetry
+  );
+}
+
+async function withJsonRetries<T>(
+  opts: JsonOpts,
+  request: (attemptOpts: GenerateOpts) => Promise<{ text: string; finishReason?: string }>,
+  onRetry?: () => void | Promise<void>
 ): Promise<T> {
   const retries = opts.jsonRetries ?? 1;
   let config = opts.config;
 
   for (let attempt = 0; ; attempt++) {
-    const { text, finishReason } = await requestText(
-      {
-        ...opts,
-        config,
-        logContext: attempt > 0 ? { ...opts.logContext, attempt } : opts.logContext,
-        extraConfig: {
-          responseMimeType: 'application/json',
-          ...(opts.schema ? { responseSchema: opts.schema } : {}),
-          ...opts.extraConfig,
-        },
+    const { text, finishReason } = await request({
+      ...opts,
+      config,
+      logContext: attempt > 0 ? { ...opts.logContext, attempt } : opts.logContext,
+      extraConfig: {
+        responseMimeType: 'application/json',
+        ...(opts.schema ? { responseSchema: opts.schema } : {}),
+        ...opts.extraConfig,
       },
-      client
-    );
+    });
 
     try {
       return parseJsonResponse<T>(text, opts.label, finishReason);
@@ -112,9 +140,91 @@ export async function generateJson<T>(
         finishReason,
         maxOutputTokens: config.maxOutputTokens,
       });
+      await onRetry?.();
     }
   }
 }
+
+/** One `generateContentStream` call: accumulated text (reported per chunk) plus the finish reason. */
+async function requestTextStream(
+  opts: GenerateOpts,
+  onProgress: (rawSoFar: string) => void | Promise<void>,
+  client: GoogleGenAI
+): Promise<{ text: string; finishReason?: string }> {
+  const stream = await client.models.generateContentStream({
+    model: opts.config.model,
+    contents: opts.contents,
+    config: {
+      ...(opts.systemInstruction ? { systemInstruction: opts.systemInstruction } : {}),
+      ...opts.extraConfig,
+      ...buildGenerationParams(opts.config),
+    },
+  });
+
+  let raw = '';
+  let last: GenerateContentResponse | undefined;
+  for await (const chunk of stream) {
+    last = chunk;
+    const delta = chunk.text;
+    if (delta) {
+      raw += delta;
+      await onProgress(raw);
+    }
+  }
+
+  if (last) {
+    logUsage(opts, last);
+  }
+
+  const text = raw.trim();
+  if (!text) {
+    throw new GeminiEmptyResponseError(opts.label, last ? describeEmptyResponse(last) : '{"reason":"empty stream"}');
+  }
+  return { text, finishReason: last?.candidates?.[0]?.finishReason };
+}
+
+/**
+ * The (possibly still incomplete) value of a top-level string field in partial
+ * JSON, e.g. `{"text": "Hallo\nwer` → `Hallo\nwer` with the escape decoded.
+ * Returns undefined while the field's opening quote hasn't arrived yet. An
+ * escape sequence cut off at the end is left out until it is complete.
+ */
+export function extractPartialJsonString(raw: string, key: string): string | undefined {
+  const match = new RegExp(`"${key}"\\s*:\\s*"`).exec(raw);
+  if (!match) {
+    return undefined;
+  }
+
+  let out = '';
+  for (let i = match.index + match[0].length; i < raw.length; i++) {
+    const ch = raw[i];
+    if (ch === '"') {
+      break;
+    }
+    if (ch !== '\\') {
+      out += ch;
+      continue;
+    }
+    const next = raw[i + 1];
+    if (next === undefined) {
+      break;
+    }
+    if (next === 'u') {
+      const hex = raw.slice(i + 2, i + 6);
+      if (!/^[0-9a-fA-F]{4}$/.test(hex)) {
+        break;
+      }
+      out += String.fromCharCode(parseInt(hex, 16));
+      i += 5;
+      continue;
+    }
+    out += JSON_ESCAPES[next] ?? next;
+    i++;
+  }
+  return out;
+}
+
+const JSON_ESCAPES: Record<string, string> = { n: '\n', t: '\t', r: '\r', b: '\b', f: '\f', '"': '"', '\\': '\\', '/': '/' };
 
 /** Gemini returned no text; the message carries the finish/block reason it gave. */
 export class GeminiEmptyResponseError extends Error {

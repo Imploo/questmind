@@ -3,7 +3,7 @@ import type { Part } from '@google/genai';
 import { getFirestore } from 'firebase-admin/firestore';
 import { wrapCallable } from './utils/sentry-error-handler';
 import { getAiFeatureConfig } from './utils/ai-settings';
-import { GeminiEmptyResponseError, GeminiJsonError, generateJson } from './utils/gemini-client';
+import { GeminiEmptyResponseError, GeminiJsonError, extractPartialJsonString, streamJson } from './utils/gemini-client';
 import { SHARED_CORS } from './config/cors';
 import { ensureAuthForTesting } from './utils/emulator-helpers';
 import { assertCharacterOwner, requireAuthUid } from './utils/access';
@@ -24,6 +24,12 @@ export interface CharacterChatResponse {
   shouldUpdateCharacter: boolean;
 }
 
+/**
+ * Streamed while the answer is generated: `text` appends to the reply shown so
+ * far; `reset` discards it (a retry after invalid JSON starts over).
+ */
+export type CharacterChatChunk = { type: 'text'; text: string } | { type: 'reset' };
+
 const MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 
 export const characterChat = onCall(
@@ -31,9 +37,9 @@ export const characterChat = onCall(
     cors: SHARED_CORS,
     secrets: ['GOOGLE_AI_API_KEY'],
   },
-  wrapCallable<CharacterChatRequest, CharacterChatResponse>(
+  wrapCallable<CharacterChatRequest, CharacterChatResponse, CharacterChatChunk>(
     'characterChat',
-    async (request): Promise<CharacterChatResponse> => {
+    async (request, response): Promise<CharacterChatResponse> => {
       ensureAuthForTesting(request);
       const uid = requireAuthUid(request);
 
@@ -94,7 +100,11 @@ export const characterChat = onCall(
           contentParts: contents.length,
         });
 
-        const parsed = await generateJson<{ text?: string; shouldUpdateCharacter?: boolean }>({
+        // Stream the reply text to clients that accept it; others get the full result only.
+        const streaming = Boolean(request.acceptsStreaming && response);
+        let sentLength = 0;
+
+        const parsed = await streamJson<{ text?: string; shouldUpdateCharacter?: boolean }>({
           config,
           label: 'characterChat',
           contents,
@@ -106,6 +116,21 @@ export const characterChat = onCall(
               shouldUpdateCharacter: { type: 'boolean' as const },
             },
             required: ['text', 'shouldUpdateCharacter'],
+            // Text first, so it can be shown while the rest is still generated.
+            propertyOrdering: ['text', 'shouldUpdateCharacter'],
+          },
+          onProgress: async (raw) => {
+            if (!streaming) return;
+            const textSoFar = extractPartialJsonString(raw, 'text');
+            if (textSoFar === undefined || textSoFar.length <= sentLength) return;
+            const delta = textSoFar.slice(sentLength);
+            sentLength = textSoFar.length;
+            await response?.sendChunk({ type: 'text', text: delta });
+          },
+          onRetry: async () => {
+            if (!streaming || sentLength === 0) return;
+            sentLength = 0;
+            await response?.sendChunk({ type: 'reset' });
           },
         });
 
