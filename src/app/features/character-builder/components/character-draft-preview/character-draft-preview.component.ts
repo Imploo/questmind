@@ -18,6 +18,29 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
             <div class="flex-1">
               <h3 class="font-bold">Changes Proposed</h3>
               <div class="text-xs">The Sidekick has suggested updates to your character.</div>
+              @if (abilityScoreWarnings().length) {
+                <div class="mt-2 text-xs" role="alert">
+                  <div class="font-semibold">Ability scores don't follow the rules:</div>
+                  <ul class="list-disc ml-4">
+                    @for (warning of abilityScoreWarnings(); track $index) {
+                      <li>{{ warning }}</li>
+                    }
+                  </ul>
+                  <div class="mt-1">Ask the Sidekick in the chat to fix this before updating.</div>
+                </div>
+              }
+              @if (derivedStatCorrections().length) {
+                <details class="mt-2 text-xs">
+                  <summary class="cursor-pointer font-semibold">
+                    {{ derivedStatCorrections().length }} value(s) recalculated from the ability scores
+                  </summary>
+                  <ul class="list-disc ml-4 mt-1">
+                    @for (correction of derivedStatCorrections(); track $index) {
+                      <li>{{ correction }}</li>
+                    }
+                  </ul>
+                </details>
+              }
             </div>
             <div class="flex flex-col-reverse gap-2">
               <button mat-button (click)="dismiss.emit()" [disabled]="loading()">Dismiss</button>
@@ -36,6 +59,8 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 })
 export class CharacterDraftPreviewComponent {
   loading = input<boolean>(false);
+  abilityScoreWarnings = input<string[]>([]);
+  derivedStatCorrections = input<string[]>([]);
   commit = output<void>();
   dismiss = output<void>();
 }

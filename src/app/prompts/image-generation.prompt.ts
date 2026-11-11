@@ -1,5 +1,5 @@
 /**
- * System prompt for image generation via FAL.ai.
+ * System prompt for image generation via Gemini.
  * Character context is appended by the frontend using buildCharacterContext().
  */
 export const IMAGE_GENERATION_SYSTEM_PROMPT = `Je bent een expert in het genereren van visueel aantrekkelijke afbeeldingen voor D&D karakterportretten.

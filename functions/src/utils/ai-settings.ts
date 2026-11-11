@@ -39,7 +39,7 @@ export function resetAiSettingsCache(): void {
 }
 
 const DEFAULT_CONFIGS: Record<string, AIFeatureConfig> = {
-  characterChatText: { model: 'gemini-3.8-flash', maxOutputTokens: 4096, thinkingLevel: 'low' },
+  characterChatText: { model: 'gemini-3.8-flash', maxOutputTokens: 8192, thinkingLevel: 'low' },
   characterDraft: { model: 'gemini-3.8-flash', maxOutputTokens: 8192, thinkingLevel: 'medium' },
   spellResolution: { model: 'gemini-3.8-flash', maxOutputTokens: 4096, thinkingLevel: 'low' },
   featureResolution: { model: 'gemini-3.8-flash', maxOutputTokens: 4096, thinkingLevel: 'low' },
@@ -65,7 +65,7 @@ const DEFAULT_SEGMENTATION: TranscriptionSegmentationSettings = {
   onSegmentFailure: 'gap',
 };
 
-const DEFAULT_IMAGE_CONFIG = { model: 'fal-ai/flux/schnell' };
+const DEFAULT_IMAGE_CONFIG = { model: 'gemini-nano-banana-2.1' };
 const DEFAULT_PODCAST_VOICES: PodcastVoiceSettings = {
   maxCharacters: 5000,
   geminiModel: 'gemini-3.8-flash-tts',           // fallback: 'gemini-3.8-flash-lite-tts'

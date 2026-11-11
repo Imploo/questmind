@@ -1,13 +1,34 @@
 import { z } from 'zod';
 
+export const AbilityScoreBonusSchema = z.object({
+  source: z.string(), // e.g. "Race", "ASI level 4", "Feat: Resilient"
+  amount: z.number(),
+});
+
 export const AbilityScoreSchema = z.object({
   score: z.number().min(1).max(30),
   modifier: z.number(),
+  base: z.number().min(1).max(30).optional(), // Before racial, ASI and feat bonuses
+  bonuses: z.array(AbilityScoreBonusSchema).optional(),
 });
+
+/** Bonuses on derived values that the plain formulas do not cover (Alert, Aura of Protection, magic items, ...). */
+export const DerivedBonusesSchema = z.object({
+  initiative: z.array(AbilityScoreBonusSchema).optional(),
+  passivePerception: z.array(AbilityScoreBonusSchema).optional(),
+  savingThrows: z.array(AbilityScoreBonusSchema).optional(), // Applies to all six saves
+  spellSaveDc: z.array(AbilityScoreBonusSchema).optional(),
+  spellAttack: z.array(AbilityScoreBonusSchema).optional(),
+});
+
+export const AbilityKeySchema = z.enum(['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma']);
+
+export const AbilityScoreMethodSchema = z.enum(['pointBuy', 'standardArray', 'rolled', 'other']);
 
 export const SkillSchema = z.object({
   name: z.string(),
   proficient: z.boolean(),
+  expertise: z.boolean().optional(), // Double proficiency (Rogue, Bard, ...)
   modifier: z.number(),
 });
 
@@ -57,6 +78,8 @@ export const DndCharacterSchema = z.object({
   experiencePoints: z.number().min(0).default(0),
 
   // Ability Scores
+  abilityScoreMethod: AbilityScoreMethodSchema.optional(),
+  derivedBonuses: DerivedBonusesSchema.optional(),
   abilities: z.object({
     strength: AbilityScoreSchema,
     dexterity: AbilityScoreSchema,
@@ -102,6 +125,7 @@ export const DndCharacterSchema = z.object({
   // Actions
   attacks: z.array(WeaponAttackSchema).default([]),
   spellcasting: z.object({
+    ability: AbilityKeySchema.optional(), // Spellcasting ability; derived from the class when missing
     spellSaveDc: z.number().optional(),
     spellAttackBonus: z.number().optional(),
     slots: z.union([z.array(SpellSlotSchema), z.record(z.string(), z.any())]).optional(),

@@ -8,7 +8,8 @@ import { CharacterService } from '../../../../core/services/character.service';
 import { CharacterVersionService } from '../../../../core/services/character-version.service';
 import { CharacterImageService } from '../../../../core/services/character-image.service';
 import { ChatService } from '../../../../chat/chat.service';
-import { PdfGeneratorService } from '../../../../shared/services/pdf-generator.service';
+import { CharacterSheetExportService } from '../../services/character-sheet-export.service';
+import * as logger from '../../../../shared/logger';
 import { Character, CharacterVersion } from '../../../../core/models/schemas/character.schema';
 import { CharacterImage } from '../../../../core/models/schemas/character-image.schema';
 import { DndCharacter } from '../../../../shared/models/dnd-character.model';
@@ -49,6 +50,8 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
                 <div class="sticky top-8 z-10">
                   <app-character-draft-preview
                       [loading]="isCommitting()"
+                      [abilityScoreWarnings]="latestVersion()?.abilityScoreWarnings ?? []"
+                      [derivedStatCorrections]="latestVersion()?.derivedStatCorrections ?? []"
                       (commit)="commitDraft()"
                       (dismiss)="dismissDraft()"
                   ></app-character-draft-preview>
@@ -71,6 +74,7 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
                           [activeVersionId]="latestVersion()?.id ?? ''"
                           [images]="characterImages()"
                           [canDelete]="isOwner()"
+                          [exportingPdf]="exportingPdf()"
                           (exportPdf)="onExportPdf()"
                           (viewHistory)="showHistory.set(true)"
                           (deleteImage)="onDeleteImage($event)"
@@ -142,7 +146,7 @@ export class CharacterBuilderPageComponent {
   private characterVersionService = inject(CharacterVersionService);
   private characterImageService = inject(CharacterImageService);
   private chatService = inject(ChatService);
-  private pdfGeneratorService = inject(PdfGeneratorService);
+  private characterSheetExportService = inject(CharacterSheetExportService);
   private destroyRef = inject(DestroyRef);
 
   // State
@@ -169,6 +173,7 @@ export class CharacterBuilderPageComponent {
   isDraft = computed(() => this.latestVersion()?.isDraft === true);
 
   showHistory = signal(false);
+  exportingPdf = signal(false);
   versions = signal<CharacterVersion[]>([]);
   chat = viewChild(ChatComponent);
   chatDrawer = viewChild<ChatDrawerComponent>('chatDrawer');
@@ -392,8 +397,19 @@ export class CharacterBuilderPageComponent {
 
   async onExportPdf(): Promise<void> {
     const version = this.latestVersion();
-    if (version) {
-      await this.pdfGeneratorService.generateCharacterPdf(version.character);
+    if (!version || this.exportingPdf()) return;
+    this.exportingPdf.set(true);
+    try {
+      await this.characterSheetExportService.export({
+        character: version.character,
+        characterId: this.selectedCharacterId(),
+        versionId: version.id ?? null,
+        canResolveRemotely: this.isOwner(),
+      });
+    } catch (e) {
+      logger.error('Failed to export character sheet PDF:', e);
+    } finally {
+      this.exportingPdf.set(false);
     }
   }
 

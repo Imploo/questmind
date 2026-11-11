@@ -1,6 +1,6 @@
 /**
  * System prompt for turning character context + conversation into a portrait
- * description for fal.ai. Decided server-side: the client only sends content.
+ * description for the Gemini image model. Decided server-side: the client only sends content.
  */
 export const IMAGE_GENERATION_SYSTEM_PROMPT = `Je bent een expert in het genereren van visueel aantrekkelijke afbeeldingen voor D&D karakterportretten.
 

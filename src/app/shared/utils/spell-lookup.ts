@@ -4,6 +4,9 @@ import { firstValueFrom } from 'rxjs';
 export interface SpellDetails {
   description: string;
   usage: string;
+  /** 0 = cantrip. Only set when the spell comes from Spell.json. */
+  level?: number;
+  school?: string;
 }
 
 interface SpellJsonFields {
@@ -17,6 +20,8 @@ interface SpellJsonFields {
   somatic: boolean;
   material: boolean;
   material_specified?: string | null;
+  level?: number;
+  school?: string;
   concentration?: boolean;
   ritual?: boolean;
 }
@@ -64,6 +69,8 @@ async function loadDatabase(http: HttpClient): Promise<Map<string, SpellDetails>
       map.set(entry.fields.name.toLowerCase(), {
         description: buildDescription(entry.fields),
         usage: buildUsage(entry.fields),
+        level: entry.fields.level,
+        school: entry.fields.school,
       });
     }
     cache = map;

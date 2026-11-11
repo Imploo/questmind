@@ -1,14 +1,10 @@
 import { ChangeDetectionStrategy, Component, computed, input, output, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
-import { HttpClient } from '@angular/common/http';
-import { httpsCallable } from 'firebase/functions';
 import { DndCharacter } from '../../../../shared/models/dnd-character.model';
 import { CharacterImage } from '../../../../core/models/schemas/character-image.schema';
 import { CharacterImageGalleryComponent } from '../character-image-gallery/character-image-gallery.component';
-import { FirebaseService } from '../../../../core/firebase.service';
-import { lookupSpellFromJson, SpellDetails } from '../../../../shared/utils/spell-lookup';
-import { lookupFeatureFromJson, FeatureDetails } from '../../../../shared/utils/feature-lookup';
+import { CharacterEntryResolverService } from '../../../../core/services/character-entry-resolver.service';
 import * as logger from '../../../../shared/logger';
 
 export interface SpellResolvedEvent {
@@ -47,9 +43,13 @@ export interface FeatureResolvedEvent {
         </div>
 
         <div class="flex flex-col items-end gap-2">
-            <button class="btn btn-sm btn-ghost" (click)="exportPdf.emit()">
+            <button class="btn btn-sm btn-ghost" [disabled]="exportingPdf()" [attr.aria-busy]="exportingPdf()" (click)="exportPdf.emit()">
+                @if (exportingPdf()) {
+                  <span class="loading loading-spinner loading-xs mr-1" aria-hidden="true"></span>
+                } @else {
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                PDF
+                }
+                {{ exportingPdf() ? 'Preparing PDF…' : 'PDF' }}
             </button>
             <button class="btn btn-sm btn-ghost" (click)="viewHistory.emit()">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
@@ -498,6 +498,7 @@ export class CharacterSheetComponent {
   activeVersionId = input<string>('');
   images = input<CharacterImage[]>([]);
   canDelete = input<boolean>(false);
+  exportingPdf = input<boolean>(false);
   viewHistory = output<void>();
   exportPdf = output<void>();
   deleteImage = output<CharacterImage>();
@@ -509,8 +510,7 @@ export class CharacterSheetComponent {
   expandedFeatures = signal<Set<number>>(new Set());
   loadingFeatures = signal<Set<number>>(new Set());
 
-  private readonly http = inject(HttpClient);
-  private readonly firebase = inject(FirebaseService);
+  private readonly resolver = inject(CharacterEntryResolverService);
 
   async toggleSpell(
     index: number,
@@ -531,25 +531,8 @@ export class CharacterSheetComponent {
 
     this.loadingSpells.update(s => new Set([...s, index]));
     try {
-      // 1. Try static Spell.json first
-      const local: SpellDetails | null = await lookupSpellFromJson(this.http, spell.name);
-      if (local) {
-        this.spellResolved.emit({ spellName: spell.name, ...local });
-        return;
-      }
-
-      // 2. Fallback: resolveSpell Cloud Function
-      const fn = httpsCallable<unknown, { description: string; usage: string }>(
-        this.firebase.requireFunctions(),
-        'resolveSpell'
-      );
-      const result = await fn({
-        characterId: this.characterId(),
-        spellName: spell.name,
-        spellLevel: spell.level,
-        spellSchool: spell.school,
-      });
-      this.spellResolved.emit({ spellName: spell.name, ...result.data });
+      const details = await this.resolver.resolveSpell(this.characterId(), spell);
+      this.spellResolved.emit({ spellName: spell.name, description: details.description, usage: details.usage });
     } catch (e) {
       logger.error('Failed to resolve spell details:', e);
     } finally {
@@ -580,27 +563,8 @@ export class CharacterSheetComponent {
 
     this.loadingFeatures.update(s => new Set([...s, index]));
     try {
-      // 1. Try static ClassFeature.json first
-      const local: FeatureDetails | null = await lookupFeatureFromJson(this.http, feature.name);
-      if (local) {
-        this.featureResolved.emit({ featureName: feature.name, ...local });
-        return;
-      }
-
-      // 2. Fallback: resolveFeature Cloud Function
-      const fn = httpsCallable<unknown, { description: string }>(
-        this.firebase.requireFunctions(),
-        'resolveFeature'
-      );
-      const character = this.character();
-      const result = await fn({
-        characterId: this.characterId(),
-        featureName: feature.name,
-        featureSource: feature.source,
-        characterClass: character.class,
-        characterRace: character.race,
-      });
-      this.featureResolved.emit({ featureName: feature.name, ...result.data });
+      const details = await this.resolver.resolveFeature(this.characterId(), feature, this.character());
+      this.featureResolved.emit({ featureName: feature.name, description: details.description });
     } catch (e) {
       logger.error('Failed to resolve feature details:', e);
     } finally {

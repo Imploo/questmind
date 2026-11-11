@@ -1,11 +1,33 @@
+export interface AbilityScoreBonus {
+  source: string;
+  amount: number;
+}
+
 export interface AbilityScore {
   score: number;
   modifier: number;
+  /** Score before racial, ASI and feat bonuses. */
+  base?: number;
+  bonuses?: AbilityScoreBonus[];
 }
+
+/** Bonuses on derived values beyond the standard formulas (Alert, Aura of Protection, magic items, ...). */
+export interface DerivedBonuses {
+  initiative?: AbilityScoreBonus[];
+  passivePerception?: AbilityScoreBonus[];
+  /** Applies to all six saving throws. */
+  savingThrows?: AbilityScoreBonus[];
+  spellSaveDc?: AbilityScoreBonus[];
+  spellAttack?: AbilityScoreBonus[];
+}
+
+export type AbilityScoreMethod = 'pointBuy' | 'standardArray' | 'rolled' | 'other';
 
 export interface Skill {
   name: string;
   proficient: boolean;
+  /** Double proficiency (Rogue, Bard, ...). */
+  expertise?: boolean;
   modifier: number;
 }
 
@@ -56,6 +78,8 @@ export interface DndCharacter {
   experiencePoints: number;
 
   // Ability Scores
+  abilityScoreMethod?: AbilityScoreMethod;
+  derivedBonuses?: DerivedBonuses;
   abilities: {
     strength: AbilityScore;
     dexterity: AbilityScore;
@@ -101,6 +125,7 @@ export interface DndCharacter {
   // Actions
   attacks: WeaponAttack[];
   spellcasting?: {
+    ability?: 'strength' | 'dexterity' | 'constitution' | 'intelligence' | 'wisdom' | 'charisma';
     spellSaveDc?: number;
     spellAttackBonus?: number;
     slots?: SpellSlot[] | Record<string, unknown>;

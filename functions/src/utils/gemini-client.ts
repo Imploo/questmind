@@ -38,6 +38,14 @@ export function getGeminiClient(): GoogleGenAI {
 
 /** Generate text; throws when Gemini returns no text (with the reason it gave). */
 export async function generateText(opts: GenerateOpts, client: GoogleGenAI = getGeminiClient()): Promise<string> {
+  return (await requestText(opts, client)).text;
+}
+
+/** One `generateContent` call: the trimmed text plus the finish reason Gemini gave. */
+async function requestText(
+  opts: GenerateOpts,
+  client: GoogleGenAI
+): Promise<{ text: string; finishReason?: string }> {
   const response = await client.models.generateContent({
     model: opts.config.model,
     contents: opts.contents,
@@ -54,29 +62,58 @@ export async function generateText(opts: GenerateOpts, client: GoogleGenAI = get
   if (!text) {
     throw new GeminiEmptyResponseError(opts.label, describeEmptyResponse(response));
   }
-  return text;
+  return { text, finishReason: response.candidates?.[0]?.finishReason };
 }
+
+/** Upper bound for the doubled token budget used when retrying a truncated JSON response. */
+const MAX_RETRY_OUTPUT_TOKENS = 65536;
 
 /**
  * Generate JSON (`responseMimeType: application/json`, optional schema) and
- * parse it. Throws a `GeminiJsonError` when the response isn't valid JSON.
+ * parse it. Invalid JSON is retried (`jsonRetries`, default 1); when Gemini
+ * stopped on MAX_TOKENS the retry gets double the output budget, since thinking
+ * tokens share that budget on Gemini 3.x. Throws a `GeminiJsonError` when the
+ * last attempt still isn't valid JSON.
  */
 export async function generateJson<T>(
-  opts: GenerateOpts & { schema?: object },
+  opts: GenerateOpts & { schema?: object; jsonRetries?: number },
   client: GoogleGenAI = getGeminiClient()
 ): Promise<T> {
-  const text = await generateText(
-    {
-      ...opts,
-      extraConfig: {
-        responseMimeType: 'application/json',
-        ...(opts.schema ? { responseSchema: opts.schema } : {}),
-        ...opts.extraConfig,
+  const retries = opts.jsonRetries ?? 1;
+  let config = opts.config;
+
+  for (let attempt = 0; ; attempt++) {
+    const { text, finishReason } = await requestText(
+      {
+        ...opts,
+        config,
+        logContext: attempt > 0 ? { ...opts.logContext, attempt } : opts.logContext,
+        extraConfig: {
+          responseMimeType: 'application/json',
+          ...(opts.schema ? { responseSchema: opts.schema } : {}),
+          ...opts.extraConfig,
+        },
       },
-    },
-    client
-  );
-  return parseJsonResponse<T>(text, opts.label);
+      client
+    );
+
+    try {
+      return parseJsonResponse<T>(text, opts.label, finishReason);
+    } catch (error) {
+      if (!(error instanceof GeminiJsonError) || attempt >= retries) {
+        throw error;
+      }
+      if (finishReason === 'MAX_TOKENS' && config.maxOutputTokens) {
+        config = { ...config, maxOutputTokens: Math.min(config.maxOutputTokens * 2, MAX_RETRY_OUTPUT_TOKENS) };
+      }
+      logger.warn(`${opts.label}: retrying after invalid Gemini JSON`, {
+        ...opts.logContext,
+        attempt: attempt + 1,
+        finishReason,
+        maxOutputTokens: config.maxOutputTokens,
+      });
+    }
+  }
 }
 
 /** Gemini returned no text; the message carries the finish/block reason it gave. */
@@ -88,22 +125,28 @@ export class GeminiEmptyResponseError extends Error {
 }
 
 export class GeminiJsonError extends Error {
-  constructor(label: string, readonly responseText: string) {
-    super(`Gemini (${label}) returned invalid JSON. The response may have been truncated.`);
+  constructor(label: string, readonly responseText: string, readonly finishReason?: string) {
+    super(
+      finishReason === 'MAX_TOKENS'
+        ? `Gemini (${label}) returned invalid JSON: truncated at maxOutputTokens.`
+        : `Gemini (${label}) returned invalid JSON (finishReason: ${finishReason ?? 'unknown'}).`
+    );
     this.name = 'GeminiJsonError';
   }
 }
 
-export function parseJsonResponse<T>(text: string, label: string): T {
+export function parseJsonResponse<T>(text: string, label: string, finishReason?: string): T {
   const cleaned = stripCodeFences(text);
   try {
     return JSON.parse(cleaned) as T;
   } catch {
     logger.warn(`${label}: could not parse Gemini JSON`, {
       responseText: cleaned.slice(0, 500),
+      responseTail: cleaned.slice(-200),
       responseLength: cleaned.length,
+      finishReason,
     });
-    throw new GeminiJsonError(label, cleaned);
+    throw new GeminiJsonError(label, cleaned, finishReason);
   }
 }
 

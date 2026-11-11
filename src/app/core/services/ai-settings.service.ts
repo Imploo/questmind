@@ -76,7 +76,7 @@ export class AiSettingsService {
   private readonly data = this.repo.get;
 
   private readonly defaultImageGenerationConfig: AiImageConfig = {
-    model: 'fal-ai/flux/schnell'
+    model: 'gemini-nano-banana-2.1'
   };
 
   /**

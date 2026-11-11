@@ -1,341 +1,283 @@
-import { Injectable } from '@angular/core';
-import { DndCharacter, SpellSlot } from '../models/dnd-character.model';
-import type { TDocumentDefinitions, Content, ContentColumns, ContentTable, TableCell } from 'pdfmake/interfaces';
+import { inject, Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { firstValueFrom } from 'rxjs';
+import type { PDFFont } from 'pdf-lib';
+import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces';
+import { DndCharacter } from '../models/dnd-character.model';
+import { CHARACTER_SHEET_TEMPLATE_URL, MULTILINE_FIELDS, TEXT_FIELDS } from '../pdf/character-sheet-template';
+import { buildSheetFieldValues, SheetFeature, SheetSpell } from '../pdf/character-sheet-field-values';
+import * as logger from '../logger';
 
+/** A multi-line field whose text did not fit, so the appendix repeats it in full. */
+export interface OverflowSection {
+  title: string;
+  text: string;
+}
+
+const MAX_FONT_SIZE = 9;
+const MIN_FONT_SIZE = 5;
+const SINGLE_LINE_MAX_FONT_SIZE = 12;
+const LINE_HEIGHT = 1.2;
+const FIELD_PADDING = 4;
+
+const OVERFLOW_TITLES: Record<string, string> = {
+  [TEXT_FIELDS.backstory]: 'Appearance & Backstory',
+  [TEXT_FIELDS.equipment]: 'Equipment',
+  [TEXT_FIELDS.proficienciesAndLanguages]: 'Proficiencies & Languages',
+  [TEXT_FIELDS.attacksAndSpellcasting]: 'Attacks & Spellcasting',
+  [TEXT_FIELDS.personalityTraits]: 'Personality Traits',
+  [TEXT_FIELDS.ideals]: 'Ideals',
+  [TEXT_FIELDS.bonds]: 'Bonds',
+  [TEXT_FIELDS.flaws]: 'Flaws',
+};
+
+/** Characters outside WinAnsi that AI text often contains, with a close WinAnsi equivalent. */
+const CHAR_REPLACEMENTS: Record<string, string> = {
+  '−': '-', '‐': '-', '‑': '-', '‒': '-', '―': '-',
+  '→': '->', '←': '<-', '≤': '<=', '≥': '>=', '≈': '~',
+  ' ': ' ', ' ': ' ', ' ': ' ', '​': '',
+};
+
+/**
+ * Exports a character on the official, form-fillable D&D 5e character sheet
+ * (three pages), followed by appendix pages with the full text of every
+ * feature, trait and spell.
+ */
 @Injectable({ providedIn: 'root' })
 export class PdfGeneratorService {
+  private readonly http = inject(HttpClient);
 
-  async generateCharacterPdf(character: DndCharacter): Promise<void> {
+  async generateCharacterPdf(character: DndCharacter, spells: SheetSpell[], features: SheetFeature[]): Promise<void> {
+    const bytes = await this.buildCharacterPdf(character, spells, features);
+    this.download(bytes, `${character.name} - Character Sheet.pdf`);
+  }
+
+  async buildCharacterPdf(character: DndCharacter, spells: SheetSpell[], features: SheetFeature[]): Promise<Uint8Array> {
+    const { PDFDocument, PDFTextField, PDFCheckBox, StandardFonts } = await import('pdf-lib');
+    const template = await firstValueFrom(this.http.get(CHARACTER_SHEET_TEMPLATE_URL, { responseType: 'arraybuffer' }));
+    const doc = await PDFDocument.load(template);
+    const form = doc.getForm();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const sanitize = createSanitizer(font);
+
+    const values = buildSheetFieldValues(character, spells, features);
+    const overflow: OverflowSection[] = [];
+
+    for (const [name, value] of Object.entries(values.text)) {
+      const field = form.getFieldMaybe(name);
+      if (!(field instanceof PDFTextField)) {
+        logger.warn(`Character sheet template has no text field "${name}"`);
+        continue;
+      }
+      const text = sanitize(value);
+      field.setText(text);
+      const rect = field.acroField.getWidgets()[0].getRectangle();
+      // The template's fields inherit the form-wide /DA ("auto" size, which clips narrow boxes);
+      // give each field its own so an explicit, fitting size can be set.
+      field.acroField.setDefaultAppearance('/Helv 0 Tf 0 g');
+      if (MULTILINE_FIELDS.includes(name)) {
+        const size = fitFontSize(text, font, rect.width - FIELD_PADDING, rect.height - FIELD_PADDING);
+        field.setFontSize(size ?? MIN_FONT_SIZE);
+        if (size === null && OVERFLOW_TITLES[name]) {
+          overflow.push({ title: OVERFLOW_TITLES[name], text: value });
+        }
+      } else {
+        field.setFontSize(fitSingleLineFontSize(text, font, rect.width - FIELD_PADDING, rect.height));
+      }
+    }
+    for (const name of values.checked) {
+      const field = form.getFieldMaybe(name);
+      if (field instanceof PDFCheckBox) field.check();
+    }
+    form.updateFieldAppearances(font);
+
+    const appendix = this.buildAppendixDefinition(character, spells, features, overflow);
+    if (appendix) {
+      const appendixDoc = await PDFDocument.load(await this.renderWithPdfMake(appendix));
+      const pages = await doc.copyPages(appendixDoc, appendixDoc.getPageIndices());
+      pages.forEach(page => doc.addPage(page));
+    }
+
+    return doc.save();
+  }
+
+  /** Exposed for testing. Returns null when there is nothing to describe. */
+  buildAppendixDefinition(
+    character: DndCharacter,
+    spells: SheetSpell[],
+    features: SheetFeature[],
+    overflow: OverflowSection[] = []
+  ): TDocumentDefinitions | null {
+    const content: Content[] = [];
+
+    if (features.length) {
+      content.push({ text: 'Features & Traits', style: 'sectionTitle' });
+      for (const feature of features) {
+        content.push(this.buildEntry(feature.name, feature.source, [], feature.description));
+      }
+    }
+
+    if (spells.length) {
+      content.push({ text: 'Spells', style: 'sectionTitle', pageBreak: features.length ? 'before' : undefined });
+      for (const group of groupSpellsByLevel(spells)) {
+        const entries = group.spells.map(spell => {
+          const meta = [spellLevelLabel(spell.level), capitalize(spell.school)].filter(Boolean).join(' • ');
+          return this.buildEntry(spell.name, meta, spell.usage?.split('\n') ?? [], spell.description);
+        });
+        // Keep the level heading on the same page as its first spell.
+        content.push({ stack: [{ text: group.title, style: 'groupTitle' }, entries[0]], unbreakable: true }, ...entries.slice(1));
+      }
+    }
+
+    if (overflow.length) {
+      content.push({ text: 'Notes (continued from the sheet)', style: 'sectionTitle', pageBreak: content.length ? 'before' : undefined });
+      for (const section of overflow) {
+        content.push(this.buildEntry(section.title, undefined, [], section.text));
+      }
+    }
+
+    if (!content.length) return null;
+
+    return {
+      pageSize: 'LETTER',
+      pageMargins: [40, 50, 40, 40],
+      header: (currentPage: number) => ({
+        text: `${character.name} — ${character.class} ${character.level} — Reference (${currentPage})`,
+        style: 'pageHeader',
+        margin: [40, 20, 40, 0],
+      }),
+      content,
+      styles: {
+        pageHeader: { fontSize: 8, color: '#777' },
+        sectionTitle: { fontSize: 16, bold: true, margin: [0, 0, 0, 8] },
+        groupTitle: { fontSize: 12, bold: true, color: '#7a1f1f', margin: [0, 8, 0, 4] },
+        entryName: { fontSize: 10, bold: true },
+        entryMeta: { fontSize: 8, italics: true, color: '#666' },
+        usage: { fontSize: 8, color: '#333' },
+        body: { fontSize: 9, lineHeight: 1.15 },
+        missing: { fontSize: 8, italics: true, color: '#999' },
+      },
+      defaultStyle: { font: 'Roboto', fontSize: 9 },
+    };
+  }
+
+  private buildEntry(name: string, meta: string | undefined, usageLines: string[], description: string | undefined): Content {
+    const stack: Content[] = [{ text: name, style: 'entryName' }];
+    if (meta) stack.push({ text: meta, style: 'entryMeta' });
+    if (usageLines.length) {
+      stack.push({ stack: usageLines.map(line => boldLabel(line)), style: 'usage', margin: [0, 2, 0, 2] });
+    }
+    stack.push(description
+      ? { text: toPlainText(description), style: 'body' }
+      : { text: 'No description available.', style: 'missing' });
+    return { stack, margin: [0, 0, 0, 10], unbreakable: !description || description.length < 600 };
+  }
+
+  private async renderWithPdfMake(definition: TDocumentDefinitions): Promise<ArrayBuffer> {
     const pdfMakeModule = await import('pdfmake/build/pdfmake');
     const pdfFontsModule: Record<string, unknown> = await import('pdfmake/build/vfs_fonts');
     const pdfMake = pdfMakeModule.default || pdfMakeModule;
     const pdfFonts = (pdfFontsModule['default'] || pdfFontsModule) as Record<string, unknown>;
     const vfs = (pdfFonts['pdfMake'] as Record<string, unknown>)?.['vfs'] ?? pdfFonts['vfs'] ?? pdfFonts;
     (pdfMake as unknown as Record<string, unknown>)['vfs'] = vfs;
-    const docDefinition = this.buildDocDefinition(character);
-    pdfMake.createPdf(docDefinition).download(`${character.name} - Character Sheet.pdf`);
+    const blob = await pdfMake.createPdf(definition).getBlob();
+    return blob.arrayBuffer();
   }
 
-  /** Exposed for testing */
-  buildDocDefinition(character: DndCharacter): TDocumentDefinitions {
-    return {
-      pageSize: 'A4',
-      pageMargins: [30, 30, 30, 30],
-      content: [
-        this.buildHeader(character),
-        this.buildQuickStats(character),
-        this.buildAbilityScores(character),
-        this.buildMainContent(character),
-        ...this.buildFullWidthSections(character),
-      ],
-      styles: {
-        title: { fontSize: 22, bold: true, margin: [0, 0, 0, 2] },
-        subtitle: { fontSize: 11, color: '#666', margin: [0, 0, 0, 6] },
-        sectionHeader: { fontSize: 11, bold: true, margin: [0, 10, 0, 4], decoration: 'underline' as const },
-        small: { fontSize: 8, color: '#666' },
-      },
-      defaultStyle: {
-        fontSize: 9,
-        font: 'Roboto',
-      },
-    };
+  private download(bytes: Uint8Array, fileName: string): void {
+    const blob = new Blob([bytes as BlobPart], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fileName;
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
+}
 
-  private buildHeader(c: DndCharacter): Content {
-    const lines: Content[] = [
-      { text: c.name, style: 'title' },
-      { text: `${c.race} ${c.class} (Level ${c.level})`, style: 'subtitle' },
-    ];
-    const details: string[] = [];
-    if (c.background) details.push(c.background);
-    if (c.alignment) details.push(c.alignment);
-    if (details.length) {
-      lines.push({ text: details.join(' \u2022 '), style: 'small' });
-    }
-    if (c.playerName) {
-      lines.push({ text: `Player: ${c.playerName}`, style: 'small' });
-    }
-    if (c.experiencePoints) {
-      lines.push({ text: `XP: ${c.experiencePoints}`, style: 'small' });
-    }
-    return { stack: lines, margin: [0, 0, 0, 10] as [number, number, number, number] };
+/** The template's fields use Helvetica (WinAnsi); map or drop anything it cannot encode. */
+function createSanitizer(font: PDFFont): (text: string) => string {
+  const supported = new Set(font.getCharacterSet());
+  return text => Array.from(text.normalize('NFC'))
+    .map(ch => CHAR_REPLACEMENTS[ch] ?? ch)
+    .join('')
+    .split('')
+    .filter(ch => ch === '\n' || supported.has(ch.codePointAt(0) ?? 0))
+    .join('');
+}
+
+/** Largest size up to SINGLE_LINE_MAX_FONT_SIZE that fits the box height and keeps the text within its width. */
+export function fitSingleLineFontSize(text: string, font: PDFFont, width: number, height: number): number {
+  let size = Math.max(MIN_FONT_SIZE, Math.min(SINGLE_LINE_MAX_FONT_SIZE, height - 2));
+  while (size > MIN_FONT_SIZE && font.widthOfTextAtSize(text, size) > width) size -= 0.5;
+  return size;
+}
+
+/** Largest font size (MAX..MIN) at which `text` wraps inside the box, or null if even MIN overflows. */
+export function fitFontSize(text: string, font: PDFFont, width: number, height: number): number | null {
+  for (let size = MAX_FONT_SIZE; size >= MIN_FONT_SIZE; size -= 0.5) {
+    if (countWrappedLines(text, font, size, width) * size * LINE_HEIGHT <= height) return size;
   }
+  return null;
+}
 
-  private buildQuickStats(c: DndCharacter): Content {
-    const fmt = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
-    return {
-      table: {
-        widths: ['*', '*', '*', '*', '*'],
-        body: [
-          [
-            { text: 'AC', bold: true, alignment: 'center' as const },
-            { text: 'HP', bold: true, alignment: 'center' as const },
-            { text: 'Initiative', bold: true, alignment: 'center' as const },
-            { text: 'Speed', bold: true, alignment: 'center' as const },
-            { text: 'Hit Dice', bold: true, alignment: 'center' as const },
-          ],
-          [
-            { text: `${c.armorClass}`, alignment: 'center' as const },
-            { text: `${c.hitPoints.current}/${c.hitPoints.max}`, alignment: 'center' as const },
-            { text: fmt(c.initiative), alignment: 'center' as const },
-            { text: `${c.speed} ft`, alignment: 'center' as const },
-            { text: `${c.hitDice.current}/${c.hitDice.total}${c.hitDice.die}`, alignment: 'center' as const },
-          ],
-        ],
-      },
-      layout: 'lightHorizontalLines',
-      margin: [0, 0, 0, 10] as [number, number, number, number],
-    } satisfies ContentTable;
-  }
-
-  private buildAbilityScores(c: DndCharacter): Content {
-    const fmt = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
-    const abilities = [
-      { label: 'STR', ...c.abilities.strength },
-      { label: 'DEX', ...c.abilities.dexterity },
-      { label: 'CON', ...c.abilities.constitution },
-      { label: 'INT', ...c.abilities.intelligence },
-      { label: 'WIS', ...c.abilities.wisdom },
-      { label: 'CHA', ...c.abilities.charisma },
-    ];
-
-    return {
-      table: {
-        widths: ['*', '*', '*', '*', '*', '*'],
-        body: [
-          abilities.map(a => ({ text: a.label, bold: true, alignment: 'center' as const, fontSize: 8 })),
-          abilities.map(a => ({ text: `${a.score}`, alignment: 'center' as const, fontSize: 14, bold: true })),
-          abilities.map(a => ({ text: fmt(a.modifier), alignment: 'center' as const, fontSize: 8, color: '#555' })),
-        ],
-      },
-      layout: {
-        hLineWidth: () => 0,
-        vLineWidth: () => 0.5,
-        vLineColor: () => '#ddd',
-        paddingTop: () => 4,
-        paddingBottom: () => 2,
-      },
-      margin: [0, 0, 0, 10] as [number, number, number, number],
-    };
-  }
-
-  private buildMainContent(c: DndCharacter): Content {
-    return {
-      columns: [
-        { width: '*', stack: this.buildLeftColumn(c) },
-        { width: 15, text: '' },
-        { width: '*', stack: this.buildRightColumn(c) },
-      ],
-      margin: [0, 0, 0, 6] as [number, number, number, number],
-    } satisfies ContentColumns;
-  }
-
-  private buildLeftColumn(c: DndCharacter): Content[] {
-    const content: Content[] = [];
-
-    // Skills
-    content.push({ text: 'SKILLS', style: 'sectionHeader' });
-    const skillRows = this.getAllSkills(c).map(s => [
-      { text: `${s.proficient ? '\u25CF' : '\u25CB'} ${s.name}`, fontSize: 8 },
-      { text: s.modifier >= 0 ? `+${s.modifier}` : `${s.modifier}`, alignment: 'right' as const, fontSize: 8 },
-    ]);
-    content.push({
-      table: { widths: ['*', 'auto'], body: skillRows },
-      layout: 'noBorders',
-    } satisfies ContentTable);
-
-    // Saving Throws
-    content.push({ text: 'SAVING THROWS', style: 'sectionHeader' });
-    const stEntries = [
-      { label: 'STR', ...c.savingThrows.strength },
-      { label: 'DEX', ...c.savingThrows.dexterity },
-      { label: 'CON', ...c.savingThrows.constitution },
-      { label: 'INT', ...c.savingThrows.intelligence },
-      { label: 'WIS', ...c.savingThrows.wisdom },
-      { label: 'CHA', ...c.savingThrows.charisma },
-    ];
-    const stRows = stEntries.map(st => [
-      { text: `${st.proficient ? '\u25CF' : '\u25CB'} ${st.label}`, fontSize: 8 },
-      { text: st.modifier >= 0 ? `+${st.modifier}` : `${st.modifier}`, alignment: 'right' as const, fontSize: 8 },
-    ]);
-    content.push({
-      table: { widths: ['*', 'auto'], body: stRows },
-      layout: 'noBorders',
-    } satisfies ContentTable);
-    content.push({ text: `Passive Wisdom: ${c.passiveWisdom}`, fontSize: 8, bold: true, margin: [0, 2, 0, 0] as [number, number, number, number] });
-
-    // Proficiencies & Languages
-    content.push({ text: 'PROFICIENCIES & LANGUAGES', style: 'sectionHeader' });
-    if (c.proficiencies.length) {
-      content.push({ ul: c.proficiencies, fontSize: 8, margin: [0, 0, 0, 4] as [number, number, number, number] });
-    }
-    if (c.languages.length) {
-      content.push({ text: `Languages: ${c.languages.join(', ')}`, fontSize: 8, italics: true });
-    }
-
-    return content;
-  }
-
-  private buildRightColumn(c: DndCharacter): Content[] {
-    const content: Content[] = [];
-
-    // Attacks
-    content.push({ text: 'ATTACKS', style: 'sectionHeader' });
-    if (c.attacks.length) {
-      const attackBody: TableCell[][] = [
-        [
-          { text: 'Name', bold: true, fontSize: 8 },
-          { text: 'Bonus', bold: true, fontSize: 8 },
-          { text: 'Damage', bold: true, fontSize: 8 },
-        ],
-        ...c.attacks.map(a => [
-          { text: a.name, fontSize: 8 },
-          { text: `${(a.bonus ?? 0) >= 0 ? '+' : ''}${a.bonus ?? 0}`, fontSize: 8 },
-          { text: `${a.damage || ''} ${a.type || ''}`.trim(), fontSize: 8 },
-        ]),
-      ];
-      content.push({
-        table: { widths: ['*', 'auto', 'auto'], body: attackBody },
-        layout: 'lightHorizontalLines',
-      } satisfies ContentTable);
-    } else {
-      content.push({ text: 'No attacks configured', fontSize: 8, italics: true, color: '#999' });
-    }
-
-    // Spellcasting
-    if (c.spellcasting) {
-      content.push({ text: 'SPELLCASTING', style: 'sectionHeader' });
-      const scDetails: string[] = [];
-      if (c.spellcasting.spellSaveDc) scDetails.push(`Save DC: ${c.spellcasting.spellSaveDc}`);
-      if (c.spellcasting.spellAttackBonus !== undefined) {
-        const bonus = c.spellcasting.spellAttackBonus;
-        scDetails.push(`Spell Attack: ${bonus >= 0 ? '+' : ''}${bonus}`);
-      }
-      if (scDetails.length) {
-        content.push({ text: scDetails.join('  |  '), fontSize: 8, bold: true, margin: [0, 0, 0, 4] as [number, number, number, number] });
-      }
-
-      // Spell slots
-      const slots = this.normalizeSpellSlots(c.spellcasting.slots);
-      if (slots.length) {
-        const slotRows: TableCell[][] = slots.map(s => [
-          { text: `Level ${s.level}`, fontSize: 8 },
-          { text: `${s.total - s.expended}/${s.total}`, alignment: 'right' as const, fontSize: 8 },
-        ]);
-        content.push({
-          table: { widths: ['*', 'auto'], body: slotRows },
-          layout: 'noBorders',
-          margin: [0, 0, 0, 4] as [number, number, number, number],
-        } satisfies ContentTable);
-      }
-
-      // Spells list
-      if (c.spellcasting.spells?.length) {
-        const spellNames = c.spellcasting.spells.map(s => typeof s === 'string' ? s : s.name);
-        content.push({ ul: spellNames, fontSize: 8 });
+function countWrappedLines(text: string, font: PDFFont, size: number, width: number): number {
+  let lines = 0;
+  for (const paragraph of text.split('\n')) {
+    let current = '';
+    lines++;
+    for (const word of paragraph.split(' ')) {
+      const candidate = current ? `${current} ${word}` : word;
+      if (current && font.widthOfTextAtSize(candidate, size) > width) {
+        lines++;
+        current = word;
+      } else {
+        current = candidate;
       }
     }
-
-    // Features & Traits
-    content.push({ text: 'FEATURES & TRAITS', style: 'sectionHeader' });
-    if (c.featuresAndTraits.length) {
-      const featureItems: Content[] = c.featuresAndTraits.map(f => {
-        if (typeof f === 'string') return { text: f, fontSize: 8, margin: [0, 0, 0, 2] as [number, number, number, number] };
-        const stack: Content[] = [{ text: f.name, bold: true, fontSize: 8 }];
-        if (f.description) stack.push({ text: f.description, fontSize: 7, color: '#555' });
-        return { stack, margin: [0, 0, 0, 4] as [number, number, number, number] };
-      });
-      content.push({ stack: featureItems });
-    } else {
-      content.push({ text: 'No features yet', fontSize: 8, italics: true, color: '#999' });
-    }
-
-    return content;
   }
+  return lines;
+}
 
-  private buildFullWidthSections(c: DndCharacter): Content[] {
-    const sections: Content[] = [];
-
-    // Equipment & Inventory
-    sections.push({ text: 'INVENTORY', style: 'sectionHeader' });
-    const coinText = `CP: ${c.coins.cp}  SP: ${c.coins.sp}  EP: ${c.coins.ep}  GP: ${c.coins.gp}  PP: ${c.coins.pp}`;
-    sections.push({ text: coinText, fontSize: 8, bold: true, margin: [0, 0, 0, 4] as [number, number, number, number] });
-    if (c.equipment.length) {
-      sections.push({ ul: c.equipment, fontSize: 8 });
-    }
-
-    // Personality
-    if (c.personalityTraits || c.ideals || c.bonds || c.flaws) {
-      sections.push({ text: 'PERSONALITY', style: 'sectionHeader' });
-      if (c.personalityTraits) sections.push({ text: `Traits: ${c.personalityTraits}`, fontSize: 8, margin: [0, 0, 0, 2] as [number, number, number, number] });
-      if (c.ideals) sections.push({ text: `Ideals: ${c.ideals}`, fontSize: 8, margin: [0, 0, 0, 2] as [number, number, number, number] });
-      if (c.bonds) sections.push({ text: `Bonds: ${c.bonds}`, fontSize: 8, margin: [0, 0, 0, 2] as [number, number, number, number] });
-      if (c.flaws) sections.push({ text: `Flaws: ${c.flaws}`, fontSize: 8, margin: [0, 0, 0, 2] as [number, number, number, number] });
-    }
-
-    // Appearance
-    if (c.appearance) {
-      const details: string[] = [];
-      if (c.appearance.age) details.push(`Age: ${c.appearance.age}`);
-      if (c.appearance.height) details.push(`Height: ${c.appearance.height}`);
-      if (c.appearance.weight) details.push(`Weight: ${c.appearance.weight}`);
-      if (c.appearance.eyes) details.push(`Eyes: ${c.appearance.eyes}`);
-      if (c.appearance.skin) details.push(`Skin: ${c.appearance.skin}`);
-      if (c.appearance.hair) details.push(`Hair: ${c.appearance.hair}`);
-
-      if (details.length || c.appearance.description) {
-        sections.push({ text: 'APPEARANCE', style: 'sectionHeader' });
-        if (details.length) sections.push({ text: details.join('  |  '), fontSize: 8, margin: [0, 0, 0, 2] as [number, number, number, number] });
-        if (c.appearance.description) sections.push({ text: c.appearance.description, fontSize: 8 });
-      }
-    }
-
-    // Backstory
-    if (c.backstory) {
-      sections.push({ text: 'BACKSTORY', style: 'sectionHeader' });
-      sections.push({ text: c.backstory, fontSize: 8 });
-    }
-
-    return sections;
+function groupSpellsByLevel(spells: SheetSpell[]): { title: string; spells: SheetSpell[] }[] {
+  const groups: { title: string; spells: SheetSpell[] }[] = [];
+  for (let level = 0; level <= 9; level++) {
+    const atLevel = spells.filter(s => s.level === level);
+    if (atLevel.length) groups.push({ title: level === 0 ? 'Cantrips' : `Level ${level}`, spells: atLevel });
   }
+  const other = spells.filter(s => s.level === undefined || s.level < 0 || s.level > 9);
+  if (other.length) groups.push({ title: 'Other spells', spells: other });
+  return groups;
+}
 
-  private getAllSkills(c: DndCharacter): { name: string; proficient: boolean; modifier: number }[] {
-    const allDndSkills = [
-      { name: 'Acrobatics', ability: 'dexterity' as const },
-      { name: 'Animal Handling', ability: 'wisdom' as const },
-      { name: 'Arcana', ability: 'intelligence' as const },
-      { name: 'Athletics', ability: 'strength' as const },
-      { name: 'Deception', ability: 'charisma' as const },
-      { name: 'History', ability: 'intelligence' as const },
-      { name: 'Insight', ability: 'wisdom' as const },
-      { name: 'Intimidation', ability: 'charisma' as const },
-      { name: 'Investigation', ability: 'intelligence' as const },
-      { name: 'Medicine', ability: 'wisdom' as const },
-      { name: 'Nature', ability: 'intelligence' as const },
-      { name: 'Perception', ability: 'wisdom' as const },
-      { name: 'Performance', ability: 'charisma' as const },
-      { name: 'Persuasion', ability: 'charisma' as const },
-      { name: 'Religion', ability: 'intelligence' as const },
-      { name: 'Sleight of Hand', ability: 'dexterity' as const },
-      { name: 'Stealth', ability: 'dexterity' as const },
-      { name: 'Survival', ability: 'wisdom' as const },
-    ];
+function spellLevelLabel(level: number | undefined): string {
+  if (level === undefined) return '';
+  return level === 0 ? 'Cantrip' : `Level ${level}`;
+}
 
-    return allDndSkills.map(skill => {
-      const charSkill = c.skills.find(s => s.name === skill.name);
-      if (charSkill) return charSkill;
-      return { name: skill.name, proficient: false, modifier: c.abilities[skill.ability].modifier };
-    });
-  }
+function capitalize(value: string | undefined): string {
+  return value ? value.charAt(0).toUpperCase() + value.slice(1) : '';
+}
 
-  private normalizeSpellSlots(slots: SpellSlot[] | Record<string, unknown> | undefined): SpellSlot[] {
-    if (!slots) return [];
-    if (Array.isArray(slots)) return [...slots].sort((a, b) => a.level - b.level);
-    return Object.entries(slots)
-      .map(([level, data]) => {
-        const slotData = data as { total?: number; expended?: number };
-        return { level: parseInt(level), total: slotData.total || 0, expended: slotData.expended || 0 };
-      })
-      .sort((a, b) => a.level - b.level);
-  }
+/** "Casting Time: 1 action" -> label in bold. */
+function boldLabel(line: string): Content {
+  const idx = line.indexOf(':');
+  if (idx <= 0) return { text: line };
+  return { text: [{ text: line.slice(0, idx + 1), bold: true }, line.slice(idx + 1)] };
+}
+
+/** Strip the light markdown used in the SRD data and AI output. */
+export function toPlainText(markdown: string): string {
+  return markdown
+    .replace(/\r\n/g, '\n')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^[ \t]*\|?[ \t]*:?-{3,}:?[ \t]*(\|[ \t]*:?-{3,}:?[ \t]*)*\|?[ \t]*(\n|$)/gm, '')
+    .replace(/^[ \t]*\|(.*)\|[ \t]*$/gm, (_, row: string) => row.split('|').map(cell => cell.trim()).join('   '))
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/(\*\*|__)(.+?)\1/g, '$2')
+    .replace(/(^|[^*\w])\*(?!\s)([^*\n]+?)\*(?!\w)/g, '$1$2')
+    .replace(/(^|[^_\w])_(?!\s)([^_\n]+?)_(?!\w)/g, '$1$2')
+    .replace(/^[ \t]*[*-][ \t]+/gm, '• ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
