@@ -1,12 +1,11 @@
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { wrapCallable } from './utils/sentry-error-handler';
 import { getAiImageConfig, getAiFeatureConfig } from './utils/ai-settings';
-import { generateText } from './utils/gemini-client';
+import { generateText, getGeminiClient } from './utils/gemini-client';
 import { SHARED_CORS } from './config/cors';
 import { getStorage } from 'firebase-admin/storage';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { randomUUID } from 'crypto';
-import { fal } from '@fal-ai/client';
 import { ChatHistoryMessage } from './types/chat.types';
 import { ensureAuthForTesting } from './utils/emulator-helpers';
 import { assertCharacterOwner, assertValidId, requireAuthUid } from './utils/access';
@@ -29,7 +28,7 @@ export interface ImagePromptContext {
 
 interface GenerateImageRequest {
     chatRequest: ImagePromptContext;
-    /** Requested fal model; only honoured when it is on the allow-list. */
+    /** Requested Gemini image model; only honoured when it is on the allow-list. */
     model?: string;
     characterId: string;
     /** Previous portrait used as style reference; must be one of this character's images. */
@@ -41,20 +40,28 @@ export interface GenerateImageResponse {
   mimeType: string;
 }
 
-/** fal.ai models a client may ask for; anything else falls back to the AI settings model. */
+/** Default Gemini image model (Nano Banana 2.1). */
+export const DEFAULT_IMAGE_MODEL = 'gemini-nano-banana-2.1';
+
+/** Gemini image models a client may ask for; anything else falls back to the AI settings model. */
 export const ALLOWED_IMAGE_MODELS: ReadonlySet<string> = new Set([
-  'fal-ai/flux/schnell',
-  'fal-ai/flux/dev',
-  'fal-ai/flux-pro/v1.1',
-  'fal-ai/flux-pro/v1.1-ultra',
+  'gemini-nano-banana-2.1',
+  'gemini-3.1-flash-image',
+  'gemini-3.1-flash-lite-image',
+  'gemini-3-pro-image',
 ]);
 
-/** The requested model when allowed (or the configured one), otherwise the configured model. */
+/**
+ * The requested model when allowed (or the configured one), otherwise the configured model.
+ * A configured model that isn't a Gemini model (e.g. a stale `fal-ai/...` value in the AI
+ * settings) is replaced by the default.
+ */
 export function resolveImageModel(requested: unknown, configuredModel: string): string {
-  if (typeof requested === 'string' && (requested === configuredModel || ALLOWED_IMAGE_MODELS.has(requested))) {
+  const configured = configuredModel?.startsWith('gemini-') ? configuredModel : DEFAULT_IMAGE_MODEL;
+  if (typeof requested === 'string' && (requested === configured || ALLOWED_IMAGE_MODELS.has(requested))) {
     return requested;
   }
-  return configuredModel;
+  return configured;
 }
 
 /** Storage folder of a character's images; reference images must come from here. */
@@ -65,7 +72,7 @@ export function characterImagePrefix(characterId: string): string {
 export const generateImage = onCall(
   {
     cors: SHARED_CORS,
-    secrets: ['FAL_API_KEY', 'GOOGLE_AI_API_KEY'],
+    secrets: ['GOOGLE_AI_API_KEY'],
   },
   wrapCallable<GenerateImageRequest, GenerateImageResponse>(
     'generateImage',
@@ -94,11 +101,6 @@ export const generateImage = onCall(
 
       const imageConfig = await getAiImageConfig();
       const model = resolveImageModel(requestModel, imageConfig.model);
-
-      const falApiKey = process.env.FAL_API_KEY;
-      if (!falApiKey) {
-        throw new HttpsError('failed-precondition', 'FAL API key not configured');
-      }
 
       // Use Gemini to convert character context + conversation into a descriptive image prompt
       const rawContext = chatRequest.chatHistory.map(chat => `[${chat.role}]: ${chat.content}`).join('\n');
@@ -139,31 +141,7 @@ export const generateImage = onCall(
         throw new HttpsError('internal', 'Failed to generate image description from character context');
       }
 
-      fal.config({ credentials: falApiKey });
-
-      const result = await fal.subscribe(model, {
-        input: {
-          prompt: `Photorealistic image. ${prompt}`,
-          image_size: 'landscape_4_3',
-        },
-      });
-
-      const data = result.data as { images?: { url: string; content_type: string }[] } | undefined;
-      const generatedImages = data?.images;
-      if (!generatedImages || generatedImages.length === 0) {
-        throw new HttpsError('internal', 'No image returned from image generation model');
-      }
-
-      const firstImage = generatedImages[0];
-      const mimeType = firstImage.content_type || 'image/jpeg';
-
-      // Download image from fal.ai URL
-      const response = await fetch(firstImage.url);
-      if (!response.ok) {
-        throw new HttpsError('internal', `Failed to download generated image: ${response.statusText}`);
-      }
-
-      const imageBuffer = Buffer.from(await response.arrayBuffer());
+      const { imageBuffer, mimeType } = await generatePortrait(model, `Photorealistic image. ${prompt}`);
 
       // Determine file extension from mime type
       const extension = mimeType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg';
@@ -192,3 +170,36 @@ export const generateImage = onCall(
     }
   )
 );
+
+/** Render the portrait with a Gemini image model (Interactions API, image output). */
+async function generatePortrait(model: string, prompt: string): Promise<{ imageBuffer: Buffer; mimeType: string }> {
+  let interaction;
+  try {
+    interaction = await getGeminiClient().interactions.create({
+      model,
+      input: prompt,
+      response_format: { type: 'image', aspect_ratio: '4:3' },
+      store: false,
+    });
+  } catch (error) {
+    if (error instanceof HttpsError) throw error;
+    const status = (error as { status?: number })?.status;
+    if (status === 429) {
+      throw new HttpsError('resource-exhausted', 'Rate limit exceeded. Please wait a moment before trying again.');
+    }
+    throw error;
+  }
+
+  const image = interaction.output_image;
+  if (!image?.data) {
+    logger.warn('generateImage: Gemini returned no image', {
+      model,
+      status: interaction.status,
+      text: interaction.output_text?.slice(0, 300),
+    });
+    throw new HttpsError('internal', 'No image returned from image generation model');
+  }
+
+  logger.info('generateImage: Gemini image received', { model, mimeType: image.mime_type });
+  return { imageBuffer: Buffer.from(image.data, 'base64'), mimeType: image.mime_type || 'image/png' };
+}

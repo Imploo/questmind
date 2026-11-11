@@ -32,7 +32,7 @@ export { characterChat } from './character-chat';
 // Character draft generation (AI 2: JSON generator)
 export { generateCharacterDraftCallable } from './generate-character-draft';
 
-// Image generation via fal.ai
+// Image generation via Gemini
 export { generateImage } from './generate-image';
 
 // Spell description resolution for lazy loading

@@ -27,7 +27,7 @@ Elke stap heeft een key onder `settings/ai` → `features.<key>` in Firestore en
 | 3 | **Spell Resolution** (`spellResolution`) | Gemini, thinking low | Spells zonder beschrijving | `description` + `usage` per spell |
 | 4 | **Feature Resolution** (`featureResolution`) | Gemini, thinking low | Features/traits zonder beschrijving | `description` per feature |
 | 5 | **Image Prompt** (`imagePromptGeneration`) | Gemini, thinking low | Character-context + optionele referentieafbeelding | Beschrijvende beeldprompt (tussenstap) |
-| 6 | **Image Generation** (`imageGeneration`) | FAL.ai `fal-ai/flux/schnell` | Prompt uit stap 5 | Portretafbeelding |
+| 6 | **Image Generation** (`imageGeneration`) | Gemini `gemini-nano-banana-2.1` | Prompt uit stap 5 | Portretafbeelding |
 
 ### Details
 
@@ -48,7 +48,7 @@ Update `character.spellcasting.spells` in de character-versie.
 Update `character.featuresAndTraits` in de character-versie.
 
 **5 + 6. Afbeelding** — `functions/src/generate-image.ts` (`generateImage`)
-Stap 5 en 6 draaien altijd samen: Gemini schrijft de prompt, FAL.ai genereert de afbeelding. De afbeelding wordt opgeslagen in Firebase Storage, met metadata (`storagePath`) in Firestore voor de galerij.
+Stap 5 en 6 draaien altijd samen: Gemini schrijft de prompt en een Gemini-beeldmodel (Interactions API) genereert de afbeelding. De afbeelding wordt opgeslagen in Firebase Storage, met metadata (`storagePath`) in Firestore voor de galerij.
 
 ---
 

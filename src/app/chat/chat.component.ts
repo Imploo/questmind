@@ -132,7 +132,7 @@ const MAX_PDF_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
               <span>🎨</span>
               <span>Afbeelding genereren</span>
             </span>
-            <span class="text-xs text-gray-400">Stuurt naar fal.ai beeldgenerator</span>
+            <span class="text-xs text-gray-400">Stuurt naar Gemini beeldgenerator</span>
           </div>
         }
         @if (pendingAttachment()) {

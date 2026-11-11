@@ -74,7 +74,7 @@ describe('ai-settings', () => {
       const { getAiImageConfig } = await import('./ai-settings');
       const config = await getAiImageConfig();
 
-      expect(config.model).toBe('fal-ai/flux/schnell');
+      expect(config.model).toBe('gemini-nano-banana-2.1');
     });
 
     it('should override image model from Firestore', async () => {

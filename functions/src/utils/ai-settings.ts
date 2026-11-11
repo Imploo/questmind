@@ -65,7 +65,7 @@ const DEFAULT_SEGMENTATION: TranscriptionSegmentationSettings = {
   onSegmentFailure: 'gap',
 };
 
-const DEFAULT_IMAGE_CONFIG = { model: 'fal-ai/flux/schnell' };
+const DEFAULT_IMAGE_CONFIG = { model: 'gemini-nano-banana-2.1' };
 const DEFAULT_PODCAST_VOICES: PodcastVoiceSettings = {
   maxCharacters: 5000,
   geminiModel: 'gemini-3.8-flash-tts',           // fallback: 'gemini-3.8-flash-lite-tts'

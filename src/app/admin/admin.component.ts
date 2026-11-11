@@ -281,7 +281,7 @@ interface FeatureDefinition {
                         (ngModelChange)="setFeatureValue('model', $event)"
                         [name]="selectedFeature().key + '-model'"
                         (blur)="onFieldBlur()"
-                        placeholder="e.g. fal-ai/flux/schnell"
+                        placeholder="e.g. gemini-nano-banana-2.1"
                         class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                       />
                     </div>
@@ -418,8 +418,8 @@ export class AdminComponent implements OnInit {
       key: 'imageGeneration',
       label: 'Image Generation',
       icon: '🎨',
-      provider: 'FAL.ai',
-      providerColor: 'bg-purple-100 text-purple-700',
+      provider: 'Gemini',
+      providerColor: 'bg-blue-100 text-blue-700',
       formType: 'imageOnly',
       description: 'Fantasy character portrait generation'
     },
@@ -485,7 +485,7 @@ export class AdminComponent implements OnInit {
     spellResolution: { model: 'gemini-3.8-flash', maxOutputTokens: 4096, thinkingLevel: 'low' },
     featureResolution: { model: 'gemini-3.8-flash', maxOutputTokens: 4096, thinkingLevel: 'low' },
     imagePromptGeneration: { model: 'gemini-3.8-flash', maxOutputTokens: 1024, thinkingLevel: 'low' },
-    imageGeneration: { model: 'fal-ai/flux/schnell' },
+    imageGeneration: { model: 'gemini-nano-banana-2.1' },
     transcription: { model: 'gemini-3.8-flash', maxOutputTokens: 65536, thinkingLevel: 'low' },
     storyGeneration: { model: 'gemini-3.8-flash', maxOutputTokens: 60000, thinkingLevel: 'medium' },
     podcastScript: { model: 'gemini-3.8-flash', maxOutputTokens: 32768, thinkingLevel: 'medium' },
