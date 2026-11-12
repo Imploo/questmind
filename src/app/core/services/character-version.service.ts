@@ -2,7 +2,7 @@ import { Injectable, inject, signal, computed, effect, resource } from '@angular
 import { Timestamp } from 'firebase/firestore';
 import { AuthService } from '../../auth/auth.service';
 import { CharacterVersion } from '../models/schemas/character.schema';
-import { DndCharacter, LimitedUses } from '../../shared/models/dnd-character.model';
+import { Coins, DndCharacter, LimitedUses } from '../../shared/models/dnd-character.model';
 import { CharacterVersionRepositoryFactory } from '../../shared/repository/character-version.repository';
 import { CharacterRepository } from '../../shared/repository/character.repository';
 
@@ -194,6 +194,16 @@ export class CharacterVersionService {
     });
     await repo.patch(activeVersionId, { 'character.featuresAndTraits': updated });
     repo.destroy();
+  }
+
+  /** Store the coins of a character on a version in place, without creating a new version. */
+  async patchCoins(characterId: string, versionId: string, coins: Coins): Promise<void> {
+    const repo = this.versionRepoFactory.create(characterId);
+    try {
+      await repo.patch(versionId, { 'character.coins': coins });
+    } finally {
+      repo.destroy();
+    }
   }
 
   /**

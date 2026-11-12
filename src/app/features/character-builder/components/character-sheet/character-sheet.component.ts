@@ -1,18 +1,20 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, input, output, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
-import { CharacterFeature, DndCharacter, LimitedUses, Spell, SpellSlot, UsesRecharge } from '../../../../shared/models/dnd-character.model';
+import { CharacterFeature, Coins, DndCharacter, LimitedUses, Spell, SpellSlot, UsesRecharge } from '../../../../shared/models/dnd-character.model';
 import { CharacterPlayState } from '../../../../shared/models/character-play-state.model';
 import {
   PlayStateResult,
   ResolvedPlayState,
   UsesOwner,
+  addInventoryItem,
   applyDamage,
   applyHealing,
   castSpell,
   currentPlayState,
   longRest,
   longRestPreview,
+  removeInventoryItem,
   resolvePlayState,
   setConcentration,
   setDeathSaves,
@@ -24,6 +26,7 @@ import {
   setUsesSpent,
   shortRest,
   toggleCondition,
+  updateInventoryItem,
   usesKey,
 } from '../../../../shared/utils/character-play-state';
 import { HpTrackerComponent } from '../play/hp-tracker.component';
@@ -36,6 +39,8 @@ import { TrackerEditorComponent } from '../play/tracker-editor.component';
 import { PlayToastComponent } from '../play/play-toast.component';
 import { ConcentrationMarkComponent } from '../play/concentration-mark.component';
 import { InspirationToggleComponent } from '../play/inspiration-toggle.component';
+import { CoinPurseComponent } from '../play/coin-purse.component';
+import { InventoryItemChange, InventoryItemsComponent } from '../play/inventory-items.component';
 import { CharacterImage } from '../../../../core/models/schemas/character-image.schema';
 import { CharacterImageGalleryComponent } from '../character-image-gallery/character-image-gallery.component';
 import { ImageLightboxComponent } from '../../../../chat/image-lightbox.component';
@@ -164,6 +169,8 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
     PlayToastComponent,
     ConcentrationMarkComponent,
     InspirationToggleComponent,
+    CoinPurseComponent,
+    InventoryItemsComponent,
   ],
   template: `
     @if (portraitLightbox()) {
@@ -607,22 +614,26 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
 
           <section class="panel">
             <h3 class="section-title">Inventory</h3>
-            <div class="flex flex-wrap gap-2 mb-4">
-              @for (coin of coins(); track coin.key) {
-                <span class="coin" [title]="coin.name">
-                  <span class="coin-dot" [style.background]="coin.color" aria-hidden="true"></span>
-                  <strong>{{ coin.amount }}</strong>
-                  <span class="muted uppercase text-[0.7rem] tracking-wider">{{ coin.key }}</span>
-                </span>
-              }
-            </div>
+            <app-coin-purse class="mb-4" [coins]="character().coins" [editable]="editable()" (coinsChange)="coinsChange.emit($event)" />
+
+            @if (editable() || play().inventory.length) {
+              <app-inventory-items
+                class="mb-4"
+                [items]="play().inventory"
+                [editable]="editable()"
+                (added)="onItemAdded($event)"
+                (updated)="onItemUpdated($event)"
+                (removed)="onItemRemoved($event)"
+              />
+            }
+
             @if (character().equipment.length) {
               <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
                 @for (item of character().equipment; track item) {
                   <li class="bullet">{{ item }}</li>
                 }
               </ul>
-            } @else {
+            } @else if (!editable() && !play().inventory.length) {
               <p class="empty">No equipment</p>
             }
           </section>
@@ -1053,19 +1064,6 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
       white-space: pre-line;
     }
 
-    /* Inventory */
-    .coin {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.35rem;
-      padding: 0.25rem 0.65rem;
-      border-radius: 999px;
-      background: var(--paper-2);
-      border: 1px solid var(--line);
-      font-size: 0.85rem;
-      font-variant-numeric: tabular-nums;
-    }
-    .coin-dot { width: 12px; height: 12px; border-radius: 50%; box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.5); }
 
     /* Story */
     .prose-text {
@@ -1112,6 +1110,8 @@ export class CharacterSheetComponent {
   /** The complete play state after a play action, to be stored. */
   playStateChange = output<CharacterPlayState>();
   usesChange = output<UsesChangeEvent>();
+  /** The purse after the player changed a coin amount. Coins belong to the build, so they go on the version. */
+  coinsChange = output<Coins>();
 
   expandedSpells = signal<Set<number>>(new Set());
   loadingSpells = signal<Set<number>>(new Set());
@@ -1204,6 +1204,18 @@ export class CharacterSheetComponent {
 
   onInspiration(inspired: boolean): void {
     this.commit(setInspiration(this.character(), this.playState(), inspired));
+  }
+
+  onItemAdded(item: { id: string; name: string }): void {
+    this.commit(addInventoryItem(this.character(), this.playState(), item.id, item.name));
+  }
+
+  onItemUpdated(change: InventoryItemChange): void {
+    this.commit(updateInventoryItem(this.character(), this.playState(), change.id, change.changes));
+  }
+
+  onItemRemoved(id: string): void {
+    this.commit(removeInventoryItem(this.character(), this.playState(), id), true);
   }
 
   onCast(spellName: string, choice: CastChoice): void {
@@ -1338,17 +1350,6 @@ export class CharacterSheetComponent {
   portraitUrl = computed(() => this.images().find(img => !!img.url)?.url ?? null);
 
   initial = computed(() => (this.character().name?.trim()[0] ?? '?').toUpperCase());
-
-  coins = computed(() => {
-    const c = this.character().coins;
-    return [
-      { key: 'pp', name: 'Platinum', amount: c.pp, color: '#d9dde3' },
-      { key: 'gp', name: 'Gold', amount: c.gp, color: '#e2b13c' },
-      { key: 'ep', name: 'Electrum', amount: c.ep, color: '#cfc38a' },
-      { key: 'sp', name: 'Silver', amount: c.sp, color: '#b9bec4' },
-      { key: 'cp', name: 'Copper', amount: c.cp, color: '#b8693a' },
-    ];
-  });
 
   personality = computed(() => {
     const c = this.character();

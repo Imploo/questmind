@@ -1,5 +1,5 @@
 import { DndCharacter, LimitedUses, SpellSlot, UsesRecharge } from '../models/dnd-character.model';
-import { CharacterPlayState } from '../models/character-play-state.model';
+import { CharacterPlayState, InventoryItem } from '../models/character-play-state.model';
 import { normalizeSpellSlots } from '../pdf/character-sheet-field-values';
 
 export const CONDITIONS = [
@@ -30,6 +30,7 @@ export interface ResolvedPlayState {
   exhaustion: number;
   concentration: string | null;
   inspiration: boolean;
+  inventory: InventoryItem[];
 }
 
 export interface PlayStateResult {
@@ -119,6 +120,9 @@ export function resolvePlayState(character: DndCharacter, state: State): Resolve
     exhaustion: clamp(state?.exhaustion, 0, MAX_EXHAUSTION),
     concentration: state?.concentration ?? null,
     inspiration: state?.inspiration === true,
+    inventory: (state?.inventory ?? [])
+      .filter(item => !!item?.id && !!item.name)
+      .map(item => ({ id: item.id, name: item.name, value: item.value ?? '', description: item.description ?? '' })),
   };
 }
 
@@ -133,6 +137,7 @@ function toState(resolved: ResolvedPlayState): CharacterPlayState {
     exhaustion: resolved.exhaustion,
     concentration: resolved.concentration,
     inspiration: resolved.inspiration,
+    inventory: resolved.inventory.map(item => ({ ...item })),
   };
 }
 
@@ -252,6 +257,37 @@ export function setInspiration(character: DndCharacter, state: State, inspired: 
   return update(character, state, r => {
     r.inspiration = inspired;
     return '';
+  });
+}
+
+/** Add an item to the inventory. A blank name is ignored. */
+export function addInventoryItem(character: DndCharacter, state: State, id: string, name: string): PlayStateResult {
+  const trimmed = name.trim();
+  return update(character, state, r => {
+    if (trimmed && !r.inventory.some(item => item.id === id)) {
+      r.inventory.push({ id, name: trimmed, value: '', description: '' });
+    }
+    return '';
+  });
+}
+
+export function updateInventoryItem(
+  character: DndCharacter,
+  state: State,
+  id: string,
+  changes: Partial<Pick<InventoryItem, 'value' | 'description'>>
+): PlayStateResult {
+  return update(character, state, r => {
+    r.inventory = r.inventory.map(item => (item.id === id ? { ...item, ...changes } : item));
+    return '';
+  });
+}
+
+export function removeInventoryItem(character: DndCharacter, state: State, id: string): PlayStateResult {
+  return update(character, state, r => {
+    const removed = r.inventory.find(item => item.id === id);
+    r.inventory = r.inventory.filter(item => item.id !== id);
+    return removed ? `Removed ${removed.name} from the inventory.` : '';
   });
 }
 

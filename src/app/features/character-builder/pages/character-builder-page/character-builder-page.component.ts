@@ -12,7 +12,7 @@ import { CharacterSheetExportService } from '../../services/character-sheet-expo
 import * as logger from '../../../../shared/logger';
 import { Character, CharacterVersion } from '../../../../core/models/schemas/character.schema';
 import { CharacterImage } from '../../../../core/models/schemas/character-image.schema';
-import { DndCharacter } from '../../../../shared/models/dnd-character.model';
+import { Coins, DndCharacter } from '../../../../shared/models/dnd-character.model';
 import { CharacterPlayState } from '../../../../shared/models/character-play-state.model';
 import { applyPlayStateToCharacter } from '../../../../shared/utils/character-play-state';
 import { CharacterSheetComponent, SpellResolvedEvent, FeatureResolvedEvent, UsesChangeEvent } from '../../components/character-sheet/character-sheet.component';
@@ -81,6 +81,7 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
                           [editable]="isOwner()"
                           (playStateChange)="onPlayStateChange($event)"
                           (usesChange)="onUsesChange($event)"
+                          (coinsChange)="onCoinsChange($event)"
                           (exportPdf)="onExportPdf()"
                           (viewHistory)="showHistory.set(true)"
                           (deleteImage)="onDeleteImage($event)"
@@ -464,6 +465,17 @@ export class CharacterBuilderPageComponent {
       await this.characterVersionService.patchUses(charId, versionId, event.owner, event.name, event.uses);
     } catch (e) {
       logger.error('Failed to store uses tracker:', e);
+    }
+  }
+
+  async onCoinsChange(coins: Coins): Promise<void> {
+    const charId = this.selectedCharacterId();
+    const versionId = this.latestVersion()?.id;
+    if (!charId || !versionId || !this.isOwner()) return;
+    try {
+      await this.characterVersionService.patchCoins(charId, versionId, coins);
+    } catch (e) {
+      logger.error('Failed to store coins:', e);
     }
   }
 
