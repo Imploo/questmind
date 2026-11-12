@@ -14,6 +14,11 @@ export const QUESTMIND_ENVIRONMENTS: QuestmindEnvironment[] = [
   { projectId: 'questmind-beta', bucket: 'questmind-beta.firebasestorage.app', domains: [] },
 ];
 
+/** The environment a Firebase project id belongs to, or null for a project that is not one of ours. */
+export function environmentForProject(projectId: string | undefined): QuestmindEnvironment | null {
+  return QUESTMIND_ENVIRONMENTS.find(environment => environment.projectId === projectId) ?? null;
+}
+
 /** The environment a host belongs to, or null for a host that is not one of ours. */
 export function environmentForHost(host: string): QuestmindEnvironment | null {
   const hostname = host.trim().toLowerCase();

@@ -36,6 +36,7 @@ vi.mock('firebase-admin/firestore', () => ({
 vi.mock('firebase-admin/storage', () => ({
   getStorage: () => ({
     bucket: () => ({
+      name: 'default-bucket',
       file: (path: string) => ({
         save: async (data: Buffer, options: { metadata: { contentType: unknown } }) => {
           savedFiles[path] = { data, contentType: options.metadata.contentType };
@@ -56,7 +57,7 @@ vi.mock('firebase-functions/v2/https', async () => {
   return { ...actual, onCall: (_config: unknown, handler: unknown) => handler };
 });
 
-import { executeImportCharacter, parseCharacterLink } from './import-character';
+import { executeImportCharacter, importCharacter, ownCharacterSource, parseCharacterLink } from './import-character';
 
 // ── The source environment, as the public REST API and Storage serve it ─────
 
@@ -100,7 +101,7 @@ function binary(data: string, contentType: string) {
 describe('parseCharacterLink', () => {
   it('reads share links and page links of the known environments', () => {
     expect(parseCharacterLink(`https://questmind-beta.web.app/share/character/${SOURCE_ID}`)).toMatchObject({
-      environment: { projectId: 'questmind-beta' }, characterId: SOURCE_ID, host: 'questmind-beta.web.app',
+      environment: { projectId: 'questmind-beta' }, characterId: SOURCE_ID, origin: 'Imported from questmind-beta.web.app',
     });
     expect(parseCharacterLink(` questmind.nl/characters/${SOURCE_ID}/ `)).toMatchObject({
       environment: { projectId: 'questmind-dnd' }, characterId: SOURCE_ID,
@@ -123,9 +124,31 @@ describe('parseCharacterLink', () => {
   });
 });
 
+describe('ownCharacterSource', () => {
+  afterEach(() => { delete process.env.GCLOUD_PROJECT; });
+
+  it('points at the character in the environment the function runs in', () => {
+    process.env.GCLOUD_PROJECT = 'questmind-beta';
+    expect(ownCharacterSource(SOURCE_ID)).toEqual({
+      environment: expect.objectContaining({ projectId: 'questmind-beta', bucket: 'questmind-beta.firebasestorage.app' }),
+      characterId: SOURCE_ID,
+      origin: 'Cloned from a shared character',
+    });
+  });
+
+  it('uses the default bucket for a project that is not in the list', () => {
+    process.env.GCLOUD_PROJECT = 'demo-project';
+    expect(ownCharacterSource(SOURCE_ID).environment).toEqual({ projectId: 'demo-project', bucket: 'default-bucket', domains: [] });
+  });
+
+  it.each(['', 'x', 'a/b/c/d/e/f/g/h', 42, null])('rejects the id %j', id => {
+    expect(() => ownCharacterSource(id)).toThrow('Missing or invalid characterId');
+  });
+});
+
 describe('executeImportCharacter', () => {
   const fetchMock = vi.fn();
-  const link = `https://questmind-beta.web.app/share/character/${SOURCE_ID}`;
+  const link = parseCharacterLink(`https://questmind-beta.web.app/share/character/${SOURCE_ID}`);
 
   beforeEach(() => {
     written = {};
@@ -162,7 +185,7 @@ describe('executeImportCharacter', () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  it('copies the character, its play state and its portraits to the caller', async () => {
+  it('copies the character as built and its portraits to the caller, without the play state', async () => {
     const { characterId } = await executeImportCharacter('me', link);
 
     const character = written[`characters/${characterId}`];
@@ -171,12 +194,9 @@ describe('executeImportCharacter', () => {
       userId: 'me',
       name: 'Vesper',
       campaignId: null,
-      playState: {
-        hp: { current: 31, temp: 5 },
-        conditions: ['Poisoned'],
-        inventory: [{ id: 'a', name: 'Rope', value: '50 ft', description: '' }],
-      },
     });
+    // The owner's play state stays behind: the copy starts fresh.
+    expect(character).not.toHaveProperty('playState');
 
     const version = written[`characters/${characterId}/versions/${character.activeVersionId}`];
     expect(version).toMatchObject({ versionNumber: 1, source: 'manual', commitMessage: 'Imported from questmind-beta.web.app' });
@@ -212,15 +232,6 @@ describe('executeImportCharacter', () => {
     expect(written[`characters/${characterId}`].name).toBe('Vesper');
   });
 
-  it('imports without play state when the source has none or it is malformed', async () => {
-    routes[`${DOCS}/characters/${SOURCE_ID}`] = () => json({
-      name: 'x', fields: { activeVersionId: str('v2'), playState: map({ hp: str('broken') }) },
-    });
-
-    const { characterId } = await executeImportCharacter('me', link);
-    expect(written[`characters/${characterId}`]).not.toHaveProperty('playState');
-  });
-
   it('still imports the character when a portrait cannot be downloaded', async () => {
     delete routes[`${BUCKET}/${encodeURIComponent(`images/${SOURCE_ID}/new.png`)}?alt=media`];
 
@@ -232,6 +243,25 @@ describe('executeImportCharacter', () => {
   it('reports a missing character', async () => {
     delete routes[`${DOCS}/characters/${SOURCE_ID}`];
     await expect(executeImportCharacter('me', link)).rejects.toThrow('No character was found');
+    expect(written).toEqual({});
+  });
+
+  it('clones a character of the own environment by id, for the signed-in caller', async () => {
+    process.env.GCLOUD_PROJECT = 'questmind-beta';
+    const handler = importCharacter as unknown as (request: unknown) => Promise<{ characterId: string }>;
+
+    const { characterId } = await handler({ auth: { uid: 'me' }, data: { characterId: SOURCE_ID } });
+
+    const character = written[`characters/${characterId}`];
+    expect(character).toMatchObject({ userId: 'me', name: 'Vesper' });
+    expect(written[`characters/${characterId}/versions/${character.activeVersionId}`].commitMessage).toBe('Cloned from a shared character');
+    expect(Object.keys(savedFiles)).toHaveLength(2);
+    delete process.env.GCLOUD_PROJECT;
+  });
+
+  it('requires a signed-in caller', async () => {
+    const handler = importCharacter as unknown as (request: unknown) => Promise<unknown>;
+    await expect(handler({ data: { characterId: SOURCE_ID } })).rejects.toThrow('Authentication required');
     expect(written).toEqual({});
   });
 

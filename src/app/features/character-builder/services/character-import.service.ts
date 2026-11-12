@@ -22,6 +22,16 @@ export class CharacterImportService {
     return result.data.characterId;
   }
 
+  /** Copy a character of this environment to this account. Resolves to the new character's id. */
+  async cloneCharacter(characterId: string): Promise<string> {
+    const fn = httpsCallable<{ characterId: string }, { characterId: string }>(
+      this.firebase.requireFunctions(),
+      'importCharacter'
+    );
+    const result = await fn({ characterId });
+    return result.data.characterId;
+  }
+
   /** Keep a PDF ready for the chat of a character that is about to be opened. */
   queuePdf(characterId: string, attachment: ChatAttachment): void {
     this.pendingPdf = { characterId, attachment };

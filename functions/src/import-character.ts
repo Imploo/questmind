@@ -8,36 +8,40 @@ import { ensureAuthForTesting } from './utils/emulator-helpers';
 import { requireAuthUid } from './utils/access';
 import { buildDownloadUrl } from './utils/storage-url';
 import { fetchPublicDocument, listPublicDocuments, PublicDocument } from './utils/firestore-rest';
-import { environmentForHost, QuestmindEnvironment } from './config/environments';
+import { environmentForHost, environmentForProject, QuestmindEnvironment } from './config/environments';
 import { DndCharacterSchema, DndCharacter } from './schemas/dnd-character.schema';
-import { CharacterPlayStateSchema } from './schemas/character-play-state.schema';
 import { characterImagePrefix } from './generate-image';
 import * as logger from './utils/logger';
 
+const CHARACTER_ID_PATTERN = /^[\w-]{8,64}$/;
 const CHARACTER_PATH_PATTERN = /^\/(?:share\/character|characters)\/([\w-]{8,64})\/?$/;
 const MAX_IMAGES = 10;
 const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 const IMAGE_TIMEOUT_MS = 30_000;
 
+/** Either a link to a character, or the id of a character in this environment (a clone). */
 interface ImportCharacterRequest {
-  link: string;
+  link?: string;
+  characterId?: string;
 }
 
 interface ImportCharacterResponse {
   characterId: string;
 }
 
-export interface CharacterLink {
+/** Where the character to copy lives. */
+export interface CharacterSource {
   environment: QuestmindEnvironment;
-  host: string;
   characterId: string;
+  /** How the copy's first version describes where it came from. */
+  origin: string;
 }
 
 /**
  * Read a link to a character page or a character share page of one of the
  * QuestMind environments. Throws `invalid-argument` for anything else.
  */
-export function parseCharacterLink(link: unknown): CharacterLink {
+export function parseCharacterLink(link: unknown): CharacterSource {
   if (typeof link !== 'string' || !link.trim()) {
     throw new HttpsError('invalid-argument', 'Paste a link to a character.');
   }
@@ -57,17 +61,31 @@ export function parseCharacterLink(link: unknown): CharacterLink {
   if (!characterId) {
     throw new HttpsError('invalid-argument', 'That link does not point to a character.');
   }
-  return { environment, host: url.hostname.toLowerCase(), characterId };
+  return { environment, characterId, origin: `Imported from ${url.hostname.toLowerCase()}` };
+}
+
+/** A character of this environment, to clone it. Throws `invalid-argument` for a malformed id. */
+export function ownCharacterSource(characterId: unknown): CharacterSource {
+  if (typeof characterId !== 'string' || !CHARACTER_ID_PATTERN.test(characterId)) {
+    throw new HttpsError('invalid-argument', 'Missing or invalid characterId.');
+  }
+  const projectId = process.env.GCLOUD_PROJECT ?? '';
+  const environment = environmentForProject(projectId)
+    // An environment that is not in the list (an emulator, a new project): use its default bucket.
+    ?? { projectId, bucket: getStorage().bucket().name, domains: [] };
+  return { environment, characterId, origin: 'Cloned from a shared character' };
 }
 
 /**
  * Copies a character from a QuestMind environment (this one or another, such as
  * beta) to the caller's account. Characters are publicly readable, so the source is
- * read without credentials; the copy gets one fresh version, the play state and the
- * portraits. Version history, chat and campaign stay behind.
+ * read without credentials; the copy gets one fresh version and the portraits.
+ *
+ * What is public is the character as built. The owner's play state (hit points, spent
+ * slots, inventory) is theirs and is not copied, and neither are the version history,
+ * the chat and the campaign.
  */
-export async function executeImportCharacter(uid: string, link: unknown): Promise<ImportCharacterResponse> {
-  const source = parseCharacterLink(link);
+export async function executeImportCharacter(uid: string, source: CharacterSource): Promise<ImportCharacterResponse> {
   const { projectId } = source.environment;
   const sourcePath = `characters/${source.characterId}`;
 
@@ -77,7 +95,6 @@ export async function executeImportCharacter(uid: string, link: unknown): Promis
   }
 
   const character = await loadCharacter(projectId, sourcePath, sourceDoc);
-  const playState = CharacterPlayStateSchema.safeParse(sourceDoc.data['playState']);
 
   const db = getFirestore();
   const characterId = randomUUID();
@@ -91,7 +108,6 @@ export async function executeImportCharacter(uid: string, link: unknown): Promis
     name: character.name,
     activeVersionId: versionId,
     campaignId: null,
-    ...(playState.success && { playState: playState.data }),
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });
@@ -100,7 +116,7 @@ export async function executeImportCharacter(uid: string, link: unknown): Promis
     versionNumber: 1,
     // A JSON round trip drops undefined values, which Firestore refuses.
     character: JSON.parse(JSON.stringify(character)),
-    commitMessage: `Imported from ${source.host}`,
+    commitMessage: source.origin,
     source: 'manual',
     createdAt: FieldValue.serverTimestamp(),
   });
@@ -130,7 +146,7 @@ async function loadCharacter(projectId: string, sourcePath: string, sourceDoc: P
 }
 
 /** Copy the portraits to this project's bucket, newest first. A portrait that fails is skipped. */
-async function copyImages(source: CharacterLink, characterId: string): Promise<number> {
+async function copyImages(source: CharacterSource, characterId: string): Promise<number> {
   let images: PublicDocument[];
   try {
     images = await listPublicDocuments(source.environment.projectId, `characters/${source.characterId}/images`, {
@@ -151,7 +167,7 @@ async function copyImages(source: CharacterLink, characterId: string): Promise<n
   return results.filter(result => result.status === 'fulfilled' && result.value).length;
 }
 
-async function copyImage(source: CharacterLink, characterId: string, image: PublicDocument): Promise<boolean> {
+async function copyImage(source: CharacterSource, characterId: string, image: PublicDocument): Promise<boolean> {
   const storagePath = image.data['storagePath'];
   // Only fetch files from the source character's own image folder.
   if (
@@ -196,7 +212,9 @@ export const importCharacter = onCall(
     async (request): Promise<ImportCharacterResponse> => {
       ensureAuthForTesting(request);
       const uid = requireAuthUid(request);
-      return executeImportCharacter(uid, request.data?.link);
+      const { link, characterId } = request.data ?? {};
+      const source = characterId !== undefined ? ownCharacterSource(characterId) : parseCharacterLink(link);
+      return executeImportCharacter(uid, source);
     }
   )
 );
