@@ -1175,9 +1175,15 @@ export class CharacterSheetComponent {
     inject(DestroyRef).onDestroy(() => this.clearToastTimer());
   }
 
-  /** Copy the address of this page; the character page is public, so anyone with the link can view it. */
+  /**
+   * Copy a link to this character. The character page is public, so anyone with the
+   * link can view it; the share address also gives chat apps a preview with the
+   * character's name and portrait.
+   */
   async shareLink(): Promise<void> {
-    const url = `${window.location.origin}${window.location.pathname}`;
+    const id = this.characterId();
+    const path = id ? `/share/character/${id}` : window.location.pathname;
+    const url = `${window.location.origin}${path}`;
     if (await copyText(url)) {
       this.linkCopied.set(true);
       setTimeout(() => this.linkCopied.set(false), 3000);
