@@ -81,7 +81,7 @@ import { ChangeDetectionStrategy, Component, ElementRef, input, output, signal, 
               (input)="link.set($any($event.target).value)"
             />
             <p class="mt-2 text-sm text-gray-500">
-              The Share button on a character sheet copies its link. You get a copy with the portraits and the current play state; the original stays as it is.
+              The Share button on a character sheet copies its link. You get a copy of the character as built, with its portraits; the original stays as it is.
             </p>
 
             <div class="mt-5 flex items-center justify-between gap-3">

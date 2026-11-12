@@ -1123,9 +1123,9 @@ export class CharacterSheetComponent {
   images = input<CharacterImage[]>([]);
   canDelete = input<boolean>(false);
   exportingPdf = input<boolean>(false);
-  /** Live table state; null until the player has changed something. */
+  /** Live table state of the owner; null for a visitor, and until the player has changed something. */
   playState = input<CharacterPlayState | null>(null);
-  /** Whether the viewer may play with the sheet (the owner). Others see the state read-only. */
+  /** Whether the viewer may play with the sheet (the owner). Others see the character as built. */
   editable = input<boolean>(false);
   /** Whether the viewer can copy this character to their own account (signed in, not the owner). */
   canClone = input<boolean>(false);

@@ -185,7 +185,7 @@ describe('executeImportCharacter', () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  it('copies the character, its play state and its portraits to the caller', async () => {
+  it('copies the character as built and its portraits to the caller, without the play state', async () => {
     const { characterId } = await executeImportCharacter('me', link);
 
     const character = written[`characters/${characterId}`];
@@ -194,12 +194,9 @@ describe('executeImportCharacter', () => {
       userId: 'me',
       name: 'Vesper',
       campaignId: null,
-      playState: {
-        hp: { current: 31, temp: 5 },
-        conditions: ['Poisoned'],
-        inventory: [{ id: 'a', name: 'Rope', value: '50 ft', description: '' }],
-      },
     });
+    // The owner's play state stays behind: the copy starts fresh.
+    expect(character).not.toHaveProperty('playState');
 
     const version = written[`characters/${characterId}/versions/${character.activeVersionId}`];
     expect(version).toMatchObject({ versionNumber: 1, source: 'manual', commitMessage: 'Imported from questmind-beta.web.app' });
@@ -233,15 +230,6 @@ describe('executeImportCharacter', () => {
 
     const { characterId } = await executeImportCharacter('me', link);
     expect(written[`characters/${characterId}`].name).toBe('Vesper');
-  });
-
-  it('imports without play state when the source has none or it is malformed', async () => {
-    routes[`${DOCS}/characters/${SOURCE_ID}`] = () => json({
-      name: 'x', fields: { activeVersionId: str('v2'), playState: map({ hp: str('broken') }) },
-    });
-
-    const { characterId } = await executeImportCharacter('me', link);
-    expect(written[`characters/${characterId}`]).not.toHaveProperty('playState');
   });
 
   it('still imports the character when a portrait cannot be downloaded', async () => {

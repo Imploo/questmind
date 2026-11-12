@@ -10,7 +10,6 @@ import { buildDownloadUrl } from './utils/storage-url';
 import { fetchPublicDocument, listPublicDocuments, PublicDocument } from './utils/firestore-rest';
 import { environmentForHost, environmentForProject, QuestmindEnvironment } from './config/environments';
 import { DndCharacterSchema, DndCharacter } from './schemas/dnd-character.schema';
-import { CharacterPlayStateSchema } from './schemas/character-play-state.schema';
 import { characterImagePrefix } from './generate-image';
 import * as logger from './utils/logger';
 
@@ -80,8 +79,11 @@ export function ownCharacterSource(characterId: unknown): CharacterSource {
 /**
  * Copies a character from a QuestMind environment (this one or another, such as
  * beta) to the caller's account. Characters are publicly readable, so the source is
- * read without credentials; the copy gets one fresh version, the play state and the
- * portraits. Version history, chat and campaign stay behind.
+ * read without credentials; the copy gets one fresh version and the portraits.
+ *
+ * What is public is the character as built. The owner's play state (hit points, spent
+ * slots, inventory) is theirs and is not copied, and neither are the version history,
+ * the chat and the campaign.
  */
 export async function executeImportCharacter(uid: string, source: CharacterSource): Promise<ImportCharacterResponse> {
   const { projectId } = source.environment;
@@ -93,7 +95,6 @@ export async function executeImportCharacter(uid: string, source: CharacterSourc
   }
 
   const character = await loadCharacter(projectId, sourcePath, sourceDoc);
-  const playState = CharacterPlayStateSchema.safeParse(sourceDoc.data['playState']);
 
   const db = getFirestore();
   const characterId = randomUUID();
@@ -107,7 +108,6 @@ export async function executeImportCharacter(uid: string, source: CharacterSourc
     name: character.name,
     activeVersionId: versionId,
     campaignId: null,
-    ...(playState.success && { playState: playState.data }),
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });

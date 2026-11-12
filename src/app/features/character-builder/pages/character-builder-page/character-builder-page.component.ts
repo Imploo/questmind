@@ -193,9 +193,12 @@ export class CharacterBuilderPageComponent {
 
   /**
    * Live table state of the selected character. Set locally first so the sheet reacts at
-   * once, and reset whenever the stored character changes.
+   * once, and reset whenever the stored character changes. It is the owner's alone: a
+   * visitor sees the character as built, without hit points, spent slots or inventory.
    */
-  playState = linkedSignal<CharacterPlayState | null>(() => this.selectedCharacter()?.playState ?? null);
+  playState = linkedSignal<CharacterPlayState | null>(() =>
+    this.isOwner() ? this.selectedCharacter()?.playState ?? null : null
+  );
 
   /** The latest version with the live hit points, hit dice and slots, for the AI chat. */
   liveCharacter = computed(() => {
