@@ -455,9 +455,6 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
                           @if (entry.concentration || entry.concentrating) {
                             <app-concentration-mark [active]="entry.concentrating" />
                           }
-                          @if (spell.school) {
-                            <span class="tag tag-sm">{{ spell.school }}</span>
-                          }
                         </button>
                       } @else {
                         <div class="entry-head entry-main font-semibold text-sm">
@@ -506,6 +503,9 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
                     @if (entry.details; as spell) {
                       @if (expandedSpells().has(entry.index)) {
                         <div class="entry-body">
+                          @if (spell.school) {
+                            <div class="eyebrow mb-1">{{ spell.school }}</div>
+                          }
                           @if (loadingSpells().has(entry.index)) {
                             <mat-progress-bar mode="indeterminate"></mat-progress-bar>
                           } @else if (spell.description) {
@@ -562,9 +562,6 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" class="chevron" [class.rotate-90]="expandedFeatures().has(entry.index)" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
                     <span class="font-semibold text-sm">{{ entry.name }}</span>
-                    @if (feature.source) {
-                      <span class="tag tag-sm">{{ feature.source }}</span>
-                    }
                   </button>
                 } @else {
                   <div class="entry-head entry-main font-semibold text-sm">{{ entry.name }}</div>
@@ -587,6 +584,9 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
               @if (entry.details; as feature) {
                 @if (expandedFeatures().has(entry.index)) {
                   <div class="entry-body">
+                    @if (feature.source) {
+                      <div class="eyebrow mb-1">{{ feature.source }}</div>
+                    }
                     @if (loadingFeatures().has(entry.index)) {
                       <mat-progress-bar mode="indeterminate"></mat-progress-bar>
                     } @else if (feature.description) {
@@ -817,7 +817,6 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
       border: 1px solid rgba(180, 138, 60, 0.25);
     }
     .tag-quiet { background: transparent; color: var(--muted); border-color: var(--line); }
-    .tag-sm { padding: 0.05rem 0.5rem; font-size: 0.68rem; flex-shrink: 0; }
     .hero-actions { display: flex; gap: 0.5rem; }
     .hero-actions.is-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .hero-actions.is-grid .action { justify-content: center; min-height: 40px; }
@@ -999,22 +998,23 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
 
     /* A spell or feature line: the expandable name plus its play controls */
     .entry-row { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 0 0.35rem; }
-    .entry-head.entry-main { flex: 1 1 9rem; min-width: 0; margin-right: 0; }
+    /* The name's own labels wrap under it rather than run into the controls on a narrow screen. */
+    .entry-head.entry-main { flex: 1 1 9rem; min-width: 0; margin-right: 0; flex-wrap: wrap; row-gap: 0.1rem; }
     .tracker { display: inline-flex; align-items: center; gap: 0.5rem; margin-left: auto; }
     /* Pull the last diamond up to the edge of the row; its tap area has room to spare. */
     .tracker app-use-pips:not(.is-pool) { margin-right: -0.5rem; }
-    .recharge { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.04em; color: var(--muted); }
+    .recharge { font-size: 0.7rem; font-weight: 500; letter-spacing: 0.04em; color: var(--muted); }
     .cast { display: inline-flex; align-items: center; min-height: 44px; padding: 0 0 0 0.25rem; margin-left: auto; touch-action: manipulation; }
     .cast-pill {
       display: inline-flex;
       align-items: center;
-      height: 26px;
-      padding: 0 0.7rem;
+      height: 24px;
+      padding: 0 0.65rem;
       border-radius: 999px;
-      font-size: 0.75rem;
+      font-size: 0.72rem;
       font-weight: 600;
       color: var(--gold-deep);
-      border: 1px solid #c9b17a;
+      border: 1px solid #e0d2b6;
       transition: background 0.15s;
     }
     .cast:hover:not(:disabled) .cast-pill { background: var(--gold-soft); }

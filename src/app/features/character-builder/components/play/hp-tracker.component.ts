@@ -29,12 +29,25 @@ import { ChangeDetectionStrategy, Component, ElementRef, computed, input, output
 
     @if (editable()) {
       <div class="controls">
-        <label class="amount">
-          <span>Amount</span>
-          <input #amountInput type="number" min="0" inputmode="numeric" [value]="amount()" (input)="amount.set($any($event.target).value)" />
-        </label>
-        <button type="button" class="btn heal" (click)="apply('heal')">Heal</button>
-        <button type="button" class="btn temp-btn" (click)="apply('temp')">Temp</button>
+        <input
+          #amountInput
+          class="amount"
+          type="number"
+          min="0"
+          inputmode="numeric"
+          placeholder="Amount"
+          aria-label="Amount"
+          [value]="amount()"
+          (input)="amount.set($any($event.target).value)"
+        />
+        <button type="button" class="btn heal" (click)="apply('heal')">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" /></svg>
+          Heal
+        </button>
+        <button type="button" class="btn temp-btn" (click)="apply('temp')">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 2.6v5.9c0 4.4-3 7.6-7 9.5-4-1.9-7-5.1-7-9.5V5.6z" /></svg>
+          Temp
+        </button>
       </div>
       <button type="button" class="btn damage" (click)="apply('damage')">Damage</button>
     }
@@ -83,14 +96,15 @@ import { ChangeDetectionStrategy, Component, ElementRef, computed, input, output
     .fill.is-low { background: #c2571f; }
     .fill-temp { height: 100%; background: #3d7ea6; transition: width 0.3s ease; }
 
-    .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
-    .amount { display: flex; align-items: center; gap: 0.4rem; font-size: 0.75rem; font-weight: 600; color: var(--muted, #7b6e60); }
-    .amount input {
-      width: 4.25rem;
-      height: 44px;
-      padding: 0 0.5rem;
+    .controls { display: flex; align-items: center; gap: 0.4rem; }
+    .amount {
+      flex: 1 1 4.5rem;
+      width: 4.5rem;
+      min-width: 3rem;
+      height: 40px;
+      padding: 0 0.4rem;
       text-align: center;
-      font-size: 1.05rem;
+      font-size: 1rem;
       font-weight: 700;
       font-variant-numeric: tabular-nums;
       color: var(--ink, #2a2320);
@@ -98,9 +112,10 @@ import { ChangeDetectionStrategy, Component, ElementRef, computed, input, output
       border: 1.5px solid var(--gold, #b48a3c);
       border-radius: 8px;
     }
+    .amount::placeholder { font-size: 0.78rem; font-weight: 500; color: var(--muted, #7b6e60); }
     .btn {
-      min-height: 44px;
-      padding: 0 0.75rem;
+      min-height: 40px;
+      padding: 0 0.7rem;
       border-radius: 8px;
       font-size: 0.85rem;
       font-weight: 700;
@@ -108,15 +123,24 @@ import { ChangeDetectionStrategy, Component, ElementRef, computed, input, output
       touch-action: manipulation;
       transition: filter 0.15s, background 0.15s;
     }
-    .heal, .temp-btn { flex: 1 1 4rem; background: var(--paper, #fffdf8); }
+    .heal, .temp-btn {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.3rem;
+      font-size: 0.8rem;
+      background: var(--paper, #fffdf8);
+    }
+    .btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linejoin: round; }
     .heal { color: #2f6337; border: 1.5px solid #4c8a52; }
     .heal:hover { background: #edf5ee; }
     .temp-btn { color: #24587a; border: 1.5px solid #3d7ea6; }
     .temp-btn:hover { background: #e3eef5; }
     .damage {
       width: 100%;
-      min-height: 52px;
-      font-size: 1rem;
+      min-height: 46px;
+      font-size: 0.95rem;
       letter-spacing: 0.02em;
       color: #fff;
       background: var(--wine, #9b2f3a);
