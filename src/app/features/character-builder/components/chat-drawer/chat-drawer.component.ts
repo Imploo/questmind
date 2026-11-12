@@ -10,6 +10,7 @@ import {
 } from '@angular/core';
 import { ChatComponent } from '../../../../chat/chat.component';
 import { DndCharacter } from '../../../../shared/models/dnd-character.model';
+import { ChatAttachment } from '../../../../shared/utils/build-character-context';
 
 const COLLAPSED_VH = 0.08;
 const EXPANDED_VH = 0.82;
@@ -78,6 +79,15 @@ export class ChatDrawerComponent {
 
   focusChat(): void {
     this.chatComp()?.focusInput();
+  }
+
+  /** Open the drawer and send a PDF to the chat. Returns false while the chat is not there yet. */
+  sendAttachment(attachment: ChatAttachment): boolean {
+    const chat = this.chatComp();
+    if (!chat) return false;
+    this.expand();
+    chat.sendAttachment(attachment);
+    return true;
   }
 
   onHandleClick(): void {

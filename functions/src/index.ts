@@ -51,3 +51,6 @@ export { podcastSharePage } from './podcast-share-page';
 
 // Public share link for a character, with a link preview
 export { characterSharePage } from './character-share-page';
+
+// Copy a character from a share link (also from another environment, such as beta)
+export { importCharacter } from './import-character';

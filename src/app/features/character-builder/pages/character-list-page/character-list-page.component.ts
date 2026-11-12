@@ -5,6 +5,10 @@ import { CharacterVersionService } from '../../../../core/services/character-ver
 import { CharacterImageService } from '../../../../core/services/character-image.service';
 import { Character } from '../../../../core/models/schemas/character.schema';
 import { DndCharacter } from '../../../../shared/models/dnd-character.model';
+import { CharacterImportService } from '../../services/character-import.service';
+import { ImportCharacterDialogComponent } from '../../components/import-character-dialog/import-character-dialog.component';
+import { readPdfAttachment } from '../../../../chat/pdf-attachment';
+import * as logger from '../../../../shared/logger';
 
 interface CharacterSummary {
   id: string;
@@ -16,19 +20,48 @@ interface CharacterSummary {
   imageUrl: string | null;
 }
 
+/** Errors the backend raises on purpose carry a message for the user; anything else gets a general one. */
+function importErrorMessage(error: unknown): string {
+  const { code, message } = (error ?? {}) as { code?: string; message?: string };
+  const expected = ['functions/invalid-argument', 'functions/not-found', 'functions/failed-precondition'];
+  return code && expected.includes(code) && message ? message : 'The character could not be imported. Try again.';
+}
+
 @Component({
   selector: 'app-character-list-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [],
+  imports: [ImportCharacterDialogComponent],
   template: `
+    @if (showImport()) {
+      <app-import-character-dialog
+        [busy]="importing()"
+        [error]="importError()"
+        (pdfSelected)="onImportPdf($event)"
+        (linkSubmitted)="onImportLink($event)"
+        (closed)="showImport.set(false)"
+      />
+    }
+
     <div class="min-h-full bg-base-200 p-8">
       <div class="max-w-6xl mx-auto">
         <!-- Header -->
-        <div class="flex justify-between items-center mb-8">
+        <div class="flex flex-wrap justify-between items-center gap-4 mb-8">
           <div>
             <h1 class="text-3xl font-bold font-serif">Your Characters</h1>
             <p class="text-base-content/60 mt-1">Select a character to view or edit</p>
           </div>
+          <div class="flex gap-2">
+          <button
+            type="button"
+            (click)="openImport()"
+            [disabled]="creating()"
+            class="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-gray-700 font-medium text-sm rounded-full shadow-sm border border-gray-200 hover:bg-gray-50 hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v12m0 0l-4-4m4 4l4-4" />
+            </svg>
+            Import
+          </button>
           <button
             (click)="onCreateCharacter()"
             [disabled]="creating()"
@@ -43,6 +76,7 @@ interface CharacterSummary {
             }
             Create
           </button>
+          </div>
         </div>
 
         <!-- Loading -->
@@ -101,6 +135,9 @@ interface CharacterSummary {
                 </svg>
                 Create Character
               </button>
+              <button type="button" (click)="openImport()" class="mt-3 text-sm font-medium underline underline-offset-2 hover:text-base-content">
+                Or import one from a PDF or a link
+              </button>
             </div>
           }
         }
@@ -113,10 +150,14 @@ export class CharacterListPageComponent {
   private readonly characterService = inject(CharacterService);
   private readonly characterVersionService = inject(CharacterVersionService);
   private readonly characterImageService = inject(CharacterImageService);
+  private readonly characterImportService = inject(CharacterImportService);
 
   loading = signal(true);
   creating = signal(false);
   characterSummaries = signal<CharacterSummary[]>([]);
+  showImport = signal(false);
+  importing = signal(false);
+  importError = signal('');
 
   constructor() {
     this.loadCharacters();
@@ -129,51 +170,91 @@ export class CharacterListPageComponent {
   async onCreateCharacter(): Promise<void> {
     this.creating.set(true);
     try {
-      const chars = this.characterSummaries();
-      const name = `New Character ${chars.length + 1}`;
-      const initialData: DndCharacter = {
-        name,
-        class: 'Fighter',
-        level: 1,
-        race: 'Human',
-        experiencePoints: 0,
-        abilities: {
-          strength: { score: 10, modifier: 0 },
-          dexterity: { score: 10, modifier: 0 },
-          constitution: { score: 10, modifier: 0 },
-          intelligence: { score: 10, modifier: 0 },
-          wisdom: { score: 10, modifier: 0 },
-          charisma: { score: 10, modifier: 0 },
-        },
-        skills: [],
-        savingThrows: {
-          strength: { proficient: false, modifier: 0 },
-          dexterity: { proficient: false, modifier: 0 },
-          constitution: { proficient: false, modifier: 0 },
-          intelligence: { proficient: false, modifier: 0 },
-          wisdom: { proficient: false, modifier: 0 },
-          charisma: { proficient: false, modifier: 0 },
-        },
-        passiveWisdom: 10,
-        proficiencies: [],
-        languages: ['Common'],
-        armorClass: 10,
-        initiative: 0,
-        speed: 30,
-        hitPoints: { max: 10, current: 10, temp: 0 },
-        hitDice: { total: 1, current: 1, die: 'd10' },
-        deathSaves: { successes: 0, failures: 0 },
-        attacks: [],
-        equipment: [],
-        coins: { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 },
-        featuresAndTraits: [],
-      };
-
-      const id = await this.characterService.createCharacter(name, initialData);
+      const id = await this.createBlankCharacter();
       this.router.navigate(['/characters', id]);
     } finally {
       this.creating.set(false);
     }
+  }
+
+  openImport(): void {
+    this.importError.set('');
+    this.showImport.set(true);
+  }
+
+  /** A PDF goes to the chat of a new character, which reads it in. */
+  async onImportPdf(file: File): Promise<void> {
+    this.importError.set('');
+    this.importing.set(true);
+    try {
+      const attachment = await readPdfAttachment(file);
+      const id = await this.createBlankCharacter();
+      this.characterImportService.queuePdf(id, attachment);
+      this.router.navigate(['/characters', id]);
+    } catch (e) {
+      this.importError.set(e instanceof Error && e.message ? e.message : 'The PDF could not be imported. Try again.');
+    } finally {
+      this.importing.set(false);
+    }
+  }
+
+  /** A share link is copied by the backend, which can also read other environments. */
+  async onImportLink(link: string): Promise<void> {
+    this.importError.set('');
+    this.importing.set(true);
+    try {
+      const id = await this.characterImportService.importFromLink(link);
+      this.router.navigate(['/characters', id]);
+    } catch (e) {
+      logger.error('Failed to import character from link:', e);
+      this.importError.set(importErrorMessage(e));
+    } finally {
+      this.importing.set(false);
+    }
+  }
+
+  private async createBlankCharacter(): Promise<string> {
+    const chars = this.characterSummaries();
+    const name = `New Character ${chars.length + 1}`;
+    const initialData: DndCharacter = {
+      name,
+      class: 'Fighter',
+      level: 1,
+      race: 'Human',
+      experiencePoints: 0,
+      abilities: {
+        strength: { score: 10, modifier: 0 },
+        dexterity: { score: 10, modifier: 0 },
+        constitution: { score: 10, modifier: 0 },
+        intelligence: { score: 10, modifier: 0 },
+        wisdom: { score: 10, modifier: 0 },
+        charisma: { score: 10, modifier: 0 },
+      },
+      skills: [],
+      savingThrows: {
+        strength: { proficient: false, modifier: 0 },
+        dexterity: { proficient: false, modifier: 0 },
+        constitution: { proficient: false, modifier: 0 },
+        intelligence: { proficient: false, modifier: 0 },
+        wisdom: { proficient: false, modifier: 0 },
+        charisma: { proficient: false, modifier: 0 },
+      },
+      passiveWisdom: 10,
+      proficiencies: [],
+      languages: ['Common'],
+      armorClass: 10,
+      initiative: 0,
+      speed: 30,
+      hitPoints: { max: 10, current: 10, temp: 0 },
+      hitDice: { total: 1, current: 1, die: 'd10' },
+      deathSaves: { successes: 0, failures: 0 },
+      attacks: [],
+      equipment: [],
+      coins: { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 },
+      featuresAndTraits: [],
+    };
+
+    return this.characterService.createCharacter(name, initialData);
   }
 
   private async loadCharacters(): Promise<void> {
