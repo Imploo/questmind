@@ -1,5 +1,6 @@
 import { Timestamp } from 'firebase/firestore';
 import { DndCharacter } from '../../../shared/models/dnd-character.model';
+import { CharacterPlayState } from '../../../shared/models/character-play-state.model';
 
 export interface Character {
   id: string;
@@ -8,6 +9,8 @@ export interface Character {
   activeVersionId: string;
   campaignId: string | null;
   isGenerating?: boolean;
+  /** Live table state (hit points, spent slots, conditions, ...). Not versioned. */
+  playState?: CharacterPlayState;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

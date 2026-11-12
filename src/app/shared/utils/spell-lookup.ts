@@ -7,6 +7,8 @@ export interface SpellDetails {
   /** 0 = cantrip. Only set when the spell comes from Spell.json. */
   level?: number;
   school?: string;
+  /** Only set when the spell comes from Spell.json. */
+  concentration?: boolean;
 }
 
 interface SpellJsonFields {
@@ -71,6 +73,7 @@ async function loadDatabase(http: HttpClient): Promise<Map<string, SpellDetails>
         usage: buildUsage(entry.fields),
         level: entry.fields.level,
         school: entry.fields.school,
+        concentration: entry.fields.concentration === true,
       });
     }
     cache = map;

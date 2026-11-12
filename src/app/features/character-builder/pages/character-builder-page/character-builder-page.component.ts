@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, effect, viewChild, ChangeDetectionStrategy, DestroyRef } from '@angular/core';
+import { Component, inject, signal, computed, effect, linkedSignal, viewChild, ChangeDetectionStrategy, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
@@ -13,7 +13,9 @@ import * as logger from '../../../../shared/logger';
 import { Character, CharacterVersion } from '../../../../core/models/schemas/character.schema';
 import { CharacterImage } from '../../../../core/models/schemas/character-image.schema';
 import { DndCharacter } from '../../../../shared/models/dnd-character.model';
-import { CharacterSheetComponent, SpellResolvedEvent, FeatureResolvedEvent } from '../../components/character-sheet/character-sheet.component';
+import { CharacterPlayState } from '../../../../shared/models/character-play-state.model';
+import { applyPlayStateToCharacter } from '../../../../shared/utils/character-play-state';
+import { CharacterSheetComponent, SpellResolvedEvent, FeatureResolvedEvent, UsesChangeEvent } from '../../components/character-sheet/character-sheet.component';
 import { ChatComponent } from '../../../../chat/chat.component';
 import { CharacterDraftPreviewComponent } from '../../components/character-draft-preview/character-draft-preview.component';
 import { CharacterVersionHistoryComponent } from '../../components/character-version-history/character-version-history.component';
@@ -75,6 +77,10 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
                           [images]="characterImages()"
                           [canDelete]="isOwner()"
                           [exportingPdf]="exportingPdf()"
+                          [playState]="playState()"
+                          [editable]="isOwner()"
+                          (playStateChange)="onPlayStateChange($event)"
+                          (usesChange)="onUsesChange($event)"
                           (exportPdf)="onExportPdf()"
                           (viewHistory)="showHistory.set(true)"
                           (deleteImage)="onDeleteImage($event)"
@@ -107,14 +113,14 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
             @if (isNarrow()) {
               <app-chat-drawer
                   #chatDrawer
-                  [character]="latestVersion()?.character ?? null"
+                  [character]="liveCharacter()"
               ></app-chat-drawer>
             } @else {
               <div class="w-1/3 p-4 sticky top-4 h-[calc(100vh-2rem)]">
                 <mat-card class="h-full bg-base-100 shadow-xl border border-base-300">
                   <mat-card-content class="p-4 h-full">
                     @if (latestVersion()) {
-                      <app-chat #chat [character]="latestVersion()!.character"></app-chat>
+                      <app-chat #chat [character]="liveCharacter()!"></app-chat>
                     } @else {
                       <div class="flex h-full items-center justify-center opacity-60 text-sm">
                         Select a character to chat
@@ -168,6 +174,18 @@ export class CharacterBuilderPageComponent {
 
   // Latest version from Firestore real-time listener
   latestVersion = this.characterVersionService.latestVersion;
+
+  /**
+   * Live table state of the selected character. Set locally first so the sheet reacts at
+   * once, and reset whenever the stored character changes.
+   */
+  playState = linkedSignal<CharacterPlayState | null>(() => this.selectedCharacter()?.playState ?? null);
+
+  /** The latest version with the live hit points, hit dice and slots, for the chat and the PDF. */
+  liveCharacter = computed(() => {
+    const version = this.latestVersion();
+    return version ? applyPlayStateToCharacter(version.character, this.playState()) : null;
+  });
 
   // Draft detection: true when the latest version is a draft
   isDraft = computed(() => this.latestVersion()?.isDraft === true);
@@ -397,11 +415,12 @@ export class CharacterBuilderPageComponent {
 
   async onExportPdf(): Promise<void> {
     const version = this.latestVersion();
-    if (!version || this.exportingPdf()) return;
+    const character = this.liveCharacter();
+    if (!version || !character || this.exportingPdf()) return;
     this.exportingPdf.set(true);
     try {
       await this.characterSheetExportService.export({
-        character: version.character,
+        character,
         characterId: this.selectedCharacterId(),
         versionId: version.id ?? null,
         canResolveRemotely: this.isOwner(),
@@ -423,6 +442,28 @@ export class CharacterBuilderPageComponent {
     const versionId = this.latestVersion()?.id;
     if (charId && versionId) {
       await this.characterVersionService.patchSpellDetails(charId, versionId, event.spellName, event.description, event.usage);
+    }
+  }
+
+  async onPlayStateChange(playState: CharacterPlayState): Promise<void> {
+    const charId = this.selectedCharacterId();
+    if (!charId || !this.isOwner()) return;
+    this.playState.set(playState);
+    try {
+      await this.characterService.updatePlayState(charId, playState);
+    } catch (e) {
+      logger.error('Failed to store character play state:', e);
+    }
+  }
+
+  async onUsesChange(event: UsesChangeEvent): Promise<void> {
+    const charId = this.selectedCharacterId();
+    const versionId = this.latestVersion()?.id;
+    if (!charId || !versionId || !this.isOwner()) return;
+    try {
+      await this.characterVersionService.patchUses(charId, versionId, event.owner, event.name, event.uses);
+    } catch (e) {
+      logger.error('Failed to store uses tracker:', e);
     }
   }
 

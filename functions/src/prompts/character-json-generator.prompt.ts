@@ -30,16 +30,26 @@ ${JSON.stringify(characterJsonSchema)}
 
 ## Spells
 
-- Stuur ALLEEN name, level en school per spell.
+- Stuur ALLEEN name, level en school per spell, plus uses wanneer de spell een eigen aantal keer per rest gecast kan worden (zie Beperkt gebruik).
 - Stuur NOOIT description of usage in spells.
 - Stuur de volledige spells array mee (alle spells inclusief ongewijzigde).
 
 ## Features & Traits
 
-- Stuur ALLEEN name en source per feature.
+- Stuur ALLEEN name en source per feature, plus uses wanneer de feature een beperkt aantal keer te gebruiken is (zie Beperkt gebruik).
 - Stuur NOOIT description in features.
 - Stuur de volledige featuresAndTraits array mee.
 - Source waarden: "Race", "Class", "Subclass", "Background", "Feat", "Other"
+
+## Beperkt gebruik (uses)
+
+Features en spells die je maar een beperkt aantal keer kunt gebruiken voordat je rust, krijgen een uses-object: {"max": aantal, "recharge": "shortRest" | "longRest" | "manual"}.
+
+- Voorbeelden: Second Wind (max 1, shortRest), Channel Divinity (max 1, shortRest), Rage (max volgens level, longRest), Lay on Hands (max 5 x paladin level, longRest), Lucky (max 3, longRest), Hellish Rebuke via Infernal Legacy (max 1, longRest).
+- Bereken max voor het huidige level en de huidige ability modifiers (bijv. Divine Sense: 1 + Charisma modifier).
+- Gebruik "manual" voor alles wat niet op een short of long rest terugkomt (bijv. charges van een magisch item die bij zonsopgang terugkomen).
+- Geef GEEN uses aan features zonder limiet (bijv. Darkvision, Extra Attack) en ook niet aan gewone spells die alleen spell slots kosten.
+- Neem bestaande uses uit het huidige karakter ongewijzigd over, tenzij het gesprek of een level-up de waarde verandert.
 
 ## Ability Scores
 
@@ -74,9 +84,9 @@ Wanneer een PDF character sheet is bijgevoegd: extraheer alle character data (na
 
 ## Schema-punten
 
-- **featuresAndTraits**: Array van objecten met {name: string, description: string, source?: string}
+- **featuresAndTraits**: Array van objecten met {name: string, description: string, source?: string, uses?: {max, recharge}}
   - description mag een lege string zijn
-- **spellcasting.spells**: Array van spell objecten — ALLEEN {name, level?, school?}
+- **spellcasting.spells**: Array van spell objecten — ALLEEN {name, level?, school?, uses?}
   - Level: 0 voor cantrips, 1-9 voor spell levels
   - School: "Abjuration", "Conjuration", "Divination", "Enchantment", "Evocation", "Illusion", "Necromancy", "Transmutation"
 - **spellcasting.slots**: Kan een array van SpellSlot objecten zijn, of een record/map

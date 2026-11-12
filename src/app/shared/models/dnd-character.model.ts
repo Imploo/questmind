@@ -52,12 +52,29 @@ export interface SpellSlot {
   expended: number;
 }
 
+export type UsesRecharge = 'shortRest' | 'longRest' | 'manual';
+
+/** A limited number of uses that comes back on a rest (Channel Divinity, a racial spell, Lucky, ...). */
+export interface LimitedUses {
+  max: number;
+  recharge: UsesRecharge;
+}
+
 export interface Spell {
   name: string;
   description?: string;
   usage?: string;
   level?: number;
   school?: string;
+  /** Uses of its own, apart from spell slots (racial and feat spells). */
+  uses?: LimitedUses;
+}
+
+export interface CharacterFeature {
+  name: string;
+  description: string;
+  source?: string;
+  uses?: LimitedUses;
 }
 
 export type Alignment =
@@ -137,11 +154,7 @@ export interface DndCharacter {
   coins: Coins;
 
   // Features & Traits
-  featuresAndTraits: {
-    name: string;
-    description: string;
-    source?: string;
-  }[];
+  featuresAndTraits: CharacterFeature[];
 
   // Flavor
   personalityTraits?: string;
