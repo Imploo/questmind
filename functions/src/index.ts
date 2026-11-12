@@ -48,3 +48,6 @@ export { generateCampaignStoryPodcast } from './generate-campaign-story-podcast'
 // Public share links for podcasts
 export { createPodcastShare } from './create-podcast-share';
 export { podcastSharePage } from './podcast-share-page';
+
+// Public share link for a character, with a link preview
+export { characterSharePage } from './character-share-page';

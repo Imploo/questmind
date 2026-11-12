@@ -16,6 +16,9 @@ export const routes: Routes = [
     path: 'share/podcast/:shareId',
     loadComponent: () => import('./audio/podcast-share-page.component').then(m => m.PodcastSharePageComponent)
   },
+  // Shared character links: the server adds a link preview to this address (see the
+  // characterSharePage function); in the browser it simply leads to the character page.
+  { path: 'share/character/:characterId', redirectTo: '/characters/:characterId' },
   // Character detail is publicly accessible — no auth guard
   {
     path: 'characters/:characterId',

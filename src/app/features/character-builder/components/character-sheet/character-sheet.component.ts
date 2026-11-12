@@ -45,6 +45,8 @@ import { CharacterImage } from '../../../../core/models/schemas/character-image.
 import { CharacterImageGalleryComponent } from '../character-image-gallery/character-image-gallery.component';
 import { ImageLightboxComponent } from '../../../../chat/image-lightbox.component';
 import { CharacterEntryResolverService } from '../../../../core/services/character-entry-resolver.service';
+import { ToastService } from '../../../../shared/services/toast.service';
+import { copyText } from '../../../../shared/utils/clipboard';
 import * as logger from '../../../../shared/logger';
 
 export interface SpellResolvedEvent {
@@ -247,6 +249,14 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
             <button type="button" class="action" (click)="viewHistory.emit()">
               <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
               History
+            </button>
+            <button type="button" class="action" title="Copy a link to this character" (click)="shareLink()">
+              @if (linkCopied()) {
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+              } @else {
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+              }
+              {{ linkCopied() ? 'Copied' : 'Share' }}
             </button>
           </div>
         </div>
@@ -829,8 +839,10 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
     }
     .tag-quiet { background: transparent; color: var(--muted); border-color: var(--line); }
     .hero-actions { display: flex; gap: 0.5rem; }
-    .hero-actions.is-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .hero-actions.is-grid .action { justify-content: center; min-height: 40px; }
+    /* Two rest buttons on the first row, the three page actions on the second. */
+    .hero-actions.is-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+    .hero-actions.is-grid .action { grid-column: span 2; justify-content: center; min-height: 40px; padding-inline: 0.5rem; }
+    .hero-actions.is-grid .action-rest { grid-column: span 3; }
     @media (min-width: 640px) { .hero-actions:not(.is-grid) { flex-direction: column; } }
     .action.action-rest { font-weight: 600; color: var(--gold-deep); background: var(--gold-soft); border-color: var(--gold); }
     .action.action-rest.is-long { color: #f6efe0; background: var(--ink); border-color: var(--ink); }
@@ -1118,6 +1130,8 @@ export class CharacterSheetComponent {
   expandedFeatures = signal<Set<number>>(new Set());
   loadingFeatures = signal<Set<number>>(new Set());
   portraitLightbox = signal<string | null>(null);
+  /** Briefly true after the link to this page was copied. */
+  linkCopied = signal(false);
 
   toast = signal<PlayToast | null>(null);
   /** Index of the spell whose cast dialog is open. */
@@ -1125,6 +1139,7 @@ export class CharacterSheetComponent {
   showLongRest = signal(false);
 
   private readonly resolver = inject(CharacterEntryResolverService);
+  private readonly toastService = inject(ToastService);
   private toastTimer: ReturnType<typeof setTimeout> | null = null;
   /** Lower-cased names of the character's spells that need concentration, from the bundled spell data. */
   private readonly concentrationSpells = signal<ReadonlySet<string>>(new Set());
@@ -1158,6 +1173,25 @@ export class CharacterSheetComponent {
       if (names && this.editable()) void this.loadConcentrationSpells(names.split('\n'));
     });
     inject(DestroyRef).onDestroy(() => this.clearToastTimer());
+  }
+
+  /**
+   * Copy a link to this character. The character page is public, so anyone with the
+   * link can view it; the share address also gives chat apps a preview with the
+   * character's name and portrait.
+   */
+  async shareLink(): Promise<void> {
+    const id = this.characterId();
+    const path = id ? `/share/character/${id}` : window.location.pathname;
+    const url = `${window.location.origin}${path}`;
+    if (await copyText(url)) {
+      this.linkCopied.set(true);
+      setTimeout(() => this.linkCopied.set(false), 3000);
+      this.toastService.show('Link gekopieerd — iedereen met deze link kan dit karakter bekijken.', 'success');
+    } else {
+      // Clipboard blocked (permissions/browser): let the user copy it by hand.
+      window.prompt('Kopieer de link naar dit karakter:', url);
+    }
   }
 
   // ── Play actions ──────────────────────────────────────────────
