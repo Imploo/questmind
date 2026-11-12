@@ -5,6 +5,7 @@ import { Character } from '../models/schemas/character.schema';
 import { DndCharacter } from '../../shared/models/dnd-character.model';
 import { CharacterVersionService } from './character-version.service';
 import { CharacterRepository } from '../../shared/repository/character.repository';
+import { CharacterPlayState } from '../../shared/models/character-play-state.model';
 
 @Injectable({ providedIn: 'root' })
 export class CharacterService {
@@ -58,6 +59,14 @@ export class CharacterService {
   async getCharacter(characterId: string): Promise<Character | null> {
     await this.characterRepo.waitForData();
     return await this.characterRepo.getByKey(characterId) as Character | null;
+  }
+
+  /**
+   * Store the live table state. It replaces the previous state as a whole and leaves
+   * `updatedAt` alone, so playing does not reorder the character list.
+   */
+  async updatePlayState(characterId: string, playState: CharacterPlayState): Promise<void> {
+    await this.characterRepo.patch(characterId, { playState });
   }
 
   async updateCharacter(characterId: string, updates: Partial<Pick<Character, 'name' | 'campaignId'>>): Promise<void> {

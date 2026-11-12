@@ -53,12 +53,19 @@ export const SpellSlotSchema = z.object({
   expended: z.number().min(0),
 });
 
+/** A limited number of uses that comes back on a rest (Channel Divinity, a racial spell, Lucky, ...). */
+export const LimitedUsesSchema = z.object({
+  max: z.number().min(1),
+  recharge: z.enum(['shortRest', 'longRest', 'manual']),
+});
+
 export const SpellSchema = z.object({
   name: z.string(),
   description: z.string().optional(),
   usage: z.string().optional(),
   level: z.number().min(0).max(9).optional(), // 0 for cantrips
   school: z.string().optional(), // e.g., "Evocation", "Abjuration"
+  uses: LimitedUsesSchema.optional(), // Uses of its own, apart from spell slots (racial and feat spells)
 });
 
 export const DndCharacterSchema = z.object({
@@ -142,6 +149,7 @@ export const DndCharacterSchema = z.object({
       name: z.string(),
       description: z.string(),
       source: z.string().optional(),
+      uses: LimitedUsesSchema.optional(),
     })
   ).default([]),
 
