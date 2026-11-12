@@ -367,7 +367,7 @@ export function longRestPreview(character: DndCharacter, state: State): RestPrev
 
 /**
  * The character with the live values written into it, for places that only know the
- * character itself (PDF export, the AI chat).
+ * character itself (the AI chat).
  */
 export function applyPlayStateToCharacter(character: DndCharacter, state: State): DndCharacter {
   if (!state) return character;

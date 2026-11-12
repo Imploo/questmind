@@ -181,7 +181,7 @@ export class CharacterBuilderPageComponent {
    */
   playState = linkedSignal<CharacterPlayState | null>(() => this.selectedCharacter()?.playState ?? null);
 
-  /** The latest version with the live hit points, hit dice and slots, for the chat and the PDF. */
+  /** The latest version with the live hit points, hit dice and slots, for the AI chat. */
   liveCharacter = computed(() => {
     const version = this.latestVersion();
     return version ? applyPlayStateToCharacter(version.character, this.playState()) : null;
@@ -413,14 +413,14 @@ export class CharacterBuilderPageComponent {
     this.isNarrow.set(window.innerWidth < 1024);
   }
 
+  /** The PDF is the sheet as built: it leaves the live play state out. */
   async onExportPdf(): Promise<void> {
     const version = this.latestVersion();
-    const character = this.liveCharacter();
-    if (!version || !character || this.exportingPdf()) return;
+    if (!version || this.exportingPdf()) return;
     this.exportingPdf.set(true);
     try {
       await this.characterSheetExportService.export({
-        character,
+        character: version.character,
         characterId: this.selectedCharacterId(),
         versionId: version.id ?? null,
         canResolveRemotely: this.isOwner(),
