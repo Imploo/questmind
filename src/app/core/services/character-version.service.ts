@@ -2,7 +2,7 @@ import { Injectable, inject, signal, computed, effect, resource } from '@angular
 import { Timestamp } from 'firebase/firestore';
 import { AuthService } from '../../auth/auth.service';
 import { CharacterVersion } from '../models/schemas/character.schema';
-import { DndCharacter } from '../../shared/models/dnd-character.model';
+import { Coins, DndCharacter, LimitedUses } from '../../shared/models/dnd-character.model';
 import { CharacterVersionRepositoryFactory } from '../../shared/repository/character-version.repository';
 import { CharacterRepository } from '../../shared/repository/character.repository';
 
@@ -193,6 +193,57 @@ export class CharacterVersionService {
       return feature;
     });
     await repo.patch(activeVersionId, { 'character.featuresAndTraits': updated });
+    repo.destroy();
+  }
+
+  /** Store the coins of a character on a version in place, without creating a new version. */
+  async patchCoins(characterId: string, versionId: string, coins: Coins): Promise<void> {
+    const repo = this.versionRepoFactory.create(characterId);
+    try {
+      await repo.patch(versionId, { 'character.coins': coins });
+    } finally {
+      repo.destroy();
+    }
+  }
+
+  /**
+   * Add, change or (uses: null) remove the uses tracker of a feature or spell on a version.
+   * The tracker is part of the build, so it lives on the version; how many uses are spent
+   * is play state and lives on the character.
+   */
+  async patchUses(
+    characterId: string,
+    versionId: string,
+    owner: 'feature' | 'spell',
+    name: string,
+    uses: LimitedUses | null
+  ): Promise<void> {
+    const repo = this.versionRepoFactory.create(characterId);
+    await repo.waitForData();
+    const version = await repo.getByKey(versionId) as CharacterVersion | null;
+    if (!version) {
+      repo.destroy();
+      return;
+    }
+    const target = name.toLowerCase();
+    const withUses = <T extends { name: string; uses?: LimitedUses }>(entry: T): T => {
+      if (entry.name.toLowerCase() !== target) return entry;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { uses: _previous, ...rest } = entry;
+      return (uses ? { ...rest, uses } : rest) as T;
+    };
+
+    if (owner === 'feature') {
+      const features = version.character.featuresAndTraits ?? [];
+      await repo.patch(versionId, {
+        'character.featuresAndTraits': features.map(feature => (typeof feature === 'string' ? feature : withUses(feature))),
+      });
+    } else {
+      const spells = version.character.spellcasting?.spells ?? [];
+      await repo.patch(versionId, {
+        'character.spellcasting.spells': spells.map(spell => (typeof spell === 'string' ? spell : withUses(spell))),
+      });
+    }
     repo.destroy();
   }
 

@@ -1,5 +1,6 @@
 import { inject, Injectable } from '@angular/core';
 import { DndCharacter, Spell } from '../../../shared/models/dnd-character.model';
+import { InventoryItem } from '../../../shared/models/character-play-state.model';
 import { PdfGeneratorService } from '../../../shared/services/pdf-generator.service';
 import { SheetFeature, SheetSpell } from '../../../shared/pdf/character-sheet-field-values';
 import { CharacterEntryResolverService } from '../../../core/services/character-entry-resolver.service';
@@ -12,6 +13,13 @@ export interface CharacterSheetExportRequest {
   versionId: string | null;
   /** Only owners may call the AI fallback and store what was looked up. */
   canResolveRemotely: boolean;
+  /** Items the player keeps by hand; they are added to the equipment on the sheet. */
+  inventory?: InventoryItem[];
+}
+
+/** One equipment line for a hand-kept item: "Arrows (20)". */
+function inventoryLine(item: InventoryItem): string {
+  return item.value ? `${item.name} (${item.value})` : item.name;
 }
 
 /**
@@ -26,14 +34,17 @@ export class CharacterSheetExportService {
   private readonly pdfGenerator = inject(PdfGeneratorService);
 
   async export(request: CharacterSheetExportRequest): Promise<void> {
-    const { character } = request;
+    const inventory = request.inventory ?? [];
+    const character: DndCharacter = inventory.length
+      ? { ...request.character, equipment: [...(request.character.equipment ?? []), ...inventory.map(inventoryLine)] }
+      : request.character;
     const [spells, features] = await Promise.all([
       this.resolveSpells(request),
       this.resolveFeatures(request),
     ]);
 
     await this.persist(request, spells.resolved, features.resolved);
-    await this.pdfGenerator.generateCharacterPdf(character, spells.entries, features.entries);
+    await this.pdfGenerator.generateCharacterPdf(character, spells.entries, features.entries, inventory);
   }
 
   private async resolveSpells(

@@ -105,6 +105,25 @@ describe('PdfGeneratorService', () => {
       expect(text).toContain('Homebrew Zap');
     });
 
+    it('describes hand-kept inventory items that have a description', () => {
+      const doc = service.buildAppendixDefinition(createCharacter(), [], [], [], [
+        { id: 'a', name: 'Potion of Healing', value: '2', description: 'Regain 2d4 + 2 hit points.' },
+        { id: 'b', name: 'Arrows', value: '20', description: '' },
+      ])!;
+      const text = collectText(doc.content);
+
+      expect(text).toContain('Inventory');
+      expect(text).toContain('Potion of Healing');
+      expect(text).toContain('Regain 2d4 + 2 hit points.');
+      expect(text).not.toContain('Arrows');
+    });
+
+    it('adds no inventory section when no item has a description', () => {
+      expect(service.buildAppendixDefinition(createCharacter(), [], [], [], [
+        { id: 'b', name: 'Arrows', value: '20', description: '' },
+      ])).toBeNull();
+    });
+
     it('repeats sheet text that did not fit', () => {
       const doc = service.buildAppendixDefinition(createCharacter(), [], [], [
         { title: 'Appearance & Backstory', text: 'A very long story.' },

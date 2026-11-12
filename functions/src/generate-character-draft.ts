@@ -18,6 +18,7 @@ import {
   validateAbilityScores,
 } from './character/ability-score-validation';
 import { recalculateDerivedStats } from './character/derived-stats';
+import { preserveLimitedUses } from './character/limited-uses';
 
 /** Extra generator calls when the ability scores break the rules. */
 const MAX_ABILITY_SCORE_RETRIES = 2;
@@ -93,7 +94,7 @@ export async function executeGenerateCharacterDraft(payload: GenerateCharacterDr
         throw error;
       }
       logger.info('generateCharacterDraft: JSON parsed successfully, validating schema');
-      return checkAbilityScores(DndCharacterSchema.parse(parsed));
+      return checkAbilityScores(preserveLimitedUses(currentCharacter, DndCharacterSchema.parse(parsed)));
     };
 
     result = await generate(contentParts);

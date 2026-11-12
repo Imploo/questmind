@@ -1,11 +1,52 @@
-import { ChangeDetectionStrategy, Component, computed, input, output, signal, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, input, output, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
-import { DndCharacter, Spell } from '../../../../shared/models/dnd-character.model';
+import { CharacterFeature, Coins, DndCharacter, LimitedUses, Spell, SpellSlot, UsesRecharge } from '../../../../shared/models/dnd-character.model';
+import { CharacterPlayState } from '../../../../shared/models/character-play-state.model';
+import {
+  PlayStateResult,
+  ResolvedPlayState,
+  UsesOwner,
+  addInventoryItem,
+  applyDamage,
+  applyHealing,
+  castSpell,
+  currentPlayState,
+  longRest,
+  longRestPreview,
+  removeInventoryItem,
+  resolvePlayState,
+  setConcentration,
+  setDeathSaves,
+  setExhaustion,
+  setHitDice,
+  setInspiration,
+  setSlotsExpended,
+  setTempHp,
+  setUsesSpent,
+  shortRest,
+  toggleCondition,
+  updateInventoryItem,
+  usesKey,
+} from '../../../../shared/utils/character-play-state';
+import { HpTrackerComponent } from '../play/hp-tracker.component';
+import { UsePipsComponent } from '../play/use-pips.component';
+import { DeathSaves, DeathSavesComponent } from '../play/death-saves.component';
+import { ConditionsBarComponent } from '../play/conditions-bar.component';
+import { CastChoice, CastDialogComponent, CastOption } from '../play/cast-dialog.component';
+import { RestDialogComponent } from '../play/rest-dialog.component';
+import { TrackerEditorComponent } from '../play/tracker-editor.component';
+import { PlayToastComponent } from '../play/play-toast.component';
+import { ConcentrationMarkComponent } from '../play/concentration-mark.component';
+import { InspirationToggleComponent } from '../play/inspiration-toggle.component';
+import { CoinPurseComponent } from '../play/coin-purse.component';
+import { InventoryItemChange, InventoryItemsComponent } from '../play/inventory-items.component';
 import { CharacterImage } from '../../../../core/models/schemas/character-image.schema';
 import { CharacterImageGalleryComponent } from '../character-image-gallery/character-image-gallery.component';
 import { ImageLightboxComponent } from '../../../../chat/image-lightbox.component';
 import { CharacterEntryResolverService } from '../../../../core/services/character-entry-resolver.service';
+import { ToastService } from '../../../../shared/services/toast.service';
+import { copyText } from '../../../../shared/utils/clipboard';
 import * as logger from '../../../../shared/logger';
 
 export interface SpellResolvedEvent {
@@ -51,20 +92,95 @@ const DND_SKILLS: { name: string; ability: AbilityKey }[] = [
   { name: 'Survival', ability: 'wisdom' },
 ];
 
+/** A uses tracker was added, changed or (uses: null) removed on a feature or spell. */
+export interface UsesChangeEvent {
+  owner: UsesOwner;
+  name: string;
+  uses: LimitedUses | null;
+}
+
+/** A feature's or spell's uses tracker together with how many uses are spent. */
+interface TrackerView {
+  key: string;
+  max: number;
+  spent: number;
+  rechargeLabel: string;
+}
+
+interface SpellEntry {
+  index: number;
+  name: string;
+  /** Null for a legacy spell stored as a bare name. */
+  details: Spell | null;
+  concentration: boolean;
+  concentrating: boolean;
+  tracker: TrackerView | null;
+  canCast: boolean;
+  /** Every way to pay for the cast is used up. */
+  noSlots: boolean;
+  castOptions: CastOption[];
+}
+
 interface SpellGroup {
   key: string;
   label: string;
-  slot?: { total: number; expended: number };
-  entries: { spell: string | Spell; index: number }[];
+  slot?: SpellSlot;
+  entries: SpellEntry[];
 }
+
+interface FeatureEntry {
+  index: number;
+  name: string;
+  /** Null for a legacy feature stored as a bare name. */
+  details: CharacterFeature | null;
+  tracker: TrackerView | null;
+}
+
+interface PlayToast {
+  message: string;
+  /** The play state to go back to, when the action can be undone. */
+  undo: CharacterPlayState | null;
+}
+
+const RECHARGE_LABELS: Record<UsesRecharge, string> = {
+  shortRest: 'Short rest',
+  longRest: 'Long rest',
+  manual: 'Manual',
+};
+
+const TOAST_DURATION_MS = 12_000;
+
+/** Matches the usage text of a resolved spell, e.g. "Duration: Concentration, up to 1 minute". */
+const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
 
 @Component({
   selector: 'app-character-sheet',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule, MatProgressBarModule, CharacterImageGalleryComponent, ImageLightboxComponent],
+  imports: [
+    CommonModule,
+    MatProgressBarModule,
+    CharacterImageGalleryComponent,
+    ImageLightboxComponent,
+    HpTrackerComponent,
+    UsePipsComponent,
+    DeathSavesComponent,
+    ConditionsBarComponent,
+    CastDialogComponent,
+    RestDialogComponent,
+    TrackerEditorComponent,
+    PlayToastComponent,
+    ConcentrationMarkComponent,
+    InspirationToggleComponent,
+    CoinPurseComponent,
+    InventoryItemsComponent,
+  ],
   template: `
     @if (portraitLightbox()) {
       <app-image-lightbox [url]="portraitLightbox()!" (closed)="portraitLightbox.set(null)" />
+    }
+
+    @if (showLongRest()) {
+      <app-rest-dialog [rows]="longRestRows()" (confirmed)="takeLongRest()" (cancelled)="showLongRest.set(false)" />
     }
 
     <div class="sheet max-w-5xl mx-auto space-y-6">
@@ -106,11 +222,22 @@ interface SpellGroup {
               @if (character().playerName) {
                 <span class="tag tag-quiet">Player: {{ character().playerName }}</span>
               }
+              <app-inspiration-toggle [inspired]="play().inspiration" [editable]="editable()" (inspiredChange)="onInspiration($event)" />
             </div>
           </div>
 
           <!-- Actions -->
-          <div class="flex sm:flex-col gap-2 shrink-0">
+          <div class="hero-actions shrink-0" [class.is-grid]="editable()">
+            @if (editable()) {
+              <button type="button" class="action action-rest" (click)="takeShortRest()">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3c1 3-2 4-2 7a2 2 0 004 0c2 1.5 3 3.5 3 5.5a5 5 0 01-10 0C7 11 10 8 12 3z" /></svg>
+                Short rest
+              </button>
+              <button type="button" class="action action-rest is-long" (click)="showLongRest.set(true)">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 14.5A8 8 0 019.5 4a8 8 0 1010.5 10.5z" /></svg>
+                Long rest
+              </button>
+            }
             <button type="button" class="action" [disabled]="exportingPdf()" [attr.aria-busy]="exportingPdf()" (click)="exportPdf.emit()">
               @if (exportingPdf()) {
                 <span class="spinner" aria-hidden="true"></span>
@@ -123,31 +250,36 @@ interface SpellGroup {
               <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
               History
             </button>
+            <button type="button" class="action" title="Copy a link to this character" (click)="shareLink()">
+              @if (linkCopied()) {
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+              } @else {
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+              }
+              {{ linkCopied() ? 'Copied' : 'Share' }}
+            </button>
           </div>
         </div>
 
         <!-- Vitals -->
         <div class="vitals mt-6">
+          <app-hp-tracker
+            class="vital-hp"
+            [current]="play().hp.current"
+            [max]="play().hp.max"
+            [temp]="play().hp.temp"
+            [editable]="editable()"
+            (damage)="onDamage($event)"
+            (heal)="onHeal($event)"
+            (tempChange)="onTempHp($event)"
+          />
+
           <div class="vital">
             <div class="shield">
               <svg viewBox="0 0 40 46" class="absolute inset-0 w-full h-full" aria-hidden="true"><path d="M20 2 L37 8 V22 C37 33 29.5 40.5 20 44 C10.5 40.5 3 33 3 22 V8 Z" /></svg>
               <span class="relative">{{ character().armorClass }}</span>
             </div>
             <span class="vital-label">Armor Class</span>
-          </div>
-
-          <div class="vital vital-hp">
-            <div class="flex items-baseline gap-1">
-              <span class="vital-value">{{ character().hitPoints.current }}</span>
-              <span class="text-sm muted">/ {{ character().hitPoints.max }}</span>
-              @if (character().hitPoints.temp) {
-                <span class="temp-hp" title="Temporary hit points">+{{ character().hitPoints.temp }}</span>
-              }
-            </div>
-            <div class="hp-track" role="progressbar" aria-label="Hit points" [attr.aria-valuenow]="character().hitPoints.current" aria-valuemin="0" [attr.aria-valuemax]="character().hitPoints.max">
-              <div class="hp-fill" [class.hp-low]="hpPercent() <= 25" [style.width.%]="hpPercent()"></div>
-            </div>
-            <span class="vital-label">Hit Points</span>
           </div>
 
           <div class="vital">
@@ -160,8 +292,16 @@ interface SpellGroup {
             <span class="vital-label">Speed</span>
           </div>
 
-          <div class="vital">
-            <span class="vital-value">{{ character().hitDice.current }}<span class="text-sm muted">/{{ character().hitDice.total }}{{ character().hitDice.die }}</span></span>
+          <div class="vital" [class.vital-stepper]="editable()">
+            <div class="flex items-center gap-1">
+              @if (editable()) {
+                <button type="button" class="mini-step" aria-label="Spend a hit die" [disabled]="play().hitDice.current <= 0" (click)="onHitDice(play().hitDice.current - 1)">−</button>
+              }
+              <span class="vital-value">{{ play().hitDice.current }}<span class="text-sm muted">/{{ play().hitDice.total }}{{ play().hitDice.die }}</span></span>
+              @if (editable()) {
+                <button type="button" class="mini-step" aria-label="Regain a hit die" [disabled]="play().hitDice.current >= play().hitDice.total" (click)="onHitDice(play().hitDice.current + 1)">+</button>
+              }
+            </div>
             <span class="vital-label">Hit Dice</span>
           </div>
 
@@ -171,22 +311,27 @@ interface SpellGroup {
           </div>
         </div>
 
-        @if (character().deathSaves.successes > 0 || character().deathSaves.failures > 0) {
-          <div class="death-saves mt-4">
-            <span class="eyebrow">Death Saves</span>
-            <div class="flex items-center gap-2">
-              <span class="text-xs muted">Successes</span>
-              @for (i of [0, 1, 2]; track i) {
-                <span class="pip" [class.pip-success]="i < character().deathSaves.successes"></span>
-              }
-            </div>
-            <div class="flex items-center gap-2">
-              <span class="text-xs muted">Failures</span>
-              @for (i of [0, 1, 2]; track i) {
-                <span class="pip" [class.pip-fail]="i < character().deathSaves.failures"></span>
-              }
-            </div>
-          </div>
+        @if (showDeathSaves()) {
+          <app-death-saves
+            class="mt-4"
+            [successes]="play().deathSaves.successes"
+            [failures]="play().deathSaves.failures"
+            [editable]="editable()"
+            (savesChange)="onDeathSaves($event)"
+          />
+        }
+
+        @if (showStatus()) {
+          <app-conditions-bar
+            class="status"
+            [conditions]="play().conditions"
+            [exhaustion]="play().exhaustion"
+            [concentration]="play().concentration"
+            [editable]="editable()"
+            (conditionToggle)="onConditionToggle($event)"
+            (exhaustionChange)="onExhaustion($event)"
+            (concentrationEnd)="endConcentration()"
+          />
         }
       </header>
 
@@ -297,44 +442,99 @@ interface SpellGroup {
 
               @for (group of spellGroups(); track group.key) {
                 <div class="spell-group">
-                  <div class="flex items-center justify-between gap-3 mb-1">
+                  <div class="group-head">
                     <span class="eyebrow">{{ group.label }}</span>
-                    @if (group.slot) {
-                      <span class="flex gap-1" [attr.aria-label]="(group.slot.total - group.slot.expended) + ' of ' + group.slot.total + ' slots available'">
-                        @for (i of getSlotArray(group.slot.total); track i) {
-                          <span class="slot" [class.slot-used]="i >= group.slot.total - group.slot.expended"></span>
-                        }
+                    @if (group.slot; as slot) {
+                      <span class="slot-row">
+                        <app-use-pips
+                          [total]="slot.total"
+                          [spent]="slot.expended"
+                          [label]="'Level ' + slot.level + ' slot'"
+                          [editable]="editable()"
+                          (spentChange)="onSlotsExpended(slot.level, $event)"
+                        />
+                        <span class="slot-count">{{ slot.total - slot.expended }} / {{ slot.total }}</span>
                       </span>
                     }
                   </div>
 
                   @for (entry of group.entries; track entry.index) {
-                    @if (isString(entry.spell)) {
-                      <div class="entry-head font-semibold text-sm">{{ entry.spell }}</div>
-                    } @else {
-                      <button
-                        type="button"
-                        class="entry-head w-full text-left"
-                        [attr.aria-expanded]="expandedSpells().has(entry.index)"
-                        (click)="toggleSpell(entry.index, entry.spell)"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" class="chevron" [class.rotate-90]="expandedSpells().has(entry.index)" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
-                        <span class="font-semibold text-sm flex-1">{{ entry.spell.name }}</span>
-                        @if (entry.spell.school) {
-                          <span class="tag tag-sm">{{ entry.spell.school }}</span>
-                        }
-                      </button>
+                    <div class="entry-row">
+                      @if (entry.details; as spell) {
+                        <button
+                          type="button"
+                          class="entry-head entry-main text-left"
+                          [attr.aria-expanded]="expandedSpells().has(entry.index)"
+                          (click)="toggleSpell(entry.index, spell)"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" class="chevron" [class.rotate-90]="expandedSpells().has(entry.index)" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+                          <span class="font-semibold text-sm flex-1">{{ entry.name }}</span>
+                          @if (entry.concentration || entry.concentrating) {
+                            <app-concentration-mark [active]="entry.concentrating" />
+                          }
+                        </button>
+                      } @else {
+                        <div class="entry-head entry-main font-semibold text-sm">
+                          <span class="flex-1">{{ entry.name }}</span>
+                          @if (entry.concentration || entry.concentrating) {
+                            <app-concentration-mark [active]="entry.concentrating" />
+                          }
+                        </div>
+                      }
+
+                      @if (entry.tracker; as tracker) {
+                        <app-use-pips
+                          [total]="tracker.max"
+                          [spent]="tracker.spent"
+                          [label]="entry.name + ' use'"
+                          [editable]="editable()"
+                          (spentChange)="onUsesSpent(tracker.key, $event)"
+                        />
+                      }
+
+                      @if (entry.canCast) {
+                        <button
+                          type="button"
+                          class="cast"
+                          [disabled]="entry.noSlots"
+                          [attr.aria-label]="'Cast ' + entry.name"
+                          [attr.aria-expanded]="castingSpell() === entry.index"
+                          (click)="castingSpell.set(entry.index)"
+                        >
+                          <span class="cast-pill">{{ entry.noSlots ? 'No slots' : 'Cast' }}</span>
+                        </button>
+                      }
+
+                      @if (castingSpell() === entry.index) {
+                        <app-cast-dialog
+                          [spellName]="entry.name"
+                          [options]="entry.castOptions"
+                          [needsConcentration]="entry.concentration"
+                          [currentConcentration]="play().concentration"
+                          (cast)="onCast(entry.name, $event)"
+                          (closed)="castingSpell.set(null)"
+                        />
+                      }
+                    </div>
+
+                    @if (entry.details; as spell) {
                       @if (expandedSpells().has(entry.index)) {
                         <div class="entry-body">
+                          @if (spell.school) {
+                            <div class="eyebrow mb-1">{{ spell.school }}</div>
+                          }
                           @if (loadingSpells().has(entry.index)) {
                             <mat-progress-bar mode="indeterminate"></mat-progress-bar>
-                          } @else if (entry.spell.description) {
-                            <div class="whitespace-pre-line">{{ entry.spell.description }}</div>
-                            @if (entry.spell.usage) {
-                              <div class="usage">{{ entry.spell.usage }}</div>
+                          } @else if (spell.description) {
+                            <div class="whitespace-pre-line">{{ spell.description }}</div>
+                            @if (spell.usage) {
+                              <div class="usage">{{ spell.usage }}</div>
                             }
                           } @else {
                             <span class="italic muted">Geen beschrijving beschikbaar</span>
+                          }
+                          @if (editable()) {
+                            <app-tracker-editor [uses]="spell.uses ?? null" (usesChange)="usesChange.emit({ owner: 'spell', name: entry.name, uses: $event })" />
                           }
                         </div>
                       }
@@ -349,10 +549,15 @@ interface SpellGroup {
                   @for (slot of orphanSlots(); track slot.level) {
                     <div class="row">
                       <span class="text-sm">Level {{ slot.level }}</span>
-                      <span class="flex gap-1">
-                        @for (i of getSlotArray(slot.total); track i) {
-                          <span class="slot" [class.slot-used]="i >= slot.total - slot.expended"></span>
-                        }
+                      <span class="slot-row">
+                        <app-use-pips
+                          [total]="slot.total"
+                          [spent]="slot.expended"
+                          [label]="'Level ' + slot.level + ' slot'"
+                          [editable]="editable()"
+                          (spentChange)="onSlotsExpended(slot.level, $event)"
+                        />
+                        <span class="slot-count">{{ slot.total - slot.expended }} / {{ slot.total }}</span>
                       </span>
                     </div>
                   }
@@ -363,30 +568,51 @@ interface SpellGroup {
 
           <section class="panel">
             <h3 class="section-title">Features & Traits</h3>
-            @for (feature of character().featuresAndTraits; track $index) {
-              @if (isString(feature)) {
-                <div class="entry-head font-semibold text-sm">{{ feature }}</div>
-              } @else {
-                <button
-                  type="button"
-                  class="entry-head w-full text-left"
-                  [attr.aria-expanded]="expandedFeatures().has($index)"
-                  (click)="toggleFeature($index, feature)"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" class="chevron" [class.rotate-90]="expandedFeatures().has($index)" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
-                  <span class="font-semibold text-sm flex-1">{{ feature.name }}</span>
-                  @if (feature.source) {
-                    <span class="tag tag-sm">{{ feature.source }}</span>
-                  }
-                </button>
-                @if (expandedFeatures().has($index)) {
+            @for (entry of features(); track entry.index) {
+              <div class="entry-row">
+                @if (entry.details; as feature) {
+                  <button
+                    type="button"
+                    class="entry-head entry-main text-left"
+                    [attr.aria-expanded]="expandedFeatures().has(entry.index)"
+                    (click)="toggleFeature(entry.index, feature)"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" class="chevron" [class.rotate-90]="expandedFeatures().has(entry.index)" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+                    <span class="font-semibold text-sm">{{ entry.name }}</span>
+                  </button>
+                } @else {
+                  <div class="entry-head entry-main font-semibold text-sm">{{ entry.name }}</div>
+                }
+
+                @if (entry.tracker; as tracker) {
+                  <span class="tracker">
+                    <span class="recharge">{{ tracker.rechargeLabel }}</span>
+                    <app-use-pips
+                      [total]="tracker.max"
+                      [spent]="tracker.spent"
+                      [label]="entry.name + ' use'"
+                      [editable]="editable()"
+                      (spentChange)="onUsesSpent(tracker.key, $event)"
+                    />
+                  </span>
+                }
+              </div>
+
+              @if (entry.details; as feature) {
+                @if (expandedFeatures().has(entry.index)) {
                   <div class="entry-body">
-                    @if (loadingFeatures().has($index)) {
+                    @if (feature.source) {
+                      <div class="eyebrow mb-1">{{ feature.source }}</div>
+                    }
+                    @if (loadingFeatures().has(entry.index)) {
                       <mat-progress-bar mode="indeterminate"></mat-progress-bar>
                     } @else if (feature.description) {
                       <div class="whitespace-pre-line">{{ feature.description }}</div>
                     } @else {
                       <span class="italic muted">No description available</span>
+                    }
+                    @if (editable()) {
+                      <app-tracker-editor [uses]="feature.uses ?? null" (usesChange)="usesChange.emit({ owner: 'feature', name: entry.name, uses: $event })" />
                     }
                   </div>
                 }
@@ -398,22 +624,26 @@ interface SpellGroup {
 
           <section class="panel">
             <h3 class="section-title">Inventory</h3>
-            <div class="flex flex-wrap gap-2 mb-4">
-              @for (coin of coins(); track coin.key) {
-                <span class="coin" [title]="coin.name">
-                  <span class="coin-dot" [style.background]="coin.color" aria-hidden="true"></span>
-                  <strong>{{ coin.amount }}</strong>
-                  <span class="muted uppercase text-[0.7rem] tracking-wider">{{ coin.key }}</span>
-                </span>
-              }
-            </div>
+            <app-coin-purse class="mb-4" [coins]="character().coins" [editable]="editable()" (coinsChange)="coinsChange.emit($event)" />
+
+            @if (editable() || play().inventory.length) {
+              <app-inventory-items
+                class="mb-4"
+                [items]="play().inventory"
+                [editable]="editable()"
+                (added)="onItemAdded($event)"
+                (updated)="onItemUpdated($event)"
+                (removed)="onItemRemoved($event)"
+              />
+            }
+
             @if (character().equipment.length) {
               <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
                 @for (item of character().equipment; track item) {
                   <li class="bullet">{{ item }}</li>
                 }
               </ul>
-            } @else {
+            } @else if (!editable() && !play().inventory.length) {
               <p class="empty">No equipment</p>
             }
           </section>
@@ -463,6 +693,10 @@ interface SpellGroup {
           <h3 class="section-title">Backstory</h3>
           <p class="prose-text backstory whitespace-pre-line">{{ character().backstory }}</p>
         </section>
+      }
+
+      @if (toast(); as t) {
+        <app-play-toast [message]="t.message" [canUndo]="!!t.undo" (undo)="undo()" (dismissed)="dismissToast()" />
       }
     </div>
   `,
@@ -604,7 +838,15 @@ interface SpellGroup {
       border: 1px solid rgba(180, 138, 60, 0.25);
     }
     .tag-quiet { background: transparent; color: var(--muted); border-color: var(--line); }
-    .tag-sm { padding: 0.05rem 0.5rem; font-size: 0.68rem; flex-shrink: 0; }
+    .hero-actions { display: flex; gap: 0.5rem; }
+    /* Two rest buttons on the first row, the three page actions on the second. */
+    .hero-actions.is-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+    .hero-actions.is-grid .action { grid-column: span 2; justify-content: center; min-height: 40px; padding-inline: 0.5rem; }
+    .hero-actions.is-grid .action-rest { grid-column: span 3; }
+    @media (min-width: 640px) { .hero-actions:not(.is-grid) { flex-direction: column; } }
+    .action.action-rest { font-weight: 600; color: var(--gold-deep); background: var(--gold-soft); border-color: var(--gold); }
+    .action.action-rest.is-long { color: #f6efe0; background: var(--ink); border-color: var(--ink); }
+    .action.action-rest.is-long:hover { background: #453a35; border-color: #453a35; }
 
     .action {
       position: relative;
@@ -634,24 +876,14 @@ interface SpellGroup {
     @keyframes spin { to { transform: rotate(360deg); } }
 
     /* Vitals */
-    .vitals {
-      position: relative;
-      display: grid;
-      grid-template-columns: repeat(6, minmax(0, 1fr));
-      gap: 0.75rem;
-    }
-    .vitals > .vital { grid-column: span 2; }
-    .vitals > .vital:nth-child(5), .vitals > .vital:nth-child(6) { grid-column: span 3; }
-    .vitals > .vital-hp { grid-column: span 6; order: -1; }
-    @media (min-width: 768px) {
-      .vitals { grid-template-columns: 1fr 1.6fr 1fr 1fr 1fr 1fr; }
-      .vitals > .vital, .vitals > .vital:nth-child(5), .vitals > .vital:nth-child(6), .vitals > .vital-hp { grid-column: auto; order: 0; }
-    }
+    .vitals { position: relative; display: flex; flex-wrap: wrap; gap: 0.75rem; }
+    .vital-hp { flex: 2.4 1 300px; }
     .vital {
+      flex: 1 1 100px;
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: flex-end;
+      justify-content: center;
       gap: 0.3rem;
       padding: 0.75rem 0.5rem;
       border-radius: 10px;
@@ -659,6 +891,20 @@ interface SpellGroup {
       border: 1px solid var(--line);
       min-height: 88px;
     }
+    .vital-stepper { flex-basis: 150px; }
+    .mini-step {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      line-height: 1;
+      color: var(--gold-deep);
+      background: var(--paper);
+      border: 1px solid #d9c9a6;
+    }
+    .mini-step:disabled { opacity: 0.45; }
+    .status { position: relative; margin-top: 1rem; padding-top: 1rem; border-top: 1px dashed #e0d2b6; }
     .vital-value { font-size: 1.5rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
     .vital-label { font-size: 0.62rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); text-align: center; }
 
@@ -674,16 +920,6 @@ interface SpellGroup {
       color: var(--gold-deep);
     }
     .shield path { fill: var(--paper); stroke: var(--gold); stroke-width: 2.5; }
-
-    .hp-track { width: 100%; max-width: 180px; height: 6px; border-radius: 999px; background: #eadfcb; overflow: hidden; }
-    .hp-fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg, #b8434e, var(--wine)); transition: width 0.4s ease; }
-    .hp-fill.hp-low { background: linear-gradient(90deg, #d0662f, #b23a2a); }
-    .temp-hp { font-size: 0.75rem; font-weight: 600; color: #2f6b8f; margin-left: 0.25rem; }
-
-    .death-saves { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 1rem 1.5rem; }
-    .pip { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--line); background: var(--paper); }
-    .pip-success { background: #4c8a52; border-color: #4c8a52; }
-    .pip-fail { background: var(--wine); border-color: var(--wine); }
 
     /* Abilities */
     .ability {
@@ -779,15 +1015,34 @@ interface SpellGroup {
       font-size: 0.85rem;
     }
     .spell-group + .spell-group { margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid #efe6d4; }
-    .slot {
-      width: 12px;
-      height: 12px;
-      transform: rotate(45deg);
-      border-radius: 2px;
-      background: var(--gold);
-      border: 1.5px solid var(--gold);
+    .group-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 0.75rem; min-height: 2rem; }
+    .slot-row { display: inline-flex; align-items: center; margin-left: auto; }
+    .slot-count { min-width: 2.4rem; text-align: right; font-size: 0.8rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+    /* A spell or feature line: the expandable name plus its play controls */
+    .entry-row { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 0 0.35rem; }
+    /* The name's own labels wrap under it rather than run into the controls on a narrow screen. */
+    .entry-head.entry-main { flex: 1 1 9rem; min-width: 0; margin-right: 0; flex-wrap: wrap; row-gap: 0.1rem; }
+    .tracker { display: inline-flex; align-items: center; gap: 0.5rem; margin-left: auto; }
+    /* Pull the last diamond up to the edge of the row; its tap area has room to spare. */
+    .tracker app-use-pips:not(.is-pool) { margin-right: -0.5rem; }
+    .recharge { font-size: 0.7rem; font-weight: 500; letter-spacing: 0.04em; color: var(--muted); }
+    .cast { display: inline-flex; align-items: center; min-height: 44px; padding: 0 0 0 0.25rem; margin-left: auto; touch-action: manipulation; }
+    .cast-pill {
+      display: inline-flex;
+      align-items: center;
+      height: 24px;
+      padding: 0 0.65rem;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--gold-deep);
+      border: 1px solid #e0d2b6;
+      transition: background 0.15s;
     }
-    .slot.slot-used { background: transparent; border-color: #d6c7a8; }
+    .cast:hover:not(:disabled) .cast-pill { background: var(--gold-soft); }
+    .cast:disabled { cursor: default; }
+    .cast:disabled .cast-pill { color: var(--muted); border-style: dashed; border-color: #d9c9a6; }
 
     .entry-head {
       display: flex;
@@ -821,19 +1076,6 @@ interface SpellGroup {
       white-space: pre-line;
     }
 
-    /* Inventory */
-    .coin {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.35rem;
-      padding: 0.25rem 0.65rem;
-      border-radius: 999px;
-      background: var(--paper-2);
-      border: 1px solid var(--line);
-      font-size: 0.85rem;
-      font-variant-numeric: tabular-nums;
-    }
-    .coin-dot { width: 12px; height: 12px; border-radius: 50%; box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.5); }
 
     /* Story */
     .prose-text {
@@ -868,19 +1110,212 @@ export class CharacterSheetComponent {
   images = input<CharacterImage[]>([]);
   canDelete = input<boolean>(false);
   exportingPdf = input<boolean>(false);
+  /** Live table state; null until the player has changed something. */
+  playState = input<CharacterPlayState | null>(null);
+  /** Whether the viewer may play with the sheet (the owner). Others see the state read-only. */
+  editable = input<boolean>(false);
   viewHistory = output<void>();
   exportPdf = output<void>();
   deleteImage = output<CharacterImage>();
   spellResolved = output<SpellResolvedEvent>();
   featureResolved = output<FeatureResolvedEvent>();
+  /** The complete play state after a play action, to be stored. */
+  playStateChange = output<CharacterPlayState>();
+  usesChange = output<UsesChangeEvent>();
+  /** The purse after the player changed a coin amount. Coins belong to the build, so they go on the version. */
+  coinsChange = output<Coins>();
 
   expandedSpells = signal<Set<number>>(new Set());
   loadingSpells = signal<Set<number>>(new Set());
   expandedFeatures = signal<Set<number>>(new Set());
   loadingFeatures = signal<Set<number>>(new Set());
   portraitLightbox = signal<string | null>(null);
+  /** Briefly true after the link to this page was copied. */
+  linkCopied = signal(false);
+
+  toast = signal<PlayToast | null>(null);
+  /** Index of the spell whose cast dialog is open. */
+  castingSpell = signal<number | null>(null);
+  showLongRest = signal(false);
 
   private readonly resolver = inject(CharacterEntryResolverService);
+  private readonly toastService = inject(ToastService);
+  private toastTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Lower-cased names of the character's spells that need concentration, from the bundled spell data. */
+  private readonly concentrationSpells = signal<ReadonlySet<string>>(new Set());
+
+  /** The play state with every gap filled in from the character. */
+  play = computed(() => resolvePlayState(this.character(), this.playState()));
+
+  showDeathSaves = computed(() => {
+    const { hp, deathSaves } = this.play();
+    return (hp.max > 0 && hp.current === 0) || deathSaves.successes > 0 || deathSaves.failures > 0;
+  });
+
+  showStatus = computed(() => {
+    const play = this.play();
+    return this.editable() || play.conditions.length > 0 || play.exhaustion > 0 || !!play.concentration;
+  });
+
+  longRestRows = computed(() => longRestPreview(this.character(), this.playState()));
+
+  private readonly spellNames = computed(() =>
+    (this.character().spellcasting?.spells ?? [])
+      .map(spell => (typeof spell === 'string' ? spell : spell.name))
+      .join('\n')
+  );
+
+  constructor() {
+    // Only the player needs to know up front which spells take concentration (for the
+    // Cast dialog), so viewers are spared the download of the spell data.
+    effect(() => {
+      const names = this.spellNames();
+      if (names && this.editable()) void this.loadConcentrationSpells(names.split('\n'));
+    });
+    inject(DestroyRef).onDestroy(() => this.clearToastTimer());
+  }
+
+  /**
+   * Copy a link to this character. The character page is public, so anyone with the
+   * link can view it; the share address also gives chat apps a preview with the
+   * character's name and portrait.
+   */
+  async shareLink(): Promise<void> {
+    const id = this.characterId();
+    const path = id ? `/share/character/${id}` : window.location.pathname;
+    const url = `${window.location.origin}${path}`;
+    if (await copyText(url)) {
+      this.linkCopied.set(true);
+      setTimeout(() => this.linkCopied.set(false), 3000);
+      this.toastService.show('Link gekopieerd — iedereen met deze link kan dit karakter bekijken.', 'success');
+    } else {
+      // Clipboard blocked (permissions/browser): let the user copy it by hand.
+      window.prompt('Kopieer de link naar dit karakter:', url);
+    }
+  }
+
+  // ── Play actions ──────────────────────────────────────────────
+
+  onDamage(amount: number): void {
+    this.commit(applyDamage(this.character(), this.playState(), amount), true);
+  }
+
+  onHeal(amount: number): void {
+    this.commit(applyHealing(this.character(), this.playState(), amount), true);
+  }
+
+  onTempHp(amount: number): void {
+    this.commit(setTempHp(this.character(), this.playState(), amount), true);
+  }
+
+  onHitDice(current: number): void {
+    this.commit(setHitDice(this.character(), this.playState(), current));
+  }
+
+  onDeathSaves(saves: DeathSaves): void {
+    this.commit(setDeathSaves(this.character(), this.playState(), saves.successes, saves.failures));
+  }
+
+  onSlotsExpended(level: number, expended: number): void {
+    this.commit(setSlotsExpended(this.character(), this.playState(), level, expended));
+  }
+
+  onUsesSpent(key: string, spent: number): void {
+    this.commit(setUsesSpent(this.character(), this.playState(), key, spent));
+  }
+
+  onConditionToggle(condition: string): void {
+    this.commit(toggleCondition(this.character(), this.playState(), condition));
+  }
+
+  onExhaustion(level: number): void {
+    this.commit(setExhaustion(this.character(), this.playState(), level));
+  }
+
+  endConcentration(): void {
+    this.commit(setConcentration(this.character(), this.playState(), null));
+  }
+
+  onInspiration(inspired: boolean): void {
+    this.commit(setInspiration(this.character(), this.playState(), inspired));
+  }
+
+  onItemAdded(item: { id: string; name: string }): void {
+    this.commit(addInventoryItem(this.character(), this.playState(), item.id, item.name));
+  }
+
+  onItemUpdated(change: InventoryItemChange): void {
+    this.commit(updateInventoryItem(this.character(), this.playState(), change.id, change.changes));
+  }
+
+  onItemRemoved(id: string): void {
+    this.commit(removeInventoryItem(this.character(), this.playState(), id), true);
+  }
+
+  onCast(spellName: string, choice: CastChoice): void {
+    this.castingSpell.set(null);
+    this.commit(
+      castSpell(this.character(), this.playState(), {
+        spellName,
+        slotLevel: choice.option.slotLevel,
+        usesKey: choice.option.usesKey,
+        concentrate: choice.concentrate,
+      }),
+      true
+    );
+  }
+
+  takeShortRest(): void {
+    this.commit(shortRest(this.character(), this.playState()), true);
+  }
+
+  takeLongRest(): void {
+    this.showLongRest.set(false);
+    this.commit(longRest(this.character(), this.playState()), true);
+  }
+
+  undo(): void {
+    const previous = this.toast()?.undo;
+    this.dismissToast();
+    if (previous) this.playStateChange.emit(previous);
+  }
+
+  dismissToast(): void {
+    this.clearToastTimer();
+    this.toast.set(null);
+  }
+
+  /** Emit the new play state; with `announce`, also tell the player what happened and offer undo. */
+  private commit(result: PlayStateResult, announce = false): void {
+    if (announce) {
+      this.clearToastTimer();
+      this.toast.set({ message: result.message, undo: currentPlayState(this.character(), this.playState()) });
+      this.toastTimer = setTimeout(() => this.toast.set(null), TOAST_DURATION_MS);
+    }
+    this.playStateChange.emit(result.state);
+  }
+
+  private clearToastTimer(): void {
+    if (this.toastTimer) clearTimeout(this.toastTimer);
+    this.toastTimer = null;
+  }
+
+  private async loadConcentrationSpells(names: string[]): Promise<void> {
+    try {
+      const found = new Set<string>();
+      await Promise.all(
+        names.map(async name => {
+          const details = await this.resolver.lookupSpellLocally(name);
+          if (details?.concentration) found.add(name.toLowerCase());
+        })
+      );
+      this.concentrationSpells.set(found);
+    } catch (e) {
+      logger.error('Failed to look up concentration spells:', e);
+    }
+  }
+
+  // ── Spell and feature texts ───────────────────────────────────
 
   async toggleSpell(
     index: number,
@@ -950,23 +1385,6 @@ export class CharacterSheetComponent {
 
   initial = computed(() => (this.character().name?.trim()[0] ?? '?').toUpperCase());
 
-  hpPercent = computed(() => {
-    const { current, max } = this.character().hitPoints;
-    if (!max) return 0;
-    return Math.max(0, Math.min(100, Math.round((current / max) * 100)));
-  });
-
-  coins = computed(() => {
-    const c = this.character().coins;
-    return [
-      { key: 'pp', name: 'Platinum', amount: c.pp, color: '#d9dde3' },
-      { key: 'gp', name: 'Gold', amount: c.gp, color: '#e2b13c' },
-      { key: 'ep', name: 'Electrum', amount: c.ep, color: '#cfc38a' },
-      { key: 'sp', name: 'Silver', amount: c.sp, color: '#b9bec4' },
-      { key: 'cp', name: 'Copper', amount: c.cp, color: '#b8693a' },
-    ];
-  });
-
   personality = computed(() => {
     const c = this.character();
     return [
@@ -995,22 +1413,23 @@ export class CharacterSheetComponent {
   /** Spells grouped by level (cantrips first), with the matching slot row attached. */
   spellGroups = computed<SpellGroup[]>(() => {
     const spells = this.character().spellcasting?.spells ?? [];
-    const slots = this.spellSlots;
+    const play = this.play();
     const groups = new Map<string, SpellGroup>();
 
     spells.forEach((spell, index) => {
-      const level = typeof spell === 'string' ? undefined : spell.level;
+      const details = typeof spell === 'string' ? null : spell;
+      const name = typeof spell === 'string' ? spell : spell.name;
+      const level = details?.level;
       const key = level === undefined ? 'other' : String(level);
       if (!groups.has(key)) {
-        const slot = level ? slots.find(s => s.level === level) : undefined;
         groups.set(key, {
           key,
           label: level === undefined ? 'Spells' : level === 0 ? 'Cantrips' : `Level ${level}`,
-          slot: slot ? { total: slot.total, expended: slot.expended } : undefined,
+          slot: level ? play.slots.find(s => s.level === level) : undefined,
           entries: [],
         });
       }
-      groups.get(key)!.entries.push({ spell, index });
+      groups.get(key)!.entries.push(this.spellEntry(index, name, details, play));
     });
 
     const order = (k: string) => (k === 'other' ? Number.MAX_SAFE_INTEGER : Number(k));
@@ -1020,8 +1439,80 @@ export class CharacterSheetComponent {
   /** Slot levels that have no spells listed for them, so they still show up. */
   orphanSlots = computed(() => {
     const shown = new Set(this.spellGroups().map(g => g.key));
-    return this.spellSlots.filter(s => s.total > 0 && !shown.has(String(s.level)));
+    return this.play().slots.filter(s => !shown.has(String(s.level)));
   });
+
+  features = computed<FeatureEntry[]>(() => {
+    const play = this.play();
+    return (this.character().featuresAndTraits ?? []).map((feature, index) => {
+      const details = typeof feature === 'string' ? null : feature;
+      const name = details?.name ?? String(feature);
+      return { index, name, details, tracker: this.trackerView('feature', name, details?.uses, play) };
+    });
+  });
+
+  private spellEntry(index: number, name: string, details: Spell | null, play: ResolvedPlayState): SpellEntry {
+    const level = details?.level;
+    const concentration = this.concentrationSpells().has(name.toLowerCase()) || CONCENTRATION_USAGE.test(details?.usage ?? '');
+    const tracker = this.trackerView('spell', name, details?.uses, play);
+    // A cantrip costs nothing, so Cast is only useful there to start concentrating.
+    const canCast = this.editable() && (level !== 0 || concentration || !!tracker);
+    const castOptions = canCast ? this.castOptions(level, tracker, play) : [];
+    return {
+      index,
+      name,
+      details,
+      concentration,
+      concentrating: play.concentration?.toLowerCase() === name.toLowerCase(),
+      tracker,
+      canCast,
+      noSlots: castOptions.every(option => option.disabled),
+      castOptions,
+    };
+  }
+
+  private trackerView(owner: UsesOwner, name: string, uses: LimitedUses | undefined, play: ResolvedPlayState): TrackerView | null {
+    const key = usesKey(owner, name);
+    if (!uses || !(key in play.usesSpent)) return null;
+    return {
+      key,
+      max: Math.trunc(uses.max),
+      spent: play.usesSpent[key],
+      rechargeLabel: RECHARGE_LABELS[uses.recharge] ?? RECHARGE_LABELS.manual,
+    };
+  }
+
+  /** The ways to pay for a cast: the spell's own uses first, then every slot level from its own level up. */
+  private castOptions(level: number | undefined, tracker: TrackerView | null, play: ResolvedPlayState): CastOption[] {
+    const options: CastOption[] = [];
+    const left = (count: number, unit: string) => (count > 0 ? `${count} ${unit}${count === 1 ? '' : 's'} left` : 'None left');
+
+    if (tracker) {
+      const uses = tracker.max - tracker.spent;
+      options.push({ id: 'uses', label: 'Without a slot', detail: left(uses, 'use'), disabled: uses <= 0, primary: false, usesKey: tracker.key });
+    }
+    if (level === 0) {
+      if (!tracker) options.push({ id: 'free', label: 'Cantrip', detail: 'No slot needed', disabled: false, primary: true });
+      return options;
+    }
+
+    for (const slot of play.slots) {
+      if (level !== undefined && slot.level < level) continue;
+      const slots = slot.total - slot.expended;
+      options.push({
+        id: `slot-${slot.level}`,
+        label: level !== undefined && slot.level > level ? `Level ${slot.level} · upcast` : `Level ${slot.level}`,
+        detail: left(slots, 'slot'),
+        disabled: slots <= 0,
+        primary: slot.level === level,
+        slotLevel: slot.level,
+      });
+    }
+    if (!options.length) {
+      options.push({ id: 'free', label: 'Without a slot', detail: 'No slots at this level', disabled: false, primary: true });
+    }
+    return options;
+  }
 
   signed(value: number): string {
     return `${value >= 0 ? '+' : ''}${value}`;
@@ -1035,34 +1526,6 @@ export class CharacterSheetComponent {
   get abilities() {
     const c = this.character();
     return ABILITY_LABELS.map(a => ({ key: a.key, label: a.label, name: a.name, value: c.abilities[a.key] }));
-  }
-
-  isString(value: unknown): value is string {
-    return typeof value === 'string';
-  }
-
-  get spellSlots() {
-    const spellcasting = this.character().spellcasting;
-    if (!spellcasting?.slots) return [];
-
-    if (Array.isArray(spellcasting.slots)) {
-      return [...spellcasting.slots].sort((a, b) => a.level - b.level);
-    }
-
-    return Object.entries(spellcasting.slots)
-      .map(([level, data]) => {
-        const slotData = data as { total?: number; expended?: number };
-        return {
-          level: parseInt(level),
-          total: slotData.total || 0,
-          expended: slotData.expended || 0,
-        };
-      })
-      .sort((a, b) => a.level - b.level);
-  }
-
-  getSlotArray(total: number): number[] {
-    return Array.from({ length: total }, (_, i) => i);
   }
 
   get allSkills() {
