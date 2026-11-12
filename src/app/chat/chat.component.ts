@@ -6,9 +6,8 @@ import { ChatService, Message, ChatAttachment } from './chat.service';
 import { marked } from 'marked';
 import { DndCharacter } from '../shared/models/dnd-character.model';
 import { ImageLightboxComponent } from './image-lightbox.component';
+import { readPdfAttachment } from './pdf-attachment';
 import * as logger from '../shared/logger';
-
-const MAX_PDF_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 
 @Component({
   selector: 'app-chat',
@@ -296,6 +295,12 @@ export class ChatComponent {
     });
   }
 
+  /** Send a PDF right away, as if the user attached it and pressed send. */
+  sendAttachment(attachment: ChatAttachment): void {
+    this.pendingAttachment.set(attachment);
+    this.sendMessage();
+  }
+
   sendMessage(): void {
     const messageText = this.newMessage().trim();
     const attachment = this.pendingAttachment();
@@ -510,34 +515,12 @@ export class ChatComponent {
     });
   }
 
-  private processFile(file: File): void {
-    if (file.type !== 'application/pdf') {
-      this.error.set('Only PDF files are supported.');
-      return;
+  private async processFile(file: File): Promise<void> {
+    try {
+      this.pendingAttachment.set(await readPdfAttachment(file));
+    } catch (e) {
+      this.error.set(e instanceof Error ? e.message : 'Failed to read PDF file.');
     }
-
-    if (file.size > MAX_PDF_SIZE_BYTES) {
-      this.error.set('PDF file exceeds 10 MB limit.');
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      // Strip the data URL prefix to get raw base64
-      const base64 = result.split(',')[1];
-
-      this.pendingAttachment.set({
-        type: 'pdf',
-        fileName: file.name,
-        mimeType: 'application/pdf',
-        data: base64,
-      });
-    };
-    reader.onerror = () => {
-      this.error.set('Failed to read PDF file.');
-    };
-    reader.readAsDataURL(file);
   }
 
   private generateId(): string {

@@ -9,6 +9,7 @@ import { CharacterVersionService } from '../../../../core/services/character-ver
 import { CharacterImageService } from '../../../../core/services/character-image.service';
 import { ChatService } from '../../../../chat/chat.service';
 import { CharacterSheetExportService } from '../../services/character-sheet-export.service';
+import { CharacterImportService } from '../../services/character-import.service';
 import * as logger from '../../../../shared/logger';
 import { Character, CharacterVersion } from '../../../../core/models/schemas/character.schema';
 import { CharacterImage } from '../../../../core/models/schemas/character-image.schema';
@@ -154,6 +155,7 @@ export class CharacterBuilderPageComponent {
   private characterImageService = inject(CharacterImageService);
   private chatService = inject(ChatService);
   private characterSheetExportService = inject(CharacterSheetExportService);
+  private characterImportService = inject(CharacterImportService);
   private destroyRef = inject(DestroyRef);
 
   // State
@@ -252,6 +254,16 @@ export class CharacterBuilderPageComponent {
       }
     });
 
+    // A PDF picked in the import dialog of the character list: hand it to the chat of
+    // the freshly created character as soon as that chat is on screen.
+    effect(() => {
+      const characterId = this.selectedCharacterId();
+      const chat = this.isNarrow() ? this.chatDrawer() : this.chat();
+      if (!characterId || !chat || !this.isOwner() || !this.latestVersion()) return;
+      // Wait a tick, so the chat has been told which character it is talking about.
+      setTimeout(() => this.sendPendingPdf(characterId));
+    });
+
     // Clean up service state on destroy
     this.destroyRef.onDestroy(() => {
       this.characterService.activeCharacterId.set(null);
@@ -262,6 +274,16 @@ export class CharacterBuilderPageComponent {
 
   onWindowResize(): void {
     this.updateLayoutWidth();
+  }
+
+  private sendPendingPdf(characterId: string): void {
+    const chat = this.isNarrow() ? this.chatDrawer() : this.chat();
+    if (!chat || this.selectedCharacterId() !== characterId) return;
+    const pdf = this.characterImportService.takePdf(characterId);
+    // The drawer reports false while its chat is not rendered yet: keep the PDF for the next try.
+    if (pdf && chat.sendAttachment(pdf) === false) {
+      this.characterImportService.queuePdf(characterId, pdf);
+    }
   }
 
   async loadCharacters() {
