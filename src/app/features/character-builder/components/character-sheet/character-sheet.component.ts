@@ -267,9 +267,9 @@ interface SpellGroup {
               <ul class="space-y-2">
                 @for (attack of character().attacks; track attack.name) {
                   <li class="attack">
-                    <span class="font-semibold min-w-0 truncate">{{ attack.name }}</span>
+                    <span class="attack-name">{{ attack.name }}</span>
                     <span class="attack-bonus" title="Attack bonus">{{ signed(attack.bonus ?? 0) }}</span>
-                    <span class="text-sm muted text-right">{{ attack.damage }} {{ attack.type }}</span>
+                    <span class="text-sm muted min-w-0">{{ attack.damage }} {{ attack.type }}</span>
                   </li>
                 }
               </ul>
@@ -747,15 +747,16 @@ interface SpellGroup {
     /* Attacks */
     .attack {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto minmax(0, auto);
+      grid-template-columns: auto minmax(0, 1fr);
       align-items: center;
-      gap: 0.75rem;
+      gap: 0.35rem 0.6rem;
       padding: 0.6rem 0.8rem;
       border-radius: 10px;
       background: var(--paper-2);
       border: 1px solid var(--line);
       font-size: 0.9rem;
     }
+    .attack-name { grid-column: 1 / -1; font-weight: 600; overflow-wrap: anywhere; }
     .attack-bonus {
       font-weight: 700;
       font-variant-numeric: tabular-nums;
