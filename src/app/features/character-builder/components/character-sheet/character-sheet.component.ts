@@ -246,10 +246,23 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
               }
               {{ exportingPdf() ? 'Preparing PDF…' : 'PDF' }}
             </button>
-            <button type="button" class="action" (click)="viewHistory.emit()">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-              History
-            </button>
+            @if (editable()) {
+              <!-- Version history is the owner's; for a visitor the button would do nothing. -->
+              <button type="button" class="action" (click)="viewHistory.emit()">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                History
+              </button>
+            }
+            @if (canClone()) {
+              <button type="button" class="action" title="Copy this character to your own account" [disabled]="cloning()" [attr.aria-busy]="cloning()" (click)="cloneCharacter.emit()">
+                @if (cloning()) {
+                  <span class="spinner" aria-hidden="true"></span>
+                } @else {
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                }
+                {{ cloning() ? 'Cloning…' : 'Clone' }}
+              </button>
+            }
             <button type="button" class="action" title="Copy a link to this character" (click)="shareLink()">
               @if (linkCopied()) {
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
@@ -838,7 +851,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
       border: 1px solid rgba(180, 138, 60, 0.25);
     }
     .tag-quiet { background: transparent; color: var(--muted); border-color: var(--line); }
-    .hero-actions { display: flex; gap: 0.5rem; }
+    .hero-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem; }
     /* Two rest buttons on the first row, the three page actions on the second. */
     .hero-actions.is-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); }
     .hero-actions.is-grid .action { grid-column: span 2; justify-content: center; min-height: 40px; padding-inline: 0.5rem; }
@@ -1114,6 +1127,9 @@ export class CharacterSheetComponent {
   playState = input<CharacterPlayState | null>(null);
   /** Whether the viewer may play with the sheet (the owner). Others see the state read-only. */
   editable = input<boolean>(false);
+  /** Whether the viewer can copy this character to their own account (signed in, not the owner). */
+  canClone = input<boolean>(false);
+  cloning = input<boolean>(false);
   viewHistory = output<void>();
   exportPdf = output<void>();
   deleteImage = output<CharacterImage>();
@@ -1122,6 +1138,7 @@ export class CharacterSheetComponent {
   /** The complete play state after a play action, to be stored. */
   playStateChange = output<CharacterPlayState>();
   usesChange = output<UsesChangeEvent>();
+  cloneCharacter = output<void>();
   /** The purse after the player changed a coin amount. Coins belong to the build, so they go on the version. */
   coinsChange = output<Coins>();
 

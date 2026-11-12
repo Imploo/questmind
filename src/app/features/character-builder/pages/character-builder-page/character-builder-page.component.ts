@@ -10,6 +10,7 @@ import { CharacterImageService } from '../../../../core/services/character-image
 import { ChatService } from '../../../../chat/chat.service';
 import { CharacterSheetExportService } from '../../services/character-sheet-export.service';
 import { CharacterImportService } from '../../services/character-import.service';
+import { ToastService } from '../../../../shared/services/toast.service';
 import * as logger from '../../../../shared/logger';
 import { Character, CharacterVersion } from '../../../../core/models/schemas/character.schema';
 import { CharacterImage } from '../../../../core/models/schemas/character-image.schema';
@@ -80,6 +81,9 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
                           [exportingPdf]="exportingPdf()"
                           [playState]="playState()"
                           [editable]="isOwner()"
+                          [canClone]="canClone()"
+                          [cloning]="cloning()"
+                          (cloneCharacter)="onCloneCharacter()"
                           (playStateChange)="onPlayStateChange($event)"
                           (usesChange)="onUsesChange($event)"
                           (coinsChange)="onCoinsChange($event)"
@@ -156,6 +160,7 @@ export class CharacterBuilderPageComponent {
   private chatService = inject(ChatService);
   private characterSheetExportService = inject(CharacterSheetExportService);
   private characterImportService = inject(CharacterImportService);
+  private toastService = inject(ToastService);
   private destroyRef = inject(DestroyRef);
 
   // State
@@ -174,6 +179,14 @@ export class CharacterBuilderPageComponent {
     if (!user || !character) return false;
     return user.uid === character.userId;
   });
+
+  /** A signed-in visitor looking at someone else's character can copy it to their own account. */
+  canClone = computed(() => {
+    const user = this.authService.currentUser();
+    const character = this.selectedCharacter();
+    return !!user && !!character && user.uid !== character.userId;
+  });
+  cloning = signal(false);
 
   // Latest version from Firestore real-time listener
   latestVersion = this.characterVersionService.latestVersion;
@@ -230,8 +243,12 @@ export class CharacterBuilderPageComponent {
     effect(() => {
       const character = this.characterService.activeCharacter();
       if (character) {
+        // Also add it when it is new to the list: a character the backend just created
+        // (an import or a clone) can arrive after the page already looked for it.
         this.characters.update(list =>
-          list.map(c => c.id === character.id ? character : c)
+          list.some(c => c.id === character.id)
+            ? list.map(c => c.id === character.id ? character : c)
+            : [...list, character]
         );
       }
     });
@@ -491,6 +508,22 @@ export class CharacterBuilderPageComponent {
       await this.characterVersionService.patchUses(charId, versionId, event.owner, event.name, event.uses);
     } catch (e) {
       logger.error('Failed to store uses tracker:', e);
+    }
+  }
+
+  async onCloneCharacter(): Promise<void> {
+    const charId = this.selectedCharacterId();
+    if (!charId || !this.canClone() || this.cloning()) return;
+    this.cloning.set(true);
+    try {
+      const cloneId = await this.characterImportService.cloneCharacter(charId);
+      this.toastService.show('Karakter gekloond — dit is nu je eigen kopie.', 'success');
+      await this.router.navigate(['/characters', cloneId]);
+    } catch (e) {
+      logger.error('Failed to clone character:', e);
+      this.toastService.showCallableError(e, 'Klonen is mislukt. Probeer het opnieuw.');
+    } finally {
+      this.cloning.set(false);
     }
   }
 

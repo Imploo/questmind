@@ -56,9 +56,14 @@ export class CharacterService {
     return this.characters() as Character[];
   }
 
+  /**
+   * A character by id: one of the user's own from the live list, otherwise a one-time
+   * read (characters are public, so someone else's character can be viewed too).
+   */
   async getCharacter(characterId: string): Promise<Character | null> {
     await this.characterRepo.waitForData();
-    return await this.characterRepo.getByKey(characterId) as Character | null;
+    const own = await this.characterRepo.getByKey(characterId);
+    return (own ?? await this.characterRepo.fetchByKey(characterId)) as Character | null;
   }
 
   /**

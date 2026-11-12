@@ -35,6 +35,14 @@ describe('CharacterImportService', () => {
     expect(callable).toHaveBeenCalledWith({ link: 'https://questmind.nl/share/character/abc' });
   });
 
+  it('asks the backend to clone a character of this environment by id', async () => {
+    callable.mockResolvedValue({ data: { characterId: 'clone-id' } });
+
+    expect(await service.cloneCharacter('abc')).toBe('clone-id');
+    expect(httpsCallable).toHaveBeenCalledWith('functions', 'importCharacter');
+    expect(callable).toHaveBeenCalledWith({ characterId: 'abc' });
+  });
+
   it('hands a queued PDF out once, and only to its own character', () => {
     service.queuePdf('char-1', pdf);
 

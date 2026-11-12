@@ -9,6 +9,7 @@ import {
   DocumentReference,
   Firestore,
   FirestoreError,
+  getDoc,
   onSnapshot,
   query,
   Query,
@@ -59,6 +60,16 @@ export abstract class FirestoreRepository<
   public async getByKey(key: T[K]): Promise<T | null> {
     await this.waitForInitialization();
     return this._data().find((item) => item[this.keyProp] === key) ?? null;
+  }
+
+  /**
+   * One-time read of a single document, also when it falls outside the listened
+   * query (e.g. a public document of another user). Null when it does not exist.
+   */
+  public async fetchByKey(key: T[K]): Promise<T | null> {
+    const snapshot = await getDoc(this.getDocRef(key as string));
+    if (!snapshot.exists()) return null;
+    return { ...this.mapDocToModel(snapshot), [this.keyProp]: snapshot.id } as T;
   }
 
   public async update(item: T): Promise<void> {
