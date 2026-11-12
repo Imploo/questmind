@@ -562,9 +562,6 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" class="chevron" [class.rotate-90]="expandedFeatures().has(entry.index)" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
                     <span class="font-semibold text-sm">{{ entry.name }}</span>
-                    @if (feature.source) {
-                      <span class="tag tag-sm">{{ feature.source }}</span>
-                    }
                   </button>
                 } @else {
                   <div class="entry-head entry-main font-semibold text-sm">{{ entry.name }}</div>
@@ -587,6 +584,9 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
               @if (entry.details; as feature) {
                 @if (expandedFeatures().has(entry.index)) {
                   <div class="entry-body">
+                    @if (feature.source) {
+                      <div class="eyebrow mb-1">{{ feature.source }}</div>
+                    }
                     @if (loadingFeatures().has(entry.index)) {
                       <mat-progress-bar mode="indeterminate"></mat-progress-bar>
                     } @else if (feature.description) {
@@ -817,8 +817,6 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
       border: 1px solid rgba(180, 138, 60, 0.25);
     }
     .tag-quiet { background: transparent; color: var(--muted); border-color: var(--line); }
-    /* Source of a feature: a quiet label, so the row's controls stand out. */
-    .tag-sm { padding: 0; font-size: 0.68rem; flex-shrink: 0; color: var(--muted); background: transparent; border-color: transparent; }
     .hero-actions { display: flex; gap: 0.5rem; }
     .hero-actions.is-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .hero-actions.is-grid .action { justify-content: center; min-height: 40px; }
