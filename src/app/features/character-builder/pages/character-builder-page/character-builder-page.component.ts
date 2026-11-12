@@ -14,7 +14,7 @@ import { Character, CharacterVersion } from '../../../../core/models/schemas/cha
 import { CharacterImage } from '../../../../core/models/schemas/character-image.schema';
 import { Coins, DndCharacter } from '../../../../shared/models/dnd-character.model';
 import { CharacterPlayState } from '../../../../shared/models/character-play-state.model';
-import { applyPlayStateToCharacter } from '../../../../shared/utils/character-play-state';
+import { applyPlayStateToCharacter, resolvePlayState } from '../../../../shared/utils/character-play-state';
 import { CharacterSheetComponent, SpellResolvedEvent, FeatureResolvedEvent, UsesChangeEvent } from '../../components/character-sheet/character-sheet.component';
 import { ChatComponent } from '../../../../chat/chat.component';
 import { CharacterDraftPreviewComponent } from '../../components/character-draft-preview/character-draft-preview.component';
@@ -414,7 +414,10 @@ export class CharacterBuilderPageComponent {
     this.isNarrow.set(window.innerWidth < 1024);
   }
 
-  /** The PDF is the sheet as built: it leaves the live play state out. */
+  /**
+   * The PDF is the sheet as built: it leaves the live play state (hit points, spent
+   * slots, ...) out, except for the items the player keeps by hand.
+   */
   async onExportPdf(): Promise<void> {
     const version = this.latestVersion();
     if (!version || this.exportingPdf()) return;
@@ -422,6 +425,7 @@ export class CharacterBuilderPageComponent {
     try {
       await this.characterSheetExportService.export({
         character: version.character,
+        inventory: resolvePlayState(version.character, this.playState()).inventory,
         characterId: this.selectedCharacterId(),
         versionId: version.id ?? null,
         canResolveRemotely: this.isOwner(),
