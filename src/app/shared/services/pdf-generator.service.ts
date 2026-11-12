@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import type { PDFFont } from 'pdf-lib';
 import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces';
 import { DndCharacter } from '../models/dnd-character.model';
+import { InventoryItem } from '../models/character-play-state.model';
 import { CHARACTER_SHEET_TEMPLATE_URL, MULTILINE_FIELDS, TEXT_FIELDS } from '../pdf/character-sheet-template';
 import { buildSheetFieldValues, SheetFeature, SheetSpell } from '../pdf/character-sheet-field-values';
 import * as logger from '../logger';
@@ -47,12 +48,23 @@ const CHAR_REPLACEMENTS: Record<string, string> = {
 export class PdfGeneratorService {
   private readonly http = inject(HttpClient);
 
-  async generateCharacterPdf(character: DndCharacter, spells: SheetSpell[], features: SheetFeature[]): Promise<void> {
-    const bytes = await this.buildCharacterPdf(character, spells, features);
+  /** `inventory`: items the player keeps by hand; those with a description are described in the appendix. */
+  async generateCharacterPdf(
+    character: DndCharacter,
+    spells: SheetSpell[],
+    features: SheetFeature[],
+    inventory: InventoryItem[] = []
+  ): Promise<void> {
+    const bytes = await this.buildCharacterPdf(character, spells, features, inventory);
     this.download(bytes, `${character.name} - Character Sheet.pdf`);
   }
 
-  async buildCharacterPdf(character: DndCharacter, spells: SheetSpell[], features: SheetFeature[]): Promise<Uint8Array> {
+  async buildCharacterPdf(
+    character: DndCharacter,
+    spells: SheetSpell[],
+    features: SheetFeature[],
+    inventory: InventoryItem[] = []
+  ): Promise<Uint8Array> {
     const { PDFDocument, PDFTextField, PDFCheckBox, StandardFonts } = await import('pdf-lib');
     const template = await firstValueFrom(this.http.get(CHARACTER_SHEET_TEMPLATE_URL, { responseType: 'arraybuffer' }));
     const doc = await PDFDocument.load(template);
@@ -91,7 +103,7 @@ export class PdfGeneratorService {
     }
     form.updateFieldAppearances(font);
 
-    const appendix = this.buildAppendixDefinition(character, spells, features, overflow);
+    const appendix = this.buildAppendixDefinition(character, spells, features, overflow, inventory);
     if (appendix) {
       const appendixDoc = await PDFDocument.load(await this.renderWithPdfMake(appendix));
       const pages = await doc.copyPages(appendixDoc, appendixDoc.getPageIndices());
@@ -106,7 +118,8 @@ export class PdfGeneratorService {
     character: DndCharacter,
     spells: SheetSpell[],
     features: SheetFeature[],
-    overflow: OverflowSection[] = []
+    overflow: OverflowSection[] = [],
+    inventory: InventoryItem[] = []
   ): TDocumentDefinitions | null {
     const content: Content[] = [];
 
@@ -126,6 +139,15 @@ export class PdfGeneratorService {
         });
         // Keep the level heading on the same page as its first spell.
         content.push({ stack: [{ text: group.title, style: 'groupTitle' }, entries[0]], unbreakable: true }, ...entries.slice(1));
+      }
+    }
+
+    // Every item is already a line in the Equipment box; only the ones with a text get an entry here.
+    const describedItems = inventory.filter(item => item.description);
+    if (describedItems.length) {
+      content.push({ text: 'Inventory', style: 'sectionTitle', margin: [0, content.length ? 12 : 0, 0, 8] });
+      for (const item of describedItems) {
+        content.push(this.buildEntry(item.name, item.value || undefined, [], item.description));
       }
     }
 

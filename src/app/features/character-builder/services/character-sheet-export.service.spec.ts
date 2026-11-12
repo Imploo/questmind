@@ -48,6 +48,29 @@ describe('CharacterSheetExportService', () => {
     service = TestBed.inject(CharacterSheetExportService);
   });
 
+  it('adds hand-kept inventory items to the equipment and passes them on', async () => {
+    const inventory = [
+      { id: 'a', name: 'Arrows', value: '20', description: '' },
+      { id: 'b', name: 'Rope', value: '', description: 'Hempen.' },
+    ];
+    const c = character({ equipment: ['Quarterstaff'] });
+
+    await service.export({ ...request(c), inventory });
+
+    const call = pdf.generateCharacterPdf.mock.calls[0];
+    expect(call[0].equipment).toEqual(['Quarterstaff', 'Arrows (20)', 'Rope']);
+    expect(call[3]).toEqual(inventory);
+    expect(c.equipment).toEqual(['Quarterstaff']);
+  });
+
+  it('leaves the equipment alone without inventory items', async () => {
+    const c = character({ equipment: ['Quarterstaff'] });
+
+    await service.export(request(c));
+
+    expect(pdf.generateCharacterPdf.mock.calls[0][0]).toBe(c);
+  });
+
   it('resolves missing texts, renders them and stores them in one write', async () => {
     resolver.resolveSpell.mockResolvedValue({ description: 'Darts.', usage: 'Casting Time: 1 action', level: 1, school: 'evocation' });
     resolver.resolveFeature.mockResolvedValue({ description: 'Regain slots.' });

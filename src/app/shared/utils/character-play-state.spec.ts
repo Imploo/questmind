@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { DndCharacter } from '../models/dnd-character.model';
 import {
+  addInventoryItem,
   applyDamage,
   applyHealing,
   applyPlayStateToCharacter,
@@ -9,12 +10,14 @@ import {
   hasPactMagic,
   longRest,
   longRestPreview,
+  removeInventoryItem,
   resolvePlayState,
   setSlotsExpended,
   setTempHp,
   setUsesSpent,
   shortRest,
   toggleCondition,
+  updateInventoryItem,
   usesKey,
 } from './character-play-state';
 
@@ -265,7 +268,45 @@ describe('currentPlayState', () => {
       exhaustion: 0,
       concentration: null,
       inspiration: false,
+      inventory: [],
     });
+  });
+});
+
+describe('inventory', () => {
+  const rope = { id: 'a', name: 'Rope', value: '50 ft', description: 'Hempen' };
+
+  it('adds an item with a trimmed name and ignores a blank one', () => {
+    const { state } = addInventoryItem(character(), null, 'a', '  Rope ');
+    expect(state.inventory).toEqual([{ id: 'a', name: 'Rope', value: '', description: '' }]);
+    expect(addInventoryItem(character(), state, 'b', '   ').state.inventory).toHaveLength(1);
+  });
+
+  it('does not add the same id twice', () => {
+    expect(addInventoryItem(character(), { inventory: [rope] }, 'a', 'Rope again').state.inventory).toEqual([rope]);
+  });
+
+  it('updates the value and description of one item', () => {
+    const torch = { id: 'b', name: 'Torch', value: '3', description: '' };
+    const { state } = updateInventoryItem(character(), { inventory: [rope, torch] }, 'b', { value: '2' });
+    expect(state.inventory).toEqual([rope, { ...torch, value: '2' }]);
+    expect(updateInventoryItem(character(), state, 'a', { description: 'Silk' }).state.inventory?.[0].description).toBe('Silk');
+  });
+
+  it('removes an item and says which one', () => {
+    const { state, message } = removeInventoryItem(character(), { inventory: [rope] }, 'a');
+    expect(state.inventory).toEqual([]);
+    expect(message).toBe('Removed Rope from the inventory.');
+  });
+
+  it('keeps the inventory through a long rest and other play actions', () => {
+    expect(longRest(character(), { inventory: [rope] }).state.inventory).toEqual([rope]);
+    expect(applyDamage(character(), { inventory: [rope] }, 5).state.inventory).toEqual([rope]);
+  });
+
+  it('drops stored items without an id or a name', () => {
+    const broken = [{ id: '', name: 'x', value: '', description: '' }, { id: 'c', name: '', value: '', description: '' }, rope];
+    expect(resolvePlayState(character(), { inventory: broken }).inventory).toEqual([rope]);
   });
 });
 

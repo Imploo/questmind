@@ -12,9 +12,9 @@ import { CharacterSheetExportService } from '../../services/character-sheet-expo
 import * as logger from '../../../../shared/logger';
 import { Character, CharacterVersion } from '../../../../core/models/schemas/character.schema';
 import { CharacterImage } from '../../../../core/models/schemas/character-image.schema';
-import { DndCharacter } from '../../../../shared/models/dnd-character.model';
+import { Coins, DndCharacter } from '../../../../shared/models/dnd-character.model';
 import { CharacterPlayState } from '../../../../shared/models/character-play-state.model';
-import { applyPlayStateToCharacter } from '../../../../shared/utils/character-play-state';
+import { applyPlayStateToCharacter, resolvePlayState } from '../../../../shared/utils/character-play-state';
 import { CharacterSheetComponent, SpellResolvedEvent, FeatureResolvedEvent, UsesChangeEvent } from '../../components/character-sheet/character-sheet.component';
 import { ChatComponent } from '../../../../chat/chat.component';
 import { CharacterDraftPreviewComponent } from '../../components/character-draft-preview/character-draft-preview.component';
@@ -81,6 +81,7 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
                           [editable]="isOwner()"
                           (playStateChange)="onPlayStateChange($event)"
                           (usesChange)="onUsesChange($event)"
+                          (coinsChange)="onCoinsChange($event)"
                           (exportPdf)="onExportPdf()"
                           (viewHistory)="showHistory.set(true)"
                           (deleteImage)="onDeleteImage($event)"
@@ -413,7 +414,10 @@ export class CharacterBuilderPageComponent {
     this.isNarrow.set(window.innerWidth < 1024);
   }
 
-  /** The PDF is the sheet as built: it leaves the live play state out. */
+  /**
+   * The PDF is the sheet as built: it leaves the live play state (hit points, spent
+   * slots, ...) out, except for the items the player keeps by hand.
+   */
   async onExportPdf(): Promise<void> {
     const version = this.latestVersion();
     if (!version || this.exportingPdf()) return;
@@ -421,6 +425,7 @@ export class CharacterBuilderPageComponent {
     try {
       await this.characterSheetExportService.export({
         character: version.character,
+        inventory: resolvePlayState(version.character, this.playState()).inventory,
         characterId: this.selectedCharacterId(),
         versionId: version.id ?? null,
         canResolveRemotely: this.isOwner(),
@@ -464,6 +469,17 @@ export class CharacterBuilderPageComponent {
       await this.characterVersionService.patchUses(charId, versionId, event.owner, event.name, event.uses);
     } catch (e) {
       logger.error('Failed to store uses tracker:', e);
+    }
+  }
+
+  async onCoinsChange(coins: Coins): Promise<void> {
+    const charId = this.selectedCharacterId();
+    const versionId = this.latestVersion()?.id;
+    if (!charId || !versionId || !this.isOwner()) return;
+    try {
+      await this.characterVersionService.patchCoins(charId, versionId, coins);
+    } catch (e) {
+      logger.error('Failed to store coins:', e);
     }
   }
 

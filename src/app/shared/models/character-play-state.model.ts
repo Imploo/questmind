@@ -1,3 +1,12 @@
+/** Something the player added to the inventory by hand. */
+export interface InventoryItem {
+  id: string;
+  name: string;
+  /** Free text: a count, a worth, charges left ("20", "50 gp"). */
+  value: string;
+  description: string;
+}
+
 /**
  * The live table state of a character: what changes while playing.
  *
@@ -19,4 +28,6 @@ export interface CharacterPlayState {
   /** Name of the spell being concentrated on. */
   concentration?: string | null;
   inspiration?: boolean;
+  /** Items the player added by hand, next to the equipment of the build. */
+  inventory?: InventoryItem[];
 }
