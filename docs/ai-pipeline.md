@@ -128,7 +128,7 @@ opname ──► 7. Gespreksverslag ──► 8. Verhaal ──► (op verzoek) 
 
 ## Bekende aandachtspunten
 
-- **Ongebruikte callables**: `generateCharacterDraftCallable` en `generateImage` worden niet meer door de app aangeroepen (de chat-worker voert die stappen zelf uit). Ze staan er nog omdat een deploy zonder `--force` stopt als een bestaande function uit de code verdwijnt. Verwijderen kan in twee stappen: eerst `firebase functions:delete`, daarna de export weghalen.
+- **Functions opruimen**: de deploy (`scripts/deploy-firebase.js`) verwijdert functions die niet meer in `functions/src` staan. Daarvoor gaat `--force` mee, maar alleen op de functions-stap; hosting en regels worden daarna zonder `--force` uitgerold, zodat Firestore-indexen die niet in `firestore.indexes.json` staan blijven bestaan.
 - **Lokaal draaien**: de chat heeft de Cloud Tasks-emulator nodig (`firebase emulators:start --only functions,tasks`, zie `npm run start:backend:functions`).
 
 - **Legacy `characterChat`-config**: wordt in de admin alleen bewaard voor oudere opgeslagen settings; de chat gebruikt `characterChatText`.

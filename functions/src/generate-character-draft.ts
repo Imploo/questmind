@@ -1,13 +1,8 @@
-import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { DndCharacterSchema, DndCharacter } from './schemas/dnd-character.schema';
 import { CHARACTER_JSON_GENERATOR_PROMPT } from './prompts/character-json-generator.prompt';
-import { wrapCallable } from './utils/sentry-error-handler';
 import { getAiFeatureConfig } from './utils/ai-settings';
 import { GeminiEmptyResponseError, generateJson, getGeminiClient } from './utils/gemini-client';
-import { SHARED_CORS } from './config/cors';
-import { ensureAuthForTesting } from './utils/emulator-helpers';
-import { assertCharacterOwner, requireAuthUid } from './utils/access';
 import * as logger from './utils/logger';
 import { ChatHistoryMessage } from './types/chat.types';
 import {
@@ -44,8 +39,8 @@ export interface GenerateCharacterDraftOptions {
 
 /**
  * Core logic for AI 2: generates a character draft from chat context and stores
- * it as a draft version. Called after the caller's auth/owner checks. Returns the
- * saved draft, or null when `shouldSave` turned it down.
+ * it as a draft version. Run by the chat worker, for a turn whose sender was checked
+ * to own the character. Returns the saved draft, or null when `shouldSave` turned it down.
  */
 export async function executeGenerateCharacterDraft(
   payload: GenerateCharacterDraftPayload,
@@ -178,42 +173,6 @@ function checkAbilityScores(draft: DndCharacter): CheckedDraft {
   }
   return { character: derived.character, issues: validateAbilityScores(derived.character), corrections };
 }
-
-/**
- * Callable endpoint for AI 2: allows the frontend to trigger character draft generation directly.
- */
-export const generateCharacterDraftCallable = onCall(
-  {
-    cors: SHARED_CORS,
-    secrets: ['GOOGLE_AI_API_KEY'],
-  },
-  wrapCallable<GenerateCharacterDraftPayload, { success: boolean }>(
-    'generateCharacterDraftCallable',
-    async (request): Promise<{ success: boolean }> => {
-      ensureAuthForTesting(request);
-      const uid = requireAuthUid(request);
-
-      const payload = request.data;
-
-      if (!payload.characterId || !payload.currentCharacter || !payload.chatHistory || !payload.ai1Response) {
-        throw new HttpsError('invalid-argument', 'Missing required fields: characterId, currentCharacter, chatHistory, ai1Response');
-      }
-
-      const db = getFirestore();
-      await assertCharacterOwner(db, payload.characterId, uid);
-      await db.collection('characters').doc(payload.characterId).update({ isGenerating: true });
-
-      try {
-        await executeGenerateCharacterDraft(payload);
-        return { success: true };
-      } catch (error) {
-        await db.collection('characters').doc(payload.characterId)
-          .update({ isGenerating: false }).catch(() => undefined);
-        throw error;
-      }
-    }
-  )
-);
 
 interface DraftCheckResults {
   abilityScoreWarnings: string[];

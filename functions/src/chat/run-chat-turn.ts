@@ -38,7 +38,10 @@ interface ResponderResult {
   title?: string;
 }
 
-type InlinePdf = { mimeType: string; data: string };
+interface InlinePdf {
+  mimeType: string;
+  data: string;
+}
 
 /**
  * One turn of a stored conversation: answer the user's message (or draw the

@@ -1,39 +1,16 @@
-import { HttpsError, onCall } from 'firebase-functions/v2/https';
-import { wrapCallable } from './utils/sentry-error-handler';
+import { HttpsError } from 'firebase-functions/v2/https';
 import { getAiImageConfig, getAiFeatureConfig } from './utils/ai-settings';
 import { generateText, getGeminiClient } from './utils/gemini-client';
-import { SHARED_CORS } from './config/cors';
 import { getStorage } from 'firebase-admin/storage';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { randomUUID } from 'crypto';
 import { ChatHistoryMessage } from './types/chat.types';
-import { ensureAuthForTesting } from './utils/emulator-helpers';
-import { assertCharacterOwner, assertValidId, requireAuthUid } from './utils/access';
 import { buildDownloadUrl } from './utils/storage-url';
 import {
   IMAGE_GENERATION_SYSTEM_PROMPT,
   IMAGE_REFERENCE_STYLE_INSTRUCTION,
 } from './prompts/image-generation.prompt';
 import * as logger from './utils/logger';
-
-/**
- * Conversation context the image prompt is written from. `systemPrompt` is
- * still accepted for backward compatibility but ignored: the system prompt is
- * decided server-side.
- */
-export interface ImagePromptContext {
-    systemPrompt?: string;
-    chatHistory: ChatHistoryMessage[];
-}
-
-interface GenerateImageRequest {
-    chatRequest: ImagePromptContext;
-    /** Requested Gemini image model; only honoured when it is on the allow-list. */
-    model?: string;
-    characterId: string;
-    /** Previous portrait used as style reference; must be one of this character's images. */
-    referenceImageStoragePath?: string;
-}
 
 export interface GenerateImageResponse {
   imageUrl: string;
@@ -43,25 +20,12 @@ export interface GenerateImageResponse {
 /** Default Gemini image model (Nano Banana 2.1). */
 export const DEFAULT_IMAGE_MODEL = 'gemini-nano-banana-2.1';
 
-/** Gemini image models a client may ask for; anything else falls back to the AI settings model. */
-export const ALLOWED_IMAGE_MODELS: ReadonlySet<string> = new Set([
-  'gemini-nano-banana-2.1',
-  'gemini-3.1-flash-image',
-  'gemini-3.1-flash-lite-image',
-  'gemini-3-pro-image',
-]);
-
 /**
- * The requested model when allowed (or the configured one), otherwise the configured model.
- * A configured model that isn't a Gemini model (e.g. a stale `fal-ai/...` value in the AI
- * settings) is replaced by the default.
+ * The image model from the AI settings. A value that isn't a Gemini model (e.g. a stale
+ * `fal-ai/...` left in the settings) is replaced by the default.
  */
-export function resolveImageModel(requested: unknown, configuredModel: string): string {
-  const configured = configuredModel?.startsWith('gemini-') ? configuredModel : DEFAULT_IMAGE_MODEL;
-  if (typeof requested === 'string' && (requested === configured || ALLOWED_IMAGE_MODELS.has(requested))) {
-    return requested;
-  }
-  return configured;
+export function resolveImageModel(configuredModel: string): string {
+  return configuredModel?.startsWith('gemini-') ? configuredModel : DEFAULT_IMAGE_MODEL;
 }
 
 /** Storage folder of a character's images; reference images must come from here. */
@@ -69,67 +33,24 @@ export function characterImagePrefix(characterId: string): string {
   return `images/${characterId}/`;
 }
 
-export const generateImage = onCall(
-  {
-    cors: SHARED_CORS,
-    secrets: ['GOOGLE_AI_API_KEY'],
-  },
-  wrapCallable<GenerateImageRequest, GenerateImageResponse>(
-    'generateImage',
-    async (request): Promise<GenerateImageResponse> => {
-      ensureAuthForTesting(request);
-      const uid = requireAuthUid(request);
-
-      const { chatRequest, model: requestModel, referenceImageStoragePath } = request.data ?? {};
-      if (!chatRequest || !Array.isArray(chatRequest.chatHistory)) {
-        throw new HttpsError('invalid-argument', 'Missing required fields: chatRequest, characterId');
-      }
-      const characterId = assertValidId(request.data.characterId, 'characterId');
-
-      if (referenceImageStoragePath !== undefined && referenceImageStoragePath !== null) {
-        if (
-          typeof referenceImageStoragePath !== 'string' ||
-          !referenceImageStoragePath.startsWith(characterImagePrefix(characterId)) ||
-          referenceImageStoragePath.includes('..')
-        ) {
-          throw new HttpsError('invalid-argument', 'referenceImageStoragePath does not belong to this character');
-        }
-      }
-
-      const db = getFirestore();
-      await assertCharacterOwner(db, characterId, uid);
-
-      return generateCharacterImage({
-        characterId,
-        chatHistory: chatRequest.chatHistory,
-        requestedModel: requestModel,
-        referenceImageStoragePath: referenceImageStoragePath ?? null,
-      });
-    }
-  )
-);
-
 export interface CharacterImageRequest {
   characterId: string;
   /** Character context and conversation the image prompt is written from. */
   chatHistory: ChatHistoryMessage[];
-  /** Requested Gemini image model; only honoured when it is on the allow-list. */
-  requestedModel?: unknown;
-  /** Previous portrait used as style reference; the caller has checked it belongs to this character. */
+  /** Previous portrait used as style reference; must be one of this character's images. */
   referenceImageStoragePath?: string | null;
 }
 
 /**
  * Write an image prompt from the conversation, render the portrait and store it
- * with the character (Storage + `characters/{id}/images`). The caller has checked
- * that the user owns the character.
+ * with the character (Storage + `characters/{id}/images`). Run by the chat worker,
+ * for a turn whose sender was checked to own the character.
  */
 export async function generateCharacterImage(request: CharacterImageRequest): Promise<GenerateImageResponse> {
-  const { characterId, chatHistory, requestedModel, referenceImageStoragePath } = request;
+  const { characterId, chatHistory, referenceImageStoragePath } = request;
   const db = getFirestore();
 
-  const imageConfig = await getAiImageConfig();
-  const model = resolveImageModel(requestedModel, imageConfig.model);
+  const model = resolveImageModel((await getAiImageConfig()).model);
 
   // Use Gemini to convert character context + conversation into a descriptive image prompt
   const rawContext = chatHistory.map(chat => `[${chat.role}]: ${chat.content}`).join('\n');
