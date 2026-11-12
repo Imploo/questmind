@@ -7,10 +7,18 @@ type CallableFn = (...args: unknown[]) => Promise<unknown>;
 
 const docs: Record<string, Record<string, unknown> | undefined> = {};
 const mockImageSet = vi.fn();
+const mockLatestImages = vi.fn();
 vi.mock('firebase-admin/firestore', () => ({
   getFirestore: () => ({
     doc: (path: string) => ({ get: async () => ({ exists: docs[path] !== undefined, data: () => docs[path] }) }),
-    collection: () => ({ doc: () => ({ collection: () => ({ doc: () => ({ id: 'img-1', set: mockImageSet }) }) }) }),
+    collection: () => ({
+      doc: () => ({
+        collection: () => ({
+          doc: () => ({ id: 'img-1', set: mockImageSet }),
+          orderBy: () => ({ limit: () => ({ get: mockLatestImages }) }),
+        }),
+      }),
+    }),
   }),
   FieldValue: { serverTimestamp: () => 'SERVER_TIMESTAMP' },
 }));
@@ -51,7 +59,7 @@ vi.mock('firebase-functions/v2/https', async () => {
   };
 });
 
-import { resolveImageModel } from './generate-image';
+import { latestCharacterImagePath, resolveImageModel } from './generate-image';
 import { getAiImageConfig } from './utils/ai-settings';
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -172,5 +180,25 @@ describe('resolveImageModel', () => {
   it('replaces a non-Gemini configured model with the default', () => {
     expect(resolveImageModel(undefined, 'fal-ai/flux/schnell')).toBe('gemini-nano-banana-2.1');
     expect(resolveImageModel('fal-ai/flux/schnell', 'fal-ai/flux/schnell')).toBe('gemini-nano-banana-2.1');
+  });
+});
+
+describe('latestCharacterImagePath', () => {
+  const images = (...storagePaths: unknown[]) => ({
+    empty: storagePaths.length === 0,
+    docs: storagePaths.map(storagePath => ({ data: () => ({ storagePath }) })),
+  });
+
+  it('returns the newest portrait of the character', async () => {
+    mockLatestImages.mockResolvedValueOnce(images('images/char-1/newest.png'));
+    expect(await latestCharacterImagePath('char-1')).toBe('images/char-1/newest.png');
+  });
+
+  it('returns null without portraits, or for a path outside the character folder', async () => {
+    mockLatestImages.mockResolvedValueOnce(images());
+    expect(await latestCharacterImagePath('char-1')).toBeNull();
+
+    mockLatestImages.mockResolvedValueOnce(images('images/other-char/portrait.png'));
+    expect(await latestCharacterImagePath('char-1')).toBeNull();
   });
 });

@@ -1,17 +1,17 @@
-import { ChangeDetectionStrategy, Component, signal, inject, input, effect, viewChild, ElementRef, afterNextRender, runInInjectionContext, EnvironmentInjector, computed } from '@angular/core';
+import { ChangeDetectionStrategy, Component, signal, inject, input, output, effect, viewChild, ElementRef, afterNextRender, runInInjectionContext, EnvironmentInjector, computed } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import { Subscription } from 'rxjs';
-import { ChatService, Message, ChatAttachment } from './chat.service';
+import { ChatService, ChatAttachment } from './chat.service';
 import { marked } from 'marked';
 import { DndCharacter } from '../shared/models/dnd-character.model';
 import { ImageLightboxComponent } from './image-lightbox.component';
+import { ChatHistoryPanelComponent } from './chat-history-panel.component';
 import { readPdfAttachment } from './pdf-attachment';
-import * as logger from '../shared/logger';
+import { dayLabel, formatTime, isSameDay } from './chat-view';
 
 @Component({
   selector: 'app-chat',
-  imports: [FormsModule, ImageLightboxComponent],
+  imports: [FormsModule, ImageLightboxComponent, ChatHistoryPanelComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     '[class.flex]': 'true',
@@ -24,9 +24,34 @@ import * as logger from '../shared/logger';
       <app-image-lightbox [url]="lightboxUrl()!" (closed)="closeLightbox()" />
     }
 
-    <div class="flex flex-col h-full bg-white">
-      <div class="py-1.5 px-4 border-b border-gray-200 bg-gradient-to-br from-primary to-secondary text-white rounded-2xl text-center">
-        <h2 class="!m-0 text-sm font-bold">The Sidekick</h2>
+    <div class="relative flex flex-col h-full overflow-hidden bg-white">
+      <div class="flex items-center gap-1.5 py-1 px-1.5 border-b border-gray-200 bg-gradient-to-br from-primary to-secondary text-white rounded-2xl">
+        <button
+          type="button"
+          class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border-none bg-white/20 text-white hover:bg-white/35 cursor-pointer"
+          aria-label="Eerdere gesprekken"
+          title="Eerdere gesprekken"
+          (click)="historyOpen.set(true)"
+        >
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+            <path d="M3 3v5h5" />
+            <path d="M12 7v5l4 2" />
+          </svg>
+        </button>
+        <h2 class="!m-0 min-w-0 flex-1 truncate text-center !text-sm !leading-7 font-bold">{{ title() }}</h2>
+        <button
+          type="button"
+          class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border-none bg-white/20 text-white hover:bg-white/35 cursor-pointer"
+          aria-label="Nieuw gesprek"
+          title="Nieuw gesprek"
+          (click)="startNewChat()"
+        >
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+            <path d="M18.4 2.6a2.1 2.1 0 0 1 3 3L12.4 14.6 8 16l1.4-4.4z" />
+          </svg>
+        </button>
       </div>
 
       <div class="flex-1 overflow-y-auto p-4 flex flex-col gap-3 bg-gray-50 scrollbar-thin" #messagesContainer>
@@ -37,7 +62,21 @@ import * as logger from '../shared/logger';
           </div>
         }
 
-        @for (message of messages(); track message.id) {
+        @if (hasEarlierMessages()) {
+          <button
+            type="button"
+            class="self-center rounded-md border border-gray-200 bg-white px-3 py-1 text-xs text-gray-600 hover:bg-gray-100 cursor-pointer"
+            (click)="loadEarlierMessages()"
+          >Eerdere berichten laden</button>
+        }
+
+        @for (row of rows(); track row.message.id) {
+          @let message = row.message;
+          @if (row.dayLabel) {
+            <div class="flex items-center gap-2 text-[0.7rem] text-gray-500 before:h-px before:flex-1 before:bg-gray-200 after:h-px after:flex-1 after:bg-gray-200">
+              {{ row.dayLabel }}
+            </div>
+          }
           @if (message.sender === 'system') {
             <div class="max-w-[85%] p-3 rounded-lg self-start bg-amber-50 border border-amber-200 rounded-bl-sm animate-slide-in text-sm">
               <div class="leading-relaxed flex items-center gap-2">
@@ -49,9 +88,18 @@ import * as logger from '../shared/logger';
                   </div>
                 }
                 <span class="text-amber-800">{{ message.text }}</span>
+                @if (message.versionNumber) {
+                  <button
+                    type="button"
+                    (click)="viewVersions.emit()"
+                    class="text-xs font-semibold text-amber-800 underline hover:no-underline shrink-0 bg-transparent border-none cursor-pointer p-0"
+                    title="Versiegeschiedenis openen"
+                  >versie {{ message.versionNumber }}</button>
+                }
                 @if (message.isUpdatingCharacter) {
                   <button
-                    (click)="cancelCharacterUpdate()"
+                    type="button"
+                    (click)="cancelCharacterUpdate(message.id)"
                     class="text-xs text-amber-700 underline hover:no-underline ml-auto shrink-0 bg-transparent border-none cursor-pointer p-0"
                   >Annuleren</button>
                 }
@@ -104,7 +152,7 @@ import * as logger from '../shared/logger';
           }
         }
 
-        @if (isLoading() && !isStreaming()) {
+        @if (isWaitingForAnswer()) {
           <div class="max-w-[85%] p-3 rounded-lg self-start bg-white border border-gray-200 animate-slide-in text-sm">
             <div class="leading-relaxed">
               <div class="flex gap-1 py-1">
@@ -227,6 +275,20 @@ import * as logger from '../shared/logger';
           <button (click)="clearError()" class="bg-transparent border-none text-xl text-red-700 cursor-pointer p-0 w-5 h-5 leading-none hover:opacity-70 ml-2">&times;</button>
         </div>
       }
+
+      <app-chat-history-panel
+        [open]="historyOpen()"
+        [conversations]="conversations()"
+        [activeChatId]="activeChatId()"
+        [characterName]="character()?.name ?? ''"
+        [canLoadMore]="hasMoreConversations()"
+        (selectChat)="openChat($event)"
+        (newChat)="startNewChat()"
+        (rename)="renameChat($event)"
+        (remove)="deleteChat($event)"
+        (loadMore)="loadMoreConversations()"
+        (closed)="historyOpen.set(false)"
+      />
     </div>
 
     <input
@@ -242,12 +304,24 @@ export class ChatComponent {
   // Optional character input - when provided, enables character-aware mode
   character = input<DndCharacter | null>(null);
 
-  messages = signal<Message[]>([]);
+  /** The user asks for the version history (from a finished character update). */
+  viewVersions = output<void>();
+
+  private chatService = inject(ChatService);
+  private sanitizer = inject(DomSanitizer);
+  private environmentInjector = inject(EnvironmentInjector);
+
+  messages = this.chatService.messages;
+  conversations = this.chatService.conversations;
+  activeChatId = this.chatService.activeChatId;
+  hasMoreConversations = this.chatService.hasMoreConversations;
+  hasEarlierMessages = this.chatService.hasEarlierMessages;
+  /** True while the open conversation waits for an answer; sending is paused until it is there. */
+  isLoading = this.chatService.isBusy;
+
   newMessage = signal<string>('');
-  isLoading = signal<boolean>(false);
-  /** True while a streamed AI reply is visible; replaces the typing indicator. */
-  isStreaming = signal<boolean>(false);
   error = signal<string>('');
+  historyOpen = signal(false);
   messagesContainer = viewChild<ElementRef<HTMLDivElement>>('messagesContainer');
   messageInput = viewChild<ElementRef<HTMLInputElement>>('messageInput');
   pdfFileInput = viewChild<ElementRef<HTMLInputElement>>('pdfFileInput');
@@ -258,16 +332,32 @@ export class ChatComponent {
   pendingAttachment = signal<ChatAttachment | null>(null);
   isDragOver = signal(false);
 
-  private chatService = inject(ChatService);
-  private sanitizer = inject(DomSanitizer);
-  private environmentInjector = inject(EnvironmentInjector);
-  private ai2Subscription: Subscription | null = null;
-  private lastAttachments: ChatAttachment[] | undefined;
+  title = computed(() => this.chatService.activeConversation()?.title || 'The Sidekick');
+
+  /** The messages with a day label on the first message of each day. */
+  rows = computed(() => {
+    const now = new Date();
+    let previous: Date | undefined;
+    return this.messages().map(message => {
+      const label = !previous || !isSameDay(previous, message.timestamp) ? dayLabel(message.timestamp, now) : null;
+      previous = message.timestamp;
+      return { message, dayLabel: label };
+    });
+  });
+
+  /** An answer is on its way but nothing of it can be shown yet: the typing indicator stands in. */
+  isWaitingForAnswer = computed(() =>
+    this.messages().some(message => message.inProgress && !message.text && !message.images?.length)
+  );
+
+  /** Changes when a message is added at the end or the last one grows; loading earlier messages leaves it alone. */
+  private lastMessageMark = computed(() => {
+    const messages = this.messages();
+    const last = messages[messages.length - 1];
+    return last ? `${last.id}:${last.sender}:${last.text.length}:${last.images?.length ?? 0}` : '';
+  });
 
   constructor() {
-    // Load chat history from service
-    this.messages.set(this.chatService.getMessages());
-
     // Configure marked options
     marked.setOptions({
       breaks: true,
@@ -281,12 +371,10 @@ export class ChatComponent {
 
     effect(() => {
       const container = this.messagesContainer();
-      if (!container) {
+      if (!container || !this.lastMessageMark()) {
         return;
       }
-      if (this.messages().length === 0 && !this.isLoading()) {
-        return;
-      }
+      this.isWaitingForAnswer();
       runInInjectionContext(this.environmentInjector, () => {
         afterNextRender(() => {
           this.scrollToBottom(container.nativeElement);
@@ -311,71 +399,12 @@ export class ChatComponent {
 
     // Clear previous errors
     this.error.set('');
-
-    // Use a default message when only an attachment is provided
-    const displayText = messageText || 'Import this character';
-
-    // Add user message
-    const userMessage: Message = {
-      id: this.generateId(),
-      sender: 'user',
-      text: displayText,
-      timestamp: new Date(),
-      ...(attachment && { pdfFileName: attachment.fileName }),
-    };
-
-    this.messages.update(msgs => [...msgs, userMessage]);
     this.newMessage.set('');
     this.pendingAttachment.set(null);
-    this.isLoading.set(true);
 
-    const aiMessageId = this.generateId();
-    const aiMessage: Message = {
-      id: aiMessageId,
-      sender: 'ai',
-      text: '',
-      timestamp: new Date()
-    };
-    this.messages.update(msgs => [...msgs, aiMessage]);
-
-    // Get AI response
-    const attachments = attachment ? [attachment] : undefined;
-    this.chatService.sendMessage(displayText, attachments).subscribe({
-      next: (response) => {
-        this.updateMessage(aiMessageId, response.text, response.images);
-        // An empty partial (e.g. after a backend retry reset) shows the typing indicator again.
-        this.isStreaming.set(Boolean(response.partial && response.text));
-        if (response.partial) {
-          return;
-        }
-
-        if (response.shouldUpdateCharacter) {
-          this.lastAttachments = attachments;
-          this.startCharacterUpdate(response.text);
-        }
-      },
-      complete: () => {
-        this.isStreaming.set(false);
-        this.isLoading.set(false);
-      },
-      error: (err) => {
-        logger.error('AI Service Error:', err);
-        // Drop text streamed before the failure; the error message replaces it.
-        this.updateMessage(aiMessageId, '');
-        this.isStreaming.set(false);
-        const errorMessage = this.getErrorMessage(err);
-        this.error.set(errorMessage);
-
-        const errorMsg: Message = {
-          id: this.generateId(),
-          sender: 'error',
-          text: `Sorry, I encountered an error: ${errorMessage}`,
-          timestamp: new Date()
-        };
-        this.messages.update(msgs => [...msgs, errorMsg]);
-        this.isLoading.set(false);
-      }
-    });
+    // Use a default message when only an attachment is provided.
+    // From here the backend owns the turn; its progress arrives through the messages.
+    void this.chatService.send(messageText || 'Import this character', attachment ?? undefined);
   }
 
   focusInput(): void {
@@ -394,6 +423,33 @@ export class ChatComponent {
       return;
     }
     this.newMessage.update(current => `${current}${text}`);
+  }
+
+  startNewChat(): void {
+    this.chatService.newChat();
+    this.historyOpen.set(false);
+    this.focusInput();
+  }
+
+  openChat(chatId: string): void {
+    this.chatService.openChat(chatId);
+    this.historyOpen.set(false);
+  }
+
+  renameChat(change: { id: string; title: string }): void {
+    void this.chatService.renameChat(change.id, change.title);
+  }
+
+  deleteChat(chatId: string): void {
+    void this.chatService.deleteChat(chatId);
+  }
+
+  loadMoreConversations(): void {
+    this.chatService.loadMoreConversations();
+  }
+
+  loadEarlierMessages(): void {
+    this.chatService.loadEarlierMessages();
   }
 
   toggleActionMenu(event: Event): void {
@@ -458,11 +514,7 @@ export class ChatComponent {
   }
 
   formatTime(timestamp: Date): string {
-    return new Intl.DateTimeFormat('en-US', {
-      hour: 'numeric',
-      minute: 'numeric',
-      hour12: true
-    }).format(timestamp);
+    return formatTime(timestamp);
   }
 
   parseMarkdown(text: string): SafeHtml {
@@ -470,49 +522,9 @@ export class ChatComponent {
     return this.sanitizer.sanitize(1, html) || '';
   }
 
-  cancelCharacterUpdate(): void {
-    if (this.ai2Subscription) {
-      this.ai2Subscription.unsubscribe();
-      this.ai2Subscription = null;
-    }
-    this.messages.update(msgs =>
-      msgs.map(m => m.isUpdatingCharacter
-        ? { ...m, text: 'Karakter aanpassen geannuleerd.', isUpdatingCharacter: false }
-        : m
-      )
-    );
-  }
-
-  private startCharacterUpdate(ai1Response: string): void {
-    const updateMessageId = this.generateId();
-    const updateMessage: Message = {
-      id: updateMessageId,
-      sender: 'system',
-      text: 'Karakter wordt aangepast...',
-      timestamp: new Date(),
-      isUpdatingCharacter: true,
-    };
-    this.messages.update(msgs => [...msgs, updateMessage]);
-
-    this.ai2Subscription = this.chatService.generateCharacterDraft(ai1Response, this.lastAttachments).subscribe({
-      next: () => {
-        this.messages.update(msgs =>
-          msgs.map(m => m.id === updateMessageId
-            ? { ...m, text: 'Karakter is aangepast!', isUpdatingCharacter: false }
-            : m
-          )
-        );
-      },
-      error: (err) => {
-        logger.error('Character update error:', err);
-        this.messages.update(msgs =>
-          msgs.map(m => m.id === updateMessageId
-            ? { ...m, text: 'Karakter aanpassen mislukt.', isUpdatingCharacter: false, sender: 'error' as const }
-            : m
-          )
-        );
-      },
-    });
+  /** Stop a running character update; the backend then drops the draft it is making. */
+  cancelCharacterUpdate(messageId: string): void {
+    void this.chatService.cancelCharacterUpdate(messageId);
   }
 
   private async processFile(file: File): Promise<void> {
@@ -521,35 +533,6 @@ export class ChatComponent {
     } catch (e) {
       this.error.set(e instanceof Error ? e.message : 'Failed to read PDF file.');
     }
-  }
-
-  private generateId(): string {
-    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  }
-
-  private updateMessage(messageId: string, text: string, images?: { url: string; mimeType: string }[]): void {
-    this.messages.update(messages =>
-      messages.map(message =>
-        message.id === messageId ? { ...message, text, images } : message
-      )
-    );
-  }
-
-  private getErrorMessage(error: unknown): string {
-    const e = error as { status?: number; error?: { error?: { message?: string } }; message?: string };
-    if (e.status === 0) {
-      return 'Network error. Please check your connection.';
-    }
-    if (e.status === 401) {
-      return 'API key invalid or missing. Please check your configuration.';
-    }
-    if (e.status === 429) {
-      return 'Rate limit exceeded. Please try again later.';
-    }
-    if (e.error?.error?.message) {
-      return e.error.error.message;
-    }
-    return e.message || 'An unexpected error occurred.';
   }
 
   openLightbox(url: string): void {

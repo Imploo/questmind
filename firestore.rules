@@ -36,6 +36,11 @@ service cloud.firestore {
         get(/databases/$(database)/documents/campaigns/$(campaignId)/audioSessions/$(sessionId)).data.ownerId == getUserId();
     }
 
+    function isCharacterOwner(characterId) {
+      return isAuthenticated() &&
+        get(/databases/$(database)/documents/characters/$(characterId)).data.userId == getUserId();
+    }
+
     function isAdmin() {
       return isAuthenticated() &&
         exists(/databases/$(database)/documents/users/$(getUserId())) &&
@@ -79,6 +84,31 @@ service cloud.firestore {
         allow create, delete: if isAuthenticated() &&
           get(/databases/$(database)/documents/characters/$(characterId)).data.userId == getUserId();
         allow update: if false; // Immutable
+      }
+
+      // Conversations with The Sidekick. A character is public, its conversations are
+      // the owner's alone. The backend (characterChat) writes them; the owner can only
+      // rename a conversation here. Deleting goes through deleteCharacterChat.
+      match /chats/{chatId} {
+        allow read: if isCharacterOwner(characterId);
+        allow update: if isCharacterOwner(characterId) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'titleSource']) &&
+          request.resource.data.title is string &&
+          request.resource.data.title.size() > 0 &&
+          request.resource.data.title.size() <= 80 &&
+          request.resource.data.titleSource == 'user';
+        allow create, delete: if false;
+
+        match /messages/{messageId} {
+          allow read: if isCharacterOwner(characterId);
+          // Cancel a running character update; the worker then drops the draft it is making.
+          allow update: if isCharacterOwner(characterId) &&
+            resource.data.kind == 'characterUpdate' &&
+            resource.data.status == 'pending' &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) &&
+            request.resource.data.status == 'cancelled';
+          allow create, delete: if false;
+        }
       }
     }
 

@@ -2,7 +2,7 @@
 
 Overzicht van alle AI-stappen, hun input en wat ze opleveren.
 
-Laatst bijgewerkt: 2026-10-21
+Laatst bijgewerkt: 2026-11-12
 
 ## Configuratie
 
@@ -22,7 +22,8 @@ Elke stap heeft een key onder `settings/ai` → `features.<key>` in Firestore en
 
 | # | Stap (key) | Model | Input | Resultaat |
 |---|---|---|---|---|
-| 1 | **Character Chat** (`characterChatText`) | Gemini, thinking low | Gebruikersbericht, chatgeschiedenis, huidig character | JSON `{ text, shouldUpdateCharacter }` |
+| 1 | **Character Chat** (`characterChatText`) | Gemini, thinking low | Gebruikersbericht, opgeslagen chatgeschiedenis (+ samenvatting), huidig character | JSON `{ text, shouldUpdateCharacter, title? }`, opgeslagen als bericht |
+| 1b | **Chat-samenvatting** (`characterChatText`) | Gemini, thinking low | Oudere berichten van een lang gesprek + vorige samenvatting | `summary` op het gesprek |
 | 2 | **Character Draft** (`characterDraft`) | Gemini, thinking medium | Chatcontext | Volledig D&D 5e-character (JSON) als draft-versie |
 | 3 | **Spell Resolution** (`spellResolution`) | Gemini, thinking low | Spells zonder beschrijving | `description` + `usage` per spell |
 | 4 | **Feature Resolution** (`featureResolution`) | Gemini, thinking low | Features/traits zonder beschrijving | `description` per feature |
@@ -31,8 +32,25 @@ Elke stap heeft een key onder `settings/ai` → `features.<key>` in Firestore en
 
 ### Details
 
-**1. Character Chat** — `functions/src/character-chat.ts` (`characterChat`, aangeroepen vanuit `src/app/chat/chat.service.ts`)
-Geeft een chatantwoord terug. Als `shouldUpdateCharacter` true is, start de frontend stap 2.
+**1. Character Chat** — `functions/src/character-chat.ts` + `functions/src/chat/` (aangeroepen vanuit `src/app/chat/chat.service.ts`)
+
+Gesprekken worden per character bewaard en door de backend afgehandeld, zodat een antwoord (en een character-update) ook doorloopt als de app tussendoor dichtgaat.
+
+```
+app ──► characterChat (callable) ──► Cloud Task ──► characterChatWorker ──► Firestore ──► app (live)
+        schrijft vraag + leeg antwoord              stap 1, daarna zo nodig stap 2 of 5+6
+```
+
+- **Opslag**: `characters/{id}/chats/{chatId}` (titel, laatste bericht, labels, samenvatting) met `messages/{messageId}` (`sender`, `kind`, `status`, `text`, ...). Alleen de eigenaar kan ze lezen; alleen de backend schrijft ze. De eigenaar mag via de regels alleen een gesprek hernoemen en een lopende character-update annuleren. Verwijderen gaat via `deleteCharacterChat`.
+- **`characterChat`** controleert eigenaarschap, schrijft de vraag en een antwoord met `status: 'pending'`, zet de beurt op de wachtrij en keert direct terug. Een PDF wordt voor de worker geparkeerd in Storage (`chat-attachments/...`, niet leesbaar voor clients) en na de beurt verwijderd. Het character reist mee in de taak (de app stuurt het character zoals de eigenaar het nu ziet, inclusief play state).
+- **`characterChatWorker`** (`runChatTurn`) bouwt de context op uit de opgeslagen berichten, streamt het antwoord en schrijft de tekst hooguit elke halve seconde naar het antwoordbericht (`status: 'streaming'` → `'done'`). Een fout komt als `status: 'error'` + `errorCode` op het bericht; de app maakt er een melding van. Een taak die dubbel wordt afgeleverd doet niets: alleen een antwoord dat nog `pending` is wordt opgepakt.
+- **Context**: het character, de samenvatting van het oudere deel (als die er is) en de vragen en antwoorden daarna. Afbeeldingsverzoeken, character-updates en mislukte antwoorden tellen niet mee.
+- **Titel**: een nieuw gesprek krijgt de ingekorte eerste vraag als titel (`titleSource: 'auto'`). Zolang dat zo is vraagt stap 1 in hetzelfde antwoord om een `title` (`'ai'`). Een titel die de eigenaar zelf koos (`'user'`) wordt niet overschreven.
+- **Als `shouldUpdateCharacter` true is** start de worker stap 2 zelf. De voortgang staat als systeembericht (`kind: 'characterUpdate'`) in het gesprek; na afloop staat daar het versienummer van de draft. Annuleert de eigenaar (`status: 'cancelled'`), dan wordt de gegenereerde draft niet opgeslagen.
+- **Afbeelding**: een bericht met "maak afbeelding" gaat als `mode: 'image'` naar dezelfde worker, die stap 5 + 6 uitvoert en de afbeelding op het antwoordbericht zet. Het nieuwste portret van het character dient als stijlreferentie.
+
+**1b. Chat-samenvatting** — `functions/src/chat/chat-summary.ts`, prompt in `functions/src/prompts/chat-summary.prompt.ts`
+Draait na een antwoord. Staan er meer dan 30 vragen en antwoorden klaar als context, dan worden alle behalve de laatste 20 samengevat in `summary` op het gesprek (`summarizedUntil` markeert tot waar). Gebruikt de instellingen van `characterChatText`. Mislukt de samenvatting, dan gaat de volgende beurt gewoon met een langere context mee.
 
 **2. Character Draft** — `functions/src/generate-character-draft.ts`
 Schrijft naar `characters/{id}/versions`:
@@ -47,7 +65,7 @@ Update `character.spellcasting.spells` in de character-versie.
 **4. Feature Resolution** — `functions/src/resolve-feature.ts`
 Update `character.featuresAndTraits` in de character-versie.
 
-**5 + 6. Afbeelding** — `functions/src/generate-image.ts` (`generateImage`)
+**5 + 6. Afbeelding** — `functions/src/generate-image.ts` (`generateCharacterImage`, aangeroepen door de chat-worker)
 Stap 5 en 6 draaien altijd samen: Gemini schrijft de prompt en een Gemini-beeldmodel (Interactions API) genereert de afbeelding. De afbeelding wordt opgeslagen in Firebase Storage, met metadata (`storagePath`) in Firestore voor de galerij.
 
 ---
@@ -109,5 +127,8 @@ opname ──► 7. Gespreksverslag ──► 8. Verhaal ──► (op verzoek) 
 ---
 
 ## Bekende aandachtspunten
+
+- **Ongebruikte callables**: `generateCharacterDraftCallable` en `generateImage` worden niet meer door de app aangeroepen (de chat-worker voert die stappen zelf uit). Ze staan er nog omdat een deploy zonder `--force` stopt als een bestaande function uit de code verdwijnt. Verwijderen kan in twee stappen: eerst `firebase functions:delete`, daarna de export weghalen.
+- **Lokaal draaien**: de chat heeft de Cloud Tasks-emulator nodig (`firebase emulators:start --only functions,tasks`, zie `npm run start:backend:functions`).
 
 - **Legacy `characterChat`-config**: wordt in de admin alleen bewaard voor oudere opgeslagen settings; de chat gebruikt `characterChatText`.

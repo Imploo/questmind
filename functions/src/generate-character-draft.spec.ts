@@ -104,18 +104,41 @@ describe('executeGenerateCharacterDraft', () => {
     };
   }
 
-  it('should return early when required payload fields are missing', async () => {
+  it('should refuse a payload with required fields missing, without calling the AI', async () => {
     const { executeGenerateCharacterDraft } = await import('./generate-character-draft');
 
-    await executeGenerateCharacterDraft({
+    await expect(executeGenerateCharacterDraft({
       characterId: '',
       currentCharacter: null as unknown as DndCharacter,
       chatHistory: [],
       ai1Response: '',
-    });
+    })).rejects.toThrow('missing required payload fields');
 
-    // Should not have called AI
     expect(mockGenerateContent).not.toHaveBeenCalled();
+  });
+
+  it('should return the draft version it saved', async () => {
+    mockGenerateContent.mockResolvedValueOnce({ text: JSON.stringify({ name: 'Gandalf' }) });
+
+    const { executeGenerateCharacterDraft } = await import('./generate-character-draft');
+    const saved = await executeGenerateCharacterDraft(makePayload());
+
+    expect(saved).toEqual({ versionId: 'new-doc-id', versionNumber: 1 });
+    expect(mockSet).toHaveBeenCalledOnce();
+  });
+
+  it('should drop the generated draft when the update was cancelled in the meantime', async () => {
+    mockGenerateContent.mockResolvedValueOnce({ text: JSON.stringify({ name: 'Gandalf' }) });
+    const shouldSave = vi.fn().mockResolvedValue(false);
+
+    const { executeGenerateCharacterDraft } = await import('./generate-character-draft');
+    const saved = await executeGenerateCharacterDraft(makePayload(), { shouldSave });
+
+    expect(saved).toBeNull();
+    expect(shouldSave).toHaveBeenCalledOnce();
+    expect(mockSet).not.toHaveBeenCalled();
+    // The loader on the character is cleared either way.
+    expect(mockUpdate).toHaveBeenCalledWith({ isGenerating: false });
   });
 
   it('should call AI with conversation context and update Firestore', async () => {

@@ -99,77 +99,118 @@ export const generateImage = onCall(
       const db = getFirestore();
       await assertCharacterOwner(db, characterId, uid);
 
-      const imageConfig = await getAiImageConfig();
-      const model = resolveImageModel(requestModel, imageConfig.model);
-
-      // Use Gemini to convert character context + conversation into a descriptive image prompt
-      const rawContext = chatRequest.chatHistory.map(chat => `[${chat.role}]: ${chat.content}`).join('\n');
-      const promptConfig = await getAiFeatureConfig('imagePromptGeneration');
-
-      // Build multimodal content: text context + optional reference image
-      const contentParts: ({ text: string } | { inlineData: { mimeType: string; data: string } })[] = [
-        { text: rawContext },
-      ];
-
-      let referenceStyleInstruction = '';
-
-      if (referenceImageStoragePath) {
-        try {
-          const [imageBuffer] = await getStorage().bucket().file(referenceImageStoragePath).download();
-          const extension = referenceImageStoragePath.split('.').pop()?.toLowerCase() || 'jpg';
-          const mimeType = extension === 'png' ? 'image/png' : 'image/jpeg';
-          contentParts.push({
-            inlineData: { mimeType, data: imageBuffer.toString('base64') },
-          });
-          referenceStyleInstruction = IMAGE_REFERENCE_STYLE_INSTRUCTION;
-        } catch (err) {
-          logger.warn('Failed to load reference image, proceeding without it:', err);
-        }
-      }
-
-      let prompt: string;
-      try {
-        prompt = await generateText({
-          config: promptConfig,
-          label: 'generateImage',
-          contents: contentParts,
-          systemInstruction: IMAGE_GENERATION_SYSTEM_PROMPT + referenceStyleInstruction,
-        });
-      } catch (error) {
-        if (error instanceof HttpsError) throw error;
-        logger.warn('generateImage: image prompt generation failed', error);
-        throw new HttpsError('internal', 'Failed to generate image description from character context');
-      }
-
-      const { imageBuffer, mimeType } = await generatePortrait(model, `Photorealistic image. ${prompt}`);
-
-      // Determine file extension from mime type
-      const extension = mimeType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg';
-      const storagePath = `${characterImagePrefix(characterId)}${randomUUID()}.${extension}`;
-
-      const bucket = getStorage().bucket();
-      await bucket.file(storagePath).save(imageBuffer, {
-        metadata: { contentType: mimeType },
-      });
-
-      // Save image metadata to Firestore (frontend constructs display URL from storagePath)
-      const imageRef = db.collection('characters').doc(characterId).collection('images').doc();
-      await imageRef.set({
-        id: imageRef.id,
+      return generateCharacterImage({
         characterId,
-        mimeType,
-        storagePath,
-        createdAt: FieldValue.serverTimestamp(),
+        chatHistory: chatRequest.chatHistory,
+        requestedModel: requestModel,
+        referenceImageStoragePath: referenceImageStoragePath ?? null,
       });
-
-      // Return download URL for immediate display in chat (no token: Storage rules apply)
-      return {
-        imageUrl: buildDownloadUrl(bucket.name, storagePath),
-        mimeType,
-      };
     }
   )
 );
+
+export interface CharacterImageRequest {
+  characterId: string;
+  /** Character context and conversation the image prompt is written from. */
+  chatHistory: ChatHistoryMessage[];
+  /** Requested Gemini image model; only honoured when it is on the allow-list. */
+  requestedModel?: unknown;
+  /** Previous portrait used as style reference; the caller has checked it belongs to this character. */
+  referenceImageStoragePath?: string | null;
+}
+
+/**
+ * Write an image prompt from the conversation, render the portrait and store it
+ * with the character (Storage + `characters/{id}/images`). The caller has checked
+ * that the user owns the character.
+ */
+export async function generateCharacterImage(request: CharacterImageRequest): Promise<GenerateImageResponse> {
+  const { characterId, chatHistory, requestedModel, referenceImageStoragePath } = request;
+  const db = getFirestore();
+
+  const imageConfig = await getAiImageConfig();
+  const model = resolveImageModel(requestedModel, imageConfig.model);
+
+  // Use Gemini to convert character context + conversation into a descriptive image prompt
+  const rawContext = chatHistory.map(chat => `[${chat.role}]: ${chat.content}`).join('\n');
+  const promptConfig = await getAiFeatureConfig('imagePromptGeneration');
+
+  // Build multimodal content: text context + optional reference image
+  const contentParts: ({ text: string } | { inlineData: { mimeType: string; data: string } })[] = [
+    { text: rawContext },
+  ];
+
+  let referenceStyleInstruction = '';
+
+  if (referenceImageStoragePath) {
+    try {
+      const [imageBuffer] = await getStorage().bucket().file(referenceImageStoragePath).download();
+      const extension = referenceImageStoragePath.split('.').pop()?.toLowerCase() || 'jpg';
+      const mimeType = extension === 'png' ? 'image/png' : 'image/jpeg';
+      contentParts.push({
+        inlineData: { mimeType, data: imageBuffer.toString('base64') },
+      });
+      referenceStyleInstruction = IMAGE_REFERENCE_STYLE_INSTRUCTION;
+    } catch (err) {
+      logger.warn('Failed to load reference image, proceeding without it:', err);
+    }
+  }
+
+  let prompt: string;
+  try {
+    prompt = await generateText({
+      config: promptConfig,
+      label: 'generateImage',
+      contents: contentParts,
+      systemInstruction: IMAGE_GENERATION_SYSTEM_PROMPT + referenceStyleInstruction,
+    });
+  } catch (error) {
+    if (error instanceof HttpsError) throw error;
+    logger.warn('generateImage: image prompt generation failed', error);
+    throw new HttpsError('internal', 'Failed to generate image description from character context');
+  }
+
+  const { imageBuffer, mimeType } = await generatePortrait(model, `Photorealistic image. ${prompt}`);
+
+  // Determine file extension from mime type
+  const extension = mimeType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg';
+  const storagePath = `${characterImagePrefix(characterId)}${randomUUID()}.${extension}`;
+
+  const bucket = getStorage().bucket();
+  await bucket.file(storagePath).save(imageBuffer, {
+    metadata: { contentType: mimeType },
+  });
+
+  // Save image metadata to Firestore (frontend constructs display URL from storagePath)
+  const imageRef = db.collection('characters').doc(characterId).collection('images').doc();
+  await imageRef.set({
+    id: imageRef.id,
+    characterId,
+    mimeType,
+    storagePath,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+
+  // Return download URL for immediate display in chat (no token: Storage rules apply)
+  return {
+    imageUrl: buildDownloadUrl(bucket.name, storagePath),
+    mimeType,
+  };
+}
+
+/** Storage path of the character's newest portrait, used as style reference for the next one. */
+export async function latestCharacterImagePath(characterId: string): Promise<string | null> {
+  const snapshot = await getFirestore()
+    .collection('characters').doc(characterId)
+    .collection('images')
+    .orderBy('createdAt', 'desc')
+    .limit(1)
+    .get();
+  const storagePath = snapshot.empty ? undefined : snapshot.docs[0].data().storagePath;
+  return typeof storagePath === 'string' && storagePath.startsWith(characterImagePrefix(characterId))
+    ? storagePath
+    : null;
+}
 
 /** Render the portrait with a Gemini image model (Interactions API, image output). */
 async function generatePortrait(model: string, prompt: string): Promise<{ imageBuffer: Buffer; mimeType: string }> {
