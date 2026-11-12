@@ -9,6 +9,8 @@ import { CharacterVersionService } from '../../../../core/services/character-ver
 import { CharacterImageService } from '../../../../core/services/character-image.service';
 import { ChatService } from '../../../../chat/chat.service';
 import { CharacterSheetExportService } from '../../services/character-sheet-export.service';
+import { CharacterImportService } from '../../services/character-import.service';
+import { ToastService } from '../../../../shared/services/toast.service';
 import * as logger from '../../../../shared/logger';
 import { Character, CharacterVersion } from '../../../../core/models/schemas/character.schema';
 import { CharacterImage } from '../../../../core/models/schemas/character-image.schema';
@@ -79,6 +81,9 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
                           [exportingPdf]="exportingPdf()"
                           [playState]="playState()"
                           [editable]="isOwner()"
+                          [canClone]="canClone()"
+                          [cloning]="cloning()"
+                          (cloneCharacter)="onCloneCharacter()"
                           (playStateChange)="onPlayStateChange($event)"
                           (usesChange)="onUsesChange($event)"
                           (coinsChange)="onCoinsChange($event)"
@@ -154,6 +159,8 @@ export class CharacterBuilderPageComponent {
   private characterImageService = inject(CharacterImageService);
   private chatService = inject(ChatService);
   private characterSheetExportService = inject(CharacterSheetExportService);
+  private characterImportService = inject(CharacterImportService);
+  private toastService = inject(ToastService);
   private destroyRef = inject(DestroyRef);
 
   // State
@@ -173,14 +180,25 @@ export class CharacterBuilderPageComponent {
     return user.uid === character.userId;
   });
 
+  /** A signed-in visitor looking at someone else's character can copy it to their own account. */
+  canClone = computed(() => {
+    const user = this.authService.currentUser();
+    const character = this.selectedCharacter();
+    return !!user && !!character && user.uid !== character.userId;
+  });
+  cloning = signal(false);
+
   // Latest version from Firestore real-time listener
   latestVersion = this.characterVersionService.latestVersion;
 
   /**
    * Live table state of the selected character. Set locally first so the sheet reacts at
-   * once, and reset whenever the stored character changes.
+   * once, and reset whenever the stored character changes. It is the owner's alone: a
+   * visitor sees the character as built, without hit points, spent slots or inventory.
    */
-  playState = linkedSignal<CharacterPlayState | null>(() => this.selectedCharacter()?.playState ?? null);
+  playState = linkedSignal<CharacterPlayState | null>(() =>
+    this.isOwner() ? this.selectedCharacter()?.playState ?? null : null
+  );
 
   /** The latest version with the live hit points, hit dice and slots, for the AI chat. */
   liveCharacter = computed(() => {
@@ -228,8 +246,12 @@ export class CharacterBuilderPageComponent {
     effect(() => {
       const character = this.characterService.activeCharacter();
       if (character) {
+        // Also add it when it is new to the list: a character the backend just created
+        // (an import or a clone) can arrive after the page already looked for it.
         this.characters.update(list =>
-          list.map(c => c.id === character.id ? character : c)
+          list.some(c => c.id === character.id)
+            ? list.map(c => c.id === character.id ? character : c)
+            : [...list, character]
         );
       }
     });
@@ -252,6 +274,16 @@ export class CharacterBuilderPageComponent {
       }
     });
 
+    // A PDF picked in the import dialog of the character list: hand it to the chat of
+    // the freshly created character as soon as that chat is on screen.
+    effect(() => {
+      const characterId = this.selectedCharacterId();
+      const chat = this.isNarrow() ? this.chatDrawer() : this.chat();
+      if (!characterId || !chat || !this.isOwner() || !this.latestVersion()) return;
+      // Wait a tick, so the chat has been told which character it is talking about.
+      setTimeout(() => this.sendPendingPdf(characterId));
+    });
+
     // Clean up service state on destroy
     this.destroyRef.onDestroy(() => {
       this.characterService.activeCharacterId.set(null);
@@ -262,6 +294,16 @@ export class CharacterBuilderPageComponent {
 
   onWindowResize(): void {
     this.updateLayoutWidth();
+  }
+
+  private sendPendingPdf(characterId: string): void {
+    const chat = this.isNarrow() ? this.chatDrawer() : this.chat();
+    if (!chat || this.selectedCharacterId() !== characterId) return;
+    const pdf = this.characterImportService.takePdf(characterId);
+    // The drawer reports false while its chat is not rendered yet: keep the PDF for the next try.
+    if (pdf && chat.sendAttachment(pdf) === false) {
+      this.characterImportService.queuePdf(characterId, pdf);
+    }
   }
 
   async loadCharacters() {
@@ -469,6 +511,22 @@ export class CharacterBuilderPageComponent {
       await this.characterVersionService.patchUses(charId, versionId, event.owner, event.name, event.uses);
     } catch (e) {
       logger.error('Failed to store uses tracker:', e);
+    }
+  }
+
+  async onCloneCharacter(): Promise<void> {
+    const charId = this.selectedCharacterId();
+    if (!charId || !this.canClone() || this.cloning()) return;
+    this.cloning.set(true);
+    try {
+      const cloneId = await this.characterImportService.cloneCharacter(charId);
+      this.toastService.show('Karakter gekloond — dit is nu je eigen kopie.', 'success');
+      await this.router.navigate(['/characters', cloneId]);
+    } catch (e) {
+      logger.error('Failed to clone character:', e);
+      this.toastService.showCallableError(e, 'Klonen is mislukt. Probeer het opnieuw.');
+    } finally {
+      this.cloning.set(false);
     }
   }
 
