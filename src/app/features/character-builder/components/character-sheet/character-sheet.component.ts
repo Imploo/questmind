@@ -455,9 +455,6 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
                           @if (entry.concentration || entry.concentrating) {
                             <app-concentration-mark [active]="entry.concentrating" />
                           }
-                          @if (spell.school) {
-                            <span class="tag tag-sm">{{ spell.school }}</span>
-                          }
                         </button>
                       } @else {
                         <div class="entry-head entry-main font-semibold text-sm">
@@ -506,6 +503,9 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
                     @if (entry.details; as spell) {
                       @if (expandedSpells().has(entry.index)) {
                         <div class="entry-body">
+                          @if (spell.school) {
+                            <div class="eyebrow mb-1">{{ spell.school }}</div>
+                          }
                           @if (loadingSpells().has(entry.index)) {
                             <mat-progress-bar mode="indeterminate"></mat-progress-bar>
                           } @else if (spell.description) {
@@ -817,7 +817,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
       border: 1px solid rgba(180, 138, 60, 0.25);
     }
     .tag-quiet { background: transparent; color: var(--muted); border-color: var(--line); }
-    /* School of a spell, source of a feature: a quiet label, so the row's controls stand out. */
+    /* Source of a feature: a quiet label, so the row's controls stand out. */
     .tag-sm { padding: 0; font-size: 0.68rem; flex-shrink: 0; color: var(--muted); background: transparent; border-color: transparent; }
     .hero-actions { display: flex; gap: 0.5rem; }
     .hero-actions.is-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
