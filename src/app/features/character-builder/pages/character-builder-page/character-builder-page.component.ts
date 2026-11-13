@@ -42,6 +42,21 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
     ChatDrawerComponent,
   ],
   template: `
+    <!-- Back to the character list. The list is behind sign-in, so a signed-out visitor gets no link. -->
+    @if (isAuthenticated()) {
+      <nav aria-label="Breadcrumb" class="mb-2 flex">
+        <a
+          routerLink="/characters"
+          class="inline-flex items-center gap-1 text-sm leading-5 font-medium text-black no-underline hover:underline underline-offset-2"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+          Overzicht
+        </a>
+      </nav>
+    }
+
     <div class="flex min-h-screen bg-[#f4eee2]">
         <div class="flex w-full items-start">
           <!-- Center Character Sheet -->
@@ -172,6 +187,8 @@ export class CharacterBuilderPageComponent {
   selectedCharacter = computed(() =>
     this.characters().find(c => c.id === this.selectedCharacterId())
   );
+
+  isAuthenticated = this.authService.isAuthenticated;
 
   // True when the current user is the owner of the loaded character
   isOwner = computed(() => {
