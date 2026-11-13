@@ -83,7 +83,7 @@ import { ChangeDetectionStrategy, Component, ElementRef, computed, input, output
     }
     .temp svg { width: 11px; height: 12px; fill: none; stroke: currentColor; stroke-width: 5; }
     .label {
-      font-family: 'Cinzel', 'Cormorant Garamond', Georgia, serif;
+      font-family: var(--font-display);
       font-size: 0.62rem;
       font-weight: 600;
       letter-spacing: 0.1em;

@@ -26,139 +26,179 @@ import { NavItem } from '../nav-item.model';
       border-radius: 10px;
       background: transparent;
       border: none;
-      cursor: pointer;
       color: white;
     }
-
-    .hamburger-btn:hover {
-      background: rgba(255,255,255,0.15);
-    }
+    .hamburger-btn:hover { background: rgba(255, 255, 255, 0.15); }
 
     .backdrop {
       position: fixed;
       inset: 0;
       z-index: 39;
-      background: rgba(0,0,0,0.35);
+      background: rgba(28, 16, 62, 0.55);
+      backdrop-filter: blur(2px);
     }
 
+    /* A strip of night sky down the side: the gradient, a shade deeper. */
     .nav-rail {
-      width: 80px;
       position: fixed;
       top: 0;
       left: 0;
-      height: 100vh;
       z-index: 40;
       display: flex;
       flex-direction: column;
-      align-items: center;
-      padding: 12px 0;
-      background: rgba(255,255,255,0.15);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border-right: 1px solid rgba(255,255,255,0.2);
+      width: 248px;
+      height: 100dvh;
+      padding: 64px 0 14px;
+      color: rgba(255, 255, 255, 0.82);
+      background: linear-gradient(180deg, rgba(36, 24, 92, 0.94), rgba(58, 28, 104, 0.96));
+      border-right: 1px solid rgba(229, 199, 127, 0.28);
       transform: translateX(-100%);
       transition: transform 280ms ease;
     }
+    .nav-rail.is-open { transform: translateX(0); box-shadow: 24px 0 60px -20px rgba(16, 8, 48, 0.8); }
 
-    .nav-rail.is-open {
-      transform: translateX(0);
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 18px 14px;
+      text-decoration: none;
+    }
+    .brand-mark {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      padding: 2px;
+      flex-shrink: 0;
+      background: linear-gradient(145deg, #e5c77f, var(--gold) 45%, #7a5a1e);
+      box-shadow: 0 6px 16px -6px rgba(10, 4, 40, 0.7);
+    }
+    .brand-mark > span {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      font-family: var(--font-display);
+      font-size: 1.25rem;
+      font-weight: 700;
+      line-height: 1;
+      color: #fff;
+      background: var(--brand-gradient);
+      box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.3);
+    }
+    .brand-name {
+      font-family: var(--font-display);
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      color: #fff;
+    }
+    .rule {
+      align-self: center;
+      width: 7px;
+      height: 7px;
+      margin: 2px 0 12px;
+      background: #e5c77f;
+      transform: rotate(45deg);
+      opacity: 0.85;
+      flex-shrink: 0;
     }
 
-    @media (min-width: 640px) {
-      .hamburger-btn { display: none; }
-      .backdrop { display: none !important; }
-      .nav-rail { transform: translateX(0); transition: none; }
-    }
+    .nav-items { flex: 1; width: 100%; display: flex; flex-direction: column; gap: 4px; }
 
     .nav-item {
       display: flex;
-      flex-direction: column;
       align-items: center;
-      gap: 4px;
+      gap: 12px;
       width: 100%;
-      padding: 4px 12px;
-      cursor: pointer;
+      padding: 5px 14px;
+      color: inherit;
       text-decoration: none;
-      position: relative;
+      background: none;
+      border: none;
     }
-
     .nav-indicator {
       display: flex;
       align-items: center;
       justify-content: center;
-      width: 56px;
-      height: 32px;
-      border-radius: 16px;
-      transition: background 200ms ease;
+      width: 52px;
+      height: 36px;
+      border-radius: 12px;
+      border: 1px solid transparent;
+      flex-shrink: 0;
+      transition: background 200ms ease, color 200ms ease, border-color 200ms ease;
     }
+    .nav-item:hover .nav-indicator { background: rgba(255, 255, 255, 0.14); }
 
-    .nav-item:hover .nav-indicator {
-      background: rgba(255,255,255,0.2);
-    }
-
+    /* The page you are on is a tab of parchment sticking out of the rail. */
     .nav-item.active .nav-indicator {
-      background: rgba(255,255,255,0.35);
+      color: var(--gold-deep);
+      background: var(--paper);
+      border-color: #e5c77f;
+      box-shadow: 0 8px 16px -8px rgba(10, 4, 40, 0.8);
     }
-
     .nav-label {
-      font-size: 12px;
-      font-weight: 500;
-      color: rgba(255,255,255,0.85);
-      text-align: center;
+      font-family: var(--font-display);
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
       line-height: 1.2;
     }
+    .nav-item.active .nav-label { color: #fff; font-weight: 700; }
+    .nav-icon { width: 20px; height: 20px; }
 
-    .nav-item.active .nav-label {
-      color: white;
-      font-weight: 600;
+    .user {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      width: 100%;
+      padding-top: 10px;
+      border-top: 1px solid rgba(255, 255, 255, 0.12);
     }
-
-    .nav-icon {
-      color: rgba(255,255,255,0.85);
-    }
-
-    .nav-item.active .nav-icon {
-      color: white;
-    }
-
+    .user-row { display: flex; align-items: center; gap: 12px; padding: 4px 14px 2px 22px; }
     .user-avatar {
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      background: rgba(255,255,255,0.25);
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 14px;
-      font-weight: 600;
-      color: white;
-      cursor: pointer;
-      border: none;
-      transition: background 200ms ease;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      object-fit: cover;
+      flex-shrink: 0;
+      font-family: var(--font-display);
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--gold-deep);
+      background: radial-gradient(circle at 35% 30%, #fff8e8, var(--gold-soft));
+      border: 1.5px solid #e5c77f;
     }
+    .user-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.85rem; color: #fff; }
 
-    .user-avatar:hover {
-      background: rgba(255,255,255,0.35);
-    }
-
-    .sign-out-btn {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 4px;
-      padding: 4px 12px;
-      cursor: pointer;
-      background: none;
-      border: none;
-      width: 100%;
-    }
-
-    .sign-out-btn .nav-indicator {
-      transition: background 200ms ease;
-    }
-
-    .sign-out-btn:hover .nav-indicator {
-      background: rgba(255,255,255,0.2);
+    @media (min-width: 640px) {
+      .hamburger-btn { display: none; }
+      .backdrop { display: none !important; }
+      .nav-rail {
+        width: 80px;
+        align-items: center;
+        padding-top: 14px;
+        background: linear-gradient(180deg, rgba(36, 24, 92, 0.46), rgba(58, 28, 104, 0.56));
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        border-right-color: rgba(255, 255, 255, 0.16);
+        transform: translateX(0);
+        transition: none;
+      }
+      .brand { padding: 0 0 10px; }
+      .brand-name, .user-name { display: none; }
+      .nav-item { flex-direction: column; gap: 4px; padding: 4px 4px; }
+      .nav-label { font-size: 10.5px; text-align: center; }
+      .user { align-items: center; }
+      .user-row { padding: 2px 0; }
     }
   `],
   template: `
@@ -173,39 +213,44 @@ import { NavItem } from '../nav-item.model';
         <div class="backdrop" (click)="closeMenu()"></div>
       }
 
-      <nav class="nav-rail" [class.is-open]="isMenuOpen()">
-        <!-- Nav items -->
-        <div style="flex: 1; width: 100%; display: flex; flex-direction: column; gap: 4px;" class="pt-16 sm:pt-4">
+      <nav class="nav-rail" [class.is-open]="isMenuOpen()" aria-label="Hoofdnavigatie">
+        <a routerLink="/characters" class="brand" aria-label="Questmind" (click)="closeMenu()">
+          <span class="brand-mark"><span aria-hidden="true">Q</span></span>
+          <span class="brand-name">Questmind</span>
+        </a>
+        <span class="rule" aria-hidden="true"></span>
+
+        <div class="nav-items">
           @for (item of navItems(); track item.id) {
             <a
               [routerLink]="item.route"
               class="nav-item"
               [class.active]="isItemActive(item)"
+              [attr.aria-current]="isItemActive(item) ? 'page' : null"
               (click)="closeMenu()"
             >
-              <div class="nav-indicator">
-                <lucide-icon [name]="item.icon" class="nav-icon" style="width:20px;height:20px;" />
-              </div>
+              <span class="nav-indicator">
+                <lucide-icon [name]="item.icon" class="nav-icon" />
+              </span>
               <span class="nav-label">{{ item.label }}</span>
             </a>
           }
         </div>
 
         <!-- User / Sign out -->
-        <div style="display: flex; flex-direction: column; align-items: center; gap: 8px; padding-bottom: 8px;">
-          @if (authService.currentUser()?.photoURL) {
-            <img
-              [src]="authService.currentUser()!.photoURL!"
-              alt="Avatar"
-              style="width:36px;height:36px;border-radius:50%;object-fit:cover;"
-            />
-          } @else {
-            <div class="user-avatar">{{ userInitials() }}</div>
-          }
-          <button class="sign-out-btn" (click)="signOut()" title="Uitloggen">
-            <div class="nav-indicator">
-              <lucide-icon name="log-out" class="nav-icon" style="width:20px;height:20px;" />
-            </div>
+        <div class="user">
+          <div class="user-row">
+            @if (authService.currentUser()?.photoURL) {
+              <img [src]="authService.currentUser()!.photoURL!" alt="" class="user-avatar" />
+            } @else {
+              <span class="user-avatar" aria-hidden="true">{{ userInitials() }}</span>
+            }
+            <span class="user-name">{{ authService.currentUser()?.displayName || authService.currentUser()?.email }}</span>
+          </div>
+          <button type="button" class="nav-item" (click)="signOut()" title="Uitloggen">
+            <span class="nav-indicator">
+              <lucide-icon name="log-out" class="nav-icon" />
+            </span>
             <span class="nav-label">Uitloggen</span>
           </button>
         </div>

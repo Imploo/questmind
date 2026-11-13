@@ -18,12 +18,13 @@ import { CampaignSelectorComponent } from '../../campaign/campaign-selector.comp
       z-index: 45;
       display: flex;
       align-items: center;
-      padding-left: 48px;
-      padding-right: 48px;
-      background: rgba(255, 255, 255, 0.15);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+      justify-content: center;
+      padding-left: 52px;
+      padding-right: 52px;
+      background: linear-gradient(90deg, rgba(36, 24, 92, 0.5), rgba(58, 28, 104, 0.56));
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.16);
     }
 
     @media (min-width: 640px) {
@@ -36,12 +37,34 @@ import { CampaignSelectorComponent } from '../../campaign/campaign-selector.comp
       flex: 1;
       min-width: 0;
     }
+
+    .wordmark {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-family: var(--font-display);
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #fff;
+    }
+    .wordmark::before,
+    .wordmark::after {
+      content: '';
+      width: 6px;
+      height: 6px;
+      background: #e5c77f;
+      transform: rotate(45deg);
+    }
   `],
   template: `
     @if (onCampaignRoute()) {
       <div class="topbar-content">
         <app-campaign-selector [isCollapsed]="false" />
       </div>
+    } @else {
+      <span class="wordmark">Questmind</span>
     }
   `
 })

@@ -13,9 +13,9 @@ import { ToastService } from '../../../../shared/services/toast.service';
       <app-image-lightbox [url]="lightboxUrl()!" (closed)="closeLightbox()" />
     }
 
-    <div class="panel">
+    <div class="qm-panel">
       <div>
-        <h3 class="section-title">Galerij</h3>
+        <h3 class="qm-section-title">Galerij</h3>
 
         @if (images().length === 0) {
           <div class="text-center py-8 text-sm opacity-60">
@@ -23,7 +23,7 @@ import { ToastService } from '../../../../shared/services/toast.service';
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
             <p>Nog geen afbeeldingen</p>
-            <p class="text-xs mt-1">Genereer afbeeldingen via de chat met 🎨</p>
+            <p class="text-xs mt-1">Genereer afbeeldingen via de chat</p>
           </div>
         } @else {
           <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -82,41 +82,6 @@ import { ToastService } from '../../../../shared/services/toast.service';
   styles: [`
     :host {
       display: block;
-      --line: #e8dcc5;
-      --gold: #b48a3c;
-      --gold-deep: #8a6623;
-    }
-    .panel {
-      background: #fffdf8;
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      padding: 1.25rem;
-      box-shadow: 0 1px 2px rgba(60, 40, 10, 0.04), 0 4px 16px -8px rgba(60, 40, 10, 0.12);
-    }
-    .section-title {
-      display: flex;
-      align-items: center;
-      gap: 0.6rem;
-      font-family: 'Cinzel', Georgia, serif;
-      font-size: 0.8rem;
-      font-weight: 700;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: var(--gold-deep);
-      margin-bottom: 0.9rem;
-    }
-    .section-title::before {
-      content: '';
-      width: 7px;
-      height: 7px;
-      background: var(--gold);
-      transform: rotate(45deg);
-    }
-    .section-title::after {
-      content: '';
-      flex: 1;
-      height: 1px;
-      background: linear-gradient(to right, var(--line), transparent);
     }
     .tile {
       position: relative;

@@ -15,51 +15,46 @@ export interface SessionMetaUpdate {
   imports: [PodcastVersionItemComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="border border-gray-200 rounded-xl bg-white shadow-sm overflow-hidden relative">
+    <div class="qm-panel !p-0 overflow-hidden">
       <!-- Card Header -->
-      <div class="p-6 pb-0">
-        <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between mb-4">
+      <div class="px-5 pt-5 sm:px-6 sm:pt-6">
+        <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between mb-4">
           @if (isEditingMeta()) {
             <div class="flex-1 flex flex-col gap-2">
               <input
                 type="text"
-                class="w-full px-3 py-2 text-lg font-semibold border border-gray-300 rounded-lg focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none"
+                class="qm-input font-display !text-lg font-bold"
                 [value]="titleDraft()"
                 (input)="onTitleDraftInput($event)"
                 placeholder="Session title"
+                aria-label="Session title"
               />
               <input
                 type="date"
-                class="w-48 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none"
+                class="qm-input !w-48 !text-sm"
                 [value]="dateDraft()"
                 (input)="onDateDraftInput($event)"
+                aria-label="Session date"
               />
             </div>
             <div class="flex gap-2 self-start">
-              <button
-                type="button"
-                class="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:text-gray-800"
-                (click)="cancelMetaEdit()"
-              >
+              <button type="button" class="qm-btn qm-btn-sm" (click)="cancelMetaEdit()">
                 Cancel
               </button>
-              <button
-                type="button"
-                class="px-3 py-2 text-xs font-semibold rounded-lg bg-primary text-white hover:bg-primary/90"
-                (click)="saveMetaEdit()"
-              >
+              <button type="button" class="qm-btn qm-btn-sm qm-btn-primary" (click)="saveMetaEdit()">
                 Save
               </button>
             </div>
           } @else {
-            <div>
-              <h3 class="text-lg font-semibold m-0">{{ title() }}</h3>
-              <p class="text-sm text-gray-500 m-0">{{ subtitle() }}</p>
+            <div class="min-w-0">
+              <div class="qm-eyebrow">Session</div>
+              <h3 class="qm-display text-xl sm:text-2xl leading-tight break-words">{{ title() }}</h3>
+              <p class="text-sm qm-muted mt-0.5">{{ subtitle() }}</p>
             </div>
-            <div class="flex gap-2">
+            <div class="flex gap-2 shrink-0">
               <button
                 type="button"
-                class="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:text-gray-800"
+                class="qm-btn qm-btn-sm"
                 (click)="startMetaEdit()"
                 [disabled]="isBusy() || !canEditStory()"
               >
@@ -67,12 +62,13 @@ export interface SessionMetaUpdate {
               </button>
               <button
                 type="button"
-                class="px-3 py-2 text-xs font-semibold rounded-lg border border-red-200 text-red-600 hover:bg-red-600 hover:text-white transition-colors"
+                class="qm-btn qm-btn-sm qm-btn-danger"
                 (click)="onDeleteClick()"
                 [disabled]="isBusy() || !canEditStory()"
                 title="Sessie verwijderen"
+                aria-label="Sessie verwijderen"
               >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
                 </svg>
               </button>
@@ -81,60 +77,50 @@ export interface SessionMetaUpdate {
         </div>
 
         <!-- Tabs -->
-        <div class="flex gap-1 border-b border-gray-200">
+        <div class="qm-tabs" role="tablist">
           <button
             type="button"
-            class="px-4 py-3 text-sm font-medium transition-colors relative flex items-center gap-2"
-            [class.text-primary]="activeTab() === 'story'"
-            [class.text-gray-600]="activeTab() !== 'story'"
-            [class.hover:text-gray-800]="activeTab() !== 'story'"
+            role="tab"
+            class="qm-tab"
+            [class.is-active]="activeTab() === 'story'"
+            [attr.aria-selected]="activeTab() === 'story'"
             (click)="activeTab.set('story')"
           >
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
-            </svg>
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
             <span>Story</span>
-            @if (activeTab() === 'story') {
-              <div class="absolute bottom-0 left-0 right-0 h-0.5 bg-primary"></div>
-            }
           </button>
           <button
             type="button"
-            class="px-4 py-3 text-sm font-medium transition-colors relative flex items-center gap-2"
-            [class.text-primary]="activeTab() === 'podcasts'"
-            [class.text-gray-600]="activeTab() !== 'podcasts'"
-            [class.hover:text-gray-800]="activeTab() !== 'podcasts'"
+            role="tab"
+            class="qm-tab"
+            [class.is-active]="activeTab() === 'podcasts'"
+            [attr.aria-selected]="activeTab() === 'podcasts'"
             (click)="activeTab.set('podcasts')"
           >
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path>
-            </svg>
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
             <span>Podcasts</span>
             @if (podcasts().length > 0) {
-              <span class="ml-1 px-2 py-0.5 text-xs bg-purple-100 text-purple-700 rounded-full">
+              <span class="qm-badge qm-badge-violet font-sans tracking-normal">
                 {{ podcasts().length }}
               </span>
-            }
-            @if (activeTab() === 'podcasts') {
-              <div class="absolute bottom-0 left-0 right-0 h-0.5 bg-primary"></div>
             }
           </button>
         </div>
       </div>
 
       <!-- Tab Content -->
-      <div class="p-6">
+      <div class="p-5 sm:p-6">
         <!-- Story Tab -->
         @if (activeTab() === 'story') {
           @if (story().trim().length) {
-            <div class="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-              <div class="space-y-4">
-                <div class="flex items-center justify-between">
-                  <h4 class="text-base font-semibold m-0">Generated Story</h4>
+            <div class="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
+              <div class="space-y-4 min-w-0">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <h4 class="qm-section-title flex-1 !mb-0">Generated Story</h4>
                   <div class="flex gap-2">
                     <button
                       type="button"
-                      class="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:text-gray-800 disabled:opacity-50"
+                      class="qm-btn qm-btn-sm"
                       (click)="toggleEdit()"
                       [disabled]="isBusy() || !canEditStory()"
                     >
@@ -142,7 +128,7 @@ export interface SessionMetaUpdate {
                     </button>
                     <button
                       type="button"
-                      class="px-3 py-2 text-xs font-semibold rounded-lg bg-primary text-white hover:bg-primary-dark disabled:bg-gray-300"
+                      class="qm-btn qm-btn-sm qm-btn-primary"
                       (click)="regenerate.emit()"
                       [disabled]="isBusy() || !canRegenerate()"
                     >
@@ -151,18 +137,19 @@ export interface SessionMetaUpdate {
                   </div>
                 </div>
 
-                <div class="border border-gray-200 rounded-lg p-4">
+                <div>
                   @if (isEditing()) {
                     <textarea
-                      class="w-full min-h-[220px] border border-gray-200 rounded-lg p-3 text-sm focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none"
+                      class="qm-input min-h-[320px] !text-sm"
                       [value]="draft()"
                       (input)="onDraftInput($event)"
                       [disabled]="isBusy() || !canEditStory()"
+                      aria-label="Story"
                     ></textarea>
                     <div class="mt-3 flex justify-end gap-2">
                       <button
                         type="button"
-                        class="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:text-gray-800"
+                        class="qm-btn qm-btn-sm"
                         (click)="resetDraft()"
                       [disabled]="isBusy() || !canEditStory()"
                       >
@@ -170,7 +157,7 @@ export interface SessionMetaUpdate {
                       </button>
                       <button
                         type="button"
-                        class="px-3 py-2 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-gray-300"
+                        class="qm-btn qm-btn-sm qm-btn-primary"
                         (click)="saveDraft()"
                       [disabled]="isBusy() || !canEditStory()"
                       >
@@ -178,38 +165,26 @@ export interface SessionMetaUpdate {
                       </button>
                     </div>
                   } @else {
-                    <div class="prose prose-gray max-w-none" [innerHTML]="renderedStory()"></div>
+                    <div class="prose qm-prose max-w-none" [innerHTML]="renderedStory()"></div>
                   }
                 </div>
 
-                <div class="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    class="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:text-gray-800"
-                    (click)="downloadMarkdown()"
-                  >
+                <div class="flex flex-wrap gap-2 pt-1">
+                  <button type="button" class="qm-btn qm-btn-sm" (click)="downloadMarkdown()">
                     Download Markdown
                   </button>
-                  <button
-                    type="button"
-                    class="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:text-gray-800"
-                    (click)="downloadPdf()"
-                  >
+                  <button type="button" class="qm-btn qm-btn-sm" (click)="downloadPdf()">
                     Export PDF
                   </button>
                 </div>
 
                 @if (transcript()) {
-                  <div class="border-t border-gray-100 pt-4">
-                    <button
-                      type="button"
-                      class="text-sm font-semibold text-primary hover:underline"
-                      (click)="toggleTranscript()"
-                    >
+                  <div class="border-t border-dashed border-[#e0d2b6] pt-4">
+                    <button type="button" class="qm-link text-sm" (click)="toggleTranscript()">
                       {{ showTranscript() ? 'Hide transcript' : 'Show transcript preview' }}
                     </button>
                     @if (showTranscript()) {
-                      <pre class="mt-3 p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-600 whitespace-pre-wrap">
+                      <pre class="qm-well mt-3 text-xs text-gray-700 whitespace-pre-wrap">
 {{ transcript() }}
                       </pre>
                     }
@@ -217,35 +192,36 @@ export interface SessionMetaUpdate {
                 }
               </div>
 
-              <div class="space-y-4">
-                <div class="flex items-center justify-between">
-                  <h4 class="text-base font-semibold m-0">Corrections & Guidance</h4>
+              <div class="space-y-3 min-w-0">
+                <div class="flex items-center justify-between gap-2">
+                  <h4 class="qm-section-title flex-1 !mb-0">Corrections & Guidance</h4>
                   @if (correctionsStatus() !== 'idle') {
-                    <span class="text-xs text-gray-500">
+                    <span class="text-xs qm-muted">
                       {{ correctionsStatus() === 'saving' ? 'Saving...' : 'Saved ✓' }}
                     </span>
                   }
                 </div>
 
-                <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-3">
-                  <p class="text-sm text-gray-600 m-0">
+                <div class="qm-well space-y-3">
+                  <p class="text-sm text-gray-700">
                     Review the story and add corrections below. The AI will apply these when you regenerate the story.
                   </p>
                   <textarea
-                    class="w-full min-h-[240px] border border-gray-200 rounded-lg p-3 text-sm focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none resize-vertical font-mono"
+                    class="qm-input min-h-[240px] !text-sm resize-y font-mono"
                     [value]="corrections()"
                     (input)="onCorrectionsInput($event)"
                     [disabled]="isBusy() || !canEditCorrections()"
+                    aria-label="Corrections"
                     placeholder="Example: When you hear 'corikan', the correct name is 'Khuri-Khan'. The party is in Waterdeep, not Baldur's Gate."
                   ></textarea>
-                  <p class="text-xs text-gray-500 m-0">
+                  <p class="qm-help">
                     Corrections auto-save as you type. Click "Regenerate Story" to apply them.
                   </p>
                 </div>
               </div>
             </div>
           } @else {
-            <div class="border border-dashed border-gray-200 rounded-lg p-6 text-sm text-gray-500">
+            <div class="rounded-xl border border-dashed border-[#d9c9a6] p-6 text-center font-prose text-lg text-gray-600">
               The session story will appear here once generation completes.
             </div>
           }
@@ -254,26 +230,22 @@ export interface SessionMetaUpdate {
         <!-- Podcasts Tab -->
         @if (activeTab() === 'podcasts') {
           <div class="space-y-4">
-            <div class="flex items-center justify-between">
-              <div>
-                <h4 class="text-base font-semibold text-purple-900 m-0">Session Podcast</h4>
-                <p class="text-sm text-purple-700 m-0 mt-1">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="min-w-0">
+                <h4 class="font-display text-base font-bold">Session Podcast</h4>
+                <p class="text-sm qm-muted mt-0.5">
                   Genereer een boeiende audio recap met twee hosts die de sessie bespreken
                 </p>
               </div>
               <button
+                type="button"
                 (click)="generatePodcast.emit()"
                 [disabled]="isGeneratingPodcast() || isBusy() || !canGeneratePodcast()"
-                class="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+                class="qm-btn qm-btn-primary qm-btn-lg"
               >
                 @if (isGeneratingPodcast()) {
-                  <span class="flex items-center gap-2">
-                    <svg class="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
-                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <span>{{ podcastGenerationProgress() }}</span>
-                  </span>
+                  <span class="qm-spinner qm-spinner-light" aria-hidden="true"></span>
+                  <span>{{ podcastGenerationProgress() }}</span>
                 } @else {
                   Genereer Podcast
                 }
@@ -281,24 +253,19 @@ export interface SessionMetaUpdate {
             </div>
 
             @if (podcastError()) {
-              <div class="p-3 bg-red-50 border border-red-200 rounded-lg">
-                <p class="text-sm text-red-700 m-0">{{ podcastError() }}</p>
-              </div>
+              <div class="qm-alert" role="alert">{{ podcastError() }}</div>
             }
 
             @if (isGeneratingPodcast()) {
-              <div class="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <div class="qm-alert qm-alert-info">
                 <div class="flex items-center justify-between mb-2">
-                  <span class="text-sm font-medium text-blue-900">{{ podcastGenerationProgress() }}</span>
-                  <span class="text-sm text-blue-700">{{ podcastGenerationProgressPercent() }}%</span>
+                  <span class="font-semibold">{{ podcastGenerationProgress() }}</span>
+                  <span class="tabular-nums">{{ podcastGenerationProgressPercent() }}%</span>
                 </div>
-                <div class="w-full bg-blue-200 rounded-full h-2">
-                  <div
-                    class="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                    [style.width.%]="podcastGenerationProgressPercent()"
-                  ></div>
+                <div class="qm-progress">
+                  <div class="qm-progress-bar" [style.width.%]="podcastGenerationProgressPercent()"></div>
                 </div>
-                <p class="text-xs text-blue-600 mt-2">
+                <p class="text-xs mt-2">
                   Dit kan 2-3 minuten duren. De complete MP3 wordt gegenereerd en opgeslagen.
                 </p>
               </div>
@@ -306,7 +273,7 @@ export interface SessionMetaUpdate {
 
             @if (podcasts().length > 0) {
               <div class="space-y-3">
-                <h5 class="text-sm font-medium text-purple-900 m-0">
+                <h5 class="qm-eyebrow">
                   Gegenereerde Podcasts ({{ podcasts().length }})
                 </h5>
                 @for (podcast of podcasts(); track podcast.version) {
@@ -320,11 +287,11 @@ export interface SessionMetaUpdate {
             }
 
             @if (podcasts().length === 0 && !isGeneratingPodcast()) {
-              <div class="p-4 bg-white rounded-lg border border-purple-100 text-center">
-                <p class="text-sm text-gray-500 m-0">
+              <div class="rounded-xl border border-dashed border-[#d9c9a6] p-6 text-center">
+                <p class="font-prose text-lg text-gray-700">
                   Nog geen podcasts gegenereerd. Klik op "Genereer Podcast" om te beginnen.
                 </p>
-                <p class="text-xs text-gray-400 m-0 mt-1">
+                <p class="qm-help mt-1">
                   Podcasts gebruiken AI-stemmen die natuurlijk klinkend Nederlands spreken
                 </p>
               </div>

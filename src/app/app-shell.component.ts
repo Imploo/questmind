@@ -11,14 +11,14 @@ import { AuthService } from './auth/auth.service';
   imports: [RouterOutlet, NavRailComponent, MobileTopbarComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <main class="w-full min-h-screen bg-gradient-to-br from-primary to-secondary">
+    <main class="w-full min-h-dvh">
       <app-nav-rail />
 
       @if (authService.isAuthenticated()) {
         <app-mobile-topbar />
       }
 
-      <div [class]="authService.isAuthenticated() ? 'sm:ml-20 min-h-screen p-4 pt-16 sm:pt-4' : 'min-h-screen p-4'">
+      <div [class]="authService.isAuthenticated() ? 'sm:ml-20 min-h-dvh p-3 pt-[4.5rem] sm:p-6' : 'min-h-dvh p-3 sm:p-6'">
         <section>
           <router-outlet />
         </section>

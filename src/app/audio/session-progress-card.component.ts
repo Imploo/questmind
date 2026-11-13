@@ -7,25 +7,23 @@ import { toDate } from '../shared/utils/date.utils';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (shouldShow()) {
-      <div class="border rounded-xl bg-white shadow-sm overflow-hidden mb-6"
-           [class.border-red-300]="isFailed()"
-           [class.border-gray-200]="!isFailed()">
+      <div class="qm-panel !p-0 overflow-hidden mb-4 lg:mb-6" [class.is-failed]="isFailed()">
         <!-- Header -->
-        <div class="px-6 py-4 border-b border-gray-100"
-             [class.bg-red-50]="isFailed()"
-             [class.bg-blue-50]="!isFailed()">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-3">
-              <span class="text-2xl">{{ stageIcon() }}</span>
-              <div>
-                <h3 class="text-lg font-semibold m-0"
-                    [class.text-red-700]="isFailed()"
-                    [class.text-gray-800]="!isFailed()">
+        <div class="px-5 py-4">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="flex min-w-0 items-center gap-3">
+              @if (isFailed()) {
+                <span class="qm-medallion seal-failed">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
+                </span>
+              } @else {
+                <span class="qm-medallion"><span class="qm-spinner" aria-hidden="true"></span></span>
+              }
+              <div class="min-w-0">
+                <h3 class="font-display text-base font-bold" [class.text-wine]="isFailed()">
                   {{ stageTitle() }}
                 </h3>
-                <p class="text-sm m-0"
-                   [class.text-red-600]="isFailed()"
-                   [class.text-gray-600]="!isFailed()">
+                <p class="text-sm" [class]="isFailed() ? 'text-[#7c2630]' : 'qm-muted'">
                   {{ progress()?.message }}
                 </p>
               </div>
@@ -34,18 +32,12 @@ import { toDate } from '../shared/utils/date.utils';
             <!-- Action buttons -->
             <div class="flex items-center gap-2">
               @if (isFailed() && canRetry()) {
-                <button
-                  type="button"
-                  (click)="retry.emit()"
-                  class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors">
+                <button type="button" (click)="retry.emit()" class="qm-btn qm-btn-primary">
                   Retry
                 </button>
               }
               @if (!isFailed() && canCancel()) {
-                <button
-                  type="button"
-                  (click)="cancelled.emit()"
-                  class="px-4 py-2 text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 border border-gray-300 rounded-lg transition-colors">
+                <button type="button" (click)="cancelled.emit()" class="qm-btn">
                   Cancel
                 </button>
               }
@@ -55,9 +47,9 @@ import { toDate } from '../shared/utils/date.utils';
 
         <!-- Progress bar (only show if not failed) -->
         @if (!isFailed()) {
-          <div class="px-6 py-4">
+          <div class="px-5 pb-4">
             <div class="flex items-center justify-between mb-2">
-              <span class="text-sm font-medium text-gray-700">
+              <span class="text-sm font-semibold">
                 @if (isBackgroundUpload()) {
                   Uploading in the background...
                 } @else {
@@ -65,26 +57,19 @@ import { toDate } from '../shared/utils/date.utils';
                 }
               </span>
               @if (estimatedTimeRemaining()) {
-                <span class="text-sm text-gray-500">
+                <span class="text-sm qm-muted">
                   {{ estimatedTimeRemaining() }}
                 </span>
               }
             </div>
 
             <!-- Progress bar -->
-            <div class="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
-              @if (isBackgroundUpload()) {
-                <div class="h-full bg-blue-600 rounded-full animate-pulse w-full opacity-60"></div>
-              } @else {
-                <div
-                  class="h-full bg-blue-600 rounded-full transition-all duration-300 ease-out"
-                  [style.width.%]="progress()?.progress || 0">
-                </div>
-              }
+            <div class="qm-progress" [class.is-pulsing]="isBackgroundUpload()">
+              <div class="qm-progress-bar" [style.width.%]="isBackgroundUpload() ? 100 : (progress()?.progress || 0)"></div>
             </div>
 
             @if (isBackgroundUpload()) {
-              <p class="text-xs text-gray-500 mt-2 m-0">
+              <p class="qm-help mt-2">
                 Upload continues in the background. You can close the app.
               </p>
             }
@@ -92,25 +77,33 @@ import { toDate } from '../shared/utils/date.utils';
         }
 
         @if (isFailed() && retryUnavailableMessage()) {
-          <div class="px-6 py-3 border-t border-red-100 text-sm text-red-700" data-testid="retry-unavailable">
+          <div class="px-5 py-3 border-t border-[#e6bfc0] text-sm text-[#7c2630]" data-testid="retry-unavailable">
             {{ retryUnavailableMessage() }}
           </div>
         }
 
         <!-- Error details (only show if failed) -->
         @if (isFailed() && progress()?.error) {
-          <div class="px-6 py-4 bg-red-50 border-t border-red-100">
+          <div class="px-5 py-4 bg-[#fbefed] border-t border-[#e6bfc0]">
             <details class="text-sm">
-              <summary class="cursor-pointer font-medium text-red-700 mb-2">
+              <summary class="font-semibold text-[#7c2630]">
                 Error Details
               </summary>
-              <pre class="mt-2 p-3 bg-white border border-red-200 rounded text-xs text-red-800 overflow-x-auto whitespace-pre-wrap">{{ progress()?.error }}</pre>
+              <pre class="mt-2 p-3 bg-paper border border-[#e6bfc0] rounded-lg text-xs text-[#7c2630] overflow-x-auto whitespace-pre-wrap">{{ progress()?.error }}</pre>
             </details>
           </div>
         }
       </div>
     }
   `,
+  styles: [`
+    .is-failed { border-color: #e0b3b5; }
+    .seal-failed {
+      color: var(--wine);
+      background: radial-gradient(circle at 35% 30%, #fff5f3, #f3d9d8);
+      border-color: var(--wine);
+    }
+  `]
 })
 export class SessionProgressCardComponent {
   // Inputs
@@ -150,26 +143,6 @@ export class SessionProgressCardComponent {
     const p = this.progress();
     // Background upload: stage is uploading but progress is 0 or stale
     return p?.stage === 'uploading' && (p.progress === 0 || p.progress === undefined);
-  });
-
-  stageIcon = computed(() => {
-    const stage = this.progress()?.stage;
-    if (!stage) return '⏳';
-
-    const iconMap: Record<SessionProgressStage, string> = {
-      'idle': '⏸️',
-      'compressing': '🗜️',
-      'uploading': '📤',
-      'processing-audio': '🎛️',
-      'transcribing': '🎙️',
-      'generating-story': '📝',
-      'generating-podcast-script': '🎬',
-      'generating-podcast-audio': '🎧',
-      'completed': '✅',
-      'failed': '❌',
-    };
-
-    return iconMap[stage] || '⏳';
   });
 
   stageTitle = computed(() => {

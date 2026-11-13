@@ -25,13 +25,13 @@ export interface UploadRequestEvent {
   imports: [FormsModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="border border-gray-200 rounded-xl bg-white shadow-sm p-6">
-      <div class="flex items-center justify-between mb-4">
-        <div>
-          <h3 class="text-lg font-semibold m-0">Upload Session Audio</h3>
-          <p class="text-sm text-gray-500 m-0">WAV up to 4GB; MP3, M4A or OGG up to 500MB. Select multiple files to merge.</p>
+    <div class="qm-panel">
+      <div class="flex items-start justify-between gap-3 mb-4">
+        <div class="min-w-0 flex-1">
+          <h3 class="qm-section-title !mb-1.5">Upload Session Audio</h3>
+          <p class="qm-help">WAV up to 4GB; MP3, M4A or OGG up to 500MB. Select multiple files to merge.</p>
         </div>
-        <span class="text-xs px-2 py-1 rounded-full" [class]="badgeClass()">
+        <span class="qm-badge" [class]="badgeClass()">
           {{ stageLabel() }}
         </span>
       </div>
@@ -39,21 +39,18 @@ export interface UploadRequestEvent {
       @if (stage() !== 'idle') {
         <div class="mb-4">
           <div class="flex items-center justify-between mb-2">
-            <p class="text-sm text-gray-600 m-0">{{ statusMessage() }}</p>
-            <span class="text-xs text-gray-500">{{ progress() }}%</span>
+            <p class="text-sm text-gray-700">{{ statusMessage() }}</p>
+            <span class="text-xs qm-muted tabular-nums">{{ progress() }}%</span>
           </div>
-          <div class="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-            <div
-              class="h-full bg-primary transition-all duration-300"
-              [style.width.%]="progress()"
-            ></div>
+          <div class="qm-progress">
+            <div class="qm-progress-bar" [style.width.%]="progress()"></div>
           </div>
         </div>
       }
 
       <div
-        class="border-2 border-dashed rounded-lg p-6 text-center transition-colors"
-        [class]="dragActive() ? 'border-primary bg-primary/5' : 'border-gray-200'"
+        class="drop"
+        [class.is-active]="dragActive()"
         (dragover)="onDragOver($event)"
         (dragleave)="onDragLeave($event)"
         (drop)="onDrop($event)"
@@ -67,11 +64,14 @@ export interface UploadRequestEvent {
           (change)="onFileSelected($event)"
           [disabled]="isBusy() || !canUpload()"
         />
-        <p class="text-sm text-gray-600 m-0">
+        <span class="qm-medallion mb-3">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 16V4m0 0l-4 4m4-4l4 4" /></svg>
+        </span>
+        <p class="text-sm text-gray-700">
           Drag and drop your audio files here, or
           <button
             type="button"
-            class="text-primary font-semibold hover:underline"
+            class="qm-link"
             (click)="fileInput.click()"
             [disabled]="isBusy() || !canUpload()"
           >
@@ -81,37 +81,37 @@ export interface UploadRequestEvent {
       </div>
 
       <div class="mt-4 space-y-4">
-        <label class="flex items-center gap-2 text-sm text-gray-600">
+        <label class="flex flex-wrap items-center gap-2 text-sm text-gray-700">
           <input
             type="checkbox"
-            class="rounded border-gray-300 text-primary focus:ring-primary/30"
+            class="h-4 w-4"
             [checked]="keepAwake()"
             (change)="keepAwake.set(!keepAwake())"
             [disabled]="isBusy() || !wakeLockSupported()"
           />
           Keep screen awake during upload
           @if (!wakeLockSupported()) {
-            <span class="text-xs text-gray-400">(Not supported on this device)</span>
+            <span class="text-xs qm-muted">(Not supported on this device)</span>
           }
         </label>
 
         <!-- Session Details -->
         <div class="grid gap-3 md:grid-cols-2">
-          <label class="flex flex-col text-sm text-gray-600">
-            Session name
+          <label class="block">
+            <span class="qm-label">Session name</span>
             <input
               type="text"
-              class="mt-1 px-3 py-2 border border-gray-200 rounded-lg focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none"
+              class="qm-input"
               [(ngModel)]="sessionName"
               [disabled]="isBusy() || !canUpload()"
               placeholder="The Goblin Warrens"
             />
           </label>
-          <label class="flex flex-col text-sm text-gray-600">
-            Session date
+          <label class="block">
+            <span class="qm-label">Session date</span>
             <input
               type="date"
-              class="mt-1 px-3 py-2 border border-gray-200 rounded-lg focus:border-primary focus:ring-4 focus:ring-primary/10 outline-none"
+              class="qm-input"
               [(ngModel)]="sessionDate"
               [disabled]="isBusy() || !canUpload()"
             />
@@ -122,36 +122,39 @@ export interface UploadRequestEvent {
       @if (selectedFiles().length > 0) {
         <div class="mt-4 space-y-2">
           @for (file of selectedFiles(); track $index; let i = $index) {
-            <div class="p-3 bg-blue-50 border border-blue-100 rounded-lg text-sm flex items-center gap-2">
+            <div class="qm-well !py-2 text-sm flex items-center gap-2">
               @if (selectedFiles().length > 1) {
                 <div class="flex flex-col gap-0.5">
                   <button
                     type="button"
                     (click)="moveFile(i, -1)"
                     [disabled]="i === 0 || isBusy()"
-                    class="text-blue-400 hover:text-blue-600 disabled:opacity-30 text-xs leading-none p-0.5"
+                    aria-label="Move up"
+                    class="text-gold-deep hover:text-ink disabled:opacity-30 text-xs leading-none p-0.5"
                   >&#9650;</button>
                   <button
                     type="button"
                     (click)="moveFile(i, 1)"
                     [disabled]="i === selectedFiles().length - 1 || isBusy()"
-                    class="text-blue-400 hover:text-blue-600 disabled:opacity-30 text-xs leading-none p-0.5"
+                    aria-label="Move down"
+                    class="text-gold-deep hover:text-ink disabled:opacity-30 text-xs leading-none p-0.5"
                   >&#9660;</button>
                 </div>
               }
-              <p class="m-0 text-blue-900 flex-1 truncate">
-                <strong>{{ file.name }}</strong> ({{ formatFileSize(file.size) }})
+              <p class="flex-1 truncate">
+                <strong class="font-semibold">{{ file.name }}</strong> <span class="qm-muted">({{ formatFileSize(file.size) }})</span>
               </p>
               <button
                 type="button"
                 (click)="removeFile(i)"
                 [disabled]="isBusy()"
-                class="text-blue-400 hover:text-blue-600 disabled:opacity-30 text-lg leading-none px-1"
+                aria-label="Remove file"
+                class="text-gray-500 hover:text-wine disabled:opacity-30 text-lg leading-none px-1"
               >&times;</button>
             </div>
           }
           @if (selectedFiles().length > 1) {
-            <p class="text-xs text-gray-500 m-0 px-1">
+            <p class="qm-help px-1">
               {{ selectedFiles().length }} files — {{ formatFileSize(totalSize()) }} total — will be merged into one recording
             </p>
           }
@@ -159,31 +162,18 @@ export interface UploadRequestEvent {
       }
 
       @if (error()) {
-        <div class="mt-4 p-3 bg-red-50 border border-red-100 rounded-lg text-sm">
-          <p class="m-0 text-red-900">{{ error() }}</p>
-        </div>
+        <div class="qm-alert mt-4" role="alert">{{ error() }}</div>
       }
 
-      <div class="mt-4 flex gap-2 justify-end">
+      <div class="mt-5 flex gap-2 justify-end">
         @if (selectedFiles().length > 0) {
-          <button
-            type="button"
-            class="px-4 py-2 rounded-lg font-semibold transition-colors"
-            [class]="'bg-gray-100 text-gray-900 hover:bg-gray-200'"
-            (click)="clearAll()"
-            [disabled]="isBusy()"
-          >
+          <button type="button" class="qm-btn" (click)="clearAll()" [disabled]="isBusy()">
             Clear
           </button>
         }
         <button
           type="button"
-          class="px-4 py-2 rounded-lg font-semibold transition-colors"
-          [class]="
-            selectedFiles().length > 0 && !isBusy()
-              ? 'bg-primary text-white hover:opacity-90'
-              : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-          "
+          class="qm-btn qm-btn-primary"
           (click)="uploadFiles()"
           [disabled]="selectedFiles().length === 0 || isBusy() || !canUpload()"
         >
@@ -191,7 +181,21 @@ export interface UploadRequestEvent {
         </button>
       </div>
     </div>
-  `
+  `,
+  styles: [`
+    .drop {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 1.75rem 1.5rem;
+      border-radius: 12px;
+      text-align: center;
+      background: var(--paper-2);
+      border: 2px dashed #d9c9a6;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .drop.is-active { border-color: var(--color-primary); background: rgba(102, 126, 234, 0.08); }
+  `]
 })
 export class AudioUploadComponent {
   isBusy = input(false);
@@ -215,13 +219,13 @@ export class AudioUploadComponent {
 
   badgeClass = computed(() => {
     const stageMap: Record<Stage, string> = {
-      'idle': 'bg-gray-100 text-gray-700',
-      'compressing': 'bg-yellow-100 text-yellow-700',
-      'uploading': 'bg-blue-100 text-blue-700',
-      'transcribing': 'bg-purple-100 text-purple-700',
-      'generating': 'bg-orange-100 text-orange-700',
-      'completed': 'bg-green-100 text-green-700',
-      'failed': 'bg-red-100 text-red-700'
+      'idle': 'qm-badge-quiet',
+      'compressing': '',
+      'uploading': 'qm-badge-info',
+      'transcribing': 'qm-badge-violet',
+      'generating': 'qm-badge-violet',
+      'completed': 'qm-badge-success',
+      'failed': 'qm-badge-danger'
     };
     return stageMap[this.stage()] || stageMap['idle'];
   });

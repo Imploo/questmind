@@ -42,108 +42,159 @@ function importErrorMessage(error: unknown): string {
       />
     }
 
-    <div class="min-h-full bg-base-200 p-8">
-      <div class="max-w-6xl mx-auto">
-        <!-- Header -->
-        <div class="flex flex-wrap justify-between items-center gap-4 mb-8">
-          <div>
-            <h1 class="text-3xl font-bold font-serif">Your Characters</h1>
-            <p class="text-base-content/60 mt-1">Select a character to view or edit</p>
-          </div>
-          <div class="flex gap-2">
-          <button
-            type="button"
-            (click)="openImport()"
-            [disabled]="creating()"
-            class="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-gray-700 font-medium text-sm rounded-full shadow-sm border border-gray-200 hover:bg-gray-50 hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
+    <div class="max-w-6xl mx-auto sm:py-4">
+      <header class="flex flex-wrap items-end justify-between gap-4 mb-6 sm:mb-8">
+        <div>
+          <div class="qm-page-eyebrow">Your party</div>
+          <h1 class="qm-page-title mt-1">Your Characters</h1>
+          <p class="qm-page-sub mt-1">Select a character to view or edit</p>
+        </div>
+        <div class="flex gap-2">
+          <button type="button" class="qm-btn" [disabled]="creating()" (click)="openImport()">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v12m0 0l-4-4m4 4l4-4" />
             </svg>
             Import
           </button>
-          <button
-            (click)="onCreateCharacter()"
-            [disabled]="creating()"
-            class="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-gray-700 font-medium text-sm rounded-full shadow-sm border border-gray-200 hover:bg-gray-50 hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
+          <button type="button" class="qm-btn qm-btn-gold" [disabled]="creating()" (click)="onCreateCharacter()">
             @if (creating()) {
-              <span class="loading loading-spinner loading-sm"></span>
+              <span class="qm-spinner" aria-hidden="true"></span>
             } @else {
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
               </svg>
             }
             Create
           </button>
-          </div>
         </div>
+      </header>
 
-        <!-- Loading -->
-        @if (loading()) {
-          <div class="flex items-center justify-center py-24">
-            <span class="loading loading-spinner loading-lg"></span>
-          </div>
+      @if (loading()) {
+        <div class="flex items-center justify-center py-24" role="status" aria-label="Loading characters">
+          <span class="qm-spinner qm-spinner-lg qm-spinner-light"></span>
+        </div>
+      } @else {
+        @if (characterSummaries().length > 0) {
+          <ul class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-5">
+            @for (char of characterSummaries(); track char.id) {
+              <li>
+                <button type="button" class="card" (click)="onSelectCharacter(char.id)">
+                  <span class="art">
+                    @if (char.imageUrl) {
+                      <img [src]="char.imageUrl" alt="" class="absolute inset-0 w-full h-full object-cover" />
+                    } @else {
+                      <span class="initial" aria-hidden="true">{{ char.name.trim().charAt(0).toUpperCase() || '?' }}</span>
+                    }
+                    <span class="level" [attr.aria-label]="'Level ' + char.level">{{ char.level }}</span>
+                  </span>
+                  <span class="plate">
+                    <span class="name">{{ char.name }}</span>
+                    <span class="qm-eyebrow block truncate">{{ char.race }} {{ char.class }}</span>
+                  </span>
+                </button>
+              </li>
+            }
+          </ul>
         } @else {
-          <!-- Character Grid -->
-          @if (characterSummaries().length > 0) {
-            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              @for (char of characterSummaries(); track char.id) {
-                <div
-                  class="border border-white/20 aspect-square rounded-2xl overflow-hidden cursor-pointer shadow-md hover:shadow-xl transition-all duration-200 hover:-translate-y-1 hover:scale-[1.02] relative group"
-                  (click)="onSelectCharacter(char.id)"
-                >
-                  @if (char.imageUrl) {
-                    <!-- Tile with image -->
-                    <img
-                      [src]="char.imageUrl"
-                      [alt]="char.name"
-                      class="absolute inset-0 w-full h-full object-cover"
-                    />
-                    <div class="absolute inset-0 bg-white/20"></div>
-                  } @else {
-                    <!-- Glassy tile without image -->
-                    <div class="absolute inset-0 bg-base-300/40 backdrop-blur-md border border-white/20"></div>
-                    <div class="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent"></div>
-                  }
-
-                  <!-- Bottom 1/3 overlay for contrast -->
-                  <div class="absolute bottom-0 left-0 right-0 h-1/3 bg-black/40 backdrop-blur-[2px]"></div>
-
-                  <!-- Content overlay — pinned to bottom -->
-                  <div class="absolute bottom-0 left-0 right-0 px-2.5 pb-2">
-                    <p class="text-[12px] font-medium leading-none !mb-2 text-white/80 drop-shadow-sm">{{ char.name }}</p>
-                    <p class="text-[10px] leading-none !mb-2 text-white/50">{{ char.race }} {{ char.class }}</p>
-                  </div>
-                </div>
-              }
-            </div>
-          } @else {
-            <!-- Empty State -->
-            <div class="flex flex-col items-center justify-center py-24 text-base-content/50">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mb-4 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          <div class="qm-panel qm-hero qm-empty max-w-xl mx-auto">
+            <span class="qm-medallion qm-medallion-lg">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
               </svg>
-              <h2 class="text-xl font-bold mb-2">No characters yet</h2>
-              <p class="mb-6">Create your first character to get started!</p>
-              <button
-                (click)="onCreateCharacter()"
-                class="inline-flex items-center gap-2 px-6 py-3 bg-white text-gray-700 font-medium text-sm rounded-full shadow-sm border border-gray-200 hover:bg-gray-50 hover:shadow-md transition-all"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-                </svg>
-                Create Character
-              </button>
-              <button type="button" (click)="openImport()" class="mt-3 text-sm font-medium underline underline-offset-2 hover:text-base-content">
-                Or import one from a PDF or a link
-              </button>
-            </div>
-          }
+            </span>
+            <h2 class="qm-empty-title">No characters yet</h2>
+            <p class="qm-empty-text">Create your first character to get started!</p>
+            <button type="button" class="qm-btn qm-btn-primary qm-btn-lg mt-6" (click)="onCreateCharacter()">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+              </svg>
+              Create Character
+            </button>
+            <button type="button" class="qm-link mt-4 text-sm" (click)="openImport()">
+              Or import one from a PDF or a link
+            </button>
+          </div>
         }
-      </div>
+      }
     </div>
-  `
+  `,
+  styles: [`
+    /* A framed portrait with a name plate, like a miniature of the sheet's hero. */
+    .card {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+      padding: 6px;
+      text-align: left;
+      color: var(--ink);
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: var(--panel-shadow);
+      transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .card:hover {
+      transform: translateY(-4px);
+      border-color: var(--gold);
+      box-shadow: 0 22px 40px -18px rgba(24, 12, 60, 0.75);
+    }
+    .art {
+      position: relative;
+      display: block;
+      aspect-ratio: 1;
+      border-radius: 9px;
+      background: var(--brand-gradient);
+      box-shadow: inset 0 0 0 1px rgba(180, 138, 60, 0.35);
+    }
+    .art > img { border-radius: inherit; }
+    .initial {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-display);
+      font-size: clamp(2.5rem, 8vw, 4rem);
+      font-weight: 700;
+      color: rgba(255, 255, 255, 0.92);
+      text-shadow: 0 4px 18px rgba(30, 12, 80, 0.5);
+    }
+    .level {
+      position: absolute;
+      right: -4px;
+      bottom: -10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 2rem;
+      height: 2rem;
+      padding: 0 0.4rem;
+      border-radius: 999px;
+      font-family: var(--font-display);
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #fff;
+      background: var(--wine);
+      border: 2px solid var(--paper);
+    }
+    .plate { display: block; min-width: 0; padding: 0.7rem 0.45rem 0.45rem; }
+    .name {
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      padding-right: 1.4rem;
+      overflow: hidden;
+      overflow-wrap: anywhere;
+      font-family: var(--font-display);
+      font-size: 0.92rem;
+      font-weight: 700;
+      line-height: 1.3;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .card:hover { transform: none; }
+    }
+  `]
 })
 export class CharacterListPageComponent {
   private readonly router = inject(Router);

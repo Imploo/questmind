@@ -15,7 +15,7 @@ import { isPermissionDenied, PERMISSION_DENIED_MESSAGE } from '../shared/utils/c
   selector: 'app-audio-upload-page',
   imports: [AudioUploadComponent, SessionListSidebarComponent],
   template: `
-    <div class="flex flex-col lg:flex-row gap-6">
+    <div class="flex flex-col lg:flex-row gap-4 lg:gap-6">
       <app-session-list-sidebar
         [sessions]="sortedSessions()"
         [userId]="userId()"
@@ -26,9 +26,10 @@ import { isPermissionDenied, PERMISSION_DENIED_MESSAGE } from '../shared/utils/c
 
       <!-- Right panel: Upload form -->
       <main class="flex-1 min-w-0">
-        <div class="mb-6">
-          <h1 class="text-2xl font-bold mb-2 text-gray-900 dark:text-white">Upload New Audio Session</h1>
-          <p class="text-sm text-gray-600">Upload and transcribe your D&D session audio</p>
+        <div class="mb-5">
+          <div class="qm-page-eyebrow">New session</div>
+          <h1 class="qm-page-title mt-1">Upload New Audio Session</h1>
+          <p class="qm-page-sub mt-1">Upload and transcribe your D&D session audio</p>
         </div>
 
         <app-audio-upload

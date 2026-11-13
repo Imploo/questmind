@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, input, output, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { CharacterFeature, Coins, DndCharacter, LimitedUses, Spell, SpellSlot, UsesRecharge } from '../../../../shared/models/dnd-character.model';
 import { CharacterPlayState } from '../../../../shared/models/character-play-state.model';
 import {
@@ -158,7 +157,6 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     CommonModule,
-    MatProgressBarModule,
     CharacterImageGalleryComponent,
     ImageLightboxComponent,
     HpTrackerComponent,
@@ -185,8 +183,8 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
 
     <div class="sheet max-w-5xl mx-auto space-y-6">
       <!-- ═══ Hero ═══ -->
-      <header class="hero panel">
-        <div class="flex flex-col sm:flex-row gap-5 sm:gap-6 items-center sm:items-start">
+      <header class="qm-panel qm-hero">
+        <div class="flex flex-col @2xl:flex-row gap-5 @2xl:gap-6 items-center @2xl:items-start">
           <!-- Portrait -->
           <button
             type="button"
@@ -205,22 +203,22 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
           </button>
 
           <!-- Identity -->
-          <div class="flex-1 min-w-0 text-center sm:text-left">
-            <div class="eyebrow">Level {{ character().level }} · {{ character().race }} {{ character().class }}</div>
-            <h1 class="display text-3xl sm:text-4xl leading-tight mt-1 break-words">{{ character().name }}</h1>
+          <div class="flex-1 min-w-0 text-center @2xl:text-left">
+            <div class="qm-eyebrow">Level {{ character().level }} · {{ character().race }} {{ character().class }}</div>
+            <h1 class="qm-display text-2xl @2xl:text-3xl leading-tight mt-1 break-words">{{ character().name }}</h1>
 
-            <div class="flex flex-wrap justify-center sm:justify-start gap-2 mt-3">
+            <div class="flex flex-wrap justify-center @2xl:justify-start gap-2 mt-3">
               @if (character().background) {
-                <span class="tag">{{ character().background }}</span>
+                <span class="qm-tag">{{ character().background }}</span>
               }
               @if (character().alignment) {
-                <span class="tag">{{ character().alignment }}</span>
+                <span class="qm-tag">{{ character().alignment }}</span>
               }
               @if (character().experiencePoints) {
-                <span class="tag">{{ character().experiencePoints | number }} XP</span>
+                <span class="qm-tag">{{ character().experiencePoints | number }} XP</span>
               }
               @if (character().playerName) {
-                <span class="tag tag-quiet">Player: {{ character().playerName }}</span>
+                <span class="qm-tag qm-tag-quiet">Player: {{ character().playerName }}</span>
               }
               <app-inspiration-toggle [inspired]="play().inspiration" [editable]="editable()" (inspiredChange)="onInspiration($event)" />
             </div>
@@ -301,7 +299,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
           </div>
 
           <div class="vital">
-            <span class="vital-value">{{ character().speed }}<span class="text-sm muted ml-0.5">ft</span></span>
+            <span class="vital-value">{{ character().speed }}<span class="text-sm qm-muted ml-0.5">ft</span></span>
             <span class="vital-label">Speed</span>
           </div>
 
@@ -310,7 +308,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
               @if (editable()) {
                 <button type="button" class="mini-step" aria-label="Spend a hit die" [disabled]="play().hitDice.current <= 0" (click)="onHitDice(play().hitDice.current - 1)">−</button>
               }
-              <span class="vital-value">{{ play().hitDice.current }}<span class="text-sm muted">/{{ play().hitDice.total }}{{ play().hitDice.die }}</span></span>
+              <span class="vital-value">{{ play().hitDice.current }}<span class="text-sm qm-muted">/{{ play().hitDice.total }}{{ play().hitDice.die }}</span></span>
               @if (editable()) {
                 <button type="button" class="mini-step" aria-label="Regain a hit die" [disabled]="play().hitDice.current >= play().hitDice.total" (click)="onHitDice(play().hitDice.current + 1)">+</button>
               }
@@ -349,7 +347,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
       </header>
 
       <!-- ═══ Ability scores ═══ -->
-      <section class="grid grid-cols-3 md:grid-cols-6 gap-3" aria-label="Ability scores">
+      <section class="grid grid-cols-3 @lg:grid-cols-6 gap-3" aria-label="Ability scores">
         @for (ability of abilities; track ability.key) {
           <div class="ability" [title]="ability.name">
             <span class="ability-label">{{ ability.label }}</span>
@@ -360,13 +358,13 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
       </section>
 
       <!-- ═══ Main grid ═══ -->
-      <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] gap-6 items-start">
+      <div class="grid grid-cols-1 @2xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] gap-6 items-start">
 
         <!-- Left column -->
         <div class="space-y-6">
-          <section class="panel">
-            <h3 class="section-title">Saving Throws</h3>
-            <ul class="grid grid-cols-2 gap-x-4">
+          <section class="qm-panel">
+            <h3 class="qm-section-title">Saving Throws</h3>
+            <ul class="grid grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))] gap-x-4">
               @for (st of savingThrowsList; track st.key) {
                 <li class="row">
                   <span class="flex items-center gap-2">
@@ -379,8 +377,8 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
             </ul>
           </section>
 
-          <section class="panel">
-            <h3 class="section-title">Skills</h3>
+          <section class="qm-panel">
+            <h3 class="qm-section-title">Skills</h3>
             <ul>
               @for (skill of allSkills; track skill.name) {
                 <li class="row">
@@ -400,8 +398,8 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
             </ul>
           </section>
 
-          <section class="panel">
-            <h3 class="section-title">Proficiencies & Languages</h3>
+          <section class="qm-panel">
+            <h3 class="qm-section-title">Proficiencies & Languages</h3>
             @if (character().proficiencies.length) {
               <ul class="space-y-1.5 text-sm mb-4">
                 @for (prof of character().proficiencies; track prof) {
@@ -411,7 +409,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
             }
             <div class="flex flex-wrap gap-1.5">
               @for (lang of character().languages; track lang) {
-                <span class="tag">{{ lang }}</span>
+                <span class="qm-tag">{{ lang }}</span>
               }
             </div>
           </section>
@@ -419,15 +417,15 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
 
         <!-- Right column -->
         <div class="space-y-6">
-          <section class="panel">
-            <h3 class="section-title">Attacks</h3>
+          <section class="qm-panel">
+            <h3 class="qm-section-title">Attacks</h3>
             @if (character().attacks.length) {
               <ul class="space-y-2">
                 @for (attack of character().attacks; track attack.name) {
                   <li class="attack">
                     <span class="attack-name">{{ attack.name }}</span>
                     <span class="attack-bonus" title="Attack bonus">{{ signed(attack.bonus ?? 0) }}</span>
-                    <span class="text-sm muted min-w-0">{{ attack.damage }} {{ attack.type }}</span>
+                    <span class="text-sm qm-muted min-w-0">{{ attack.damage }} {{ attack.type }}</span>
                   </li>
                 }
               </ul>
@@ -438,25 +436,25 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
 
           @let spellcasting = character().spellcasting;
           @if (spellcasting) {
-            <section class="panel">
-              <h3 class="section-title">Spellcasting</h3>
+            <section class="qm-panel">
+              <h3 class="qm-section-title">Spellcasting</h3>
 
               <div class="flex flex-wrap gap-3 mb-4">
                 @if (spellcasting.ability) {
-                  <div class="stat-chip"><span class="muted">Ability</span><strong class="capitalize">{{ spellcasting.ability }}</strong></div>
+                  <div class="stat-chip"><span class="qm-muted">Ability</span><strong class="capitalize">{{ spellcasting.ability }}</strong></div>
                 }
                 @if (spellcasting.spellSaveDc) {
-                  <div class="stat-chip"><span class="muted">Save DC</span><strong>{{ spellcasting.spellSaveDc }}</strong></div>
+                  <div class="stat-chip"><span class="qm-muted">Save DC</span><strong>{{ spellcasting.spellSaveDc }}</strong></div>
                 }
                 @if (spellcasting.spellAttackBonus !== undefined) {
-                  <div class="stat-chip"><span class="muted">Spell Attack</span><strong>{{ signed(spellcasting.spellAttackBonus) }}</strong></div>
+                  <div class="stat-chip"><span class="qm-muted">Spell Attack</span><strong>{{ signed(spellcasting.spellAttackBonus) }}</strong></div>
                 }
               </div>
 
               @for (group of spellGroups(); track group.key) {
                 <div class="spell-group">
                   <div class="group-head">
-                    <span class="eyebrow">{{ group.label }}</span>
+                    <span class="qm-eyebrow">{{ group.label }}</span>
                     @if (group.slot; as slot) {
                       <span class="slot-row">
                         <app-use-pips
@@ -534,17 +532,17 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
                       @if (expandedSpells().has(entry.index)) {
                         <div class="entry-body">
                           @if (spell.school) {
-                            <div class="eyebrow mb-1">{{ spell.school }}</div>
+                            <div class="qm-eyebrow mb-1">{{ spell.school }}</div>
                           }
                           @if (loadingSpells().has(entry.index)) {
-                            <mat-progress-bar mode="indeterminate"></mat-progress-bar>
+                            <div class="qm-progress is-indeterminate h-1" role="progressbar" aria-label="Loading"><div class="qm-progress-bar"></div></div>
                           } @else if (spell.description) {
                             <div class="whitespace-pre-line">{{ spell.description }}</div>
                             @if (spell.usage) {
                               <div class="usage">{{ spell.usage }}</div>
                             }
                           } @else {
-                            <span class="italic muted">Geen beschrijving beschikbaar</span>
+                            <span class="italic qm-muted">Geen beschrijving beschikbaar</span>
                           }
                           @if (editable()) {
                             <app-tracker-editor [uses]="spell.uses ?? null" (usesChange)="usesChange.emit({ owner: 'spell', name: entry.name, uses: $event })" />
@@ -558,7 +556,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
 
               @if (orphanSlots().length) {
                 <div class="spell-group">
-                  <span class="eyebrow block mb-1">Spell Slots</span>
+                  <span class="qm-eyebrow block mb-1">Spell Slots</span>
                   @for (slot of orphanSlots(); track slot.level) {
                     <div class="row">
                       <span class="text-sm">Level {{ slot.level }}</span>
@@ -579,8 +577,8 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
             </section>
           }
 
-          <section class="panel">
-            <h3 class="section-title">Features & Traits</h3>
+          <section class="qm-panel">
+            <h3 class="qm-section-title">Features & Traits</h3>
             @for (entry of features(); track entry.index) {
               <div class="entry-row">
                 @if (entry.details; as feature) {
@@ -615,14 +613,14 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
                 @if (expandedFeatures().has(entry.index)) {
                   <div class="entry-body">
                     @if (feature.source) {
-                      <div class="eyebrow mb-1">{{ feature.source }}</div>
+                      <div class="qm-eyebrow mb-1">{{ feature.source }}</div>
                     }
                     @if (loadingFeatures().has(entry.index)) {
-                      <mat-progress-bar mode="indeterminate"></mat-progress-bar>
+                      <div class="qm-progress is-indeterminate h-1" role="progressbar" aria-label="Loading"><div class="qm-progress-bar"></div></div>
                     } @else if (feature.description) {
                       <div class="whitespace-pre-line">{{ feature.description }}</div>
                     } @else {
-                      <span class="italic muted">No description available</span>
+                      <span class="italic qm-muted">No description available</span>
                     }
                     @if (editable()) {
                       <app-tracker-editor [uses]="feature.uses ?? null" (usesChange)="usesChange.emit({ owner: 'feature', name: entry.name, uses: $event })" />
@@ -635,8 +633,8 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
             }
           </section>
 
-          <section class="panel">
-            <h3 class="section-title">Inventory</h3>
+          <section class="qm-panel">
+            <h3 class="qm-section-title">Inventory</h3>
             <app-coin-purse class="mb-4" [coins]="character().coins" [editable]="editable()" (coinsChange)="coinsChange.emit($event)" />
 
             @if (editable() || play().inventory.length) {
@@ -651,7 +649,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
             }
 
             @if (character().equipment.length) {
-              <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
+              <ul class="grid @md:grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
                 @for (item of character().equipment; track item) {
                   <li class="bullet">{{ item }}</li>
                 }
@@ -669,12 +667,12 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
 
       <!-- ═══ Story ═══ -->
       @if (personality().length) {
-        <section class="panel">
-          <h3 class="section-title">Personality</h3>
-          <div class="grid sm:grid-cols-2 gap-4">
+        <section class="qm-panel">
+          <h3 class="qm-section-title">Personality</h3>
+          <div class="grid @xl:grid-cols-2 gap-4">
             @for (p of personality(); track p.label) {
               <div class="trait">
-                <div class="eyebrow mb-1">{{ p.label }}</div>
+                <div class="qm-eyebrow mb-1">{{ p.label }}</div>
                 <p class="prose-text whitespace-pre-line">{{ p.text }}</p>
               </div>
             }
@@ -683,13 +681,13 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
       }
 
       @if (character().appearance; as appearance) {
-        <section class="panel">
-          <h3 class="section-title">Appearance</h3>
+        <section class="qm-panel">
+          <h3 class="qm-section-title">Appearance</h3>
           @if (appearanceDetails().length) {
-            <dl class="grid grid-cols-3 sm:grid-cols-6 gap-3 mb-4">
+            <dl class="grid grid-cols-3 @xl:grid-cols-6 gap-3 mb-4">
               @for (d of appearanceDetails(); track d.label) {
                 <div class="detail">
-                  <dt class="eyebrow">{{ d.label }}</dt>
+                  <dt class="qm-eyebrow">{{ d.label }}</dt>
                   <dd class="text-sm font-semibold mt-0.5">{{ d.value }}</dd>
                 </div>
               }
@@ -702,8 +700,8 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
       }
 
       @if (character().backstory) {
-        <section class="panel">
-          <h3 class="section-title">Backstory</h3>
+        <section class="qm-panel">
+          <h3 class="qm-section-title">Backstory</h3>
           <p class="prose-text backstory whitespace-pre-line">{{ character().backstory }}</p>
         </section>
       }
@@ -716,84 +714,16 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
   styles: [`
     :host {
       display: block;
-      --ink: #2a2320;
-      --muted: #7b6e60;
-      --paper: #fffdf8;
-      --paper-2: #f8f2e6;
-      --line: #e8dcc5;
-      --gold: #b48a3c;
-      --gold-soft: #f2e6cb;
-      --gold-deep: #8a6623;
-      --wine: #9b2f3a;
+      /* The sheet is dense: it keeps a smaller base size than the pages around it,
+         and lays itself out by its own width, since a chat panel may sit beside it. */
+      font-size: 14px;
+      line-height: 20px;
       color: var(--ink);
+      container-type: inline-size;
     }
 
-    .display, .section-title, .ability-label, .eyebrow, .vital-label, .portrait-initial, .level-badge {
-      font-family: 'Cinzel', 'Cormorant Garamond', Georgia, serif;
-    }
-    .display { font-weight: 700; letter-spacing: 0.01em; color: var(--ink); }
-    .muted { color: var(--muted); }
-
-    /* Panels */
-    .panel {
-      background: var(--paper);
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      padding: 1.25rem;
-      box-shadow: 0 1px 2px rgba(60, 40, 10, 0.04), 0 4px 16px -8px rgba(60, 40, 10, 0.12);
-    }
-
-    .section-title {
-      display: flex;
-      align-items: center;
-      gap: 0.6rem;
-      font-size: 0.8rem;
-      font-weight: 700;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: var(--gold-deep);
-      margin-bottom: 0.9rem;
-    }
-    .section-title::before {
-      content: '';
-      width: 7px;
-      height: 7px;
-      background: var(--gold);
-      transform: rotate(45deg);
-      flex-shrink: 0;
-    }
-    .section-title::after {
-      content: '';
-      flex: 1;
-      height: 1px;
-      background: linear-gradient(to right, var(--line), transparent);
-    }
-
-    .eyebrow {
-      font-size: 0.7rem;
-      font-weight: 600;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: var(--muted);
-    }
-
-    /* Hero */
-    .hero {
-      position: relative;
-      overflow: hidden;
-      padding: 1.5rem;
-      background:
-        radial-gradient(120% 80% at 0% 0%, rgba(180, 138, 60, 0.12), transparent 60%),
-        radial-gradient(80% 60% at 100% 0%, rgba(155, 47, 58, 0.06), transparent 60%),
-        var(--paper);
-    }
-    .hero::after {
-      content: '';
-      position: absolute;
-      inset: 6px;
-      border: 1px solid rgba(180, 138, 60, 0.25);
-      border-radius: 10px;
-      pointer-events: none;
+    .ability-label, .vital-label, .portrait-initial, .level-badge {
+      font-family: var(--font-display);
     }
 
     .portrait {
@@ -839,24 +769,12 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
       border: 2px solid var(--paper);
     }
 
-    .tag {
-      display: inline-flex;
-      align-items: center;
-      padding: 0.2rem 0.65rem;
-      border-radius: 999px;
-      font-size: 0.78rem;
-      font-weight: 500;
-      background: var(--gold-soft);
-      color: var(--gold-deep);
-      border: 1px solid rgba(180, 138, 60, 0.25);
-    }
-    .tag-quiet { background: transparent; color: var(--muted); border-color: var(--line); }
     .hero-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem; }
     /* Two rest buttons on the first row, the three page actions on the second. */
     .hero-actions.is-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); }
     .hero-actions.is-grid .action { grid-column: span 2; justify-content: center; min-height: 40px; padding-inline: 0.5rem; }
     .hero-actions.is-grid .action-rest { grid-column: span 3; }
-    @media (min-width: 640px) { .hero-actions:not(.is-grid) { flex-direction: column; } }
+    @container (min-width: 42rem) { .hero-actions:not(.is-grid) { flex-direction: column; } }
     .action.action-rest { font-weight: 600; color: var(--gold-deep); background: var(--gold-soft); border-color: var(--gold); }
     .action.action-rest.is-long { color: #f6efe0; background: var(--ink); border-color: var(--ink); }
     .action.action-rest.is-long:hover { background: #453a35; border-color: #453a35; }
@@ -905,6 +823,13 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
       min-height: 88px;
     }
     .vital-stepper { flex-basis: 150px; }
+    /* With room to spare: hit points and the three combat numbers on top, the two slower ones below. */
+    @container (min-width: 760px) {
+      .vitals { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); }
+      .vital-hp { grid-column: span 6; }
+      .vital { grid-column: span 2; }
+      .vital:nth-last-child(-n + 2) { grid-column: span 6; }
+    }
     .mini-step {
       width: 36px;
       height: 36px;
@@ -943,7 +868,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
       background: var(--paper);
       border: 1px solid var(--line);
       border-radius: 14px 14px 40% 40% / 14px 14px 24px 24px;
-      box-shadow: 0 2px 10px -6px rgba(60, 40, 10, 0.25);
+      box-shadow: var(--panel-shadow);
     }
     .ability-label { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.16em; color: var(--gold-deep); }
     .ability-mod { font-size: 1.75rem; font-weight: 700; line-height: 1.1; margin: 0.2rem 0 0.35rem; font-variant-numeric: tabular-nums; }
@@ -1092,7 +1017,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
 
     /* Story */
     .prose-text {
-      font-family: 'Cormorant Garamond', Georgia, serif;
+      font-family: var(--font-prose);
       font-size: 1.08rem;
       line-height: 1.6;
       color: #3a312b;
@@ -1106,7 +1031,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
     .detail { padding: 0.5rem 0.65rem; border-radius: 8px; background: var(--paper-2); border: 1px solid var(--line); }
     .backstory::first-letter {
       float: left;
-      font-family: 'Cinzel', Georgia, serif;
+      font-family: var(--font-display);
       font-size: 3.2rem;
       line-height: 0.9;
       font-weight: 700;

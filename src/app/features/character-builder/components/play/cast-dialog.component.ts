@@ -78,7 +78,7 @@ export interface CastChoice {
       box-shadow: 0 16px 36px -12px rgba(60, 40, 10, 0.45);
       text-align: left;
     }
-    .title { font-family: 'Cinzel', 'Cormorant Garamond', Georgia, serif; font-size: 0.95rem; font-weight: 700; color: var(--ink, #2a2320); }
+    .title { font-family: var(--font-display); font-size: 0.95rem; font-weight: 700; color: var(--ink, #2a2320); }
     .hint { margin-bottom: 0.1rem; font-size: 0.78rem; color: var(--muted, #7b6e60); }
     .option {
       display: flex;

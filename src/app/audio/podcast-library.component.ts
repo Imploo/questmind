@@ -24,41 +24,42 @@ interface SessionWithPodcasts {
         <app-campaign-selector />
       </div>
 
-      <div class="mb-8">
-        <h1 class="text-3xl font-bold m-0">🎙️ Podcast Bibliotheek</h1>
-        <p class="text-gray-600 m-0 mt-2">
+      <header class="mb-6 sm:mb-8">
+        <div class="qm-page-eyebrow">Campaign</div>
+        <h1 class="qm-page-title mt-1">Podcast Bibliotheek</h1>
+        <p class="qm-page-sub mt-1 max-w-2xl">
           Bekijk alle sessie podcasts. Elke speeldag is een audio sessie met zijn eigen verhaal en
           versioned podcasts.
         </p>
-      </div>
+      </header>
 
       @if (!campaignId()) {
-        <div class="text-center py-12 bg-gray-50 rounded-lg">
-          <div class="text-5xl mb-4">🧭</div>
-          <p class="text-gray-600 m-0">Select a campaign to view its podcasts.</p>
+        <div class="qm-panel qm-hero qm-empty">
+          <span class="qm-medallion qm-medallion-lg"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-width="1.75" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M15.5 8.5l-2 5-5 2 2-5 5-2z" /></svg></span>
+          <p class="qm-empty-text">Select a campaign to view its podcasts.</p>
         </div>
       }
 
       @if (campaignId() && sessions().length === 0) {
-        <div class="text-center py-12 bg-gray-50 rounded-lg">
-          <div class="text-6xl mb-4">🎙️</div>
-          <p class="text-gray-600 m-0">Nog geen podcasts gegenereerd.</p>
-          <p class="text-sm text-gray-500 mt-2 m-0">
+        <div class="qm-panel qm-hero qm-empty">
+          <span class="qm-medallion qm-medallion-lg"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg></span>
+          <h2 class="qm-empty-title">Nog geen podcasts gegenereerd.</h2>
+          <p class="qm-empty-text">
             Genereer een podcast vanuit een sessie verhaal om deze hier te zien.
           </p>
         </div>
       }
 
       @if (campaignId() && sessions().length > 0) {
-        <div class="space-y-6">
+        <div class="space-y-4 sm:space-y-6">
           @for (session of sessions(); track session.sessionId) {
-            <div class="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-              <div class="flex items-center justify-between mb-4">
-                <div>
-                  <h2 class="text-xl font-semibold m-0">{{ session.sessionTitle }}</h2>
-                  <p class="text-sm text-gray-500 m-0 mt-1">Speeldag: {{ session.sessionDate }}</p>
+            <section class="qm-panel sm:!p-6">
+              <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
+                <div class="min-w-0">
+                  <div class="qm-eyebrow">Speeldag: {{ session.sessionDate }}</div>
+                  <h2 class="qm-display text-xl leading-tight break-words">{{ session.sessionTitle }}</h2>
                 </div>
-                <span class="text-xs bg-purple-100 text-purple-700 px-3 py-1 rounded-full">
+                <span class="qm-badge qm-badge-violet">
                   {{ session.podcasts.length }} versie{{ session.podcasts.length > 1 ? 's' : '' }}
                 </span>
               </div>
@@ -72,16 +73,14 @@ interface SessionWithPodcasts {
                   />
                 }
               </div>
-            </div>
+            </section>
           }
         </div>
 
-        <div class="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <p class="text-sm text-blue-700 m-0">
-            <strong>💡 Info:</strong> Podcasts worden opgeslagen als MP3 en gebruiken AI-stemmen voor
-            Nederlandse audio met natuurlijke intonatie.
-          </p>
-        </div>
+        <p class="mt-6 text-center text-sm text-white/80">
+          Podcasts worden opgeslagen als MP3 en gebruiken AI-stemmen voor
+          Nederlandse audio met natuurlijke intonatie.
+        </p>
       }
     </div>
   `

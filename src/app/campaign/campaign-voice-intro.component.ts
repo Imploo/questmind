@@ -9,9 +9,9 @@ import { CampaignVoiceIntro } from './campaign.models';
   selector: 'app-campaign-voice-intro',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="bg-gray-50 p-4 rounded-lg">
-      <h5 class="text-sm font-medium text-gray-700 mb-1">Voice introduction (speaker recognition)</h5>
-      <p class="text-xs text-gray-600 mb-3">
+    <div class="qm-well">
+      <h5 class="font-display text-sm font-bold tracking-wide mb-1">Voice introduction (speaker recognition)</h5>
+      <p class="qm-help mb-3">
         Record everyone at the table introducing themselves, then upload it here. It is sent along with
         every transcription so the AI can tell which voice belongs to which character.
         Let each person talk for about 10–20 seconds, e.g.
@@ -22,9 +22,9 @@ import { CampaignVoiceIntro } from './campaign.models';
 
       @if (voiceIntro(); as intro) {
         <div class="mb-3">
-          <div class="text-sm text-gray-900">
+          <div class="text-sm font-semibold">
             {{ intro.fileName }}
-            <span class="text-gray-500">· {{ durationLabel() }}</span>
+            <span class="font-normal qm-muted">· {{ durationLabel() }}</span>
           </div>
           @if (playbackUrl()) {
             <audio class="mt-2 w-full max-w-md" controls preload="none" [src]="playbackUrl()">
@@ -33,15 +33,14 @@ import { CampaignVoiceIntro } from './campaign.models';
           }
         </div>
       } @else {
-        <p class="text-sm text-gray-500 mb-3">No voice introduction uploaded yet.</p>
+        <p class="text-sm qm-muted mb-3">No voice introduction uploaded yet.</p>
       }
 
       @if (canEdit()) {
         <div class="flex flex-wrap items-center gap-2">
           <label
-            class="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors focus-within:ring-2 focus-within:ring-blue-500"
-            [class.opacity-50]="isBusy()"
-            [class.cursor-not-allowed]="isBusy()"
+            class="qm-btn qm-btn-gold focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary"
+            [class.is-disabled]="isBusy()"
             [class.cursor-pointer]="!isBusy()"
           >
             {{ voiceIntro() ? 'Replace recording' : 'Upload recording' }}
@@ -58,7 +57,7 @@ import { CampaignVoiceIntro } from './campaign.models';
               type="button"
               (click)="removeRequested.emit()"
               [disabled]="isBusy()"
-              class="px-4 py-2 text-sm text-red-700 hover:bg-red-50 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              class="qm-btn qm-btn-danger"
             >
               Remove
             </button>
@@ -68,20 +67,20 @@ import { CampaignVoiceIntro } from './campaign.models';
 
       @if (progress() !== null) {
         <div
-          class="mt-3 w-full max-w-md h-2 bg-gray-200 rounded"
+          class="qm-progress mt-3 max-w-md"
           role="progressbar"
           aria-label="Voice introduction upload progress"
           [attr.aria-valuenow]="progress()"
           aria-valuemin="0"
           aria-valuemax="100"
         >
-          <div class="h-2 bg-blue-600 rounded" [style.width.%]="progress()"></div>
+          <div class="qm-progress-bar" [style.width.%]="progress()"></div>
         </div>
       }
 
       <div aria-live="polite">
         @if (errorMessage()) {
-          <p class="mt-2 text-sm text-red-700">{{ errorMessage() }}</p>
+          <p class="mt-2 text-sm text-wine">{{ errorMessage() }}</p>
         }
       </div>
     </div>

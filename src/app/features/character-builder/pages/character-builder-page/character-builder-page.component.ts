@@ -1,8 +1,6 @@
 import { Component, inject, signal, computed, effect, linkedSignal, viewChild, ChangeDetectionStrategy, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
-import { MatCardModule } from '@angular/material/card';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { AuthService } from '../../../../auth/auth.service';
 import { CharacterService } from '../../../../core/services/character.service';
 import { CharacterVersionService } from '../../../../core/services/character-version.service';
@@ -33,8 +31,6 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
   imports: [
     CommonModule,
     RouterModule,
-    MatCardModule,
-    MatProgressSpinnerModule,
     CharacterSheetComponent,
     ChatComponent,
     CharacterDraftPreviewComponent,
@@ -42,103 +38,88 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
     ChatDrawerComponent,
   ],
   template: `
-    <div class="flex min-h-screen bg-[#f4eee2]">
-        <div class="flex w-full items-start">
-          <!-- Center Character Sheet -->
-          <div
-              class="max-w-5xl mx-auto"
-              [class]="isNarrow() || !isOwner() ? 'w-full' : 'w-2/3 p-4'"
-          >
-            <div class="flex flex-col gap-4">
-              @if (isDraft()) {
-                <div class="sticky top-8 z-10">
-                  <app-character-draft-preview
-                      [loading]="isCommitting()"
-                      [abilityScoreWarnings]="latestVersion()?.abilityScoreWarnings ?? []"
-                      [derivedStatCorrections]="latestVersion()?.derivedStatCorrections ?? []"
-                      (commit)="commitDraft()"
-                      (dismiss)="dismissDraft()"
-                  ></app-character-draft-preview>
-                </div>
-              }
-              <div class="flex-1">
-                @if (selectedCharacterId()) {
-                  @if (latestVersion()) {
-                    <div class="relative p-3 sm:p-6">
-                      @if (isGenerating()) {
-                        <div class="absolute inset-0 z-10 flex items-center justify-center bg-[#f4eee2]/70 rounded-2xl">
-                          <mat-spinner diameter="30"></mat-spinner>
-                        </div>
-                      }
-                      <div>
-                        <app-character-sheet
-                          [character]="latestVersion()!.character"
-                          [characterName]="selectedCharacter()?.name || 'Unknown'"
-                          [characterId]="selectedCharacterId()"
-                          [activeVersionId]="latestVersion()?.id ?? ''"
-                          [images]="characterImages()"
-                          [canDelete]="isOwner()"
-                          [exportingPdf]="exportingPdf()"
-                          [playState]="playState()"
-                          [editable]="isOwner()"
-                          [canClone]="canClone()"
-                          [cloning]="cloning()"
-                          (cloneCharacter)="onCloneCharacter()"
-                          (playStateChange)="onPlayStateChange($event)"
-                          (usesChange)="onUsesChange($event)"
-                          (coinsChange)="onCoinsChange($event)"
-                          (exportPdf)="onExportPdf()"
-                          (viewHistory)="showHistory.set(true)"
-                          (deleteImage)="onDeleteImage($event)"
-                          (spellResolved)="onSpellResolved($event)"
-                          (featureResolved)="onFeatureResolved($event)"
-                        ></app-character-sheet>
-                      </div>
-                    </div>
-                  } @else {
-                    <mat-card class="bg-base-100 shadow-lg border border-base-300">
-                      <mat-card-content class="flex items-center justify-center min-h-[320px]">
-                        <span class="loading loading-spinner loading-lg"></span>
-                      </mat-card-content>
-                    </mat-card>
-                  }
-                } @else {
-                  <mat-card class="bg-base-100 shadow-lg border border-base-300">
-                    <mat-card-content class="flex flex-col items-center justify-center min-h-[320px] text-base-content/60">
-                      <h2 class="text-2xl font-bold mb-2">Select a Character</h2>
-                      <p>Choose a character from the list or create a new one.</p>
-                    </mat-card-content>
-                  </mat-card>
-                }
-              </div>
+    <div class="flex w-full items-start gap-6">
+      <!-- Character sheet -->
+      <div class="min-w-0 flex-1" [class.pb-[10vh]]="isNarrow() && isOwner()">
+        <div class="max-w-5xl mx-auto flex flex-col gap-4">
+          @if (isDraft()) {
+            <div class="sticky top-[4.25rem] sm:top-4 z-10">
+              <app-character-draft-preview
+                  [loading]="isCommitting()"
+                  [abilityScoreWarnings]="latestVersion()?.abilityScoreWarnings ?? []"
+                  [derivedStatCorrections]="latestVersion()?.derivedStatCorrections ?? []"
+                  (commit)="commitDraft()"
+                  (dismiss)="dismissDraft()"
+              ></app-character-draft-preview>
             </div>
-          </div>
-
-          <!-- Chat Panel (owner only) -->
-          @if (isOwner()) {
-            @if (isNarrow()) {
-              <app-chat-drawer
-                  #chatDrawer
-                  [character]="liveCharacter()"
-                  (viewVersions)="showHistory.set(true)"
-              ></app-chat-drawer>
+          }
+          @if (selectedCharacterId()) {
+            @if (latestVersion()) {
+              <div class="relative">
+                @if (isGenerating()) {
+                  <div class="absolute -inset-2 z-10 flex items-start justify-center rounded-2xl bg-[rgba(40,24,90,0.35)] pt-[30vh] backdrop-blur-[2px]" role="status" aria-label="Updating character">
+                    <span class="qm-medallion qm-medallion-lg"><span class="qm-spinner qm-spinner-lg"></span></span>
+                  </div>
+                }
+                <app-character-sheet
+                  [character]="latestVersion()!.character"
+                  [characterName]="selectedCharacter()?.name || 'Unknown'"
+                  [characterId]="selectedCharacterId()"
+                  [activeVersionId]="latestVersion()?.id ?? ''"
+                  [images]="characterImages()"
+                  [canDelete]="isOwner()"
+                  [exportingPdf]="exportingPdf()"
+                  [playState]="playState()"
+                  [editable]="isOwner()"
+                  [canClone]="canClone()"
+                  [cloning]="cloning()"
+                  (cloneCharacter)="onCloneCharacter()"
+                  (playStateChange)="onPlayStateChange($event)"
+                  (usesChange)="onUsesChange($event)"
+                  (coinsChange)="onCoinsChange($event)"
+                  (exportPdf)="onExportPdf()"
+                  (viewHistory)="showHistory.set(true)"
+                  (deleteImage)="onDeleteImage($event)"
+                  (spellResolved)="onSpellResolved($event)"
+                  (featureResolved)="onFeatureResolved($event)"
+                ></app-character-sheet>
+              </div>
             } @else {
-              <div class="w-1/3 p-4 sticky top-4 h-[calc(100vh-2rem)]">
-                <mat-card class="h-full bg-base-100 shadow-xl border border-base-300">
-                  <mat-card-content class="p-4 h-full">
-                    @if (latestVersion()) {
-                      <app-chat #chat [character]="liveCharacter()!" (viewVersions)="showHistory.set(true)"></app-chat>
-                    } @else {
-                      <div class="flex h-full items-center justify-center opacity-60 text-sm">
-                        Select a character to chat
-                      </div>
-                    }
-                  </mat-card-content>
-                </mat-card>
+              <div class="qm-panel flex items-center justify-center min-h-[320px]" role="status" aria-label="Loading character">
+                <span class="qm-spinner qm-spinner-lg"></span>
               </div>
             }
+          } @else {
+            <div class="qm-panel qm-hero qm-empty min-h-[320px] justify-center">
+              <h2 class="qm-empty-title">Select a Character</h2>
+              <p class="qm-empty-text">Choose a character from the list or create a new one.</p>
+            </div>
           }
         </div>
+      </div>
+
+      <!-- Chat panel (owner only) -->
+      @if (isOwner()) {
+        @if (isNarrow()) {
+          <app-chat-drawer
+              #chatDrawer
+              [character]="liveCharacter()"
+              (viewVersions)="showHistory.set(true)"
+          ></app-chat-drawer>
+        } @else {
+          <aside class="w-1/3 max-w-[26rem] shrink-0 sticky top-6 h-[calc(100dvh-3rem)]" aria-label="Chat">
+            <div class="qm-panel h-full overflow-hidden !p-0">
+              @if (latestVersion()) {
+                <app-chat #chat [character]="liveCharacter()!" (viewVersions)="showHistory.set(true)"></app-chat>
+              } @else {
+                <div class="flex h-full items-center justify-center text-sm qm-muted">
+                  Select a character to chat
+                </div>
+              }
+            </div>
+          </aside>
+        }
+      }
     </div>
 
     @if (isOwner() && showHistory() && selectedCharacterId()) {

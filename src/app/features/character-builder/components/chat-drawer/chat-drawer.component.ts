@@ -22,7 +22,7 @@ const DRAG_THRESHOLD_PX = 40;
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [ChatComponent],
   host: {
-    class: 'fixed bottom-0 left-0 right-0 z-30 flex flex-col rounded-t-2xl bg-white shadow-[0_-4px_24px_rgba(0,0,0,0.18)]',
+    class: 'fixed bottom-0 left-0 right-0 z-30 flex flex-col overflow-hidden rounded-t-2xl border-t border-gold/40 bg-paper shadow-[0_-10px_32px_-8px_rgba(24,12,60,0.55)]',
     '[style.height]': 'drawerHeight()',
     '[style.transition]': 'isDragging() ? "none" : "height 300ms ease-out"',
   },
@@ -32,13 +32,13 @@ const DRAG_THRESHOLD_PX = 40;
       (pointerdown)="onPointerDown($event)"
       (click)="onHandleClick()"
     >
-      <div class="h-1.5 w-12 rounded-full bg-gray-300"></div>
+      <div class="h-1.5 w-12 rounded-full bg-gold/60"></div>
     </div>
-    <div class="flex flex-1 flex-col overflow-hidden px-4 pb-4">
+    <div class="flex flex-1 flex-col overflow-hidden">
       @if (character()) {
         <app-chat #chatComp [character]="character()!" (viewVersions)="viewVersions.emit()"></app-chat>
       } @else {
-        <div class="flex h-full items-center justify-center text-sm opacity-60">
+        <div class="flex h-full items-center justify-center text-sm qm-muted">
           Selecteer een character om te chatten
         </div>
       }

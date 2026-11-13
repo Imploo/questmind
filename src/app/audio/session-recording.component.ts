@@ -5,14 +5,16 @@ import { ChangeDetectionStrategy, Component, computed, input, output } from '@an
   selector: 'app-session-recording',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="border border-gray-200 rounded-xl bg-white shadow-sm overflow-hidden mb-6">
-      <div class="px-6 py-4 flex flex-col gap-3">
+    <div class="qm-panel mb-4 lg:mb-6">
+      <div class="flex flex-col gap-3">
         <div class="flex items-center justify-between gap-3 flex-wrap">
           <div class="flex items-center gap-3">
-            <span class="text-2xl">🎧</span>
+            <span class="qm-medallion">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 18v-6a9 9 0 0118 0v6M3 18a2 2 0 002 2h1a1 1 0 001-1v-5a1 1 0 00-1-1H3v5zm18 0a2 2 0 01-2 2h-1a1 1 0 01-1-1v-5a1 1 0 011-1h3v5z" /></svg>
+            </span>
             <div>
-              <h3 class="text-lg font-semibold text-gray-800 m-0">Recording</h3>
-              <p class="text-sm text-gray-500 m-0">{{ details() }}</p>
+              <h3 class="font-display text-base font-bold">Recording</h3>
+              <p class="text-sm qm-muted">{{ details() }}</p>
             </div>
           </div>
           <div class="flex items-center gap-2">
@@ -22,7 +24,7 @@ import { ChangeDetectionStrategy, Component, computed, input, output } from '@an
                 [attr.download]="fileName()"
                 target="_blank"
                 rel="noopener"
-                class="px-4 py-2 text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 border border-gray-300 rounded-lg transition-colors"
+                class="qm-btn"
               >
                 Download
               </a>
@@ -33,7 +35,7 @@ import { ChangeDetectionStrategy, Component, computed, input, output } from '@an
                 (click)="retranscribe.emit()"
                 [disabled]="busy()"
                 title="Transcribe the stored recording again and generate a new story"
-                class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                class="qm-btn qm-btn-gold"
               >
                 Re-transcribe
               </button>
@@ -44,7 +46,7 @@ import { ChangeDetectionStrategy, Component, computed, input, output } from '@an
         @if (audioUrl()) {
           <audio controls preload="none" [src]="audioUrl()" class="w-full"></audio>
         } @else {
-          <p class="text-sm text-gray-400 m-0">Loading recording...</p>
+          <p class="text-sm qm-muted">Loading recording...</p>
         }
       </div>
     </div>
