@@ -4,6 +4,7 @@ import {
   computed,
   inject,
   input,
+  output,
   signal,
   viewChild,
   NgZone,
@@ -35,7 +36,7 @@ const DRAG_THRESHOLD_PX = 40;
     </div>
     <div class="flex flex-1 flex-col overflow-hidden px-4 pb-4">
       @if (character()) {
-        <app-chat #chatComp [character]="character()!"></app-chat>
+        <app-chat #chatComp [character]="character()!" (viewVersions)="viewVersions.emit()"></app-chat>
       } @else {
         <div class="flex h-full items-center justify-center text-sm opacity-60">
           Selecteer een character om te chatten
@@ -46,6 +47,9 @@ const DRAG_THRESHOLD_PX = 40;
 })
 export class ChatDrawerComponent {
   character = input<DndCharacter | null>(null);
+
+  /** The user asks for the version history from the chat. */
+  viewVersions = output<void>();
 
   isExpanded = signal(false);
   isDragging = signal(false);

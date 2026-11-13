@@ -26,14 +26,9 @@ export { transcribeAudioFast, transcribeAudioFastWorker } from './transcribe-aud
 // Story generation (triggered after transcription)
 export { storyGenerationWorker, storyGenerationTaskWorker } from './workers/story-generation-worker';
 
-// Character chat proxy (AI 1: text responder)
-export { characterChat } from './character-chat';
-
-// Character draft generation (AI 2: JSON generator)
-export { generateCharacterDraftCallable } from './generate-character-draft';
-
-// Image generation via Gemini
-export { generateImage } from './generate-image';
+// Character chat: stored conversations, answered by a task worker (AI 1: text responder,
+// then AI 2 for a character update, or an image)
+export { characterChat, characterChatWorker, deleteCharacterChat } from './character-chat';
 
 // Spell description resolution for lazy loading
 export { resolveSpell } from './resolve-spell';

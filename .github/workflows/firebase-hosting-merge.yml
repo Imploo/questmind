@@ -43,5 +43,6 @@ jobs:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
           service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
 
-      - name: Deploy to Firebase Hosting
-        run: npx firebase-tools deploy --project questmind-dnd
+      # Functions first (removed functions are deleted), then hosting and rules.
+      - name: Deploy to Firebase
+        run: node scripts/deploy-firebase.js questmind-dnd

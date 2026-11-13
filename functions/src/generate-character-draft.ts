@@ -1,13 +1,8 @@
-import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { DndCharacterSchema, DndCharacter } from './schemas/dnd-character.schema';
 import { CHARACTER_JSON_GENERATOR_PROMPT } from './prompts/character-json-generator.prompt';
-import { wrapCallable } from './utils/sentry-error-handler';
 import { getAiFeatureConfig } from './utils/ai-settings';
 import { GeminiEmptyResponseError, generateJson, getGeminiClient } from './utils/gemini-client';
-import { SHARED_CORS } from './config/cors';
-import { ensureAuthForTesting } from './utils/emulator-helpers';
-import { assertCharacterOwner, requireAuthUid } from './utils/access';
 import * as logger from './utils/logger';
 import { ChatHistoryMessage } from './types/chat.types';
 import {
@@ -31,16 +26,30 @@ export interface GenerateCharacterDraftPayload {
   pdfAttachment?: { mimeType: string; data: string };
 }
 
+/** The draft version a generated character was stored as. */
+export interface SavedDraft {
+  versionId: string;
+  versionNumber: number;
+}
+
+export interface GenerateCharacterDraftOptions {
+  /** Asked right before saving; `false` drops the generated draft (the owner cancelled the update). */
+  shouldSave?: () => Promise<boolean>;
+}
+
 /**
  * Core logic for AI 2: generates a character draft from chat context and stores
- * it as a draft version. Called by the callable below after its auth/owner checks.
+ * it as a draft version. Run by the chat worker, for a turn whose sender was checked
+ * to own the character. Returns the saved draft, or null when `shouldSave` turned it down.
  */
-export async function executeGenerateCharacterDraft(payload: GenerateCharacterDraftPayload): Promise<void> {
+export async function executeGenerateCharacterDraft(
+  payload: GenerateCharacterDraftPayload,
+  options: GenerateCharacterDraftOptions = {}
+): Promise<SavedDraft | null> {
   const { characterId, currentCharacter, chatHistory, ai1Response, pdfAttachment } = payload;
 
   if (!characterId || !currentCharacter || !chatHistory || !ai1Response) {
-    logger.error('generateCharacterDraft: missing required payload fields');
-    return;
+    throw new Error('generateCharacterDraft: missing required payload fields');
   }
 
   const client = getGeminiClient();
@@ -129,9 +138,14 @@ export async function executeGenerateCharacterDraft(payload: GenerateCharacterDr
     });
   }
 
+  if (options.shouldSave && !(await options.shouldSave())) {
+    logger.info('generateCharacterDraft: draft dropped, the update was cancelled', { characterId });
+    return null;
+  }
+
   // Save as draft version in Firestore
   logger.info('generateCharacterDraft: saving draft version');
-  await saveDraftVersion(characterId, result.character, {
+  return saveDraftVersion(characterId, result.character, {
     abilityScoreWarnings: result.issues.map(issue => issue.message),
     derivedStatCorrections: result.corrections,
   });
@@ -160,48 +174,16 @@ function checkAbilityScores(draft: DndCharacter): CheckedDraft {
   return { character: derived.character, issues: validateAbilityScores(derived.character), corrections };
 }
 
-/**
- * Callable endpoint for AI 2: allows the frontend to trigger character draft generation directly.
- */
-export const generateCharacterDraftCallable = onCall(
-  {
-    cors: SHARED_CORS,
-    secrets: ['GOOGLE_AI_API_KEY'],
-  },
-  wrapCallable<GenerateCharacterDraftPayload, { success: boolean }>(
-    'generateCharacterDraftCallable',
-    async (request): Promise<{ success: boolean }> => {
-      ensureAuthForTesting(request);
-      const uid = requireAuthUid(request);
-
-      const payload = request.data;
-
-      if (!payload.characterId || !payload.currentCharacter || !payload.chatHistory || !payload.ai1Response) {
-        throw new HttpsError('invalid-argument', 'Missing required fields: characterId, currentCharacter, chatHistory, ai1Response');
-      }
-
-      const db = getFirestore();
-      await assertCharacterOwner(db, payload.characterId, uid);
-      await db.collection('characters').doc(payload.characterId).update({ isGenerating: true });
-
-      try {
-        await executeGenerateCharacterDraft(payload);
-        return { success: true };
-      } catch (error) {
-        await db.collection('characters').doc(payload.characterId)
-          .update({ isGenerating: false }).catch(() => undefined);
-        throw error;
-      }
-    }
-  )
-);
-
 interface DraftCheckResults {
   abilityScoreWarnings: string[];
   derivedStatCorrections: string[];
 }
 
-async function saveDraftVersion(characterId: string, character: DndCharacter, checks: DraftCheckResults): Promise<void> {
+async function saveDraftVersion(
+  characterId: string,
+  character: DndCharacter,
+  checks: DraftCheckResults
+): Promise<SavedDraft> {
   const db = getFirestore();
   const versionsRef = db
     .collection('characters').doc(characterId)
@@ -215,27 +197,30 @@ async function saveDraftVersion(characterId: string, character: DndCharacter, ch
 
   if (!lastVersionSnap.empty && lastVersionSnap.docs[0].data().isDraft) {
     // Latest version is already a draft — overwrite it
-    await lastVersionSnap.docs[0].ref.update({
+    const draft = lastVersionSnap.docs[0];
+    await draft.ref.update({
       character,
       ...checks,
       updatedAt: FieldValue.serverTimestamp(),
     });
-  } else {
-    // Create a new draft version
-    const nextNumber = lastVersionSnap.empty
-      ? 1
-      : lastVersionSnap.docs[0].data().versionNumber + 1;
-
-    const newDocRef = versionsRef.doc();
-    await newDocRef.set({
-      id: newDocRef.id,
-      versionNumber: nextNumber,
-      character,
-      ...checks,
-      commitMessage: 'Draft via AI chat',
-      source: 'ai',
-      isDraft: true,
-      createdAt: FieldValue.serverTimestamp(),
-    });
+    return { versionId: draft.id, versionNumber: draft.data().versionNumber };
   }
+
+  // Create a new draft version
+  const nextNumber = lastVersionSnap.empty
+    ? 1
+    : lastVersionSnap.docs[0].data().versionNumber + 1;
+
+  const newDocRef = versionsRef.doc();
+  await newDocRef.set({
+    id: newDocRef.id,
+    versionNumber: nextNumber,
+    character,
+    ...checks,
+    commitMessage: 'Draft via AI chat',
+    source: 'ai',
+    isDraft: true,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+  return { versionId: newDocRef.id, versionNumber: nextNumber };
 }

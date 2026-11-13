@@ -9,11 +9,15 @@ export const TASK_WORKER_REGION = 'europe-west1';
  */
 export const TASK_WORKER_TIMEOUT_SECONDS = 1800;
 
-/** Task-queue functions of the session audio pipeline: process → transcribe → story. */
+/**
+ * Task-queue functions: the session audio pipeline (process → transcribe → story)
+ * and the turns of a character chat.
+ */
 export const TASK_WORKERS = {
   processAudio: 'processSessionAudioWorker',
   transcription: 'transcribeAudioFastWorker',
   story: 'storyGenerationTaskWorker',
+  characterChat: 'characterChatWorker',
 } as const;
 
 /**

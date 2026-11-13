@@ -120,13 +120,14 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
               <app-chat-drawer
                   #chatDrawer
                   [character]="liveCharacter()"
+                  (viewVersions)="showHistory.set(true)"
               ></app-chat-drawer>
             } @else {
               <div class="w-1/3 p-4 sticky top-4 h-[calc(100vh-2rem)]">
                 <mat-card class="h-full bg-base-100 shadow-xl border border-base-300">
                   <mat-card-content class="p-4 h-full">
                     @if (latestVersion()) {
-                      <app-chat #chat [character]="liveCharacter()!"></app-chat>
+                      <app-chat #chat [character]="liveCharacter()!" (viewVersions)="showHistory.set(true)"></app-chat>
                     } @else {
                       <div class="flex h-full items-center justify-center opacity-60 text-sm">
                         Select a character to chat
@@ -264,14 +265,10 @@ export class CharacterBuilderPageComponent {
         }
     });
 
-    // Update chat service with character ID
+    // The chat and its stored conversations belong to the owner; a visitor gets none.
     effect(() => {
       const character = this.selectedCharacter();
-      if (character) {
-        this.chatService.setCharacterId(character.id);
-      } else {
-        this.chatService.setCharacterId(null);
-      }
+      this.chatService.setCharacterId(character && this.isOwner() ? character.id : null);
     });
 
     // A PDF picked in the import dialog of the character list: hand it to the chat of
@@ -286,6 +283,7 @@ export class CharacterBuilderPageComponent {
 
     // Clean up service state on destroy
     this.destroyRef.onDestroy(() => {
+      this.chatService.setCharacterId(null);
       this.characterService.activeCharacterId.set(null);
       this.characterVersionService.activeCharacterId.set(null);
       this.characterImageService.activeCharacterId.set(null);
