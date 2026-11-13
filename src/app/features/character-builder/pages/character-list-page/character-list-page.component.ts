@@ -1,4 +1,4 @@
-import { Component, inject, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, signal, computed, ChangeDetectionStrategy } from '@angular/core';
 import { Router } from '@angular/router';
 import { CharacterService } from '../../../../core/services/character.service';
 import { CharacterVersionService } from '../../../../core/services/character-version.service';
@@ -7,6 +7,8 @@ import { Character } from '../../../../core/models/schemas/character.schema';
 import { DndCharacter } from '../../../../shared/models/dnd-character.model';
 import { CharacterImportService } from '../../services/character-import.service';
 import { ImportCharacterDialogComponent } from '../../components/import-character-dialog/import-character-dialog.component';
+import { CharacterTileComponent } from '../../components/character-tile/character-tile.component';
+import { ToastService } from '../../../../shared/services/toast.service';
 import { readPdfAttachment } from '../../../../chat/pdf-attachment';
 import * as logger from '../../../../shared/logger';
 
@@ -18,6 +20,7 @@ interface CharacterSummary {
   level: number;
   mainWeapon: string | null;
   imageUrl: string | null;
+  archived: boolean;
 }
 
 /** Errors the backend raises on purpose carry a message for the user; anything else gets a general one. */
@@ -30,7 +33,7 @@ function importErrorMessage(error: unknown): string {
 @Component({
   selector: 'app-character-list-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ImportCharacterDialogComponent],
+  imports: [ImportCharacterDialogComponent, CharacterTileComponent],
   template: `
     @if (showImport()) {
       <app-import-character-dialog
@@ -86,36 +89,15 @@ function importErrorMessage(error: unknown): string {
           </div>
         } @else {
           <!-- Character Grid -->
-          @if (characterSummaries().length > 0) {
+          @if (activeCharacters().length > 0) {
             <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              @for (char of characterSummaries(); track char.id) {
-                <div
-                  class="border border-white/20 aspect-square rounded-2xl overflow-hidden cursor-pointer shadow-md hover:shadow-xl transition-all duration-200 hover:-translate-y-1 hover:scale-[1.02] relative group"
-                  (click)="onSelectCharacter(char.id)"
-                >
-                  @if (char.imageUrl) {
-                    <!-- Tile with image -->
-                    <img
-                      [src]="char.imageUrl"
-                      [alt]="char.name"
-                      class="absolute inset-0 w-full h-full object-cover"
-                    />
-                    <div class="absolute inset-0 bg-white/20"></div>
-                  } @else {
-                    <!-- Glassy tile without image -->
-                    <div class="absolute inset-0 bg-base-300/40 backdrop-blur-md border border-white/20"></div>
-                    <div class="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent"></div>
-                  }
-
-                  <!-- Bottom 1/3 overlay for contrast -->
-                  <div class="absolute bottom-0 left-0 right-0 h-1/3 bg-black/40 backdrop-blur-[2px]"></div>
-
-                  <!-- Content overlay — pinned to bottom -->
-                  <div class="absolute bottom-0 left-0 right-0 px-2.5 pb-2">
-                    <p class="text-[12px] font-medium leading-none !mb-2 text-white/80 drop-shadow-sm">{{ char.name }}</p>
-                    <p class="text-[10px] leading-none !mb-2 text-white/50">{{ char.race }} {{ char.class }}</p>
-                  </div>
-                </div>
+              @for (char of activeCharacters(); track char.id) {
+                <app-character-tile
+                  [name]="char.name"
+                  [subtitle]="char.race + ' ' + char.class"
+                  [imageUrl]="char.imageUrl"
+                  (opened)="onSelectCharacter(char.id)"
+                />
               }
             </div>
           } @else {
@@ -124,8 +106,13 @@ function importErrorMessage(error: unknown): string {
               <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mb-4 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
               </svg>
-              <h2 class="text-xl font-bold mb-2">No characters yet</h2>
-              <p class="mb-6">Create your first character to get started!</p>
+              @if (archivedCharacters().length > 0) {
+                <h2 class="text-xl font-bold mb-2">All your characters are archived</h2>
+                <p class="mb-6">Create a new one, or bring one back from the archive below.</p>
+              } @else {
+                <h2 class="text-xl font-bold mb-2">No characters yet</h2>
+                <p class="mb-6">Create your first character to get started!</p>
+              }
               <button
                 (click)="onCreateCharacter()"
                 class="inline-flex items-center gap-2 px-6 py-3 bg-white text-gray-700 font-medium text-sm rounded-full shadow-sm border border-gray-200 hover:bg-gray-50 hover:shadow-md transition-all"
@@ -140,6 +127,37 @@ function importErrorMessage(error: unknown): string {
               </button>
             </div>
           }
+
+          <!-- Archive: out of the way, one click to look into -->
+          @if (archivedCharacters().length > 0) {
+            <section class="mt-10">
+              <button
+                type="button"
+                class="inline-flex items-center gap-2 min-h-10 text-sm font-medium text-base-content/60 hover:text-base-content cursor-pointer"
+                [attr.aria-expanded]="showArchived()"
+                aria-controls="archived-characters"
+                (click)="showArchived.set(!showArchived())"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
+                Archived ({{ archivedCharacters().length }})
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 transition-transform" [class.rotate-180]="showArchived()" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+              </button>
+              @if (showArchived()) {
+                <div id="archived-characters" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 mt-4">
+                  @for (char of archivedCharacters(); track char.id) {
+                    <app-character-tile
+                      [name]="char.name"
+                      [subtitle]="char.race + ' ' + char.class"
+                      [imageUrl]="char.imageUrl"
+                      [archived]="true"
+                      (opened)="onSelectCharacter(char.id)"
+                      (restored)="onUnarchive(char.id)"
+                    />
+                  }
+                </div>
+              }
+            </section>
+          }
         }
       </div>
     </div>
@@ -151,10 +169,14 @@ export class CharacterListPageComponent {
   private readonly characterVersionService = inject(CharacterVersionService);
   private readonly characterImageService = inject(CharacterImageService);
   private readonly characterImportService = inject(CharacterImportService);
+  private readonly toastService = inject(ToastService);
 
   loading = signal(true);
   creating = signal(false);
   characterSummaries = signal<CharacterSummary[]>([]);
+  activeCharacters = computed(() => this.characterSummaries().filter(char => !char.archived));
+  archivedCharacters = computed(() => this.characterSummaries().filter(char => char.archived));
+  showArchived = signal(false);
   showImport = signal(false);
   importing = signal(false);
   importError = signal('');
@@ -174,6 +196,16 @@ export class CharacterListPageComponent {
       this.router.navigate(['/characters', id]);
     } finally {
       this.creating.set(false);
+    }
+  }
+
+  async onUnarchive(id: string): Promise<void> {
+    try {
+      await this.characterService.setArchived(id, false);
+      this.characterSummaries.update(list => list.map(char => (char.id === id ? { ...char, archived: false } : char)));
+    } catch (e) {
+      logger.error('Failed to unarchive character:', e);
+      this.toastService.show('Terugzetten is mislukt. Probeer het opnieuw.', 'error');
     }
   }
 
@@ -299,6 +331,7 @@ export class CharacterListPageComponent {
       level: dndData?.level ?? 1,
       mainWeapon: dndData?.attacks?.[0]?.name ?? null,
       imageUrl,
+      archived: character.archived === true,
     };
   }
 }

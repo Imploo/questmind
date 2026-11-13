@@ -74,6 +74,14 @@ export class CharacterService {
     await this.characterRepo.patch(characterId, { playState });
   }
 
+  /**
+   * Archive a character or bring it back. Like the play state it leaves `updatedAt`
+   * alone, so a restored character returns to its old place in the list.
+   */
+  async setArchived(characterId: string, archived: boolean): Promise<void> {
+    await this.characterRepo.patch(characterId, { archived });
+  }
+
   async updateCharacter(characterId: string, updates: Partial<Pick<Character, 'name' | 'campaignId'>>): Promise<void> {
     const user = this.authService.currentUser();
     if (!user) return;
