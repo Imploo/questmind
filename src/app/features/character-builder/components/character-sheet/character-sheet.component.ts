@@ -42,6 +42,7 @@ import { CoinPurseComponent } from '../play/coin-purse.component';
 import { InventoryItemChange, InventoryItemsComponent } from '../play/inventory-items.component';
 import { CharacterImage } from '../../../../core/models/schemas/character-image.schema';
 import { CharacterImageGalleryComponent } from '../character-image-gallery/character-image-gallery.component';
+import { CharacterActionsMenuComponent } from '../character-actions-menu/character-actions-menu.component';
 import { ImageLightboxComponent } from '../../../../chat/image-lightbox.component';
 import { CharacterEntryResolverService } from '../../../../core/services/character-entry-resolver.service';
 import { ToastService } from '../../../../shared/services/toast.service';
@@ -158,6 +159,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
   imports: [
     CommonModule,
     CharacterImageGalleryComponent,
+    CharacterActionsMenuComponent,
     ImageLightboxComponent,
     HpTrackerComponent,
     UsePipsComponent,
@@ -184,7 +186,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
     <div class="sheet max-w-5xl mx-auto space-y-6">
       <!-- ═══ Hero ═══ -->
       <header class="qm-panel qm-hero">
-        <div class="flex flex-col @2xl:flex-row gap-5 @2xl:gap-6 items-center @2xl:items-start">
+        <div class="hero-top flex flex-col @2xl:flex-row gap-5 @2xl:gap-6 items-center @2xl:items-start">
           <!-- Portrait -->
           <button
             type="button"
@@ -220,13 +222,16 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
               @if (character().playerName) {
                 <span class="qm-tag qm-tag-quiet">Player: {{ character().playerName }}</span>
               }
+              @if (editable() && archived()) {
+                <span class="qm-tag tag-archived">Archived</span>
+              }
               <app-inspiration-toggle [inspired]="play().inspiration" [editable]="editable()" (inspiredChange)="onInspiration($event)" />
             </div>
           </div>
 
-          <!-- Actions -->
-          <div class="hero-actions shrink-0" [class.is-grid]="editable()">
-            @if (editable()) {
+          <!-- Rests: the two actions a player reaches for at the table -->
+          @if (editable()) {
+            <div class="hero-actions shrink-0">
               <button type="button" class="action action-rest" (click)="takeShortRest()">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3c1 3-2 4-2 7a2 2 0 004 0c2 1.5 3 3.5 3 5.5a5 5 0 01-10 0C7 11 10 8 12 3z" /></svg>
                 Short rest
@@ -235,42 +240,25 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 14.5A8 8 0 019.5 4a8 8 0 1010.5 10.5z" /></svg>
                 Long rest
               </button>
-            }
-            <button type="button" class="action" [disabled]="exportingPdf()" [attr.aria-busy]="exportingPdf()" (click)="exportPdf.emit()">
-              @if (exportingPdf()) {
-                <span class="spinner" aria-hidden="true"></span>
-              } @else {
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-              }
-              {{ exportingPdf() ? 'Preparing PDF…' : 'PDF' }}
-            </button>
-            @if (editable()) {
-              <!-- Version history is the owner's; for a visitor the button would do nothing. -->
-              <button type="button" class="action" (click)="viewHistory.emit()">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                History
-              </button>
-            }
-            @if (canClone()) {
-              <button type="button" class="action" title="Copy this character to your own account" [disabled]="cloning()" [attr.aria-busy]="cloning()" (click)="cloneCharacter.emit()">
-                @if (cloning()) {
-                  <span class="spinner" aria-hidden="true"></span>
-                } @else {
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                }
-                {{ cloning() ? 'Cloning…' : 'Clone' }}
-              </button>
-            }
-            <button type="button" class="action" title="Copy a link to this character" (click)="shareLink()">
-              @if (linkCopied()) {
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
-              } @else {
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-              }
-              {{ linkCopied() ? 'Copied' : 'Share' }}
-            </button>
-          </div>
+            </div>
+          }
         </div>
+
+        <!-- Everything else you can do with the character, in the top right corner -->
+        <app-character-actions-menu
+          class="hero-menu"
+          [canViewHistory]="editable()"
+          [canClone]="canClone()"
+          [canArchive]="editable()"
+          [archived]="archived()"
+          [exportingPdf]="exportingPdf()"
+          [cloning]="cloning()"
+          (exportPdf)="exportPdf.emit()"
+          (viewHistory)="viewHistory.emit()"
+          (cloneCharacter)="cloneCharacter.emit()"
+          (share)="shareLink()"
+          (archivedChange)="archivedChange.emit($event)"
+        />
 
         <!-- Vitals -->
         <div class="vitals mt-6">
@@ -769,12 +757,20 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
       border: 2px solid var(--paper);
     }
 
-    .hero-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem; }
-    /* Two rest buttons on the first row, the three page actions on the second. */
-    .hero-actions.is-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); }
-    .hero-actions.is-grid .action { grid-column: span 2; justify-content: center; min-height: 40px; padding-inline: 0.5rem; }
-    .hero-actions.is-grid .action-rest { grid-column: span 3; }
-    @container (min-width: 42rem) { .hero-actions:not(.is-grid) { flex-direction: column; } }
+    .tag-archived { background: var(--ink); color: #f6efe0; border-color: var(--ink); }
+    /* The "…" menu sits in the top right corner; once the hero is a row, the first row keeps clear of it. */
+    .hero-menu { position: absolute; top: 0.9rem; right: 0.9rem; z-index: 2; }
+    .hero-actions { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; width: 100%; }
+    .hero-actions .action { justify-content: center; min-height: 40px; }
+    @container (min-width: 42rem) {
+      .hero-menu { top: 1.5rem; right: 1.5rem; }
+      .hero-top { padding-right: calc(40px + 0.5rem); }
+      /* Next to the chat the sheet is narrow on a wide screen: stack the rests, so the name keeps its room. */
+      .hero-actions { display: flex; flex-direction: column; width: auto; }
+    }
+    @container (min-width: 760px) {
+      .hero-actions { flex-direction: row; }
+    }
     .action.action-rest { font-weight: 600; color: var(--gold-deep); background: var(--gold-soft); border-color: var(--gold); }
     .action.action-rest.is-long { color: #f6efe0; background: var(--ink); border-color: var(--ink); }
     .action.action-rest.is-long:hover { background: #453a35; border-color: #453a35; }
@@ -796,15 +792,6 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
     }
     .action:hover:not(:disabled) { border-color: var(--gold); background: var(--gold-soft); }
     .action:disabled { opacity: 0.6; cursor: wait; }
-    .spinner {
-      width: 0.9rem;
-      height: 0.9rem;
-      border-radius: 50%;
-      border: 2px solid var(--line);
-      border-top-color: var(--gold-deep);
-      animation: spin 0.8s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
 
     /* Vitals */
     .vitals { position: relative; display: flex; flex-wrap: wrap; gap: 0.75rem; }
@@ -1055,6 +1042,8 @@ export class CharacterSheetComponent {
   /** Whether the viewer can copy this character to their own account (signed in, not the owner). */
   canClone = input<boolean>(false);
   cloning = input<boolean>(false);
+  /** Whether the owner put this character away; it then carries an "Archived" tag. */
+  archived = input<boolean>(false);
   viewHistory = output<void>();
   exportPdf = output<void>();
   deleteImage = output<CharacterImage>();
@@ -1064,6 +1053,8 @@ export class CharacterSheetComponent {
   playStateChange = output<CharacterPlayState>();
   usesChange = output<UsesChangeEvent>();
   cloneCharacter = output<void>();
+  /** The owner archived the character (true) or brought it back (false). */
+  archivedChange = output<boolean>();
   /** The purse after the player changed a coin amount. Coins belong to the build, so they go on the version. */
   coinsChange = output<Coins>();
 
@@ -1072,8 +1063,6 @@ export class CharacterSheetComponent {
   expandedFeatures = signal<Set<number>>(new Set());
   loadingFeatures = signal<Set<number>>(new Set());
   portraitLightbox = signal<string | null>(null);
-  /** Briefly true after the link to this page was copied. */
-  linkCopied = signal(false);
 
   toast = signal<PlayToast | null>(null);
   /** Index of the spell whose cast dialog is open. */
@@ -1127,8 +1116,6 @@ export class CharacterSheetComponent {
     const path = id ? `/share/character/${id}` : window.location.pathname;
     const url = `${window.location.origin}${path}`;
     if (await copyText(url)) {
-      this.linkCopied.set(true);
-      setTimeout(() => this.linkCopied.set(false), 3000);
       this.toastService.show('Link gekopieerd — iedereen met deze link kan dit karakter bekijken.', 'success');
     } else {
       // Clipboard blocked (permissions/browser): let the user copy it by hand.

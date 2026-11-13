@@ -42,11 +42,16 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
       <!-- Character sheet -->
       <div class="min-w-0 flex-1" [class.pb-24]="isNarrow() && isOwner()">
         <div class="max-w-5xl mx-auto flex flex-col gap-4">
-          @if (isSignedIn()) {
-            <a routerLink="/characters" class="qm-backlink -mb-1 self-start">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7" /></svg>
-              Characters
-            </a>
+          <!-- Back to the character list. The list is behind sign-in, so a signed-out visitor gets no link. -->
+          @if (isAuthenticated()) {
+            <nav aria-label="Breadcrumb" class="-mb-1 flex">
+              <a routerLink="/characters" class="qm-backlink">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+                Overzicht
+              </a>
+            </nav>
           }
           @if (isDraft()) {
             <div class="sticky top-[4.25rem] sm:top-4 z-10">
@@ -79,7 +84,9 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
                   [editable]="isOwner()"
                   [canClone]="canClone()"
                   [cloning]="cloning()"
+                  [archived]="selectedCharacter()?.archived === true"
                   (cloneCharacter)="onCloneCharacter()"
+                  (archivedChange)="onArchivedChange($event)"
                   (playStateChange)="onPlayStateChange($event)"
                   (usesChange)="onUsesChange($event)"
                   (coinsChange)="onCoinsChange($event)"
@@ -160,6 +167,8 @@ export class CharacterBuilderPageComponent {
     this.characters().find(c => c.id === this.selectedCharacterId())
   );
 
+  isAuthenticated = this.authService.isAuthenticated;
+
   // True when the current user is the owner of the loaded character
   isOwner = computed(() => {
     const user = this.authService.currentUser();
@@ -167,8 +176,6 @@ export class CharacterBuilderPageComponent {
     if (!user || !character) return false;
     return user.uid === character.userId;
   });
-
-  isSignedIn = computed(() => !!this.authService.currentUser());
 
   /** A signed-in visitor looking at someone else's character can copy it to their own account. */
   canClone = computed(() => {
@@ -514,6 +521,24 @@ export class CharacterBuilderPageComponent {
       this.toastService.showCallableError(e, 'Klonen is mislukt. Probeer het opnieuw.');
     } finally {
       this.cloning.set(false);
+    }
+  }
+
+  /** Archiving only moves the character out of the list; the sheet stays open and usable. */
+  async onArchivedChange(archived: boolean): Promise<void> {
+    const charId = this.selectedCharacterId();
+    if (!charId || !this.isOwner()) return;
+    try {
+      await this.characterService.setArchived(charId, archived);
+      this.toastService.show(
+        archived
+          ? 'Karakter gearchiveerd — je vindt het terug onder "Archived" in je karakterlijst.'
+          : 'Karakter teruggezet in je karakterlijst.',
+        'success'
+      );
+    } catch (e) {
+      logger.error('Failed to archive character:', e);
+      this.toastService.show(archived ? 'Archiveren is mislukt. Probeer het opnieuw.' : 'Terugzetten is mislukt. Probeer het opnieuw.', 'error');
     }
   }
 

@@ -1,4 +1,4 @@
-import { Component, inject, signal, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, signal, computed, ChangeDetectionStrategy } from '@angular/core';
 import { Router } from '@angular/router';
 import { CharacterService } from '../../../../core/services/character.service';
 import { CharacterVersionService } from '../../../../core/services/character-version.service';
@@ -7,6 +7,8 @@ import { Character } from '../../../../core/models/schemas/character.schema';
 import { DndCharacter } from '../../../../shared/models/dnd-character.model';
 import { CharacterImportService } from '../../services/character-import.service';
 import { ImportCharacterDialogComponent } from '../../components/import-character-dialog/import-character-dialog.component';
+import { CharacterTileComponent } from '../../components/character-tile/character-tile.component';
+import { ToastService } from '../../../../shared/services/toast.service';
 import { readPdfAttachment } from '../../../../chat/pdf-attachment';
 import * as logger from '../../../../shared/logger';
 
@@ -18,6 +20,7 @@ interface CharacterSummary {
   level: number;
   mainWeapon: string | null;
   imageUrl: string | null;
+  archived: boolean;
 }
 
 /** Errors the backend raises on purpose carry a message for the user; anything else gets a general one. */
@@ -30,7 +33,7 @@ function importErrorMessage(error: unknown): string {
 @Component({
   selector: 'app-character-list-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ImportCharacterDialogComponent],
+  imports: [ImportCharacterDialogComponent, CharacterTileComponent],
   template: `
     @if (showImport()) {
       <app-import-character-dialog
@@ -73,27 +76,18 @@ function importErrorMessage(error: unknown): string {
           <span class="qm-spinner qm-spinner-lg qm-spinner-light"></span>
         </div>
       } @else {
-        @if (characterSummaries().length > 0) {
-          <ul class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-5">
-            @for (char of characterSummaries(); track char.id) {
-              <li>
-                <button type="button" class="card" (click)="onSelectCharacter(char.id)">
-                  <span class="art">
-                    @if (char.imageUrl) {
-                      <img [src]="char.imageUrl" alt="" class="absolute inset-0 w-full h-full object-cover" />
-                    } @else {
-                      <span class="initial" aria-hidden="true">{{ char.name.trim().charAt(0).toUpperCase() || '?' }}</span>
-                    }
-                    <span class="level" [attr.aria-label]="'Level ' + char.level">{{ char.level }}</span>
-                  </span>
-                  <span class="plate">
-                    <span class="name">{{ char.name }}</span>
-                    <span class="qm-eyebrow block truncate">{{ char.race }} {{ char.class }}</span>
-                  </span>
-                </button>
-              </li>
+        @if (activeCharacters().length > 0) {
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-5">
+            @for (char of activeCharacters(); track char.id) {
+              <app-character-tile
+                [name]="char.name"
+                [subtitle]="char.race + ' ' + char.class"
+                [imageUrl]="char.imageUrl"
+                [level]="char.level"
+                (opened)="onSelectCharacter(char.id)"
+              />
             }
-          </ul>
+          </div>
         } @else {
           <div class="qm-panel qm-hero qm-empty max-w-xl mx-auto">
             <span class="qm-medallion qm-medallion-lg">
@@ -101,8 +95,13 @@ function importErrorMessage(error: unknown): string {
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
               </svg>
             </span>
-            <h2 class="qm-empty-title">No characters yet</h2>
-            <p class="qm-empty-text">Create your first character to get started!</p>
+            @if (archivedCharacters().length > 0) {
+              <h2 class="qm-empty-title">All your characters are archived</h2>
+              <p class="qm-empty-text">Create a new one, or bring one back from the archive below.</p>
+            } @else {
+              <h2 class="qm-empty-title">No characters yet</h2>
+              <p class="qm-empty-text">Create your first character to get started!</p>
+            }
             <button type="button" class="qm-btn qm-btn-primary qm-btn-lg mt-6" (click)="onCreateCharacter()">
               <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
@@ -114,85 +113,57 @@ function importErrorMessage(error: unknown): string {
             </button>
           </div>
         }
+
+        <!-- Archive: out of the way, one click to look into -->
+        @if (archivedCharacters().length > 0) {
+          <section class="mt-10">
+            <button
+              type="button"
+              class="archive-toggle"
+              [attr.aria-expanded]="showArchived()"
+              aria-controls="archived-characters"
+              (click)="showArchived.set(!showArchived())"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
+              Archived ({{ archivedCharacters().length }})
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 transition-transform" [class.rotate-180]="showArchived()" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7" /></svg>
+            </button>
+            @if (showArchived()) {
+              <div id="archived-characters" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-5 mt-4">
+                @for (char of archivedCharacters(); track char.id) {
+                  <app-character-tile
+                    [name]="char.name"
+                    [subtitle]="char.race + ' ' + char.class"
+                    [imageUrl]="char.imageUrl"
+                    [level]="char.level"
+                    [archived]="true"
+                    (opened)="onSelectCharacter(char.id)"
+                    (restored)="onUnarchive(char.id)"
+                  />
+                }
+              </div>
+            }
+          </section>
+        }
       }
     </div>
   `,
   styles: [`
-    /* A framed portrait with a name plate, like a miniature of the sheet's hero. */
-    .card {
-      display: flex;
-      flex-direction: column;
-      width: 100%;
-      height: 100%;
-      padding: 6px;
-      text-align: left;
-      color: var(--ink);
-      background: var(--paper);
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      box-shadow: var(--panel-shadow);
-      transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-    }
-    .card:hover {
-      transform: translateY(-4px);
-      border-color: var(--gold);
-      box-shadow: 0 22px 40px -18px rgba(24, 12, 60, 0.75);
-    }
-    .art {
-      position: relative;
-      display: block;
-      aspect-ratio: 1;
-      border-radius: 9px;
-      background: var(--brand-gradient);
-      box-shadow: inset 0 0 0 1px rgba(180, 138, 60, 0.35);
-    }
-    .art > img { border-radius: inherit; }
-    .initial {
-      position: absolute;
-      inset: 0;
-      display: flex;
+    /* A quiet heading on the gradient that opens the archive. */
+    .archive-toggle {
+      display: inline-flex;
       align-items: center;
-      justify-content: center;
+      gap: 0.5rem;
+      min-height: 40px;
       font-family: var(--font-display);
-      font-size: clamp(2.5rem, 8vw, 4rem);
+      font-size: 0.76rem;
       font-weight: 700;
-      color: rgba(255, 255, 255, 0.92);
-      text-shadow: 0 4px 18px rgba(30, 12, 80, 0.5);
-    }
-    .level {
-      position: absolute;
-      right: -4px;
-      bottom: -10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 2rem;
-      height: 2rem;
-      padding: 0 0.4rem;
-      border-radius: 999px;
-      font-family: var(--font-display);
-      font-size: 0.85rem;
-      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
       color: #fff;
-      background: var(--wine);
-      border: 2px solid var(--paper);
+      text-shadow: 0 1px 6px rgba(34, 16, 80, 0.4);
     }
-    .plate { display: block; min-width: 0; padding: 0.7rem 0.45rem 0.45rem; }
-    .name {
-      display: -webkit-box;
-      -webkit-box-orient: vertical;
-      -webkit-line-clamp: 2;
-      padding-right: 1.4rem;
-      overflow: hidden;
-      overflow-wrap: anywhere;
-      font-family: var(--font-display);
-      font-size: 0.92rem;
-      font-weight: 700;
-      line-height: 1.3;
-    }
-    @media (prefers-reduced-motion: reduce) {
-      .card:hover { transform: none; }
-    }
+    .archive-toggle:hover { text-decoration: underline; text-underline-offset: 4px; }
   `]
 })
 export class CharacterListPageComponent {
@@ -201,10 +172,14 @@ export class CharacterListPageComponent {
   private readonly characterVersionService = inject(CharacterVersionService);
   private readonly characterImageService = inject(CharacterImageService);
   private readonly characterImportService = inject(CharacterImportService);
+  private readonly toastService = inject(ToastService);
 
   loading = signal(true);
   creating = signal(false);
   characterSummaries = signal<CharacterSummary[]>([]);
+  activeCharacters = computed(() => this.characterSummaries().filter(char => !char.archived));
+  archivedCharacters = computed(() => this.characterSummaries().filter(char => char.archived));
+  showArchived = signal(false);
   showImport = signal(false);
   importing = signal(false);
   importError = signal('');
@@ -224,6 +199,16 @@ export class CharacterListPageComponent {
       this.router.navigate(['/characters', id]);
     } finally {
       this.creating.set(false);
+    }
+  }
+
+  async onUnarchive(id: string): Promise<void> {
+    try {
+      await this.characterService.setArchived(id, false);
+      this.characterSummaries.update(list => list.map(char => (char.id === id ? { ...char, archived: false } : char)));
+    } catch (e) {
+      logger.error('Failed to unarchive character:', e);
+      this.toastService.show('Terugzetten is mislukt. Probeer het opnieuw.', 'error');
     }
   }
 
@@ -349,6 +334,7 @@ export class CharacterListPageComponent {
       level: dndData?.level ?? 1,
       mainWeapon: dndData?.attacks?.[0]?.name ?? null,
       imageUrl,
+      archived: character.archived === true,
     };
   }
 }

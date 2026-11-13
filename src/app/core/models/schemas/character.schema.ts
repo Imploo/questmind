@@ -11,6 +11,8 @@ export interface Character {
   isGenerating?: boolean;
   /** Live table state (hit points, spent slots, conditions, ...). Not versioned. */
   playState?: CharacterPlayState;
+  /** Put away by the owner: left out of the character list, still reachable by its link. */
+  archived?: boolean;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

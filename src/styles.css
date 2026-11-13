@@ -1,3 +1,5 @@
+/* Positioning for CDK overlays (the character actions menu); the Material theme used to bring this along. */
+@import "@angular/cdk/overlay-prebuilt.css";
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
