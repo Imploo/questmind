@@ -45,8 +45,7 @@ function importErrorMessage(error: unknown): string {
     <div class="max-w-6xl mx-auto sm:py-4">
       <header class="flex flex-wrap items-end justify-between gap-4 mb-6 sm:mb-8">
         <div>
-          <div class="qm-page-eyebrow">Your party</div>
-          <h1 class="qm-page-title mt-1">Your Characters</h1>
+          <h1 class="qm-page-title">Your Characters</h1>
           <p class="qm-page-sub mt-1">Select a character to view or edit</p>
         </div>
         <div class="flex gap-2">

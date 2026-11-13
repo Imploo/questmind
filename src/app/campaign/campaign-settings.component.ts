@@ -17,7 +17,11 @@ import * as logger from '../shared/logger';
   template: `
     <div class="max-w-4xl mx-auto">
       @if (selectedCampaign()) {
-        <header class="flex flex-wrap items-end justify-between gap-4 mb-5 sm:mb-6">
+        <header class="mb-5 sm:mb-6">
+          <button type="button" (click)="goBack()" class="qm-backlink mb-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7" /></svg>
+            Back
+          </button>
           <div class="min-w-0">
             <div class="qm-page-eyebrow">Campaign Settings</div>
             <h2 class="qm-page-title mt-1 break-words">{{ selectedCampaign()!.name }}</h2>
@@ -25,9 +29,6 @@ import * as logger from '../shared/logger';
               <p class="qm-page-sub mt-1 max-w-2xl">{{ selectedCampaign()!.description }}</p>
             }
           </div>
-          <button type="button" (click)="goBack()" class="qm-btn">
-            ← Back
-          </button>
         </header>
 
         <div class="space-y-4 sm:space-y-6">
@@ -156,7 +157,7 @@ import * as logger from '../shared/logger';
                     type="button"
                     (click)="inviteMember()"
                     [disabled]="!inviteEmail.trim().length || isInviting()"
-                    class="qm-btn qm-btn-primary"
+                    class="qm-btn qm-btn-gold"
                   >
                     {{ isInviting() ? 'Inviting...' : 'Invite' }}
                   </button>

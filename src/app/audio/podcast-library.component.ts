@@ -6,6 +6,7 @@ import { CampaignSelectorComponent } from '../campaign/campaign-selector.compone
 import { AudioSessionStateService } from './services/audio-session-state.service';
 import { PodcastVersionItemComponent } from '../shared/components/podcast-version-item.component';
 import { toMillis } from '../shared/utils/date.utils';
+import { formatDay } from '../shared/formatting.service';
 
 interface SessionWithPodcasts {
   sessionId: string;
@@ -20,13 +21,12 @@ interface SessionWithPodcasts {
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="max-w-5xl mx-auto">
-      <div class="mb-6 hidden sm:block">
-        <app-campaign-selector />
+      <div class="mb-4 hidden sm:block">
+        <app-campaign-selector align="start" />
       </div>
 
       <header class="mb-6 sm:mb-8">
-        <div class="qm-page-eyebrow">Campaign</div>
-        <h1 class="qm-page-title mt-1">Podcast Bibliotheek</h1>
+        <h1 class="qm-page-title">Podcast Bibliotheek</h1>
         <p class="qm-page-sub mt-1 max-w-2xl">
           Bekijk alle sessie podcasts. Elke speeldag is een audio sessie met zijn eigen verhaal en
           versioned podcasts.
@@ -56,7 +56,7 @@ interface SessionWithPodcasts {
             <section class="qm-panel sm:!p-6">
               <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
                 <div class="min-w-0">
-                  <div class="qm-eyebrow">Speeldag: {{ session.sessionDate }}</div>
+                  <div class="qm-eyebrow">Speeldag: {{ formatDay(session.sessionDate) }}</div>
                   <h2 class="qm-display text-xl leading-tight break-words">{{ session.sessionTitle }}</h2>
                 </div>
                 <span class="qm-badge qm-badge-violet">
@@ -91,6 +91,7 @@ export class PodcastLibraryComponent {
   private readonly sessionStateService = inject(AudioSessionStateService);
 
   readonly campaignId = this.campaignContext.selectedCampaignId;
+  protected readonly formatDay = formatDay;
 
   /** Sessions with at least one podcast, newest play date first. */
   readonly sessions = computed<SessionWithPodcasts[]>(() => {

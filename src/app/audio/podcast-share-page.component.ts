@@ -2,17 +2,22 @@ import { ChangeDetectionStrategy, Component, inject, resource } from '@angular/c
 import { ActivatedRoute } from '@angular/router';
 import { PodcastShareService } from './services/podcast-share.service';
 import { FormattingService } from '../shared/formatting.service';
+import { LogoComponent } from '../shared/components/logo.component';
 
 /** Public player for a shared podcast — no sign-in needed. */
 @Component({
   selector: 'app-podcast-share-page',
+  imports: [LogoComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'block min-h-dvh' },
   template: `
     <main class="max-w-xl mx-auto px-4 py-12">
-      <div class="mb-6 text-center">
-        <div class="qm-page-eyebrow">Questmind</div>
-        <div class="qm-page-title mt-1 !text-2xl">Podcast</div>
+      <div class="mb-6 flex items-center justify-center gap-3">
+        <app-logo [size]="44" />
+        <div>
+          <div class="qm-page-title !text-xl">Questmind</div>
+          <div class="qm-page-eyebrow">Podcast</div>
+        </div>
       </div>
 
       @if (share.isLoading()) {

@@ -22,6 +22,7 @@ import { SessionProgressCardComponent } from './session-progress-card.component'
 import { SessionRecordingComponent } from './session-recording.component';
 import { SessionListSidebarComponent } from './session-list-sidebar.component';
 import { CampaignSelectorComponent } from '../campaign/campaign-selector.component';
+import { formatDay } from '../shared/formatting.service';
 import { ToastService } from '../shared/services/toast.service';
 import { isPermissionDenied, PERMISSION_DENIED_MESSAGE } from '../shared/utils/callable-error';
 
@@ -37,8 +38,8 @@ const PODCAST_STAGES: SessionProgressStage[] = ['generating-podcast-script', 'ge
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (authService.isAuthenticated()) {
-      <div class="mb-6 hidden sm:block">
-        <app-campaign-selector />
+      <div class="mb-4 hidden sm:block">
+        <app-campaign-selector align="start" />
       </div>
     }
 
@@ -83,18 +84,6 @@ const PODCAST_STAGES: SessionProgressStage[] = ['generating-podcast-script', 'ge
                 (retry)="retryFailedOperation()"
               />
 
-              @if (currentSession()?.audioRecording; as recording) {
-                <app-session-recording
-                  [audioUrl]="recordingUrl.value() ?? null"
-                  [fileName]="recording.fileName"
-                  [durationSec]="recording.durationSec"
-                  [sizeBytes]="recording.sizeBytes"
-                  [canRetranscribe]="isSessionOwner()"
-                  [busy]="isBusy()"
-                  (retranscribe)="retranscribe()"
-                />
-              }
-
               <app-session-story
                 [title]="currentSession()?.title || 'Session Story'"
                 [subtitle]="formatSubtitle(currentSession())"
@@ -122,6 +111,18 @@ const PODCAST_STAGES: SessionProgressStage[] = ['generating-podcast-script', 'ge
                 (metaUpdated)="saveSessionMeta($event)"
                 (deleteSession)="deleteCurrentSession()"
               ></app-session-story>
+
+              @if (currentSession()?.audioRecording; as recording) {
+                <app-session-recording
+                  [audioUrl]="recordingUrl.value() ?? null"
+                  [fileName]="recording.fileName"
+                  [durationSec]="recording.durationSec"
+                  [sizeBytes]="recording.sizeBytes"
+                  [canRetranscribe]="isSessionOwner()"
+                  [busy]="isBusy()"
+                  (retranscribe)="retranscribe()"
+                />
+              }
             }
 
             @if (!currentSession()) {
@@ -290,7 +291,7 @@ export class AudioSessionComponent {
 
   formatSubtitle(session: AudioSessionRecord | null): string {
     if (!session) return '';
-    return `${session.audioFileName || 'Unknown'} · ${session.sessionDate || 'No date'}`;
+    return `${formatDay(session.sessionDate) || 'No date'} · ${session.audioFileName || 'Unknown'}`;
   }
 
   // --- Story operations ---

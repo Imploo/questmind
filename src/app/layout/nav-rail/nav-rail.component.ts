@@ -7,10 +7,11 @@ import { AuthService } from '../../auth/auth.service';
 import { UserService } from '../../core/user.service';
 import { CampaignContextService } from '../../campaign/campaign-context.service';
 import { NavItem } from '../nav-item.model';
+import { LogoComponent } from '../../shared/components/logo.component';
 
 @Component({
   selector: 'app-nav-rail',
-  imports: [RouterLink, LucideAngularModule],
+  imports: [RouterLink, LucideAngularModule, LogoComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [`
     .hamburger-btn {
@@ -63,33 +64,6 @@ import { NavItem } from '../nav-item.model';
       gap: 12px;
       padding: 0 18px 14px;
       text-decoration: none;
-    }
-    .brand-mark {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 44px;
-      height: 44px;
-      border-radius: 50%;
-      padding: 2px;
-      flex-shrink: 0;
-      background: linear-gradient(145deg, #e5c77f, var(--gold) 45%, #7a5a1e);
-      box-shadow: 0 6px 16px -6px rgba(10, 4, 40, 0.7);
-    }
-    .brand-mark > span {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 100%;
-      height: 100%;
-      border-radius: 50%;
-      font-family: var(--font-display);
-      font-size: 1.25rem;
-      font-weight: 700;
-      line-height: 1;
-      color: #fff;
-      background: var(--brand-gradient);
-      box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.3);
     }
     .brand-name {
       font-family: var(--font-display);
@@ -215,7 +189,7 @@ import { NavItem } from '../nav-item.model';
 
       <nav class="nav-rail" [class.is-open]="isMenuOpen()" aria-label="Hoofdnavigatie">
         <a routerLink="/characters" class="brand" aria-label="Questmind" (click)="closeMenu()">
-          <span class="brand-mark"><span aria-hidden="true">Q</span></span>
+          <app-logo [size]="44" />
           <span class="brand-name">Questmind</span>
         </a>
         <span class="rule" aria-hidden="true"></span>

@@ -39,7 +39,7 @@ export const VOICE_ROSTER_MAX_LENGTH = 2000;
             type="button"
             (click)="save()"
             [disabled]="!isDirty() || isBusy()"
-            class="qm-btn qm-btn-primary"
+            class="qm-btn qm-btn-gold"
           >
             {{ isBusy() ? 'Saving...' : 'Save speaking order' }}
           </button>

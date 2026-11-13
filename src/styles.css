@@ -102,9 +102,10 @@
     position: fixed;
     inset: 0;
     z-index: -2;
+    /* The brand gradient, a shade deeper: white text on it has to stay readable (4.5:1). */
     background:
-      radial-gradient(70% 55% at 8% 0%, rgba(255, 255, 255, 0.16), transparent 60%),
-      radial-gradient(60% 50% at 100% 100%, rgba(44, 20, 96, 0.4), transparent 65%),
+      radial-gradient(60% 50% at 100% 100%, rgba(44, 20, 96, 0.38), transparent 65%),
+      linear-gradient(rgba(38, 22, 100, 0.16), rgba(38, 22, 100, 0.16)),
       var(--brand-gradient);
   }
 
@@ -262,7 +263,8 @@
     font-weight: 600;
     letter-spacing: 0.18em;
     text-transform: uppercase;
-    color: rgba(255, 255, 255, 0.78);
+    color: rgba(255, 255, 255, 0.92);
+    text-shadow: 0 1px 6px rgba(34, 16, 80, 0.4);
   }
   .qm-page-title {
     font-family: var(--font-display);
@@ -275,9 +277,31 @@
   }
   .qm-page-sub {
     font-family: var(--font-prose);
-    font-size: 1.15rem;
-    line-height: 1.45;
-    color: rgba(255, 255, 255, 0.9);
+    font-size: 1.2rem;
+    font-weight: 600;
+    line-height: 1.4;
+    color: #fff;
+    text-shadow: 0 1px 8px rgba(34, 16, 80, 0.4);
+  }
+
+  /* The way back, above a page title. */
+  .qm-backlink {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: 32px;
+    font-family: var(--font-display);
+    font-size: 0.74rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #fff;
+    text-shadow: 0 1px 6px rgba(34, 16, 80, 0.4);
+    text-decoration: none;
+  }
+  .qm-backlink:hover {
+    text-decoration: underline;
+    text-underline-offset: 4px;
   }
 
   /* ── Buttons ──────────────────────────────────────────────── */
@@ -370,6 +394,13 @@
     padding: 0.3rem 0.7rem;
     border-radius: 8px;
     font-size: 0.78rem;
+  }
+  /* Fingers need more than a mouse pointer does. */
+  @media (pointer: coarse) {
+    .qm-btn-sm {
+      min-height: 40px;
+      padding-inline: 0.85rem;
+    }
   }
   .qm-btn-lg {
     min-height: 46px;

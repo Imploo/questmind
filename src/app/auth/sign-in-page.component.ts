@@ -2,17 +2,18 @@ import { ChangeDetectionStrategy, Component, computed, signal, inject } from '@a
 import { Router } from '@angular/router';
 import { AuthService } from './auth.service';
 import { EmailAuthFormComponent, type EmailAuthCredentials, type EmailAuthMode } from './email-auth-form.component';
+import { LogoComponent } from '../shared/components/logo.component';
 
 @Component({
   selector: 'app-sign-in-page',
-  imports: [EmailAuthFormComponent],
+  imports: [EmailAuthFormComponent, LogoComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="min-h-dvh flex items-center justify-center p-4">
       <div class="qm-panel qm-hero w-full max-w-md !p-7 sm:!p-9">
         <div class="text-center mb-7">
-          <span class="qm-medallion qm-medallion-lg qm-medallion-brand" aria-hidden="true">Q</span>
-          <h1 class="qm-display text-3xl tracking-wide mt-4">Questmind</h1>
+          <app-logo [size]="84" [plain]="true" />
+          <h1 class="qm-display text-3xl tracking-wide mt-2">Questmind</h1>
           <p class="font-prose text-lg text-gray-700 mt-1">{{ subtitle() }}</p>
         </div>
 

@@ -80,45 +80,6 @@ export interface UploadRequestEvent {
         </p>
       </div>
 
-      <div class="mt-4 space-y-4">
-        <label class="flex flex-wrap items-center gap-2 text-sm text-gray-700">
-          <input
-            type="checkbox"
-            class="h-4 w-4"
-            [checked]="keepAwake()"
-            (change)="keepAwake.set(!keepAwake())"
-            [disabled]="isBusy() || !wakeLockSupported()"
-          />
-          Keep screen awake during upload
-          @if (!wakeLockSupported()) {
-            <span class="text-xs qm-muted">(Not supported on this device)</span>
-          }
-        </label>
-
-        <!-- Session Details -->
-        <div class="grid gap-3 md:grid-cols-2">
-          <label class="block">
-            <span class="qm-label">Session name</span>
-            <input
-              type="text"
-              class="qm-input"
-              [(ngModel)]="sessionName"
-              [disabled]="isBusy() || !canUpload()"
-              placeholder="The Goblin Warrens"
-            />
-          </label>
-          <label class="block">
-            <span class="qm-label">Session date</span>
-            <input
-              type="date"
-              class="qm-input"
-              [(ngModel)]="sessionDate"
-              [disabled]="isBusy() || !canUpload()"
-            />
-          </label>
-        </div>
-      </div>
-
       @if (selectedFiles().length > 0) {
         <div class="mt-4 space-y-2">
           @for (file of selectedFiles(); track $index; let i = $index) {
@@ -161,11 +122,49 @@ export interface UploadRequestEvent {
         </div>
       }
 
+      <div class="mt-4 space-y-4">
+        <!-- Session Details -->
+        <div class="grid gap-3 md:grid-cols-2">
+          <label class="block">
+            <span class="qm-label">Session name</span>
+            <input
+              type="text"
+              class="qm-input"
+              [(ngModel)]="sessionName"
+              [disabled]="isBusy() || !canUpload()"
+              placeholder="The Goblin Warrens"
+            />
+          </label>
+          <label class="block">
+            <span class="qm-label">Session date</span>
+            <input
+              type="date"
+              class="qm-input"
+              [(ngModel)]="sessionDate"
+              [disabled]="isBusy() || !canUpload()"
+            />
+          </label>
+        </div>
+      </div>
+
       @if (error()) {
         <div class="qm-alert mt-4" role="alert">{{ error() }}</div>
       }
 
-      <div class="mt-5 flex gap-2 justify-end">
+      <div class="mt-5 flex flex-wrap items-center gap-x-4 gap-y-3 justify-end border-t border-dashed border-[#e0d2b6] pt-4">
+        <label class="flex flex-wrap items-center gap-2 text-sm text-gray-700 mr-auto">
+          <input
+            type="checkbox"
+            class="h-4 w-4"
+            [checked]="keepAwake()"
+            (change)="keepAwake.set(!keepAwake())"
+            [disabled]="isBusy() || !wakeLockSupported()"
+          />
+          Keep screen awake during upload
+          @if (!wakeLockSupported()) {
+            <span class="text-xs qm-muted">(Not supported on this device)</span>
+          }
+        </label>
         @if (selectedFiles().length > 0) {
           <button type="button" class="qm-btn" (click)="clearAll()" [disabled]="isBusy()">
             Clear

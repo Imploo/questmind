@@ -58,7 +58,7 @@ export interface SessionMetaUpdate {
                 (click)="startMetaEdit()"
                 [disabled]="isBusy() || !canEditStory()"
               >
-                Edit
+                Edit details
               </button>
               <button
                 type="button"
@@ -117,24 +117,14 @@ export interface SessionMetaUpdate {
               <div class="space-y-4 min-w-0">
                 <div class="flex flex-wrap items-center justify-between gap-2">
                   <h4 class="qm-section-title flex-1 !mb-0">Generated Story</h4>
-                  <div class="flex gap-2">
-                    <button
-                      type="button"
-                      class="qm-btn qm-btn-sm"
-                      (click)="toggleEdit()"
-                      [disabled]="isBusy() || !canEditStory()"
-                    >
-                      {{ isEditing() ? 'Preview' : 'Edit' }}
-                    </button>
-                    <button
-                      type="button"
-                      class="qm-btn qm-btn-sm qm-btn-primary"
-                      (click)="regenerate.emit()"
-                      [disabled]="isBusy() || !canRegenerate()"
-                    >
-                      Regenerate Story
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    class="qm-btn qm-btn-sm"
+                    (click)="toggleEdit()"
+                    [disabled]="isBusy() || !canEditStory()"
+                  >
+                    {{ isEditing() ? 'Preview' : 'Edit story' }}
+                  </button>
                 </div>
 
                 <div>
@@ -215,8 +205,16 @@ export interface SessionMetaUpdate {
                     placeholder="Example: When you hear 'corikan', the correct name is 'Khuri-Khan'. The party is in Waterdeep, not Baldur's Gate."
                   ></textarea>
                   <p class="qm-help">
-                    Corrections auto-save as you type. Click "Regenerate Story" to apply them.
+                    Corrections auto-save as you type. Regenerating replaces the story on the left.
                   </p>
+                  <button
+                    type="button"
+                    class="qm-btn qm-btn-gold qm-btn-block"
+                    (click)="regenerate.emit()"
+                    [disabled]="isBusy() || !canRegenerate()"
+                  >
+                    Regenerate Story
+                  </button>
                 </div>
               </div>
             </div>

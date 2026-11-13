@@ -30,13 +30,12 @@ import {
   template: `
     <div class="max-w-4xl mx-auto space-y-4 sm:space-y-6">
       <div class="hidden sm:block">
-        <app-campaign-selector />
+        <app-campaign-selector align="start" />
       </div>
 
       <header class="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <div class="qm-page-eyebrow">Campaign</div>
-          <h1 class="qm-page-title mt-1">Verhaal</h1>
+          <h1 class="qm-page-title">Verhaal</h1>
           <p class="qm-page-sub mt-1">Het verhaal van de campagne tot nu toe, samengevat uit alle sessies.</p>
         </div>
 
@@ -56,16 +55,11 @@ import {
               }
             </button>
           }
-          <button
-            type="button"
-            class="qm-btn qm-btn-icon !w-10"
-            title="Versies"
-            aria-label="Versies"
-            (click)="drawerOpen.set(true)"
-          >
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <button type="button" class="qm-btn" (click)="drawerOpen.set(true)">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
             </svg>
+            Versies
           </button>
         </div>
       </header>

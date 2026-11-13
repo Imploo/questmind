@@ -1,5 +1,6 @@
 import { Component, ChangeDetectionStrategy, input, output, signal } from '@angular/core';
 import { AudioSessionRecord } from './services/audio-session.models';
+import { formatDay } from '../shared/formatting.service';
 
 @Component({
   selector: 'app-session-list-sidebar',
@@ -37,7 +38,7 @@ import { AudioSessionRecord } from './services/audio-session.models';
 
     <!-- Sidebar: sticky on desktop, drawer on mobile -->
     <aside
-      class="flex-shrink-0 lg:w-72 lg:sticky lg:top-6 lg:self-start lg:h-[calc(100dvh-8.5rem)]"
+      class="flex-shrink-0 lg:w-72 lg:sticky lg:top-6 lg:self-start lg:flex-col lg:max-h-[calc(100dvh-3rem)]"
       [class.fixed]="mobileDrawerOpen()"
       [class.inset-0]="mobileDrawerOpen()"
       [class.flex]="mobileDrawerOpen()"
@@ -46,10 +47,10 @@ import { AudioSessionRecord } from './services/audio-session.models';
       [class.z-50]="mobileDrawerOpen()"
       [class.p-4]="mobileDrawerOpen()"
       [class.hidden]="!mobileDrawerOpen()"
-      [class.lg:block]="true"
+      [class.lg:flex]="true"
     >
       <div
-        class="qm-panel !p-0 flex flex-col overflow-hidden h-full"
+        class="qm-panel !p-0 flex flex-col overflow-hidden min-h-0"
         [class.w-full]="mobileDrawerOpen()"
         [class.max-w-md]="mobileDrawerOpen()"
         [class.max-h-[85vh]]="mobileDrawerOpen()"
@@ -82,15 +83,15 @@ import { AudioSessionRecord } from './services/audio-session.models';
               New Session
             </button>
           } @else {
-            <div class="qm-btn qm-btn-gold qm-btn-block mt-3 cursor-default">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <div class="qm-item is-active mt-3 flex items-center gap-2 text-sm font-semibold" aria-current="true">
+              <svg class="w-4 h-4 text-gold-deep" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
               </svg>
-              New Session (Active)
+              New Session
             </div>
           }
         </div>
-        <div class="flex-1 overflow-y-auto scrollbar-thin">
+        <div class="flex-1 min-h-0 overflow-y-auto scrollbar-thin">
           @if (sessions().length === 0) {
             <div class="p-5 text-center">
               <p class="font-prose text-base text-gray-700">No sessions yet.</p>
@@ -109,19 +110,16 @@ import { AudioSessionRecord } from './services/audio-session.models';
                   (click)="sessionSelected.emit(session); mobileDrawerOpen.set(false)"
                 >
                   <span class="block text-sm font-semibold truncate">{{ session.title }}</span>
-                  <span class="block text-xs qm-muted mt-0.5">
-                    {{ session.sessionDate || 'No date' }}
-                  </span>
-                  <span class="flex items-center gap-2 mt-1.5">
-                    <span
-                      class="qm-dot"
-                      [class.qm-dot-success]="session.status === 'completed'"
-                      [class.qm-dot-busy]="session.status === 'processing' || session.status === 'uploading'"
-                      [class.qm-dot-danger]="session.status === 'failed'"
-                    ></span>
-                    <span class="text-xs qm-muted capitalize">{{ session.status }}</span>
+                  <span class="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
+                    <span class="text-xs qm-muted">{{ formatDay(session.sessionDate) || 'No date' }}</span>
+                    <!-- A finished session is the normal case: only the others say so. -->
+                    @if (session.status === 'failed') {
+                      <span class="qm-badge qm-badge-danger">Failed</span>
+                    } @else if (session.status !== 'completed') {
+                      <span class="qm-badge qm-badge-info"><span class="qm-dot qm-dot-busy !h-1.5 !w-1.5 !shadow-none"></span>{{ session.status === 'uploading' ? 'Uploading' : 'Processing' }}</span>
+                    }
                     @if (session.ownerId === userId()) {
-                      <span class="qm-badge qm-badge-info ml-auto">You</span>
+                      <span class="qm-badge qm-badge-quiet ml-auto">You</span>
                     }
                   </span>
                 </button>
@@ -144,4 +142,5 @@ export class SessionListSidebarComponent {
   newRequested = output<void>();
 
   mobileDrawerOpen = signal(false);
+  protected readonly formatDay = formatDay;
 }

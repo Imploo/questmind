@@ -40,8 +40,14 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
   template: `
     <div class="flex w-full items-start gap-6">
       <!-- Character sheet -->
-      <div class="min-w-0 flex-1" [class.pb-[10vh]]="isNarrow() && isOwner()">
+      <div class="min-w-0 flex-1" [class.pb-24]="isNarrow() && isOwner()">
         <div class="max-w-5xl mx-auto flex flex-col gap-4">
+          @if (isSignedIn()) {
+            <a routerLink="/characters" class="qm-backlink -mb-1 self-start">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7" /></svg>
+              Characters
+            </a>
+          }
           @if (isDraft()) {
             <div class="sticky top-[4.25rem] sm:top-4 z-10">
               <app-character-draft-preview
@@ -161,6 +167,8 @@ export class CharacterBuilderPageComponent {
     if (!user || !character) return false;
     return user.uid === character.userId;
   });
+
+  isSignedIn = computed(() => !!this.authService.currentUser());
 
   /** A signed-in visitor looking at someone else's character can copy it to their own account. */
   canClone = computed(() => {

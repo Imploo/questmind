@@ -5,7 +5,7 @@ import { ChangeDetectionStrategy, Component, computed, input, output } from '@an
   selector: 'app-session-recording',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="qm-panel mb-4 lg:mb-6">
+    <div class="qm-panel mt-4 lg:mt-6">
       <div class="flex flex-col gap-3">
         <div class="flex items-center justify-between gap-3 flex-wrap">
           <div class="flex items-center gap-3">

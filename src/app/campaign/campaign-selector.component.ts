@@ -14,7 +14,7 @@ import { Campaign } from './campaign.models';
   template: `
     <!-- Expanded: pill bar with campaign name + icon buttons -->
     @if (!isCollapsed()) {
-      <div class="flex items-center justify-center gap-2">
+      <div class="flex items-center gap-2" [class.justify-center]="align() === 'center'">
 
         <!-- Campaign pill -->
         <div class="relative flex-1 min-w-0 max-w-[50vw] md:max-w-80">
@@ -55,7 +55,7 @@ import { Campaign } from './campaign.models';
 
           <!-- Dropdown list -->
           @if (showDropdown()) {
-            <div class="qm-menu absolute top-full mt-2 left-1/2 -translate-x-1/2 w-72 z-50">
+            <div class="qm-menu absolute top-full mt-2 w-72 z-50" [class]="align() === 'center' ? 'left-1/2 -translate-x-1/2' : 'left-0'">
               <div class="qm-eyebrow px-4 pt-3 pb-1.5">Campaigns</div>
               @for (campaign of campaigns(); track campaign.id) {
                 <button
@@ -206,6 +206,8 @@ import { Campaign } from './campaign.models';
 })
 export class CampaignSelectorComponent {
   readonly isCollapsed = input<boolean>(false);
+  /** Where the pill sits in its row: centred in the mobile top bar, at the start above a page title. */
+  readonly align = input<'center' | 'start'>('center');
 
   private readonly router = inject(Router);
   private readonly authService = inject(AuthService);

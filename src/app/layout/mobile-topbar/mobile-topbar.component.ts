@@ -3,10 +3,11 @@ import { Router, NavigationEnd } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { filter, map, startWith } from 'rxjs/operators';
 import { CampaignSelectorComponent } from '../../campaign/campaign-selector.component';
+import { LogoComponent } from '../../shared/components/logo.component';
 
 @Component({
   selector: 'app-mobile-topbar',
-  imports: [CampaignSelectorComponent],
+  imports: [CampaignSelectorComponent, LogoComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [`
     :host {
@@ -49,14 +50,6 @@ import { CampaignSelectorComponent } from '../../campaign/campaign-selector.comp
       text-transform: uppercase;
       color: #fff;
     }
-    .wordmark::before,
-    .wordmark::after {
-      content: '';
-      width: 6px;
-      height: 6px;
-      background: #e5c77f;
-      transform: rotate(45deg);
-    }
   `],
   template: `
     @if (onCampaignRoute()) {
@@ -64,7 +57,7 @@ import { CampaignSelectorComponent } from '../../campaign/campaign-selector.comp
         <app-campaign-selector [isCollapsed]="false" />
       </div>
     } @else {
-      <span class="wordmark">Questmind</span>
+      <span class="wordmark"><app-logo [size]="32" />Questmind</span>
     }
   `
 })
