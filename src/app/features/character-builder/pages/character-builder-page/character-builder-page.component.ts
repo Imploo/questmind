@@ -98,7 +98,9 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
                           [editable]="isOwner()"
                           [canClone]="canClone()"
                           [cloning]="cloning()"
+                          [archived]="selectedCharacter()?.archived === true"
                           (cloneCharacter)="onCloneCharacter()"
+                          (archivedChange)="onArchivedChange($event)"
                           (playStateChange)="onPlayStateChange($event)"
                           (usesChange)="onUsesChange($event)"
                           (coinsChange)="onCoinsChange($event)"
@@ -542,6 +544,24 @@ export class CharacterBuilderPageComponent {
       this.toastService.showCallableError(e, 'Klonen is mislukt. Probeer het opnieuw.');
     } finally {
       this.cloning.set(false);
+    }
+  }
+
+  /** Archiving only moves the character out of the list; the sheet stays open and usable. */
+  async onArchivedChange(archived: boolean): Promise<void> {
+    const charId = this.selectedCharacterId();
+    if (!charId || !this.isOwner()) return;
+    try {
+      await this.characterService.setArchived(charId, archived);
+      this.toastService.show(
+        archived
+          ? 'Karakter gearchiveerd — je vindt het terug onder "Archived" in je karakterlijst.'
+          : 'Karakter teruggezet in je karakterlijst.',
+        'success'
+      );
+    } catch (e) {
+      logger.error('Failed to archive character:', e);
+      this.toastService.show(archived ? 'Archiveren is mislukt. Probeer het opnieuw.' : 'Terugzetten is mislukt. Probeer het opnieuw.', 'error');
     }
   }
 
