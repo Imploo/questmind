@@ -4,8 +4,8 @@ import { provideZonelessChangeDetection } from '@angular/core';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { readFileSync } from 'node:fs';
-import { PDFButton, PDFDict, PDFDocument, PDFName, PDFStream } from 'pdf-lib';
-import { PdfGeneratorService, toPlainText } from './pdf-generator.service';
+import { PDFArray, PDFButton, PDFDict, PDFDocument, PDFName, PDFStream, PDFString } from 'pdf-lib';
+import { PdfGeneratorService, qrModulesPath, toPlainText } from './pdf-generator.service';
 import { DndCharacter } from '../models/dnd-character.model';
 
 function createCharacter(): DndCharacter {
@@ -59,6 +59,7 @@ function collectText(content: unknown): string[] {
 
 const TEMPLATE_URL = '/templates/dnd-5e-character-sheet.pdf';
 const PORTRAIT_URL = 'https://storage/portrait.png';
+const SHARE_URL = 'https://questmind.nl/share/character/AbCdEfGhIjKlMnOpQrSt';
 const PNG_1X1 = Uint8Array.from(
   atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='),
   ch => ch.charCodeAt(0)
@@ -90,6 +91,25 @@ function picturesOnPageTwo(doc: PDFDocument): number {
   return (xObjects?.keys() ?? []).filter(key =>
     xObjects!.lookup(key, PDFStream).dict.lookup(PDFName.of('Subtype'), PDFName) === PDFName.of('Image')
   ).length;
+}
+
+/** The link annotations on page 1: where they are and where they lead. */
+function linksOnPageOne(doc: PDFDocument): { url: string; top: number }[] {
+  const annots = doc.getPage(0).node.Annots()?.asArray() ?? [];
+  return annots
+    .map(ref => doc.context.lookup(ref, PDFDict))
+    .filter(annot => annot.lookup(PDFName.of('Subtype'), PDFName) === PDFName.of('Link'))
+    .map(annot => {
+      const rect = annot.lookup(PDFName.of('Rect'), PDFArray).asRectangle();
+      return {
+        url: annot.lookup(PDFName.of('A'), PDFDict).lookup(PDFName.of('URI'), PDFString).asString(),
+        top: rect.y + rect.height,
+      };
+    });
+}
+
+function featuresField(doc: PDFDocument): { y: number; height: number } {
+  return doc.getForm().getTextField('Features and Traits').acroField.getWidgets()[0].getRectangle();
 }
 
 describe('PdfGeneratorService', () => {
@@ -234,6 +254,43 @@ describe('PdfGeneratorService', () => {
       await flushWhenRequested(PORTRAIT_URL, Uint8Array.from('RIFF....WEBP', ch => ch.charCodeAt(0)).buffer);
 
       expect(picturesOnPageTwo(await PDFDocument.load(await pending))).toBe(templatePictures);
+    });
+  });
+
+  describe('share QR code', () => {
+    it('puts a linked QR code in the Features & Traits box, which makes room for it', async () => {
+      const template = featuresField(await PDFDocument.load(templateBytes()));
+      const pending = service.buildCharacterPdf(createCharacter(), [], [{ name: 'Arcane Recovery' }], [], null, SHARE_URL);
+      await flushWhenRequested(TEMPLATE_URL, templateBytes().buffer);
+
+      const result = await PDFDocument.load(await pending);
+      const field = featuresField(result);
+      const links = linksOnPageOne(result);
+
+      expect(links.map(link => link.url)).toEqual([SHARE_URL]);
+      // The panel is in the bottom of the box and the field ends above it.
+      expect(links[0].top).toBeGreaterThan(template.y);
+      expect(field.y).toBeGreaterThan(links[0].top);
+      expect(field.y + field.height).toBeCloseTo(template.y + template.height);
+      expect(result.getForm().getTextField('Features and Traits').getText()).toContain('Arcane Recovery');
+    });
+
+    it('leaves the sheet as it is without a share link', async () => {
+      const template = featuresField(await PDFDocument.load(templateBytes()));
+      const pending = service.buildCharacterPdf(createCharacter(), [], []);
+      await flushWhenRequested(TEMPLATE_URL, templateBytes().buffer);
+
+      const result = await PDFDocument.load(await pending);
+
+      expect(linksOnPageOne(result)).toEqual([]);
+      expect(featuresField(result)).toEqual(template);
+    });
+  });
+
+  describe('qrModulesPath', () => {
+    it('draws one rectangle per run of dark modules in a row', () => {
+      const dark = ['##.', '..#', '...'];
+      expect(qrModulesPath(3, (row, col) => dark[row][col] === '#')).toBe('M0 0h2v1h-2zM2 1h1v1h-1z');
     });
   });
 

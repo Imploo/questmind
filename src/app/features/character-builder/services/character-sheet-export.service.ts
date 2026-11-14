@@ -5,6 +5,7 @@ import { PdfGeneratorService } from '../../../shared/services/pdf-generator.serv
 import { SheetFeature, SheetSpell } from '../../../shared/pdf/character-sheet-field-values';
 import { CharacterEntryResolverService } from '../../../core/services/character-entry-resolver.service';
 import { CharacterVersionService } from '../../../core/services/character-version.service';
+import { characterShareUrl } from '../../../shared/utils/character-share-url';
 import * as logger from '../../../shared/logger';
 
 export interface CharacterSheetExportRequest {
@@ -46,7 +47,15 @@ export class CharacterSheetExportService {
     ]);
 
     await this.persist(request, spells.resolved, features.resolved);
-    await this.pdfGenerator.generateCharacterPdf(character, spells.entries, features.entries, inventory, request.portraitUrl ?? null);
+    await this.pdfGenerator.generateCharacterPdf(
+      character,
+      spells.entries,
+      features.entries,
+      inventory,
+      request.portraitUrl ?? null,
+      // A QR code on the sheet, so a player holding the print can open the character and clone it.
+      request.characterId ? characterShareUrl(request.characterId) : null
+    );
   }
 
   private async resolveSpells(
