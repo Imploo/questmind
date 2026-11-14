@@ -40,7 +40,7 @@ import { ConcentrationMarkComponent } from '../play/concentration-mark.component
 import { InspirationToggleComponent } from '../play/inspiration-toggle.component';
 import { CoinPurseComponent } from '../play/coin-purse.component';
 import { InventoryItemChange, InventoryItemsComponent } from '../play/inventory-items.component';
-import { CharacterImage } from '../../../../core/models/schemas/character-image.schema';
+import { CharacterImage, portraitUrlOf } from '../../../../core/models/schemas/character-image.schema';
 import { CharacterImageGalleryComponent } from '../character-image-gallery/character-image-gallery.component';
 import { CharacterActionsMenuComponent } from '../character-actions-menu/character-actions-menu.component';
 import { ImageLightboxComponent } from '../../../../chat/image-lightbox.component';
@@ -1310,7 +1310,7 @@ export class CharacterSheetComponent {
     }
   }
 
-  portraitUrl = computed(() => this.images().find(img => !!img.url)?.url ?? null);
+  portraitUrl = computed(() => portraitUrlOf(this.images()));
 
   initial = computed(() => (this.character().name?.trim()[0] ?? '?').toUpperCase());
 

@@ -11,7 +11,7 @@ import { CharacterImportService } from '../../services/character-import.service'
 import { ToastService } from '../../../../shared/services/toast.service';
 import * as logger from '../../../../shared/logger';
 import { Character, CharacterVersion } from '../../../../core/models/schemas/character.schema';
-import { CharacterImage } from '../../../../core/models/schemas/character-image.schema';
+import { CharacterImage, portraitUrlOf } from '../../../../core/models/schemas/character-image.schema';
 import { Coins, DndCharacter } from '../../../../shared/models/dnd-character.model';
 import { CharacterPlayState } from '../../../../shared/models/character-play-state.model';
 import { applyPlayStateToCharacter, resolvePlayState } from '../../../../shared/utils/character-play-state';
@@ -620,6 +620,7 @@ export class CharacterBuilderPageComponent {
       await this.characterSheetExportService.export({
         character: version.character,
         inventory: resolvePlayState(version.character, this.playState()).inventory,
+        portraitUrl: portraitUrlOf(this.characterImages()),
         characterId: this.selectedCharacterId(),
         versionId: version.id ?? null,
         canResolveRemotely: this.isOwner(),

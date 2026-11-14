@@ -12,6 +12,9 @@
 
 export const CHARACTER_SHEET_TEMPLATE_URL = '/templates/dnd-5e-character-sheet.pdf';
 
+/** Page 2's "Character Appearance" box: a button field that shows a picture. */
+export const CHARACTER_IMAGE_FIELD = 'CHARACTER IMAGE';
+
 export type AbilityKey = 'strength' | 'dexterity' | 'constitution' | 'intelligence' | 'wisdom' | 'charisma';
 
 export const ABILITY_FIELDS: Record<AbilityKey, { score: string; modifier: string; save: string; saveProficient: string }> = {

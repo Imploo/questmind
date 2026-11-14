@@ -4,7 +4,7 @@ import { provideZonelessChangeDetection } from '@angular/core';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { readFileSync } from 'node:fs';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDict, PDFDocument, PDFName, PDFRef, PDFStream } from 'pdf-lib';
 import { PdfGeneratorService, toPlainText } from './pdf-generator.service';
 import { DndCharacter } from '../models/dnd-character.model';
 
@@ -55,6 +55,47 @@ function collectText(content: unknown): string[] {
   if (Array.isArray(content)) return content.flatMap(c => collectText(c));
   const node = content as { text?: unknown; stack?: unknown };
   return [...collectText(node.text), ...collectText(node.stack)];
+}
+
+const TEMPLATE_URL = '/templates/dnd-5e-character-sheet.pdf';
+const PORTRAIT_URL = 'https://storage/portrait.png';
+const PNG_1X1 = Uint8Array.from(
+  atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='),
+  ch => ch.charCodeAt(0)
+);
+
+function templateBytes() {
+  return Uint8Array.from(readFileSync('public/templates/dnd-5e-character-sheet.pdf'));
+}
+
+/** The service awaits dynamic imports and earlier requests first, so a request is not sent synchronously. */
+async function flushWhenRequested(
+  url: string,
+  body: ArrayBuffer,
+  opts?: { status: number; statusText: string }
+): Promise<void> {
+  const http = TestBed.inject(HttpTestingController);
+  let requests = http.match(url);
+  for (let i = 0; i < 100 && !requests.length; i++) {
+    await new Promise(resolve => setTimeout(resolve, 20));
+    requests = http.match(url);
+  }
+  expect(requests.length).toBe(1);
+  requests[0].flush(body, opts);
+}
+
+/** Subtype of every XObject drawn by the character image field's widgets. */
+function portraitImages(doc: PDFDocument): string[] {
+  return doc.getForm().getButton('CHARACTER IMAGE').acroField.getWidgets().flatMap(widget => {
+    const appearance = widget.getNormalAppearance();
+    const stream = appearance instanceof PDFRef ? doc.context.lookup(appearance) : appearance;
+    const xObjects = stream instanceof PDFStream
+      ? stream.dict.lookupMaybe(PDFName.of('Resources'), PDFDict)?.lookupMaybe(PDFName.of('XObject'), PDFDict)
+      : undefined;
+    return (xObjects?.keys() ?? []).map(key =>
+      xObjects!.lookup(key, PDFStream).dict.lookup(PDFName.of('Subtype'), PDFName).decodeText()
+    );
+  });
 }
 
 describe('PdfGeneratorService', () => {
@@ -147,17 +188,7 @@ describe('PdfGeneratorService', () => {
         [{ name: 'Magic Missile', level: 1, usage: 'Casting Time: 1 action', description: 'Three darts.' }],
         [{ name: 'Arcane Recovery', description: 'Recover spell slots.' }]
       );
-      const http = TestBed.inject(HttpTestingController);
-      const url = '/templates/dnd-5e-character-sheet.pdf';
-      // pdf-lib is imported dynamically first, so the request is not sent synchronously.
-      let requests = http.match(url);
-      for (let i = 0; i < 100 && !requests.length; i++) {
-        await new Promise(resolve => setTimeout(resolve, 20));
-        requests = http.match(url);
-      }
-      expect(requests.length).toBe(1);
-      const template = Uint8Array.from(readFileSync('public/templates/dnd-5e-character-sheet.pdf'));
-      requests[0].flush(template.buffer);
+      await flushWhenRequested(TEMPLATE_URL, templateBytes().buffer);
 
       const result = await PDFDocument.load(await pending);
       const form = result.getForm();
@@ -169,7 +200,38 @@ describe('PdfGeneratorService', () => {
       expect(form.getTextField('Features and Traits').getText()).toContain('Arcane Recovery');
       expect(form.getTextField('Backstory').getText()).toBe('Born in Waterdeep - raised by wolves -> became a wizard.');
       expect(form.getCheckBox('Check Box 20').isChecked()).toBe(true);
-      http.verify();
+      expect(portraitImages(result)).toEqual([]);
+      TestBed.inject(HttpTestingController).verify();
+    });
+
+    it('puts the portrait in the Character Appearance box', async () => {
+      const pending = service.buildCharacterPdf(createCharacter(), [], [], [], PORTRAIT_URL);
+      await flushWhenRequested(TEMPLATE_URL, templateBytes().buffer);
+      await flushWhenRequested(PORTRAIT_URL, PNG_1X1.buffer);
+
+      const result = await PDFDocument.load(await pending);
+
+      // The field has three widgets on the same spot; each shows the picture.
+      expect(portraitImages(result)).toEqual(['Image', 'Image', 'Image']);
+    });
+
+    it('still exports the sheet when the portrait cannot be loaded', async () => {
+      const pending = service.buildCharacterPdf(createCharacter(), [], [], [], PORTRAIT_URL);
+      await flushWhenRequested(TEMPLATE_URL, templateBytes().buffer);
+      await flushWhenRequested(PORTRAIT_URL, new ArrayBuffer(0), { status: 404, statusText: 'Not Found' });
+
+      const result = await PDFDocument.load(await pending);
+
+      expect(result.getForm().getTextField('CharacterName').getText()).toBe('Test Hero');
+      expect(portraitImages(result)).toEqual([]);
+    });
+
+    it('leaves the box empty for a picture that is neither PNG nor JPEG', async () => {
+      const pending = service.buildCharacterPdf(createCharacter(), [], [], [], PORTRAIT_URL);
+      await flushWhenRequested(TEMPLATE_URL, templateBytes().buffer);
+      await flushWhenRequested(PORTRAIT_URL, Uint8Array.from('RIFF....WEBP', ch => ch.charCodeAt(0)).buffer);
+
+      expect(portraitImages(await PDFDocument.load(await pending))).toEqual([]);
     });
   });
 

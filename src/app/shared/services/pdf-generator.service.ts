@@ -1,11 +1,16 @@
 import { inject, Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import type { PDFFont } from 'pdf-lib';
+import type { PDFDocument, PDFFont, PDFForm } from 'pdf-lib';
 import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces';
 import { DndCharacter } from '../models/dnd-character.model';
 import { InventoryItem } from '../models/character-play-state.model';
-import { CHARACTER_SHEET_TEMPLATE_URL, MULTILINE_FIELDS, TEXT_FIELDS } from '../pdf/character-sheet-template';
+import {
+  CHARACTER_IMAGE_FIELD,
+  CHARACTER_SHEET_TEMPLATE_URL,
+  MULTILINE_FIELDS,
+  TEXT_FIELDS,
+} from '../pdf/character-sheet-template';
 import { buildSheetFieldValues, SheetFeature, SheetSpell } from '../pdf/character-sheet-field-values';
 import * as logger from '../logger';
 
@@ -48,14 +53,18 @@ const CHAR_REPLACEMENTS: Record<string, string> = {
 export class PdfGeneratorService {
   private readonly http = inject(HttpClient);
 
-  /** `inventory`: items the player keeps by hand; those with a description are described in the appendix. */
+  /**
+   * `inventory`: items the player keeps by hand; those with a description are described in the appendix.
+   * `portraitUrl`: the picture for the "Character Appearance" box on page 2.
+   */
   async generateCharacterPdf(
     character: DndCharacter,
     spells: SheetSpell[],
     features: SheetFeature[],
-    inventory: InventoryItem[] = []
+    inventory: InventoryItem[] = [],
+    portraitUrl: string | null = null
   ): Promise<void> {
-    const bytes = await this.buildCharacterPdf(character, spells, features, inventory);
+    const bytes = await this.buildCharacterPdf(character, spells, features, inventory, portraitUrl);
     this.download(bytes, `${character.name} - Character Sheet.pdf`);
   }
 
@@ -63,7 +72,8 @@ export class PdfGeneratorService {
     character: DndCharacter,
     spells: SheetSpell[],
     features: SheetFeature[],
-    inventory: InventoryItem[] = []
+    inventory: InventoryItem[] = [],
+    portraitUrl: string | null = null
   ): Promise<Uint8Array> {
     const { PDFDocument, PDFTextField, PDFCheckBox, StandardFonts } = await import('pdf-lib');
     const template = await firstValueFrom(this.http.get(CHARACTER_SHEET_TEMPLATE_URL, { responseType: 'arraybuffer' }));
@@ -102,6 +112,7 @@ export class PdfGeneratorService {
       if (field instanceof PDFCheckBox) field.check();
     }
     form.updateFieldAppearances(font);
+    if (portraitUrl) await this.placePortrait(doc, form, portraitUrl);
 
     const appendix = this.buildAppendixDefinition(character, spells, features, overflow, inventory);
     if (appendix) {
@@ -111,6 +122,23 @@ export class PdfGeneratorService {
     }
 
     return doc.save();
+  }
+
+  /** Best-effort: a portrait that cannot be loaded or embedded must not block the download. */
+  private async placePortrait(doc: PDFDocument, form: PDFForm, url: string): Promise<void> {
+    try {
+      const bytes = new Uint8Array(await firstValueFrom(this.http.get(url, { responseType: 'arraybuffer' })));
+      const format = imageFormat(bytes);
+      if (!format) {
+        logger.warn('Character portrait is neither PNG nor JPEG; the sheet is exported without it');
+        return;
+      }
+      const image = format === 'png' ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
+      // Scaled to fit the box and centred, with its proportions kept.
+      form.getButton(CHARACTER_IMAGE_FIELD).setImage(image);
+    } catch (e) {
+      logger.warn('Could not place the character portrait on the sheet:', e);
+    }
   }
 
   /** Exposed for testing. Returns null when there is nothing to describe. */
@@ -215,6 +243,13 @@ export class PdfGeneratorService {
     anchor.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
+}
+
+/** The two formats pdf-lib can embed, told apart by their first bytes (the stored MIME type is not always right). */
+function imageFormat(bytes: Uint8Array): 'png' | 'jpg' | null {
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'png';
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'jpg';
+  return null;
 }
 
 /** The template's fields use Helvetica (WinAnsi); map or drop anything it cannot encode. */

@@ -63,6 +63,12 @@ describe('CharacterSheetExportService', () => {
     expect(c.equipment).toEqual(['Quarterstaff']);
   });
 
+  it('passes the portrait on to the sheet', async () => {
+    await service.export({ ...request(character()), portraitUrl: 'https://storage/portrait.png' });
+
+    expect(pdf.generateCharacterPdf.mock.calls[0][4]).toBe('https://storage/portrait.png');
+  });
+
   it('leaves the equipment alone without inventory items', async () => {
     const c = character({ equipment: ['Quarterstaff'] });
 
