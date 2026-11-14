@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { provideZonelessChangeDetection } from '@angular/core';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { readFileSync } from 'node:fs';
-import { PDFDict, PDFDocument, PDFName, PDFRef, PDFStream } from 'pdf-lib';
+import { PDFButton, PDFDict, PDFDocument, PDFName, PDFStream } from 'pdf-lib';
 import { PdfGeneratorService, toPlainText } from './pdf-generator.service';
 import { DndCharacter } from '../models/dnd-character.model';
 
@@ -84,18 +84,12 @@ async function flushWhenRequested(
   requests[0].flush(body, opts);
 }
 
-/** Subtype of every XObject drawn by the character image field's widgets. */
-function portraitImages(doc: PDFDocument): string[] {
-  return doc.getForm().getButton('CHARACTER IMAGE').acroField.getWidgets().flatMap(widget => {
-    const appearance = widget.getNormalAppearance();
-    const stream = appearance instanceof PDFRef ? doc.context.lookup(appearance) : appearance;
-    const xObjects = stream instanceof PDFStream
-      ? stream.dict.lookupMaybe(PDFName.of('Resources'), PDFDict)?.lookupMaybe(PDFName.of('XObject'), PDFDict)
-      : undefined;
-    return (xObjects?.keys() ?? []).map(key =>
-      xObjects!.lookup(key, PDFStream).dict.lookup(PDFName.of('Subtype'), PDFName).decodeText()
-    );
-  });
+/** Number of pictures drawn on page 2, the page with the Character Appearance box. */
+function picturesOnPageTwo(doc: PDFDocument): number {
+  const xObjects = doc.getPage(1).node.Resources()?.lookupMaybe(PDFName.of('XObject'), PDFDict);
+  return (xObjects?.keys() ?? []).filter(key =>
+    xObjects!.lookup(key, PDFStream).dict.lookup(PDFName.of('Subtype'), PDFName) === PDFName.of('Image')
+  ).length;
 }
 
 describe('PdfGeneratorService', () => {
@@ -177,6 +171,12 @@ describe('PdfGeneratorService', () => {
   });
 
   describe('buildCharacterPdf', () => {
+    let templatePictures: number;
+
+    beforeAll(async () => {
+      templatePictures = picturesOnPageTwo(await PDFDocument.load(templateBytes()));
+    });
+
     it('fills the official template and appends the description pages', async () => {
       const character: DndCharacter = {
         ...createCharacter(),
@@ -200,7 +200,8 @@ describe('PdfGeneratorService', () => {
       expect(form.getTextField('Features and Traits').getText()).toContain('Arcane Recovery');
       expect(form.getTextField('Backstory').getText()).toBe('Born in Waterdeep - raised by wolves -> became a wizard.');
       expect(form.getCheckBox('Check Box 20').isChecked()).toBe(true);
-      expect(portraitImages(result)).toEqual([]);
+      expect(form.getFieldMaybe('CHARACTER IMAGE')).toBeInstanceOf(PDFButton);
+      expect(picturesOnPageTwo(result)).toBe(templatePictures);
       TestBed.inject(HttpTestingController).verify();
     });
 
@@ -211,8 +212,9 @@ describe('PdfGeneratorService', () => {
 
       const result = await PDFDocument.load(await pending);
 
-      // The field has three widgets on the same spot; each shows the picture.
-      expect(portraitImages(result)).toEqual(['Image', 'Image', 'Image']);
+      expect(picturesOnPageTwo(result)).toBe(templatePictures + 1);
+      // The picture is part of the page; the field would only get a viewer's highlight over it.
+      expect(result.getForm().getFieldMaybe('CHARACTER IMAGE')).toBeUndefined();
     });
 
     it('still exports the sheet when the portrait cannot be loaded', async () => {
@@ -223,7 +225,7 @@ describe('PdfGeneratorService', () => {
       const result = await PDFDocument.load(await pending);
 
       expect(result.getForm().getTextField('CharacterName').getText()).toBe('Test Hero');
-      expect(portraitImages(result)).toEqual([]);
+      expect(picturesOnPageTwo(result)).toBe(templatePictures);
     });
 
     it('leaves the box empty for a picture that is neither PNG nor JPEG', async () => {
@@ -231,7 +233,7 @@ describe('PdfGeneratorService', () => {
       await flushWhenRequested(TEMPLATE_URL, templateBytes().buffer);
       await flushWhenRequested(PORTRAIT_URL, Uint8Array.from('RIFF....WEBP', ch => ch.charCodeAt(0)).buffer);
 
-      expect(portraitImages(await PDFDocument.load(await pending))).toEqual([]);
+      expect(picturesOnPageTwo(await PDFDocument.load(await pending))).toBe(templatePictures);
     });
   });
 

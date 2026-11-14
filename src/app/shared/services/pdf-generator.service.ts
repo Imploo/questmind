@@ -134,8 +134,21 @@ export class PdfGeneratorService {
         return;
       }
       const image = format === 'png' ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
-      // Scaled to fit the box and centred, with its proportions kept.
-      form.getButton(CHARACTER_IMAGE_FIELD).setImage(image);
+      const field = form.getButton(CHARACTER_IMAGE_FIELD);
+      const widget = field.acroField.getWidgets()[0];
+      const box = widget.getRectangle();
+      const page = doc.getPages().find(p => p.ref === widget.P());
+      if (!page) throw new Error(`"${CHARACTER_IMAGE_FIELD}" is not on a page`);
+      // Drawn on the page instead of set on the field: viewers that highlight form fields
+      // would otherwise colour the box around the picture. The field makes way for it.
+      form.removeField(field);
+      const size = image.scaleToFit(box.width, box.height);
+      page.drawImage(image, {
+        x: box.x + (box.width - size.width) / 2,
+        y: box.y + (box.height - size.height) / 2,
+        width: size.width,
+        height: size.height,
+      });
     } catch (e) {
       logger.warn('Could not place the character portrait on the sheet:', e);
     }
