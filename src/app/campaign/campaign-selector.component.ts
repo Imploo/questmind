@@ -14,33 +14,35 @@ import { Campaign } from './campaign.models';
   template: `
     <!-- Expanded: pill bar with campaign name + icon buttons -->
     @if (!isCollapsed()) {
-      <div class="flex items-center justify-center gap-2">
+      <div class="flex items-center gap-2" [class.justify-center]="align() === 'center'">
 
         <!-- Campaign pill -->
         <div class="relative flex-1 min-w-0 max-w-[50vw] md:max-w-80">
-          <div
-            class="flex items-center w-full bg-white rounded-full shadow-sm border border-gray-200 text-left"
-          >
+          <div class="pill">
             <!-- Settings cogwheel inside pill -->
             <button
+              type="button"
               (click)="openManageCampaign(); $event.stopPropagation()"
               [disabled]="!selectedCampaign()"
-              class="flex items-center justify-center w-9 h-9 flex-shrink-0 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              class="flex items-center justify-center w-9 h-9 flex-shrink-0 rounded-full text-gold-deep hover:bg-gold-soft transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               title="Campaign instellingen"
+              aria-label="Campaign instellingen"
             >
               <lucide-icon name="settings" class="w-4 h-4" />
             </button>
             <!-- Campaign name + dropdown toggle -->
             <button
+              type="button"
               (click)="toggleDropdown()"
-              class="flex items-center flex-1 min-w-0 pr-3 pl-1 py-2.5 hover:bg-gray-50 rounded-r-full transition-all"
+              [attr.aria-expanded]="showDropdown()"
+              class="flex items-center flex-1 min-w-0 pr-3 pl-1 py-2 hover:bg-paper-2 rounded-r-full transition-all"
             >
-              <span class="flex-1 text-sm font-medium text-gray-800 truncate text-center">
+              <span class="flex-1 font-display text-sm font-bold tracking-wide text-ink truncate text-center">
                 {{ selectedCampaign()?.name || 'Selecteer een campaign' }}
               </span>
               <lucide-icon
                 name="chevron-down"
-                class="w-4 h-4 text-gray-400 flex-shrink-0 transition-transform duration-200"
+                class="w-4 h-4 text-gold flex-shrink-0 transition-transform duration-200"
                 [style.transform]="showDropdown() ? 'rotate(180deg)' : 'rotate(0deg)'"
               />
             </button>
@@ -53,27 +55,28 @@ import { Campaign } from './campaign.models';
 
           <!-- Dropdown list -->
           @if (showDropdown()) {
-            <div class="absolute top-full mt-2 left-1/2 -translate-x-1/2 w-72 bg-white rounded-2xl shadow-xl z-50 border border-gray-100 overflow-hidden">
+            <div class="qm-menu absolute top-full mt-2 w-72 z-50" [class]="align() === 'center' ? 'left-1/2 -translate-x-1/2' : 'left-0'">
+              <div class="qm-eyebrow px-4 pt-3 pb-1.5">Campaigns</div>
               @for (campaign of campaigns(); track campaign.id) {
                 <button
+                  type="button"
                   (click)="onCampaignChange(campaign.id); showDropdown.set(false)"
-                  class="w-full px-4 py-3 text-left text-sm transition-colors flex items-center justify-between gap-2 hover:bg-gray-50"
-                  [class.bg-blue-50]="campaign.id === selectedId"
-                  [class.text-blue-700]="campaign.id === selectedId"
-                  [class.font-medium]="campaign.id === selectedId"
+                  class="qm-menu-item justify-between"
+                  [class.is-active]="campaign.id === selectedId"
                 >
                   <span class="truncate">{{ campaign.name }}</span>
                   @if (isCampaignOwner(campaign)) {
-                    <span class="text-xs text-gray-400 flex-shrink-0">Owner</span>
+                    <span class="qm-badge qm-badge-quiet flex-shrink-0">Owner</span>
                   }
                 </button>
               }
               @if (campaigns().length === 0) {
-                <div class="px-4 py-3 text-sm text-gray-400">Geen campaigns gevonden</div>
+                <div class="px-4 py-3 text-sm qm-muted">Geen campaigns gevonden</div>
               }
               <button
+                type="button"
                 (click)="showCreateCampaign.set(true); showDropdown.set(false)"
-                class="w-full px-4 py-3 text-left text-sm transition-colors flex items-center gap-2 hover:bg-gray-50 text-blue-600 border-t border-gray-100"
+                class="qm-menu-item border-t border-line font-semibold text-primary-dark"
               >
                 <lucide-icon name="plus" class="w-4 h-4 flex-shrink-0" />
                 <span>Nieuwe campaign</span>
@@ -84,7 +87,7 @@ import { Campaign } from './campaign.models';
       </div>
 
       @if (errorMessage()) {
-        <div class="text-xs text-red-600 mt-2 px-1">{{ errorMessage() }}</div>
+        <div class="qm-alert mt-2 mx-auto max-w-80 !text-xs">{{ errorMessage() }}</div>
       }
     }
 
@@ -92,8 +95,9 @@ import { Campaign } from './campaign.models';
     @if (isCollapsed()) {
       <div class="relative">
         <button
+          type="button"
           (click)="toggleDropdown()"
-          class="p-2 rounded-lg hover:bg-gray-100 transition-colors w-full"
+          class="p-2 rounded-lg hover:bg-white/15 transition-colors w-full"
           [title]="selectedCampaign()?.name || 'Select campaign'"
         >
           <lucide-icon name="book-open" class="w-6 h-6 mx-auto" />
@@ -101,35 +105,35 @@ import { Campaign } from './campaign.models';
 
         @if (showDropdown()) {
           <div class="fixed inset-0 z-40" (click)="showDropdown.set(false)"></div>
-          <div class="absolute left-full ml-2 top-0 w-64 bg-white rounded-xl shadow-xl z-50 border border-gray-100 overflow-hidden">
-            <div class="p-2">
-              <p class="text-xs font-semibold text-gray-500 px-3 py-2">Campaign</p>
-              @for (campaign of campaigns(); track campaign.id) {
-                <button
-                  (click)="onCampaignChange(campaign.id); showDropdown.set(false)"
-                  class="w-full px-3 py-2.5 text-left text-sm rounded-lg transition-colors flex items-center justify-between gap-2 hover:bg-gray-50"
-                  [class.bg-blue-50]="campaign.id === selectedId"
-                  [class.text-blue-700]="campaign.id === selectedId"
-                >
-                  <span class="truncate">{{ campaign.name }}</span>
-                  @if (isCampaignOwner(campaign)) {
-                    <span class="text-xs text-gray-400 flex-shrink-0">Owner</span>
-                  }
-                </button>
-              }
-            </div>
-            <div class="border-t border-gray-100 p-2">
+          <div class="qm-menu absolute left-full ml-2 top-0 w-64 z-50">
+            <div class="qm-eyebrow px-4 pt-3 pb-1.5">Campaign</div>
+            @for (campaign of campaigns(); track campaign.id) {
               <button
+                type="button"
+                (click)="onCampaignChange(campaign.id); showDropdown.set(false)"
+                class="qm-menu-item justify-between"
+                [class.is-active]="campaign.id === selectedId"
+              >
+                <span class="truncate">{{ campaign.name }}</span>
+                @if (isCampaignOwner(campaign)) {
+                  <span class="qm-badge qm-badge-quiet flex-shrink-0">Owner</span>
+                }
+              </button>
+            }
+            <div class="border-t border-line">
+              <button
+                type="button"
                 (click)="showCreateCampaign.set(true); showDropdown.set(false)"
-                class="w-full px-3 py-2.5 text-left text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors flex items-center gap-2"
+                class="qm-menu-item font-semibold text-primary-dark"
               >
                 <lucide-icon name="plus" class="w-4 h-4" />
                 <span>Nieuwe campaign</span>
               </button>
               @if (selectedCampaign()) {
                 <button
+                  type="button"
                   (click)="openManageCampaign(); showDropdown.set(false)"
-                  class="w-full px-3 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors flex items-center gap-2"
+                  class="qm-menu-item"
                 >
                   <lucide-icon name="settings" class="w-4 h-4" />
                   <span>Instellingen</span>
@@ -143,24 +147,27 @@ import { Campaign } from './campaign.models';
 
     <!-- Create campaign modal -->
     @if (showCreateCampaign()) {
-      <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div class="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
-          <h3 class="text-xl font-bold mb-4">Nieuwe campaign aanmaken</h3>
+      <div class="qm-scrim flex items-center justify-center p-4">
+        <div class="qm-dialog" role="dialog" aria-modal="true" aria-labelledby="create-campaign-title">
+          <div class="qm-eyebrow">Campaign</div>
+          <h3 id="create-campaign-title" class="qm-display text-xl mb-4">Nieuwe campaign aanmaken</h3>
           <div class="space-y-4">
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Naam</label>
+              <label for="new-campaign-name" class="qm-label">Naam</label>
               <input
+                id="new-campaign-name"
                 type="text"
                 [(ngModel)]="newCampaignName"
-                class="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                class="qm-input"
                 placeholder="Mijn D&D Campaign"
               />
             </div>
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Beschrijving (optioneel)</label>
+              <label for="new-campaign-description" class="qm-label">Beschrijving (optioneel)</label>
               <textarea
+                id="new-campaign-description"
                 [(ngModel)]="newCampaignDescription"
-                class="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                class="qm-input"
                 rows="3"
                 placeholder="Beschrijving van je campaign..."
               ></textarea>
@@ -168,26 +175,39 @@ import { Campaign } from './campaign.models';
           </div>
           <div class="flex gap-2 mt-6">
             <button
+              type="button"
               (click)="createCampaign()"
               [disabled]="!newCampaignName.trim().length"
-              class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+              class="qm-btn qm-btn-primary flex-1"
             >
               Aanmaken
             </button>
-            <button
-              (click)="showCreateCampaign.set(false)"
-              class="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors font-medium"
-            >
+            <button type="button" (click)="showCreateCampaign.set(false)" class="qm-btn flex-1">
               Annuleren
             </button>
           </div>
         </div>
       </div>
     }
-  `
+  `,
+  styles: [`
+    /* The campaign you are in, as a name plate. */
+    .pill {
+      display: flex;
+      align-items: center;
+      width: 100%;
+      padding: 2px;
+      border-radius: 999px;
+      background: var(--paper);
+      border: 1px solid #e5c77f;
+      box-shadow: 0 10px 24px -14px rgba(24, 12, 60, 0.8);
+    }
+  `]
 })
 export class CampaignSelectorComponent {
   readonly isCollapsed = input<boolean>(false);
+  /** Where the pill sits in its row: centred in the mobile top bar, at the start above a page title. */
+  readonly align = input<'center' | 'start'>('center');
 
   private readonly router = inject(Router);
   private readonly authService = inject(AuthService);

@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { PDFCheckBox, PDFDocument, PDFForm, PDFTextField } from 'pdf-lib';
+import { PDFButton, PDFCheckBox, PDFDocument, PDFForm, PDFTextField } from 'pdf-lib';
 import {
   ABILITY_FIELDS,
+  CHARACTER_IMAGE_FIELD,
   DEATH_SAVE_FAILURE_FIELDS,
   DEATH_SAVE_SUCCESS_FIELDS,
   MULTILINE_FIELDS,
@@ -47,6 +48,10 @@ describe('character sheet template field map', () => {
   it('names only checkboxes that exist in the template', () => {
     const missing = checkBoxes().filter(name => !(form.getFieldMaybe(name) instanceof PDFCheckBox));
     expect(missing).toEqual([]);
+  });
+
+  it('names a button field for the character image', () => {
+    expect(form.getFieldMaybe(CHARACTER_IMAGE_FIELD)).toBeInstanceOf(PDFButton);
   });
 
   it('uses every field at most once', () => {

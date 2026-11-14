@@ -15,11 +15,11 @@ export const VOICE_ROSTER_MAX_LENGTH = 2000;
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [ReactiveFormsModule],
   template: `
-    <div class="bg-gray-50 p-4 rounded-lg mt-3">
-      <label for="voice-roster" class="block text-sm font-medium text-gray-700 mb-1">
+    <div class="qm-well mt-3">
+      <label for="voice-roster" class="qm-label">
         Speaking order of the introduction
       </label>
-      <p id="voice-roster-help" class="text-xs text-gray-600 mb-2">
+      <p id="voice-roster-help" class="qm-help mb-2">
         Describe who speaks in which order in the recording above, one person per line.
         The AI uses this to link each voice in the introduction to the right character.
       </p>
@@ -32,28 +32,28 @@ export const VOICE_ROSTER_MAX_LENGTH = 2000;
           [attr.maxlength]="maxLength"
           [formControl]="rosterControl"
           [placeholder]="placeholder"
-          class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          class="qm-input !text-sm"
         ></textarea>
         <div class="mt-2 flex items-center gap-3">
           <button
             type="button"
             (click)="save()"
             [disabled]="!isDirty() || isBusy()"
-            class="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            class="qm-btn qm-btn-gold"
           >
             {{ isBusy() ? 'Saving...' : 'Save speaking order' }}
           </button>
-          <span class="text-xs text-gray-500">{{ length() }} / {{ maxLength }}</span>
+          <span class="text-xs qm-muted tabular-nums">{{ length() }} / {{ maxLength }}</span>
         </div>
       } @else if (roster()) {
-        <p id="voice-roster" class="text-sm text-gray-900 whitespace-pre-line">{{ roster() }}</p>
+        <p id="voice-roster" class="text-sm whitespace-pre-line">{{ roster() }}</p>
       } @else {
-        <p id="voice-roster" class="text-sm text-gray-500">No speaking order provided.</p>
+        <p id="voice-roster" class="text-sm qm-muted">No speaking order provided.</p>
       }
 
       <div aria-live="polite">
         @if (errorMessage()) {
-          <p class="mt-2 text-sm text-red-700">{{ errorMessage() }}</p>
+          <p class="mt-2 text-sm text-wine">{{ errorMessage() }}</p>
         }
       </div>
     </div>

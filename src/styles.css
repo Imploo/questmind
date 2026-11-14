@@ -1,11 +1,48 @@
-@import "@angular/material/prebuilt-themes/indigo-pink.css";
+/* Positioning for CDK overlays (the character actions menu); the Material theme used to bring this along. */
+@import "@angular/cdk/overlay-prebuilt.css";
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
+/*
+ * QuestMind design system
+ * -----------------------
+ * Parchment sheets on a blue-to-purple table. Three accents, each with one job:
+ *   - the blue → purple gradient is the brand: the backdrop and every primary action;
+ *   - gold is ornament and structure: titles, frames, bullets, quiet buttons;
+ *   - wine is for danger and for the few things that must stand out on parchment.
+ * Cinzel carries titles and labels, Cormorant Garamond carries stories, the system
+ * sans carries everything you operate.
+ */
 @theme {
   --color-primary: #667eea;
   --color-primary-dark: #5568d3;
   --color-secondary: #764ba2;
+
+  --color-ink: #2a2320;
+  --color-muted: #7b6e60;
+  --color-paper: #fffdf8;
+  --color-paper-2: #f8f2e6;
+  --color-line: #e8dcc5;
+  --color-gold: #b48a3c;
+  --color-gold-soft: #f2e6cb;
+  --color-gold-deep: #8a6623;
+  --color-wine: #9b2f3a;
+
+  /* The neutral scale is warm, so a stray gray never looks cold on parchment. */
+  --color-gray-50: #faf6ec;
+  --color-gray-100: #f3ecdc;
+  --color-gray-200: #e8dcc5;
+  --color-gray-300: #d9c9a6;
+  --color-gray-400: #a89a84;
+  --color-gray-500: #7b6e60;
+  --color-gray-600: #5f5347;
+  --color-gray-700: #4d4339;
+  --color-gray-800: #3a312b;
+  --color-gray-900: #2a2320;
+  --color-gray-950: #1a1512;
+
+  --font-display: 'Cinzel', 'Cormorant Garamond', Georgia, serif;
+  --font-prose: 'Cormorant Garamond', Georgia, serif;
 
   --animate-slide-in: slideIn 0.3s ease-out;
   --animate-bounce-dot: bounce 1.4s infinite ease-in-out;
@@ -31,21 +68,877 @@
   }
 }
 
+:root {
+  /* Short names, as the character sheet and its play controls use them. */
+  --ink: var(--color-ink);
+  --muted: var(--color-muted);
+  --paper: var(--color-paper);
+  --paper-2: var(--color-paper-2);
+  --line: var(--color-line);
+  --gold: var(--color-gold);
+  --gold-soft: var(--color-gold-soft);
+  --gold-deep: var(--color-gold-deep);
+  --wine: var(--color-wine);
+
+  --brand-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  --panel-shadow: 0 1px 2px rgba(30, 20, 60, 0.08), 0 14px 32px -16px rgba(30, 16, 70, 0.5);
+  --float-shadow: 0 24px 60px -20px rgba(24, 12, 60, 0.65);
+}
+
+@layer base {
+  html {
+    /* Shows through while the page loads and when a browser overscrolls. */
+    background: #6e64c6;
+  }
+
+  body {
+    min-height: 100dvh;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* The table everything lies on: fixed, so long pages don't stretch the gradient. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    /* The brand gradient, a shade deeper: white text on it has to stay readable (4.5:1). */
+    background:
+      radial-gradient(60% 50% at 100% 100%, rgba(44, 20, 96, 0.38), transparent 65%),
+      linear-gradient(rgba(38, 22, 100, 0.16), rgba(38, 22, 100, 0.16)),
+      var(--brand-gradient);
+  }
+
+  /* A faint lattice of diamonds, the same mark that bullets the sheet. */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: 0.07;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='56' viewBox='0 0 56 56'%3E%3Cpath d='M28 22l6 6-6 6-6-6z' fill='none' stroke='%23fff' stroke-width='1'/%3E%3Cpath d='M0 -6l6 6-6 6-6-6zM56 -6l6 6-6 6-6-6zM0 50l6 6-6 6-6-6zM56 50l6 6-6 6-6-6z' fill='%23fff'/%3E%3C/svg%3E");
+    mask-image: linear-gradient(to bottom right, #000, transparent 70%);
+  }
+
+  ::selection {
+    background: rgba(102, 126, 234, 0.3);
+  }
+
+  button:not(:disabled),
+  [role='button']:not(:disabled),
+  summary {
+    cursor: pointer;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  audio {
+    height: 40px;
+    border-radius: 999px;
+  }
+
+  input[type='checkbox'],
+  input[type='radio'],
+  input[type='range'] {
+    accent-color: var(--color-primary);
+  }
+}
+
+@layer components {
+  /* ── Surfaces ─────────────────────────────────────────────── */
+
+  .qm-panel {
+    position: relative;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 1.25rem;
+    color: var(--ink);
+    box-shadow: var(--panel-shadow);
+  }
+
+  /* The hero treatment: a warm glow in the corners and a thin gold frame inside the edge. */
+  .qm-hero {
+    overflow: hidden;
+    padding: 1.5rem;
+    background:
+      radial-gradient(120% 80% at 0% 0%, rgba(180, 138, 60, 0.12), transparent 60%),
+      radial-gradient(80% 60% at 100% 0%, rgba(118, 75, 162, 0.07), transparent 60%),
+      var(--paper);
+  }
+  .qm-hero::after,
+  .qm-framed::after {
+    content: '';
+    position: absolute;
+    inset: 6px;
+    border: 1px solid rgba(180, 138, 60, 0.25);
+    border-radius: 10px;
+    pointer-events: none;
+  }
+  .qm-framed {
+    position: relative;
+  }
+
+  /* A quieter surface inside a panel. */
+  .qm-well {
+    background: var(--paper-2);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 0.85rem 1rem;
+  }
+
+  .qm-divider {
+    border: 0;
+    border-top: 1px dashed #e0d2b6;
+  }
+
+  /* ── Type ─────────────────────────────────────────────────── */
+
+  .qm-display {
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    color: var(--ink);
+  }
+
+  .qm-section-title {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-family: var(--font-display);
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--gold-deep);
+    margin-bottom: 0.9rem;
+  }
+  .qm-section-title::before {
+    content: '';
+    width: 7px;
+    height: 7px;
+    background: var(--gold);
+    transform: rotate(45deg);
+    flex-shrink: 0;
+  }
+  .qm-section-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(to right, var(--line), transparent);
+  }
+
+  .qm-eyebrow {
+    font-family: var(--font-display);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .qm-muted {
+    color: var(--muted);
+  }
+
+  .qm-link {
+    color: var(--color-primary-dark);
+    font-weight: 600;
+    text-decoration: underline;
+    text-decoration-color: rgba(85, 104, 211, 0.35);
+    text-underline-offset: 3px;
+  }
+  .qm-link:hover {
+    text-decoration-color: currentColor;
+  }
+
+  /* Titles that stand on the gradient itself, above the panels. */
+  .qm-page-eyebrow {
+    font-family: var(--font-display);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.92);
+    text-shadow: 0 1px 6px rgba(34, 16, 80, 0.4);
+  }
+  .qm-page-title {
+    font-family: var(--font-display);
+    font-size: clamp(1.6rem, 1.2rem + 1.6vw, 2.25rem);
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: 0.01em;
+    color: #fff;
+    text-shadow: 0 2px 14px rgba(34, 16, 80, 0.35);
+  }
+  .qm-page-sub {
+    font-family: var(--font-prose);
+    font-size: 1.2rem;
+    font-weight: 600;
+    line-height: 1.4;
+    color: #fff;
+    text-shadow: 0 1px 8px rgba(34, 16, 80, 0.4);
+  }
+
+  /* The way back, above a page title. */
+  .qm-backlink {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: 32px;
+    font-family: var(--font-display);
+    font-size: 0.74rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #fff;
+    text-shadow: 0 1px 6px rgba(34, 16, 80, 0.4);
+    text-decoration: none;
+  }
+  .qm-backlink:hover {
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
+
+  /* ── Buttons ──────────────────────────────────────────────── */
+
+  .qm-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    min-height: 40px;
+    padding: 0.5rem 0.95rem;
+    border-radius: 10px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.2;
+    color: var(--ink);
+    background: var(--paper);
+    border: 1px solid var(--line);
+    text-decoration: none;
+    transition: border-color 0.15s, background 0.15s, filter 0.15s, color 0.15s, box-shadow 0.15s;
+    touch-action: manipulation;
+  }
+  .qm-btn:hover:not(:disabled) {
+    border-color: var(--gold);
+    background: var(--gold-soft);
+  }
+  .qm-btn:disabled,
+  .qm-btn.is-disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  /* The brand gradient: one per view, for the thing you came to do. */
+  .qm-btn-primary,
+  .qm-btn-primary:hover:not(:disabled) {
+    color: #fff;
+    background: var(--brand-gradient);
+    border-color: transparent;
+    box-shadow: 0 8px 18px -10px rgba(86, 60, 170, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  }
+  .qm-btn-primary:hover:not(:disabled) {
+    filter: brightness(1.08) saturate(1.05);
+  }
+
+  /* Gold reads on parchment and on the gradient alike. */
+  .qm-btn-gold,
+  .qm-btn-gold:hover:not(:disabled) {
+    color: var(--gold-deep);
+    background: var(--gold-soft);
+    border-color: var(--gold);
+  }
+  .qm-btn-gold:hover:not(:disabled) {
+    background: #ecdcb4;
+  }
+
+  .qm-btn-ink,
+  .qm-btn-ink:hover:not(:disabled) {
+    color: #f6efe0;
+    background: var(--ink);
+    border-color: var(--ink);
+  }
+  .qm-btn-ink:hover:not(:disabled) {
+    background: #453a35;
+    border-color: #453a35;
+  }
+
+  .qm-btn-danger {
+    color: var(--wine);
+    border-color: rgba(155, 47, 58, 0.35);
+  }
+  .qm-btn-danger:hover:not(:disabled) {
+    color: #fff;
+    background: var(--wine);
+    border-color: var(--wine);
+  }
+
+  .qm-btn-ghost {
+    color: var(--muted);
+    background: transparent;
+    border-color: transparent;
+  }
+  .qm-btn-ghost:hover:not(:disabled) {
+    color: var(--ink);
+    background: var(--paper-2);
+    border-color: var(--line);
+  }
+
+  .qm-btn-sm {
+    min-height: 32px;
+    padding: 0.3rem 0.7rem;
+    border-radius: 8px;
+    font-size: 0.78rem;
+  }
+  /* Fingers need more than a mouse pointer does. */
+  @media (pointer: coarse) {
+    .qm-btn-sm {
+      min-height: 40px;
+      padding-inline: 0.85rem;
+    }
+  }
+  .qm-btn-lg {
+    min-height: 46px;
+    padding: 0.7rem 1.3rem;
+    font-size: 0.95rem;
+  }
+  .qm-btn-icon {
+    width: 36px;
+    min-height: 36px;
+    padding: 0;
+    flex-shrink: 0;
+  }
+  .qm-btn-block {
+    display: flex;
+    width: 100%;
+  }
+
+  /* ── Forms ────────────────────────────────────────────────── */
+
+  .qm-label {
+    display: block;
+    margin-bottom: 0.35rem;
+    font-family: var(--font-display);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .qm-input {
+    width: 100%;
+    padding: 0.6rem 0.8rem;
+    border-radius: 10px;
+    border: 1px solid #d9c9a6;
+    background: #fff;
+    color: var(--ink);
+    font-size: 0.95rem;
+    line-height: 1.4;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .qm-input::placeholder {
+    color: #b3a692;
+  }
+  .qm-input:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.22);
+  }
+  .qm-input:disabled {
+    background: var(--paper-2);
+    color: var(--muted);
+    cursor: not-allowed;
+  }
+
+  .qm-help {
+    font-size: 0.78rem;
+    line-height: 1.45;
+    color: var(--muted);
+  }
+
+  .qm-switch {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    width: 2.5rem;
+    height: 1.4rem;
+    padding: 0;
+    border-radius: 999px;
+    background: #d9c9a6;
+    border: 1px solid rgba(90, 60, 10, 0.12);
+    transition: background 0.2s;
+    flex-shrink: 0;
+  }
+  .qm-switch::after {
+    content: '';
+    position: absolute;
+    left: 2px;
+    width: 1.05rem;
+    height: 1.05rem;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(40, 25, 5, 0.35);
+    transition: transform 0.2s;
+  }
+  .qm-switch.is-on {
+    background: var(--brand-gradient);
+  }
+  .qm-switch.is-on::after {
+    transform: translateX(1.1rem);
+  }
+
+  /* ── Small parts ──────────────────────────────────────────── */
+
+  .qm-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.2rem 0.65rem;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    background: var(--gold-soft);
+    color: var(--gold-deep);
+    border: 1px solid rgba(180, 138, 60, 0.25);
+  }
+  .qm-tag-quiet {
+    background: transparent;
+    color: var(--muted);
+    border-color: var(--line);
+  }
+
+  .qm-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.1rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    line-height: 1.5;
+    white-space: nowrap;
+    color: var(--gold-deep);
+    background: var(--gold-soft);
+    border: 1px solid rgba(180, 138, 60, 0.3);
+  }
+  .qm-badge-brand {
+    color: #fff;
+    background: var(--brand-gradient);
+    border-color: transparent;
+  }
+  .qm-badge-info {
+    color: #3f4aa6;
+    background: rgba(102, 126, 234, 0.13);
+    border-color: rgba(102, 126, 234, 0.32);
+  }
+  .qm-badge-violet {
+    color: #643b8f;
+    background: rgba(118, 75, 162, 0.12);
+    border-color: rgba(118, 75, 162, 0.3);
+  }
+  .qm-badge-success {
+    color: #3a652f;
+    background: #e7f1e2;
+    border-color: #c3dab8;
+  }
+  .qm-badge-danger {
+    color: #862833;
+    background: #f7e4e3;
+    border-color: #e6bfc0;
+  }
+  .qm-badge-quiet {
+    color: var(--muted);
+    background: transparent;
+    border-color: var(--line);
+  }
+
+  .qm-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: #c9b896;
+  }
+  .qm-dot-success { background: #5d8f4f; }
+  .qm-dot-busy { background: var(--color-primary); box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2); }
+  .qm-dot-danger { background: var(--wine); }
+
+  /* A round seal for an icon, like the portrait ring on the sheet. */
+  .qm-medallion {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 50%;
+    flex-shrink: 0;
+    font-family: var(--font-display);
+    font-weight: 700;
+    color: var(--gold-deep);
+    background: radial-gradient(circle at 35% 30%, #fff8e8, var(--gold-soft));
+    border: 1px solid var(--gold);
+    box-shadow: inset 0 0 0 3px var(--paper), 0 6px 14px -8px rgba(90, 60, 10, 0.5);
+  }
+  .qm-medallion svg {
+    width: 45%;
+    height: 45%;
+  }
+  .qm-medallion-lg {
+    width: 4.5rem;
+    height: 4.5rem;
+    font-size: 1.6rem;
+  }
+  .qm-medallion-sm {
+    width: 2.25rem;
+    height: 2.25rem;
+    font-size: 0.72rem;
+  }
+  .qm-medallion-brand {
+    color: #fff;
+    background: var(--brand-gradient);
+    border-color: #e5c77f;
+    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.22), 0 6px 14px -8px rgba(50, 30, 120, 0.7);
+  }
+
+  .qm-alert {
+    padding: 0.7rem 0.9rem;
+    border-radius: 10px;
+    border: 1px solid #e6bfc0;
+    border-left: 3px solid var(--wine);
+    background: #fbefed;
+    color: #7c2630;
+    font-size: 0.875rem;
+    line-height: 1.45;
+  }
+  .qm-alert-success {
+    border-color: #c3dab8;
+    border-left-color: #5d8f4f;
+    background: #eff6eb;
+    color: #35602c;
+  }
+  .qm-alert-info {
+    border-color: rgba(102, 126, 234, 0.32);
+    border-left-color: var(--color-primary);
+    background: rgba(102, 126, 234, 0.09);
+    color: #3a4597;
+  }
+  .qm-alert-warn {
+    border-color: rgba(180, 138, 60, 0.45);
+    border-left-color: var(--gold);
+    background: var(--gold-soft);
+    color: #62480f;
+  }
+
+  .qm-progress {
+    width: 100%;
+    height: 8px;
+    border-radius: 999px;
+    background: #ebe0c9;
+    overflow: hidden;
+  }
+  .qm-progress-bar {
+    height: 100%;
+    border-radius: inherit;
+    background: var(--brand-gradient);
+    transition: width 0.3s ease-out;
+  }
+  .qm-progress.is-indeterminate .qm-progress-bar {
+    width: 40%;
+    animation: qm-indeterminate 1.3s ease-in-out infinite;
+  }
+  .qm-progress.is-pulsing .qm-progress-bar {
+    width: 100%;
+    animation: qm-pulse 1.6s ease-in-out infinite;
+  }
+
+  .qm-spinner {
+    display: inline-block;
+    width: 1rem;
+    height: 1rem;
+    border-radius: 50%;
+    border: 2px solid var(--line);
+    border-top-color: var(--gold-deep);
+    animation: qm-spin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+  .qm-spinner-lg {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-width: 3px;
+  }
+  /* On the gradient, or on a gradient button. */
+  .qm-spinner-light {
+    border-color: rgba(255, 255, 255, 0.3);
+    border-top-color: #fff;
+  }
+
+  .qm-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 2.5rem 1.5rem;
+  }
+  .qm-empty-title {
+    margin-top: 1rem;
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .qm-empty-text {
+    max-width: 30rem;
+    margin-top: 0.4rem;
+    font-family: var(--font-prose);
+    font-size: 1.1rem;
+    line-height: 1.5;
+    color: #5f5347;
+  }
+
+  /* ── Navigation inside a panel ────────────────────────────── */
+
+  .qm-tabs {
+    display: flex;
+    gap: 0.25rem;
+    border-bottom: 1px solid var(--line);
+  }
+  .qm-tab {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 0.9rem;
+    font-family: var(--font-display);
+    font-size: 0.76rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    transition: color 0.15s;
+  }
+  .qm-tab:hover {
+    color: var(--ink);
+  }
+  .qm-tab.is-active {
+    color: var(--ink);
+  }
+  .qm-tab.is-active::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    height: 3px;
+    border-radius: 3px 3px 0 0;
+    background: var(--brand-gradient);
+  }
+
+  /* A row you can pick from a list: a session, a version, a setting. */
+  .qm-item {
+    position: relative;
+    display: block;
+    width: 100%;
+    padding: 0.65rem 0.8rem;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    text-align: left;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .qm-item:hover:not(:disabled):not(.is-active) {
+    background: var(--paper-2);
+  }
+  .qm-item.is-active {
+    background: var(--gold-soft);
+    border-color: rgba(180, 138, 60, 0.4);
+  }
+  .qm-item.is-active::before {
+    content: '';
+    position: absolute;
+    left: -1px;
+    top: 0.6rem;
+    bottom: 0.6rem;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: var(--brand-gradient);
+  }
+  .qm-item:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  /* ── Overlays ─────────────────────────────────────────────── */
+
+  .qm-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    background: rgba(28, 16, 62, 0.55);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+  }
+
+  .qm-dialog {
+    position: relative;
+    width: 100%;
+    max-width: 28rem;
+    max-height: calc(100dvh - 2rem);
+    overflow-y: auto;
+    padding: 1.6rem;
+    border-radius: 16px;
+    color: var(--ink);
+    background:
+      radial-gradient(120% 70% at 0% 0%, rgba(180, 138, 60, 0.1), transparent 60%),
+      var(--paper);
+    border: 1px solid var(--line);
+    box-shadow: var(--float-shadow);
+  }
+
+  .qm-drawer {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    color: var(--ink);
+    background: var(--paper);
+    box-shadow: var(--float-shadow);
+  }
+
+  .qm-menu {
+    overflow: hidden;
+    border-radius: 12px;
+    color: var(--ink);
+    background: var(--paper);
+    border: 1px solid var(--line);
+    box-shadow: 0 18px 40px -18px rgba(30, 16, 70, 0.6);
+  }
+  .qm-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    width: 100%;
+    padding: 0.65rem 0.9rem;
+    font-size: 0.875rem;
+    text-align: left;
+    transition: background 0.15s;
+  }
+  .qm-menu-item:hover {
+    background: var(--paper-2);
+  }
+  .qm-menu-item.is-active {
+    font-weight: 600;
+    background: var(--gold-soft);
+  }
+}
+
+/*
+ * Prose themes stay outside the layers on purpose: the typography plugin sets its own
+ * colours in the utilities layer, which would otherwise win from the components layer.
+ */
+/* Long-form text: session stories, the campaign story, backstories. */
+.qm-prose {
+  --tw-prose-body: #3a312b;
+  --tw-prose-headings: var(--ink);
+  --tw-prose-lead: #4d4339;
+  --tw-prose-links: var(--color-primary-dark);
+  --tw-prose-bold: var(--ink);
+  --tw-prose-counters: var(--gold-deep);
+  --tw-prose-bullets: var(--gold);
+  --tw-prose-hr: var(--line);
+  --tw-prose-quotes: #4d4339;
+  --tw-prose-quote-borders: var(--gold);
+  --tw-prose-captions: var(--muted);
+  --tw-prose-code: var(--ink);
+  --tw-prose-th-borders: #d9c9a6;
+  --tw-prose-td-borders: var(--line);
+  font-family: var(--font-prose);
+  font-size: 1.16rem;
+  line-height: 1.65;
+  font-weight: 500;
+}
+.qm-prose :is(h1, h2, h3, h4) {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.qm-prose h1 { font-size: 1.5rem; }
+.qm-prose h2 { font-size: 1.2rem; }
+.qm-prose h3 { font-size: 1rem; color: var(--gold-deep); }
+.qm-prose strong { font-weight: 600; }
+
+/* A story opens like the backstory on the sheet: with a dropped capital. */
+.qm-dropcap > p:first-of-type::first-letter {
+  float: left;
+  font-family: var(--font-display);
+  font-size: 3.4rem;
+  line-height: 0.9;
+  font-weight: 700;
+  padding: 0.3rem 0.5rem 0 0;
+  color: var(--gold-deep);
+}
+
+/* Chat answers stay in the sans, at reading size for a narrow column. */
+.qm-prose-chat {
+  --tw-prose-body: #3a312b;
+  --tw-prose-headings: var(--ink);
+  --tw-prose-links: var(--color-primary-dark);
+  --tw-prose-bold: var(--ink);
+  --tw-prose-bullets: var(--gold);
+  --tw-prose-counters: var(--gold-deep);
+  --tw-prose-hr: var(--line);
+  --tw-prose-quote-borders: var(--gold);
+  --tw-prose-th-borders: #d9c9a6;
+  --tw-prose-td-borders: var(--line);
+}
+
+@keyframes qm-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes qm-indeterminate {
+  0% { transform: translateX(-110%); }
+  100% { transform: translateX(260%); }
+}
+@keyframes qm-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 0.8; }
+}
+
 /* Custom scrollbar styling */
 @layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #d9c9a6 transparent;
+  }
+
   .scrollbar-thin::-webkit-scrollbar {
     width: 8px;
   }
-  
+
   .scrollbar-thin::-webkit-scrollbar-track {
-    @apply bg-gray-100;
+    background: transparent;
   }
-  
+
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    @apply bg-gray-400 rounded;
+    background: #d9c9a6;
+    border-radius: 4px;
   }
-  
+
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    @apply bg-gray-600;
+    background: var(--gold);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

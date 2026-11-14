@@ -35,6 +35,14 @@ export function formatDate(date: unknown): string {
 }
 
 /** Injectable wrapper around the formatting functions, for use in templates. */
+/** A stored session day (`2026-11-06`) as people write it: `6 nov 2026`. Anything else is returned as it is. */
+export function formatDay(isoDay?: string | null): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDay ?? '');
+  if (!match) return isoDay ?? '';
+  const day = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return day.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 @Injectable({ providedIn: 'root' })
 export class FormattingService {
   formatDuration(seconds?: number): string {

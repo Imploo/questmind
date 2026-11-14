@@ -22,6 +22,7 @@ import { SessionProgressCardComponent } from './session-progress-card.component'
 import { SessionRecordingComponent } from './session-recording.component';
 import { SessionListSidebarComponent } from './session-list-sidebar.component';
 import { CampaignSelectorComponent } from '../campaign/campaign-selector.component';
+import { formatDay } from '../shared/formatting.service';
 import { ToastService } from '../shared/services/toast.service';
 import { isPermissionDenied, PERMISSION_DENIED_MESSAGE } from '../shared/utils/callable-error';
 
@@ -37,36 +38,32 @@ const PODCAST_STAGES: SessionProgressStage[] = ['generating-podcast-script', 'ge
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (authService.isAuthenticated()) {
-      <div class="mb-6 hidden sm:block">
-        <app-campaign-selector />
+      <div class="mb-4 hidden sm:block">
+        <app-campaign-selector align="start" />
       </div>
     }
 
     @if (!authService.isAuthenticated()) {
-      <div class="border border-gray-200 rounded-xl bg-white shadow-sm p-8 text-center">
-        <div class="max-w-md mx-auto">
-          <div class="text-6xl mb-4">🎙️</div>
-          <h3 class="text-xl font-semibold text-gray-800 mb-2">Audio Transcription</h3>
-          <p class="text-gray-600 mb-6">
-            Sign in to upload audio sessions and generate AI-powered transcriptions and session stories.
-          </p>
-          <p class="text-sm text-gray-500">
-            Your audio files and transcriptions will be securely stored and accessible only to you.
-          </p>
-        </div>
+      <div class="qm-panel qm-hero qm-empty max-w-xl mx-auto">
+        <span class="qm-medallion qm-medallion-lg"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg></span>
+        <h3 class="qm-empty-title">Audio Transcription</h3>
+        <p class="qm-empty-text">
+          Sign in to upload audio sessions and generate AI-powered transcriptions and session stories.
+        </p>
+        <p class="qm-help mt-4">
+          Your audio files and transcriptions will be securely stored and accessible only to you.
+        </p>
       </div>
     } @else if (!campaignId()) {
-      <div class="border border-gray-200 rounded-xl bg-white shadow-sm p-8 text-center">
-        <div class="max-w-md mx-auto">
-          <div class="text-4xl mb-3">🧭</div>
-          <h3 class="text-lg font-semibold text-gray-800 mb-2">Select a campaign</h3>
-          <p class="text-gray-600 m-0">
-            Choose a campaign to upload sessions and collaborate with your group.
-          </p>
-        </div>
+      <div class="qm-panel qm-hero qm-empty max-w-xl mx-auto">
+        <span class="qm-medallion qm-medallion-lg"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-width="1.75" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M15.5 8.5l-2 5-5 2 2-5 5-2z" /></svg></span>
+        <h3 class="qm-empty-title">Select a campaign</h3>
+        <p class="qm-empty-text">
+          Choose a campaign to upload sessions and collaborate with your group.
+        </p>
       </div>
     } @else {
-      <div class="flex flex-col lg:flex-row gap-6">
+      <div class="flex flex-col lg:flex-row gap-4 lg:gap-6">
         <app-session-list-sidebar
           [sessions]="sortedSessions()"
           [currentSessionId]="currentSession()?.id ?? null"
@@ -86,18 +83,6 @@ const PODCAST_STAGES: SessionProgressStage[] = ['generating-podcast-script', 'ge
                 (cancelled)="cancelCurrentOperation()"
                 (retry)="retryFailedOperation()"
               />
-
-              @if (currentSession()?.audioRecording; as recording) {
-                <app-session-recording
-                  [audioUrl]="recordingUrl.value() ?? null"
-                  [fileName]="recording.fileName"
-                  [durationSec]="recording.durationSec"
-                  [sizeBytes]="recording.sizeBytes"
-                  [canRetranscribe]="isSessionOwner()"
-                  [busy]="isBusy()"
-                  (retranscribe)="retranscribe()"
-                />
-              }
 
               <app-session-story
                 [title]="currentSession()?.title || 'Session Story'"
@@ -126,32 +111,38 @@ const PODCAST_STAGES: SessionProgressStage[] = ['generating-podcast-script', 'ge
                 (metaUpdated)="saveSessionMeta($event)"
                 (deleteSession)="deleteCurrentSession()"
               ></app-session-story>
+
+              @if (currentSession()?.audioRecording; as recording) {
+                <app-session-recording
+                  [audioUrl]="recordingUrl.value() ?? null"
+                  [fileName]="recording.fileName"
+                  [durationSec]="recording.durationSec"
+                  [sizeBytes]="recording.sizeBytes"
+                  [canRetranscribe]="isSessionOwner()"
+                  [busy]="isBusy()"
+                  (retranscribe)="retranscribe()"
+                />
+              }
             }
 
             @if (!currentSession()) {
-              <div class="border border-gray-200 rounded-xl bg-white shadow-sm p-8 text-center">
-                <div class="max-w-md mx-auto">
-                  @if (sortedSessions().length > 0) {
-                    <div class="text-4xl mb-3">👈</div>
-                    <h3 class="text-lg font-semibold text-gray-800 mb-2">Select a session</h3>
-                    <p class="text-gray-600 m-0">
-                      Choose a session from the list to view its details and story.
-                    </p>
-                  } @else {
-                    <div class="text-6xl mb-4">🎙️</div>
-                    <h3 class="text-xl font-semibold text-gray-800 mb-2">No sessions yet</h3>
-                    <p class="text-gray-600 mb-6">
-                      Upload your first audio session to get started with AI-powered transcriptions and session stories.
-                    </p>
-                    <button
-                      type="button"
-                      (click)="navigateToNew()"
-                      class="px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors font-medium"
-                    >
-                      Upload Audio Session
-                    </button>
-                  }
-                </div>
+              <div class="qm-panel qm-hero qm-empty">
+                @if (sortedSessions().length > 0) {
+                  <span class="qm-medallion qm-medallion-lg"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg></span>
+                  <h3 class="qm-empty-title">Select a session</h3>
+                  <p class="qm-empty-text">
+                    Choose a session from the list to view its details and story.
+                  </p>
+                } @else {
+                  <span class="qm-medallion qm-medallion-lg"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg></span>
+                  <h3 class="qm-empty-title">No sessions yet</h3>
+                  <p class="qm-empty-text">
+                    Upload your first audio session to get started with AI-powered transcriptions and session stories.
+                  </p>
+                  <button type="button" (click)="navigateToNew()" class="qm-btn qm-btn-primary qm-btn-lg mt-6">
+                    Upload Audio Session
+                  </button>
+                }
               </div>
             }
           </div>
@@ -300,7 +291,7 @@ export class AudioSessionComponent {
 
   formatSubtitle(session: AudioSessionRecord | null): string {
     if (!session) return '';
-    return `${session.audioFileName || 'Unknown'} · ${session.sessionDate || 'No date'}`;
+    return `${formatDay(session.sessionDate) || 'No date'} · ${session.audioFileName || 'Unknown'}`;
   }
 
   // --- Story operations ---

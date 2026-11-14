@@ -28,80 +28,70 @@ import {
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="max-w-4xl mx-auto space-y-6">
+    <div class="max-w-4xl mx-auto space-y-4 sm:space-y-6">
       <div class="hidden sm:block">
-        <app-campaign-selector />
+        <app-campaign-selector align="start" />
       </div>
 
-      <div class="flex flex-wrap items-start justify-between gap-4">
+      <header class="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 class="text-3xl font-bold m-0">📖 Verhaal</h1>
-          <p class="text-gray-600 m-0 mt-2">Het verhaal van de campagne tot nu toe, samengevat uit alle sessies.</p>
+          <h1 class="qm-page-title">Verhaal</h1>
+          <p class="qm-page-sub mt-1">Het verhaal van de campagne tot nu toe, samengevat uit alle sessies.</p>
         </div>
 
         <div class="flex items-center gap-2">
           @if (isOwner()) {
             <button
               type="button"
-              class="px-4 py-2 text-sm font-semibold rounded-lg bg-primary text-white hover:bg-primary/90 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
+              class="qm-btn qm-btn-gold"
               [disabled]="isGenerating() || usableSessionCount() === 0"
               (click)="generateStory()"
             >
               @if (isGenerating()) {
-                <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle>
-                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                </svg>
+                <span class="qm-spinner" aria-hidden="true"></span>
                 <span>{{ generatingMessage() }}</span>
               } @else {
                 <span>Nieuw verhaal genereren</span>
               }
             </button>
           }
-          <button
-            type="button"
-            class="p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-800"
-            title="Versies"
-            aria-label="Versies"
-            (click)="drawerOpen.set(true)"
-          >
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <button type="button" class="qm-btn" (click)="drawerOpen.set(true)">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
             </svg>
+            Versies
           </button>
         </div>
-      </div>
+      </header>
 
       @if (isOwner() && changedSessionCount() > 0 && !isGenerating()) {
-        <p class="text-sm text-gray-500 m-0">
+        <p class="text-sm text-white/85">
           {{ changedSessionCount() }} {{ changedSessionCount() === 1 ? 'nieuwe/gewijzigde sessie' : 'nieuwe/gewijzigde sessies' }}
           sinds de nieuwste versie.
         </p>
       }
 
       @if (errorMessage()) {
-        <div class="p-3 bg-red-50 border border-red-200 rounded-lg">
-          <p class="text-sm text-red-700 m-0">{{ errorMessage() }}</p>
-        </div>
+        <div class="qm-alert" role="alert">{{ errorMessage() }}</div>
       }
 
       @if (isOwner() && latestFailed(); as failed) {
-        <div class="p-3 bg-red-50 border border-red-200 rounded-lg">
-          <p class="text-sm text-red-700 m-0">Versie {{ failed.version }} is mislukt: {{ failed.error || 'onbekende fout' }}</p>
-        </div>
+        <div class="qm-alert" role="alert">Versie {{ failed.version }} is mislukt: {{ failed.error || 'onbekende fout' }}</div>
       }
 
       @if (storyService.isLoading()) {
-        <div class="text-center py-12">
-          <div class="animate-spin h-10 w-10 border-4 border-primary border-t-transparent rounded-full mx-auto"></div>
+        <div class="text-center py-12" role="status" aria-label="Verhaal laden">
+          <span class="qm-spinner qm-spinner-lg qm-spinner-light"></span>
         </div>
       } @else if (displayedVersion(); as version) {
         <app-campaign-story-view
+          class="block"
           [version]="version"
           [isLatest]="version.version === latestCompleted()?.version"
           (backToLatest)="selectedVersion.set(null)"
         />
         <app-campaign-story-podcasts
+          class="block"
           [campaignId]="campaignId() ?? ''"
           [storyVersion]="version.version"
           [podcasts]="version.podcasts ?? []"
@@ -112,14 +102,14 @@ import {
           (generate)="generatePodcast(version.version)"
         />
       } @else if (!isGenerating()) {
-        <div class="text-center py-12 bg-gray-50 rounded-lg">
-          <div class="text-5xl mb-4">📖</div>
+        <div class="qm-panel qm-hero qm-empty">
+          <span class="qm-medallion qm-medallion-lg"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg></span>
           @if (usableSessionCount() === 0) {
-            <p class="text-gray-600 m-0">Nog geen sessieverhalen om samen te vatten.</p>
+            <p class="qm-empty-text">Nog geen sessieverhalen om samen te vatten.</p>
           } @else if (isOwner()) {
-            <p class="text-gray-600 m-0">Nog geen verhaal. Klik op "Nieuw verhaal genereren" om te beginnen.</p>
+            <p class="qm-empty-text">Nog geen verhaal. Klik op "Nieuw verhaal genereren" om te beginnen.</p>
           } @else {
-            <p class="text-gray-600 m-0">De eigenaar van de campagne heeft nog geen verhaal gegenereerd.</p>
+            <p class="qm-empty-text">De eigenaar van de campagne heeft nog geen verhaal gegenereerd.</p>
           }
         </div>
       }

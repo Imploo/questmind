@@ -20,8 +20,7 @@ import { ChangeDetectionStrategy, Component, input, output } from '@angular/core
   styles: [`
     :host {
       position: sticky;
-      /* Stay clear of the collapsed chat drawer on narrow screens. */
-      bottom: calc(8vh + 0.75rem);
+      bottom: 0.75rem;
       z-index: 20;
       display: flex;
       flex-wrap: wrap;

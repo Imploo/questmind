@@ -47,7 +47,7 @@ export interface DeathSaves {
       border: 1px solid #dfb1b5;
     }
     .title {
-      font-family: 'Cinzel', 'Cormorant Garamond', Georgia, serif;
+      font-family: var(--font-display);
       font-size: 0.75rem;
       font-weight: 700;
       letter-spacing: 0.12em;

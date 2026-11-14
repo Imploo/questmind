@@ -17,56 +17,48 @@ import * as logger from '../shared/logger';
   template: `
     <div class="max-w-4xl mx-auto">
       @if (selectedCampaign()) {
-        <div class="bg-white rounded-lg shadow-lg p-6">
-          <!-- Header -->
-          <div class="flex items-center justify-between mb-6">
-            <h2 class="text-2xl font-bold text-gray-900">Campaign Settings</h2>
-            <button
-              (click)="goBack()"
-              class="px-4 py-2 text-gray-600 hover:text-gray-900 transition-colors"
-            >
-              ← Back
-            </button>
-          </div>
-
-          <!-- Campaign Name -->
-          <div class="mb-6">
-            <h3 class="text-lg font-semibold text-gray-900 mb-2">{{ selectedCampaign()!.name }}</h3>
+        <header class="mb-5 sm:mb-6">
+          <button type="button" (click)="goBack()" class="qm-backlink mb-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7" /></svg>
+            Back
+          </button>
+          <div class="min-w-0">
+            <div class="qm-page-eyebrow">Campaign Settings</div>
+            <h2 class="qm-page-title mt-1 break-words">{{ selectedCampaign()!.name }}</h2>
             @if (selectedCampaign()!.description) {
-              <p class="text-gray-600">{{ selectedCampaign()!.description }}</p>
+              <p class="qm-page-sub mt-1 max-w-2xl">{{ selectedCampaign()!.description }}</p>
             }
           </div>
+        </header>
 
-          <!-- Owner Information -->
-          <div class="mb-6 p-4 bg-gray-50 rounded-lg">
-            <div class="text-sm text-gray-600 mb-1">Campaign Owner</div>
-            <div class="font-medium text-gray-900">{{ selectedCampaign()!.ownerEmail }}</div>
-          </div>
+        <div class="space-y-4 sm:space-y-6">
+          <!-- General -->
+          <section class="qm-panel sm:!p-6">
+            <h4 class="qm-section-title">General Settings</h4>
 
-          <!-- Settings Section -->
-          <div class="mb-6 border-t pt-6">
-            <h4 class="text-lg font-semibold text-gray-900 mb-4">General Settings</h4>
-            <div class="space-y-4">
+            <div class="qm-well mb-4">
+              <div class="qm-eyebrow">Campaign Owner</div>
+              <div class="font-semibold mt-0.5 break-all">{{ selectedCampaign()!.ownerEmail }}</div>
+            </div>
+
+            <div class="space-y-3">
               <!-- Kanka Integration -->
-              <div class="bg-gray-50 p-4 rounded-lg">
-                <label class="flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    [(ngModel)]="kankaEnabled"
-                    class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
+              <div class="qm-well">
+                <label class="flex items-center gap-2.5 text-sm font-semibold cursor-pointer">
+                  <input type="checkbox" [(ngModel)]="kankaEnabled" class="h-4 w-4" />
                   Enable Kanka Integration
                 </label>
                 @if (kankaEnabled) {
                   <div class="mt-3 ml-6">
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Kanka Campaign ID</label>
+                    <label for="kanka-campaign-id" class="qm-label">Kanka Campaign ID</label>
                     <input
+                      id="kanka-campaign-id"
                       type="text"
                       [(ngModel)]="kankaCampaignId"
                       placeholder="e.g. 123456"
-                      class="w-full max-w-md px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      class="qm-input max-w-md"
                     />
-                    <p class="text-xs text-gray-500 mt-1">
+                    <p class="qm-help mt-1">
                       Used for Kanka integration when generating stories.
                     </p>
                   </div>
@@ -74,43 +66,40 @@ import * as logger from '../shared/logger';
               </div>
 
               <!-- Member Permissions -->
-              <div class="bg-gray-50 p-4 rounded-lg">
-                <label class="flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    [(ngModel)]="allowMembersToCreateSessions"
-                    class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
+              <div class="qm-well">
+                <label class="flex items-center gap-2.5 text-sm font-semibold cursor-pointer">
+                  <input type="checkbox" [(ngModel)]="allowMembersToCreateSessions" class="h-4 w-4" />
                   Allow members to create sessions
                 </label>
               </div>
 
               <!-- Save Button -->
-              <div class="flex gap-2">
+              <div class="flex flex-wrap items-center gap-3 pt-1">
                 <button
+                  type="button"
                   (click)="saveCampaignSettings()"
                   [disabled]="isSaving()"
-                  class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  class="qm-btn qm-btn-primary"
                 >
                   {{ isSaving() ? 'Saving...' : 'Save Settings' }}
                 </button>
                 @if (saveSuccess()) {
-                  <div class="flex items-center text-sm text-green-600">
+                  <div class="text-sm font-medium text-[#3a652f]" role="status">
                     Settings saved successfully!
                   </div>
                 }
                 @if (saveError()) {
-                  <div class="flex items-center text-sm text-red-600">
+                  <div class="text-sm font-medium text-wine" role="alert">
                     {{ saveError() }}
                   </div>
                 }
               </div>
             </div>
-          </div>
+          </section>
 
-          <!-- Transcription Section -->
-          <div class="mb-6 border-t pt-6">
-            <h4 class="text-lg font-semibold text-gray-900 mb-4">Transcription</h4>
+          <!-- Transcription -->
+          <section class="qm-panel sm:!p-6">
+            <h4 class="qm-section-title">Transcription</h4>
             <app-campaign-voice-intro
               [voiceIntro]="selectedCampaign()!.settings?.voiceIntro"
               [playbackUrl]="voiceIntroPlaybackUrl()"
@@ -128,64 +117,64 @@ import * as logger from '../shared/logger';
               [errorMessage]="voiceRosterError()"
               (rosterSaved)="saveVoiceIntroRoster($event)"
             />
-          </div>
+          </section>
 
-          <!-- Members Section -->
-          <div class="mb-6 border-t pt-6">
-            <h4 class="text-lg font-semibold text-gray-900 mb-4">Members ({{ campaignMembers().length }})</h4>
-            <div class="space-y-2">
+          <!-- Members -->
+          <section class="qm-panel sm:!p-6">
+            <h4 class="qm-section-title">Members ({{ campaignMembers().length }})</h4>
+            <ul class="space-y-2">
               @for (member of campaignMembers(); track member.userId) {
-                <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                  <div>
-                    <div class="font-medium text-gray-900">{{ member.email }}</div>
-                    <div class="text-sm text-gray-500 capitalize">{{ member.role }}</div>
+                <li class="qm-well flex items-center justify-between gap-3">
+                  <div class="flex min-w-0 items-center gap-3">
+                    <span class="qm-medallion qm-medallion-sm" aria-hidden="true">{{ member.email.charAt(0).toUpperCase() }}</span>
+                    <div class="min-w-0">
+                      <div class="font-semibold truncate">{{ member.email }}</div>
+                      <div class="qm-eyebrow">{{ member.role }}</div>
+                    </div>
                   </div>
                   @if (isCampaignOwner(selectedCampaign()!) && member.role !== 'owner') {
-                    <button
-                      (click)="removeMember(member.userId)"
-                      class="px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded transition-colors"
-                    >
+                    <button type="button" (click)="removeMember(member.userId)" class="qm-btn qm-btn-sm qm-btn-danger">
                       Remove
                     </button>
                   }
-                </div>
+                </li>
               }
-            </div>
-          </div>
+            </ul>
 
-          <!-- Invite Member Section -->
-          @if (isCampaignOwner(selectedCampaign()!)) {
-            <div class="border-t pt-6">
-              <h4 class="text-lg font-semibold text-gray-900 mb-4">Invite Member</h4>
-              <div class="flex gap-2">
-                <input
-                  type="email"
-                  [(ngModel)]="inviteEmail"
-                  placeholder="user@example.com"
-                  class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-                <button
-                  (click)="inviteMember()"
-                  [disabled]="!inviteEmail.trim().length || isInviting()"
-                  class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {{ isInviting() ? 'Inviting...' : 'Invite' }}
-                </button>
+            <!-- Invite Member -->
+            @if (isCampaignOwner(selectedCampaign()!)) {
+              <div class="mt-6 border-t border-dashed border-[#e0d2b6] pt-5">
+                <label for="invite-email" class="qm-label">Invite Member</label>
+                <div class="flex flex-wrap gap-2">
+                  <input
+                    id="invite-email"
+                    type="email"
+                    [(ngModel)]="inviteEmail"
+                    placeholder="user@example.com"
+                    class="qm-input min-w-0 flex-1"
+                  />
+                  <button
+                    type="button"
+                    (click)="inviteMember()"
+                    [disabled]="!inviteEmail.trim().length || isInviting()"
+                    class="qm-btn qm-btn-gold"
+                  >
+                    {{ isInviting() ? 'Inviting...' : 'Invite' }}
+                  </button>
+                </div>
+                @if (inviteError()) {
+                  <div class="mt-2 text-sm text-wine" role="alert">{{ inviteError() }}</div>
+                }
+                @if (inviteSuccess()) {
+                  <div class="mt-2 text-sm text-[#3a652f]" role="status">{{ inviteSuccess() }}</div>
+                }
               </div>
-              @if (inviteError()) {
-                <div class="mt-2 text-sm text-red-600">{{ inviteError() }}</div>
-              }
-              @if (inviteSuccess()) {
-                <div class="mt-2 text-sm text-green-600">{{ inviteSuccess() }}</div>
-              }
-            </div>
-          }
+            }
+          </section>
         </div>
       } @else {
-        <div class="bg-white rounded-lg shadow-lg p-6">
-          <div class="text-center text-gray-600">
-            No campaign selected
-          </div>
+        <div class="qm-panel qm-hero qm-empty">
+          <p class="qm-empty-text">No campaign selected</p>
         </div>
       }
     </div>

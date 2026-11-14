@@ -15,42 +15,42 @@ import { formatDate, formatDuration, formatFileSize } from '../formatting.servic
   imports: [PodcastShareButtonComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg border border-purple-100 space-y-3">
-      <div class="flex flex-wrap items-center gap-4">
-        <span class="inline-flex flex-shrink-0 items-center justify-center w-10 h-10 bg-purple-600 text-white rounded-full font-semibold text-sm">
+    <div class="qm-well space-y-3">
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-3">
+        <span class="qm-medallion qm-medallion-brand text-sm">
           v{{ podcast().version }}
         </span>
 
         <div class="flex-1 min-w-0">
           <div class="flex flex-wrap items-center gap-2">
-            <span class="text-sm font-medium text-gray-900">Podcast v{{ podcast().version }}</span>
+            <span class="text-sm font-semibold">Podcast v{{ podcast().version }}</span>
             @switch (podcast().status) {
               @case ('completed') {
-                <span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded" data-testid="podcast-status">
+                <span class="qm-badge" [class]="podcast().audioUrl ? 'qm-badge-success' : 'qm-badge-quiet'" data-testid="podcast-status">
                   {{ podcast().audioUrl ? 'Klaar' : 'Audio ontbreekt' }}
                 </span>
               }
               @case ('failed') {
-                <span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded" data-testid="podcast-status">Mislukt</span>
+                <span class="qm-badge qm-badge-danger" data-testid="podcast-status">Mislukt</span>
               }
               @case ('script_complete') {
-                <span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded" data-testid="podcast-status">Audio genereren...</span>
+                <span class="qm-badge qm-badge-info" data-testid="podcast-status">Audio genereren...</span>
               }
               @default {
-                <span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded" data-testid="podcast-status">
+                <span class="qm-badge qm-badge-info" data-testid="podcast-status">
                   {{ podcast().progressMessage || 'Bezig...' }}
                 </span>
               }
             }
           </div>
-          <div class="flex flex-wrap items-center gap-x-2 mt-1 text-xs text-gray-500">
+          <div class="flex flex-wrap items-center gap-x-2 mt-1 text-xs qm-muted">
             <span>{{ duration() }}</span>
             @if (podcast().fileSize) {
-              <span>•</span>
+              <span aria-hidden="true">•</span>
               <span>{{ fileSize() }}</span>
             }
             @if (createdAt()) {
-              <span>•</span>
+              <span aria-hidden="true">•</span>
               <span>{{ createdAt() }}</span>
             }
           </div>
@@ -59,14 +59,15 @@ import { formatDate, formatDuration, formatFileSize } from '../formatting.servic
         <div class="flex items-center gap-2">
           @if (podcast().audioUrl) {
             <a
-              class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium shadow-sm"
+              class="qm-btn qm-btn-sm"
               [href]="podcast().audioUrl"
               [attr.download]="downloadFileName()"
               target="_blank"
               rel="noopener"
               title="Podcast downloaden"
             >
-              ⬇️ Download
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v12m0 0l-4-4m4 4l4-4" /></svg>
+              Download
             </a>
           }
           @if (shareTarget(); as target) {
@@ -76,13 +77,13 @@ import { formatDate, formatDuration, formatFileSize } from '../formatting.servic
       </div>
 
       @if (isInProgress() && podcast().progress) {
-        <div class="w-full bg-blue-200 rounded-full h-2">
-          <div class="bg-blue-600 h-2 rounded-full transition-all duration-300" [style.width.%]="podcast().progress"></div>
+        <div class="qm-progress">
+          <div class="qm-progress-bar" [style.width.%]="podcast().progress"></div>
         </div>
       }
 
       @if (podcast().status === 'failed' && podcast().error) {
-        <p class="text-xs text-red-600 m-0">{{ podcast().error }}</p>
+        <p class="text-xs text-wine">{{ podcast().error }}</p>
       }
 
       @if (podcast().audioUrl) {
@@ -93,10 +94,10 @@ import { formatDate, formatDuration, formatFileSize } from '../formatting.servic
 
       @if (showScript() && podcast().script?.segments?.length) {
         <details class="text-sm">
-          <summary class="cursor-pointer font-medium text-purple-900">Script</summary>
+          <summary class="font-semibold text-gold-deep">Script</summary>
           <div class="mt-2 space-y-1">
             @for (segment of podcast().script?.segments; track $index) {
-              <p class="m-0 text-gray-700">
+              <p class="text-gray-700">
                 <span class="font-semibold">{{ segment.speaker === 'host1' ? 'Host 1' : 'Host 2' }}:</span>
                 {{ segment.text }}
               </p>

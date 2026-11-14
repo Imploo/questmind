@@ -15,6 +15,8 @@ export interface CharacterSheetExportRequest {
   canResolveRemotely: boolean;
   /** Items the player keeps by hand; they are added to the equipment on the sheet. */
   inventory?: InventoryItem[];
+  /** The character's portrait; it goes in the "Character Appearance" box. */
+  portraitUrl?: string | null;
 }
 
 /** One equipment line for a hand-kept item: "Arrows (20)". */
@@ -44,7 +46,7 @@ export class CharacterSheetExportService {
     ]);
 
     await this.persist(request, spells.resolved, features.resolved);
-    await this.pdfGenerator.generateCharacterPdf(character, spells.entries, features.entries, inventory);
+    await this.pdfGenerator.generateCharacterPdf(character, spells.entries, features.entries, inventory, request.portraitUrl ?? null);
   }
 
   private async resolveSpells(

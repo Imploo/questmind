@@ -9,25 +9,39 @@ import { CampaignStoryVersion } from './campaign-story.models';
   selector: 'app-campaign-story-view',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <article class="border border-gray-200 rounded-xl bg-white shadow-sm p-6 md:p-8">
+    <article class="qm-panel qm-hero sm:!p-9">
       @if (!isLatest()) {
-        <div class="mb-4 flex flex-wrap items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
-          <span class="px-2 py-0.5 text-xs font-semibold bg-amber-200 rounded-full">Oudere versie</span>
+        <div class="qm-alert qm-alert-warn relative z-[1] mb-5 flex flex-wrap items-center gap-3">
+          <span class="qm-badge">Oudere versie</span>
           <span>Je bekijkt versie {{ version().version }}.</span>
-          <button type="button" class="font-semibold underline hover:no-underline" (click)="backToLatest.emit()">
+          <button type="button" class="font-semibold underline underline-offset-2 hover:no-underline" (click)="backToLatest.emit()">
             Terug naar nieuwste
           </button>
         </div>
       }
 
-      <header class="mb-6">
-        <h2 class="text-2xl font-bold m-0">{{ version().title || 'Het verhaal tot nu toe' }}</h2>
-        <p class="text-sm text-gray-500 m-0 mt-1">{{ meta() }}</p>
+      <header class="mb-6 text-center">
+        <div class="qm-eyebrow">{{ meta() }}</div>
+        <h2 class="qm-display text-2xl sm:text-3xl leading-tight mt-1.5">{{ version().title || 'Het verhaal tot nu toe' }}</h2>
+        <div class="flourish" aria-hidden="true"><span></span></div>
       </header>
 
-      <div class="prose prose-gray max-w-none" [innerHTML]="renderedContent()"></div>
+      <div class="prose qm-prose qm-dropcap max-w-none" [innerHTML]="renderedContent()"></div>
     </article>
-  `
+  `,
+  styles: [`
+    .flourish {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      margin-top: 1rem;
+    }
+    .flourish::before, .flourish::after { content: ''; width: 5rem; height: 1px; }
+    .flourish::before { background: linear-gradient(to left, var(--gold), transparent); }
+    .flourish::after { background: linear-gradient(to right, var(--gold), transparent); }
+    .flourish > span { width: 7px; height: 7px; background: var(--gold); transform: rotate(45deg); }
+  `]
 })
 export class CampaignStoryViewComponent {
   private readonly sanitizer = inject(DomSanitizer);

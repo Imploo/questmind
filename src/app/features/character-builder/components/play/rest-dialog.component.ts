@@ -59,7 +59,7 @@ import { RestPreviewRow } from '../../../../shared/utils/character-play-state';
       border: 1px solid var(--line, #e8dcc5);
       box-shadow: 0 24px 48px -16px rgba(60, 40, 10, 0.5);
     }
-    h2 { margin: 0; font-family: 'Cinzel', 'Cormorant Garamond', Georgia, serif; font-size: 1.25rem; font-weight: 700; }
+    h2 { margin: 0; font-family: var(--font-display); font-size: 1.25rem; font-weight: 700; }
     dl { margin: 0; }
     .row { display: flex; justify-content: space-between; gap: 0.75rem; padding: 0.45rem 0; font-size: 0.875rem; border-bottom: 1px dashed #efe6d4; }
     .row:last-child { border-bottom: none; }

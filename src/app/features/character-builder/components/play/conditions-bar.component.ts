@@ -80,7 +80,7 @@ import { CONDITIONS, MAX_EXHAUSTION } from '../../../../shared/utils/character-p
     .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
     .title {
       margin-right: 0.25rem;
-      font-family: 'Cinzel', 'Cormorant Garamond', Georgia, serif;
+      font-family: var(--font-display);
       font-size: 0.7rem;
       font-weight: 700;
       letter-spacing: 0.12em;

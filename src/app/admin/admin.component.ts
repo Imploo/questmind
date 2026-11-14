@@ -25,137 +25,116 @@ interface FeatureDefinition {
   imports: [FormsModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="bg-white/90 backdrop-blur rounded-2xl shadow-lg overflow-hidden">
+    <div class="max-w-6xl mx-auto">
       @if (!userService.isAdmin()) {
-        <div class="p-8 text-center">
-          <div class="text-6xl mb-4">🚫</div>
-          <h2 class="text-2xl font-bold text-gray-800 mb-2">Access Denied</h2>
-          <p class="text-gray-600">You do not have permission to access the admin panel.</p>
+        <div class="qm-panel qm-hero qm-empty max-w-xl mx-auto">
+          <span class="qm-medallion qm-medallion-lg">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+          </span>
+          <h2 class="qm-empty-title">Access Denied</h2>
+          <p class="qm-empty-text">You do not have permission to access the admin panel.</p>
         </div>
       } @else {
         <!-- Header -->
-        <div class="p-6 border-b border-gray-200">
-          <div class="flex items-center justify-between">
-            <div>
-              <h2 class="text-2xl font-bold text-gray-800">AI Settings</h2>
-              <p class="text-sm text-gray-500">Configure AI model parameters per feature</p>
-            </div>
-            <div class="flex items-center gap-4">
-              <!-- Backend cache toggle -->
-              <label class="flex items-center gap-2 cursor-pointer select-none">
-                <span class="text-xs font-medium text-gray-600">Backend Cache</span>
-                <button
-                  type="button"
-                  (click)="toggleCache()"
-                  class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors"
-                  [class]="cacheEnabled() ? 'bg-green-500' : 'bg-gray-300'"
-                >
-                  <span
-                    class="inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform"
-                    [class]="cacheEnabled() ? 'translate-x-4.5' : 'translate-x-0.5'"
-                  ></span>
-                </button>
-                <span class="text-[10px] text-gray-400">{{ cacheEnabled() ? 'ON' : 'OFF' }}</span>
-              </label>
-
+        <header class="flex flex-wrap items-end justify-between gap-4 mb-5 sm:mb-6">
+          <div>
+            <div class="qm-page-eyebrow">Admin</div>
+            <h2 class="qm-page-title mt-1">AI Settings</h2>
+            <p class="qm-page-sub mt-1">Configure AI model parameters per feature</p>
+          </div>
+          <div class="qm-panel !py-2 !px-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+            <!-- Backend cache toggle -->
+            <div class="flex items-center gap-2 select-none">
+              <span class="qm-eyebrow">Backend Cache</span>
               <button
                 type="button"
-                (click)="resetToDefaults()"
-                [disabled]="saveIndicator() === 'saving'"
-                class="px-3 py-1.5 text-xs font-semibold text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-all disabled:opacity-50"
-              >
-                Reset to defaults
-              </button>
+                role="switch"
+                aria-label="Backend Cache"
+                [attr.aria-checked]="cacheEnabled()"
+                (click)="toggleCache()"
+                class="qm-switch"
+                [class.is-on]="cacheEnabled()"
+              ></button>
+              <span class="w-6 text-[10px] font-semibold qm-muted">{{ cacheEnabled() ? 'ON' : 'OFF' }}</span>
+            </div>
 
-              <div class="h-6">
-                @switch (saveIndicator()) {
-                  @case ('saving') {
-                    <span class="text-xs text-gray-400 flex items-center gap-1">
-                      <span class="inline-block animate-spin">⏳</span> Saving...
-                    </span>
-                  }
-                  @case ('saved') {
-                    <span class="text-xs text-green-600 flex items-center gap-1">
-                      ✓ Saved
-                    </span>
-                  }
-                  @case ('error') {
-                    <span class="text-xs text-red-500 flex items-center gap-1">
-                      ✕ Save failed
-                    </span>
-                  }
+            <button
+              type="button"
+              (click)="resetToDefaults()"
+              [disabled]="saveIndicator() === 'saving'"
+              class="qm-btn qm-btn-sm qm-btn-danger"
+            >
+              Reset to defaults
+            </button>
+
+            <div class="min-w-16 text-xs" aria-live="polite">
+              @switch (saveIndicator()) {
+                @case ('saving') {
+                  <span class="qm-muted flex items-center gap-1.5">
+                    <span class="qm-spinner !w-3 !h-3" aria-hidden="true"></span> Saving...
+                  </span>
                 }
-              </div>
+                @case ('saved') {
+                  <span class="font-semibold text-[#3a652f]">✓ Saved</span>
+                }
+                @case ('error') {
+                  <span class="font-semibold text-wine">✕ Save failed</span>
+                }
+              }
             </div>
           </div>
-        </div>
+        </header>
 
         @if (loadingSettings()) {
-          <div class="flex items-center justify-center py-16">
-            <span class="inline-block animate-spin text-2xl">⏳</span>
-            <span class="ml-2 text-gray-600">Loading settings...</span>
+          <div class="flex items-center justify-center gap-3 py-16 text-white" role="status">
+            <span class="qm-spinner qm-spinner-lg qm-spinner-light" aria-hidden="true"></span>
+            <span>Loading settings...</span>
           </div>
         } @else if (settingsError()) {
-          <div class="p-6">
-            <div class="p-4 rounded-lg bg-red-50 border border-red-200">
-              <div class="flex items-start gap-2">
-                <span class="text-lg">❌</span>
-                <div class="flex-1">
-                  <p class="font-semibold text-red-800">Error Loading Settings</p>
-                  <p class="text-sm text-red-700">{{ settingsError() }}</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                class="mt-3 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700 transition-all"
-                (click)="loadSettings()"
-              >
-                Retry
-              </button>
+          <div class="qm-panel">
+            <div class="qm-alert" role="alert">
+              <p class="font-semibold">Error Loading Settings</p>
+              <p>{{ settingsError() }}</p>
             </div>
+            <button type="button" class="qm-btn qm-btn-primary mt-3" (click)="loadSettings()">
+              Retry
+            </button>
           </div>
         } @else if (aiSettings()) {
           <!-- Master-detail layout -->
-          <div class="flex flex-col md:flex-row min-h-[500px]">
+          <div class="qm-panel !p-0 overflow-hidden flex flex-col md:flex-row min-h-[500px]">
 
             <!-- LEFT: Feature list -->
-            <div class="w-full md:w-72 md:border-r border-b md:border-b-0 border-gray-200 bg-gray-50/50 shrink-0">
+            <div class="w-full md:w-72 md:border-r border-b md:border-b-0 border-line bg-paper-2 shrink-0">
               <div class="p-3 space-y-1">
                 @for (feature of featureDefinitions; track feature.key) {
                   <button
                     type="button"
                     (click)="selectFeature(feature)"
-                    class="w-full text-left px-3 py-2.5 rounded-lg transition-all flex items-center gap-3"
-                    [class]="feature.key === selectedFeature().key
-                      ? 'bg-white shadow-sm border border-gray-200'
-                      : 'hover:bg-white/60'"
+                    class="qm-item flex items-center gap-3"
+                    [class.is-active]="feature.key === selectedFeature().key"
+                    [attr.aria-current]="feature.key === selectedFeature().key ? 'true' : null"
                   >
-                    <span class="text-lg shrink-0">{{ feature.icon }}</span>
-                    <div class="flex-1 min-w-0">
-                      <div class="text-sm font-medium text-gray-800 truncate">{{ feature.label }}</div>
-                      <span
-                        class="inline-block mt-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
-                        [class]="feature.providerColor"
-                      >{{ feature.provider }}</span>
-                    </div>
+                    <span class="text-lg shrink-0" aria-hidden="true">{{ feature.icon }}</span>
+                    <span class="flex-1 min-w-0">
+                      <span class="block text-sm font-semibold truncate">{{ feature.label }}</span>
+                      <span class="qm-badge mt-0.5 !text-[10px]" [class]="feature.providerColor">{{ feature.provider }}</span>
+                    </span>
                   </button>
                 }
               </div>
             </div>
 
             <!-- RIGHT: Settings form -->
-            <div class="flex-1 p-6">
+            <div class="flex-1 min-w-0 p-5 sm:p-6">
               <!-- Feature header -->
               <div class="mb-6">
-                <div class="flex items-center gap-3 mb-1">
-                  <span class="text-2xl">{{ selectedFeature().icon }}</span>
-                  <h3 class="text-lg font-semibold text-gray-800">{{ selectedFeature().label }}</h3>
-                  <span
-                    class="text-xs font-semibold px-2 py-0.5 rounded-full"
-                    [class]="selectedFeature().providerColor"
-                  >{{ selectedFeature().provider }}</span>
+                <div class="flex flex-wrap items-center gap-3 mb-1">
+                  <span class="qm-medallion text-xl" aria-hidden="true">{{ selectedFeature().icon }}</span>
+                  <h3 class="qm-display text-lg">{{ selectedFeature().label }}</h3>
+                  <span class="qm-badge" [class]="selectedFeature().providerColor">{{ selectedFeature().provider }}</span>
                 </div>
-                <p class="text-sm text-gray-500 ml-11">{{ selectedFeature().description }}</p>
+                <p class="text-sm qm-muted sm:ml-14">{{ selectedFeature().description }}</p>
               </div>
 
               <!-- Form fields based on formType -->
@@ -163,18 +142,18 @@ interface FeatureDefinition {
                 @case ('standard') {
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div class="md:col-span-2">
-                      <label class="block text-sm font-medium text-gray-700 mb-1">Model</label>
+                      <label class="qm-label">Model</label>
                       <input
                         type="text"
                         [ngModel]="getFeatureValue('model')"
                         (ngModelChange)="setFeatureValue('model', $event)"
                         [name]="selectedFeature().key + '-model'"
                         (blur)="onFieldBlur()"
-                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                        class="qm-input"
                       />
                     </div>
                     <div>
-                      <label class="block text-sm font-medium text-gray-700 mb-1">Max Output Tokens</label>
+                      <label class="qm-label">Max Output Tokens</label>
                       <input
                         type="number"
                         [ngModel]="getFeatureValue('maxOutputTokens')"
@@ -183,14 +162,14 @@ interface FeatureDefinition {
                         (blur)="onFieldBlur()"
                         step="1000"
                         min="1"
-                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                        class="qm-input"
                       />
                     </div>
                     @if (selectedFeature().key === 'campaignStory') {
                       <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">
+                        <label class="qm-label">
                           Doel (woorden)
-                          <span class="text-xs font-normal text-gray-400">(~500-600 per A4, 500-1800)</span>
+                          <span class="font-sans font-normal normal-case tracking-normal">(~500-600 per A4, 500-1800)</span>
                         </label>
                         <input
                           type="number"
@@ -201,22 +180,22 @@ interface FeatureDefinition {
                           step="100"
                           min="500"
                           max="1800"
-                          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                          class="qm-input"
                         />
                       </div>
                     }
                     @if (currentModelIsGemini3()) {
                       <div class="md:col-span-2">
-                        <label class="block text-sm font-medium text-gray-700 mb-1">
+                        <label class="qm-label">
                           Thinking Level
-                          <span class="text-xs font-normal text-gray-400">(Gemini 3.x — reasoning effort, vervangt thinking budget)</span>
+                          <span class="font-sans font-normal normal-case tracking-normal">(Gemini 3.x — reasoning effort, vervangt thinking budget)</span>
                         </label>
                         <select
                           [ngModel]="getFeatureValue('thinkingLevel')"
                           (ngModelChange)="setFeatureValue('thinkingLevel', $event)"
                           [name]="selectedFeature().key + '-thinkingLevel'"
                           (change)="onFieldBlur()"
-                          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                          class="qm-input"
                         >
                           <option value="">Model default (medium)</option>
                           @for (level of thinkingLevels; track level) {
@@ -226,34 +205,32 @@ interface FeatureDefinition {
                       </div>
                     }
                     @if (selectedFeature().key === 'transcription') {
-                      <div class="md:col-span-2 mt-2 pt-3 border-t border-gray-200">
-                        <h4 class="text-sm font-semibold text-gray-700">Audio-normalisatie</h4>
-                        <p class="text-xs text-gray-500">
+                      <div class="md:col-span-2 mt-2 pt-3 border-t border-dashed border-[#e0d2b6]">
+                        <h4 class="font-display text-sm font-bold tracking-wide">Audio-normalisatie</h4>
+                        <p class="qm-help">
                           Trekt zachte en luide sprekers (bv. spelers verder van de microfoon) gelijk vóór upload.
                           Geldt voor sessie-audio en de voice intro.
                         </p>
                       </div>
                       <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Normalisatie</label>
+                        <label class="qm-label">Normalisatie</label>
                         <div class="flex items-center gap-2 h-[42px]">
                           <button
                             type="button"
+                            role="switch"
+                            aria-label="Normalisatie"
+                            [attr.aria-checked]="audioNormalization().enabled"
                             (click)="toggleAudioNormalization()"
-                            class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors"
-                            [class]="audioNormalization().enabled ? 'bg-green-500' : 'bg-gray-300'"
-                          >
-                            <span
-                              class="inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform"
-                              [class]="audioNormalization().enabled ? 'translate-x-4.5' : 'translate-x-0.5'"
-                            ></span>
-                          </button>
-                          <span class="text-xs text-gray-500">{{ audioNormalization().enabled ? 'Aan' : 'Uit' }}</span>
+                            class="qm-switch"
+                            [class.is-on]="audioNormalization().enabled"
+                          ></button>
+                          <span class="text-xs qm-muted">{{ audioNormalization().enabled ? 'Aan' : 'Uit' }}</span>
                         </div>
                       </div>
                       <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">
+                        <label class="qm-label">
                           Max. versterking (dB)
-                          <span class="text-xs font-normal text-gray-400">(0-40, lager = minder ruis)</span>
+                          <span class="font-sans font-normal normal-case tracking-normal">(0-40, lager = minder ruis)</span>
                         </label>
                         <input
                           type="number"
@@ -265,7 +242,7 @@ interface FeatureDefinition {
                           step="1"
                           min="0"
                           max="40"
-                          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent disabled:bg-gray-100 disabled:text-gray-400"
+                          class="qm-input"
                         />
                       </div>
                     }
@@ -274,7 +251,7 @@ interface FeatureDefinition {
                 @case ('imageOnly') {
                   <div class="grid grid-cols-1 gap-4">
                     <div>
-                      <label class="block text-sm font-medium text-gray-700 mb-1">Model</label>
+                      <label class="qm-label">Model</label>
                       <input
                         type="text"
                         [ngModel]="getFeatureValue('model')"
@@ -282,7 +259,7 @@ interface FeatureDefinition {
                         [name]="selectedFeature().key + '-model'"
                         (blur)="onFieldBlur()"
                         placeholder="e.g. gemini-nano-banana-2.1"
-                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                        class="qm-input"
                       />
                     </div>
                   </div>
@@ -290,7 +267,7 @@ interface FeatureDefinition {
                 @case ('voicesOnly') {
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div class="md:col-span-2">
-                      <label class="block text-sm font-medium text-gray-700 mb-1">Max Characters</label>
+                      <label class="qm-label">Max Characters</label>
                       <input
                         type="number"
                         [ngModel]="getFeatureValue('maxCharacters')"
@@ -300,19 +277,19 @@ interface FeatureDefinition {
                         step="1000"
                         min="1000"
                         placeholder="e.g. 5000"
-                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                        class="qm-input"
                       />
                     </div>
 
                     <!-- Gemini -->
-                    <div class="md:col-span-2 mt-2 pt-3 border-t border-gray-200">
-                      <h4 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                        <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">Gemini</span>
+                    <div class="md:col-span-2 mt-2 pt-3 border-t border-dashed border-[#e0d2b6]">
+                      <h4 class="font-display text-sm font-bold tracking-wide flex items-center gap-2">
+                        <span class="qm-badge qm-badge-info font-sans tracking-normal">Gemini</span>
                         Native multi-speaker TTS
                       </h4>
                     </div>
                     <div class="md:col-span-2">
-                      <label class="block text-sm font-medium text-gray-700 mb-1">Gemini Model</label>
+                      <label class="qm-label">Gemini Model</label>
                       <input
                         type="text"
                         [ngModel]="getFeatureValue('geminiModel')"
@@ -320,17 +297,17 @@ interface FeatureDefinition {
                         [name]="selectedFeature().key + '-geminiModel'"
                         (blur)="onFieldBlur()"
                         placeholder="e.g. gemini-3.8-flash-tts"
-                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                        class="qm-input"
                       />
                     </div>
                     <div>
-                      <label class="block text-sm font-medium text-gray-700 mb-1">Host 1 Voice (male)</label>
+                      <label class="qm-label">Host 1 Voice (male)</label>
                       <select
                         [ngModel]="getFeatureValue('host1VoiceName')"
                         (ngModelChange)="setFeatureValue('host1VoiceName', $event)"
                         [name]="selectedFeature().key + '-host1VoiceName'"
                         (change)="onFieldBlur()"
-                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                        class="qm-input"
                       >
                         @for (voice of geminiVoiceNames; track voice) {
                           <option [value]="voice">{{ voice }}</option>
@@ -338,13 +315,13 @@ interface FeatureDefinition {
                       </select>
                     </div>
                     <div>
-                      <label class="block text-sm font-medium text-gray-700 mb-1">Host 2 Voice (female)</label>
+                      <label class="qm-label">Host 2 Voice (female)</label>
                       <select
                         [ngModel]="getFeatureValue('host2VoiceName')"
                         (ngModelChange)="setFeatureValue('host2VoiceName', $event)"
                         [name]="selectedFeature().key + '-host2VoiceName'"
                         (change)="onFieldBlur()"
-                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                        class="qm-input"
                       >
                         @for (voice of geminiVoiceNames; track voice) {
                           <option [value]="voice">{{ voice }}</option>
@@ -374,7 +351,7 @@ export class AdminComponent implements OnInit {
       label: 'Character Chat (Tekst)',
       icon: '💬',
       provider: 'Gemini',
-      providerColor: 'bg-blue-100 text-blue-700',
+      providerColor: 'qm-badge-info',
       formType: 'standard',
       description: 'AI 1 — Reageert als D&D Sidekick op chatberichten'
     },
@@ -383,7 +360,7 @@ export class AdminComponent implements OnInit {
       label: 'Character Draft (JSON)',
       icon: '🧬',
       provider: 'Gemini',
-      providerColor: 'bg-blue-100 text-blue-700',
+      providerColor: 'qm-badge-info',
       formType: 'standard',
       description: 'AI 2 — Genereert character JSON object uit chatcontext'
     },
@@ -392,7 +369,7 @@ export class AdminComponent implements OnInit {
       label: 'Spell Resolution',
       icon: '✨',
       provider: 'Gemini',
-      providerColor: 'bg-blue-100 text-blue-700',
+      providerColor: 'qm-badge-info',
       formType: 'standard',
       description: 'Spell beschrijvingen en mechanische details'
     },
@@ -401,7 +378,7 @@ export class AdminComponent implements OnInit {
       label: 'Feature Resolution',
       icon: '📋',
       provider: 'Gemini',
-      providerColor: 'bg-blue-100 text-blue-700',
+      providerColor: 'qm-badge-info',
       formType: 'standard',
       description: 'Feature/trait beschrijvingen met mechanische effecten'
     },
@@ -410,7 +387,7 @@ export class AdminComponent implements OnInit {
       label: 'Image Prompt (LLM)',
       icon: '🖼️',
       provider: 'Gemini',
-      providerColor: 'bg-blue-100 text-blue-700',
+      providerColor: 'qm-badge-info',
       formType: 'standard',
       description: 'Genereert beschrijvende image prompt uit karakter context'
     },
@@ -419,7 +396,7 @@ export class AdminComponent implements OnInit {
       label: 'Image Generation',
       icon: '🎨',
       provider: 'Gemini',
-      providerColor: 'bg-blue-100 text-blue-700',
+      providerColor: 'qm-badge-info',
       formType: 'imageOnly',
       description: 'Fantasy character portrait generation'
     },
@@ -428,7 +405,7 @@ export class AdminComponent implements OnInit {
       label: 'Audio Transcriptie',
       icon: '🎤',
       provider: 'Gemini',
-      providerColor: 'bg-blue-100 text-blue-700',
+      providerColor: 'qm-badge-info',
       formType: 'standard',
       description: 'Transcribeert D&D sessie-audio naar raw story'
     },
@@ -437,7 +414,7 @@ export class AdminComponent implements OnInit {
       label: 'Story Generation',
       icon: '📖',
       provider: 'Gemini',
-      providerColor: 'bg-blue-100 text-blue-700',
+      providerColor: 'qm-badge-info',
       formType: 'standard',
       description: 'Transformeert raw transcriptie naar sessie-verhaal'
     },
@@ -446,7 +423,7 @@ export class AdminComponent implements OnInit {
       label: 'Podcast Script',
       icon: '🎙️',
       provider: 'Gemini',
-      providerColor: 'bg-blue-100 text-blue-700',
+      providerColor: 'qm-badge-info',
       formType: 'standard',
       description: 'Converteert verhaal naar twee-host podcast dialoog'
     },
@@ -455,7 +432,7 @@ export class AdminComponent implements OnInit {
       label: 'Campaign-verhaal',
       icon: '📚',
       provider: 'Gemini',
-      providerColor: 'bg-blue-100 text-blue-700',
+      providerColor: 'qm-badge-info',
       formType: 'standard',
       description: 'Vat alle sessieverhalen samen tot één campagneverhaal (~1-3 A4)'
     },
@@ -464,7 +441,7 @@ export class AdminComponent implements OnInit {
       label: 'Podcast Voices (TTS)',
       icon: '🗣️',
       provider: 'Gemini',
-      providerColor: 'bg-indigo-100 text-indigo-700',
+      providerColor: 'qm-badge-violet',
       formType: 'voicesOnly',
       description: 'Text-to-speech voor dual-voice podcast audio'
     },

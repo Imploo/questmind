@@ -1,58 +1,141 @@
-import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 
-/** One character in the character list: portrait, name and build, opened with a click. */
+/**
+ * One character in the character list: a framed portrait with a name plate, like a
+ * miniature of the sheet's hero. Opened with a click or Enter.
+ */
 @Component({
   selector: 'app-character-tile',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
-    class: 'block border border-white/20 aspect-square rounded-2xl overflow-hidden cursor-pointer shadow-md hover:shadow-xl transition-all duration-200 hover:-translate-y-1 hover:scale-[1.02] relative group',
+    role: 'link',
+    tabindex: '0',
+    '[class.is-archived]': 'archived()',
     '(click)': 'opened.emit()',
+    '(keydown.enter)': 'opened.emit()',
   },
   template: `
-    @if (imageUrl()) {
-      <!-- Tile with image -->
-      <img
-        [src]="imageUrl()"
-        [alt]="name()"
-        class="absolute inset-0 w-full h-full object-cover"
-        [class.grayscale]="archived()"
-      />
-      <div class="absolute inset-0 bg-white/20"></div>
-    } @else {
-      <!-- Glassy tile without image -->
-      <div class="absolute inset-0 bg-base-300/40 backdrop-blur-md border border-white/20"></div>
-      <div class="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent"></div>
+    <span class="art">
+      @if (imageUrl()) {
+        <img [src]="imageUrl()" alt="" class="absolute inset-0 w-full h-full object-cover" [class.grayscale]="archived()" />
+      } @else {
+        <span class="initial" aria-hidden="true">{{ initial() }}</span>
+      }
+      @if (level(); as level) {
+        <span class="level" [attr.aria-label]="'Level ' + level">{{ level }}</span>
+      }
+
+      @if (archived()) {
+        <!-- An archived character comes back to the list with one click -->
+        <button
+          type="button"
+          class="qm-btn qm-btn-sm absolute top-2 right-2"
+          [attr.aria-label]="'Unarchive ' + name()"
+          (click)="$event.stopPropagation(); restored.emit()"
+          (keydown.enter)="$event.stopPropagation()"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-7 9v-5m0 0l-2 2m2-2l2 2" /></svg>
+          Unarchive
+        </button>
+      }
+    </span>
+    <span class="plate">
+      <span class="name">{{ name() }}</span>
+      <span class="qm-eyebrow block truncate">{{ subtitle() }}</span>
+    </span>
+  `,
+  styles: [`
+    :host {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      padding: 6px;
+      color: var(--ink);
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: var(--panel-shadow);
+      cursor: pointer;
+      transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
     }
-
-    @if (archived()) {
-      <!-- An archived character comes back to the list with one click -->
-      <button
-        type="button"
-        class="absolute top-2 right-2 inline-flex items-center gap-1.5 min-h-8 px-2.5 rounded-full bg-white/90 text-gray-700 text-xs font-medium shadow-sm border border-gray-200 hover:bg-white cursor-pointer"
-        [attr.aria-label]="'Unarchive ' + name()"
-        (click)="$event.stopPropagation(); restored.emit()"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-7 9v-5m0 0l-2 2m2-2l2 2" /></svg>
-        Unarchive
-      </button>
+    :host(:hover) {
+      transform: translateY(-4px);
+      border-color: var(--gold);
+      box-shadow: 0 22px 40px -18px rgba(24, 12, 60, 0.75);
     }
+    /* Put away: the same card, with the colour drained from it. */
+    :host(.is-archived) { background: var(--paper-2); }
+    :host(.is-archived) .art { background: linear-gradient(135deg, #8d8a9e, #6d6480); }
+    :host(.is-archived) .level { background: #6b5f55; }
+    :host(.is-archived) .name { color: var(--muted); }
 
-    <!-- Bottom 1/3 overlay for contrast -->
-    <div class="absolute bottom-0 left-0 right-0 h-1/3 bg-black/40 backdrop-blur-[2px]"></div>
-
-    <!-- Content overlay — pinned to bottom -->
-    <div class="absolute bottom-0 left-0 right-0 px-2.5 pb-2">
-      <p class="text-[12px] font-medium leading-none !mb-2 text-white/80 drop-shadow-sm">{{ name() }}</p>
-      <p class="text-[10px] leading-none !mb-2 text-white/50">{{ subtitle() }}</p>
-    </div>
-  `
+    .art {
+      position: relative;
+      display: block;
+      aspect-ratio: 1;
+      border-radius: 9px;
+      background: var(--brand-gradient);
+      box-shadow: inset 0 0 0 1px rgba(180, 138, 60, 0.35);
+    }
+    .art > img { border-radius: inherit; }
+    .initial {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-display);
+      font-size: clamp(2.5rem, 8vw, 4rem);
+      font-weight: 700;
+      color: rgba(255, 255, 255, 0.92);
+      text-shadow: 0 4px 18px rgba(30, 12, 80, 0.5);
+    }
+    .level {
+      position: absolute;
+      right: -4px;
+      bottom: -10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 2rem;
+      height: 2rem;
+      padding: 0 0.4rem;
+      border-radius: 999px;
+      font-family: var(--font-display);
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #fff;
+      background: var(--wine);
+      border: 2px solid var(--paper);
+    }
+    .plate { display: block; min-width: 0; padding: 0.7rem 0.45rem 0.45rem; }
+    .name {
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      padding-right: 1.4rem;
+      overflow: hidden;
+      overflow-wrap: anywhere;
+      font-family: var(--font-display);
+      font-size: 0.92rem;
+      font-weight: 700;
+      line-height: 1.3;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      :host(:hover) { transform: none; }
+    }
+  `]
 })
 export class CharacterTileComponent {
   name = input.required<string>();
   subtitle = input('');
   imageUrl = input<string | null>(null);
+  /** Shown as a badge on the portrait; left out when unknown. */
+  level = input<number | null>(null);
   /** An archived tile is greyed out and offers to bring the character back. */
   archived = input(false);
   opened = output<void>();
   restored = output<void>();
+
+  protected initial = computed(() => this.name().trim().charAt(0).toUpperCase() || '?');
 }

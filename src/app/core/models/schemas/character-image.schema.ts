@@ -15,3 +15,8 @@ export const CharacterImageSchema = z.object({
 });
 
 export type CharacterImage = z.infer<typeof CharacterImageSchema>;
+
+/** The picture that stands for the character: in the sheet's header and on the exported PDF. */
+export function portraitUrlOf(images: CharacterImage[]): string | null {
+  return images.find(img => !!img.url)?.url ?? null;
+}

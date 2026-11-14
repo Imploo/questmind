@@ -1,1 +1,18 @@
-/* Tailwind handles most of this through @tailwind base */
+.update-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #f6efe0;
+  background: var(--ink);
+  border-bottom: 1px solid var(--gold);
+  box-shadow: 0 8px 24px -12px rgba(24, 12, 60, 0.7);
+}

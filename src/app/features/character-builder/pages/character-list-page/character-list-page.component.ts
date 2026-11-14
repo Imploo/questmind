@@ -45,123 +45,126 @@ function importErrorMessage(error: unknown): string {
       />
     }
 
-    <div class="min-h-full bg-base-200 p-8">
-      <div class="max-w-6xl mx-auto">
-        <!-- Header -->
-        <div class="flex flex-wrap justify-between items-center gap-4 mb-8">
-          <div>
-            <h1 class="text-3xl font-bold font-serif">Your Characters</h1>
-            <p class="text-base-content/60 mt-1">Select a character to view or edit</p>
-          </div>
-          <div class="flex gap-2">
-          <button
-            type="button"
-            (click)="openImport()"
-            [disabled]="creating()"
-            class="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-gray-700 font-medium text-sm rounded-full shadow-sm border border-gray-200 hover:bg-gray-50 hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
+    <div class="max-w-6xl mx-auto sm:py-4">
+      <header class="flex flex-wrap items-end justify-between gap-4 mb-6 sm:mb-8">
+        <div>
+          <h1 class="qm-page-title">Your Characters</h1>
+          <p class="qm-page-sub mt-1">Select a character to view or edit</p>
+        </div>
+        <div class="flex gap-2">
+          <button type="button" class="qm-btn" [disabled]="creating()" (click)="openImport()">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v12m0 0l-4-4m4 4l4-4" />
             </svg>
             Import
           </button>
-          <button
-            (click)="onCreateCharacter()"
-            [disabled]="creating()"
-            class="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-gray-700 font-medium text-sm rounded-full shadow-sm border border-gray-200 hover:bg-gray-50 hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
+          <button type="button" class="qm-btn qm-btn-gold" [disabled]="creating()" (click)="onCreateCharacter()">
             @if (creating()) {
-              <span class="loading loading-spinner loading-sm"></span>
+              <span class="qm-spinner" aria-hidden="true"></span>
             } @else {
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
               </svg>
             }
             Create
           </button>
-          </div>
         </div>
+      </header>
 
-        <!-- Loading -->
-        @if (loading()) {
-          <div class="flex items-center justify-center py-24">
-            <span class="loading loading-spinner loading-lg"></span>
+      @if (loading()) {
+        <div class="flex items-center justify-center py-24" role="status" aria-label="Loading characters">
+          <span class="qm-spinner qm-spinner-lg qm-spinner-light"></span>
+        </div>
+      } @else {
+        @if (activeCharacters().length > 0) {
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-5">
+            @for (char of activeCharacters(); track char.id) {
+              <app-character-tile
+                [name]="char.name"
+                [subtitle]="char.race + ' ' + char.class"
+                [imageUrl]="char.imageUrl"
+                [level]="char.level"
+                (opened)="onSelectCharacter(char.id)"
+              />
+            }
           </div>
         } @else {
-          <!-- Character Grid -->
-          @if (activeCharacters().length > 0) {
-            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              @for (char of activeCharacters(); track char.id) {
-                <app-character-tile
-                  [name]="char.name"
-                  [subtitle]="char.race + ' ' + char.class"
-                  [imageUrl]="char.imageUrl"
-                  (opened)="onSelectCharacter(char.id)"
-                />
-              }
-            </div>
-          } @else {
-            <!-- Empty State -->
-            <div class="flex flex-col items-center justify-center py-24 text-base-content/50">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mb-4 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          <div class="qm-panel qm-hero qm-empty max-w-xl mx-auto">
+            <span class="qm-medallion qm-medallion-lg">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
               </svg>
-              @if (archivedCharacters().length > 0) {
-                <h2 class="text-xl font-bold mb-2">All your characters are archived</h2>
-                <p class="mb-6">Create a new one, or bring one back from the archive below.</p>
-              } @else {
-                <h2 class="text-xl font-bold mb-2">No characters yet</h2>
-                <p class="mb-6">Create your first character to get started!</p>
-              }
-              <button
-                (click)="onCreateCharacter()"
-                class="inline-flex items-center gap-2 px-6 py-3 bg-white text-gray-700 font-medium text-sm rounded-full shadow-sm border border-gray-200 hover:bg-gray-50 hover:shadow-md transition-all"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-                </svg>
-                Create Character
-              </button>
-              <button type="button" (click)="openImport()" class="mt-3 text-sm font-medium underline underline-offset-2 hover:text-base-content">
-                Or import one from a PDF or a link
-              </button>
-            </div>
-          }
-
-          <!-- Archive: out of the way, one click to look into -->
-          @if (archivedCharacters().length > 0) {
-            <section class="mt-10">
-              <button
-                type="button"
-                class="inline-flex items-center gap-2 min-h-10 text-sm font-medium text-base-content/60 hover:text-base-content cursor-pointer"
-                [attr.aria-expanded]="showArchived()"
-                aria-controls="archived-characters"
-                (click)="showArchived.set(!showArchived())"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
-                Archived ({{ archivedCharacters().length }})
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 transition-transform" [class.rotate-180]="showArchived()" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
-              </button>
-              @if (showArchived()) {
-                <div id="archived-characters" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 mt-4">
-                  @for (char of archivedCharacters(); track char.id) {
-                    <app-character-tile
-                      [name]="char.name"
-                      [subtitle]="char.race + ' ' + char.class"
-                      [imageUrl]="char.imageUrl"
-                      [archived]="true"
-                      (opened)="onSelectCharacter(char.id)"
-                      (restored)="onUnarchive(char.id)"
-                    />
-                  }
-                </div>
-              }
-            </section>
-          }
+            </span>
+            @if (archivedCharacters().length > 0) {
+              <h2 class="qm-empty-title">All your characters are archived</h2>
+              <p class="qm-empty-text">Create a new one, or bring one back from the archive below.</p>
+            } @else {
+              <h2 class="qm-empty-title">No characters yet</h2>
+              <p class="qm-empty-text">Create your first character to get started!</p>
+            }
+            <button type="button" class="qm-btn qm-btn-primary qm-btn-lg mt-6" (click)="onCreateCharacter()">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+              </svg>
+              Create Character
+            </button>
+            <button type="button" class="qm-link mt-4 text-sm" (click)="openImport()">
+              Or import one from a PDF or a link
+            </button>
+          </div>
         }
-      </div>
+
+        <!-- Archive: out of the way, one click to look into -->
+        @if (archivedCharacters().length > 0) {
+          <section class="mt-10">
+            <button
+              type="button"
+              class="archive-toggle"
+              [attr.aria-expanded]="showArchived()"
+              aria-controls="archived-characters"
+              (click)="showArchived.set(!showArchived())"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
+              Archived ({{ archivedCharacters().length }})
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 transition-transform" [class.rotate-180]="showArchived()" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7" /></svg>
+            </button>
+            @if (showArchived()) {
+              <div id="archived-characters" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-5 mt-4">
+                @for (char of archivedCharacters(); track char.id) {
+                  <app-character-tile
+                    [name]="char.name"
+                    [subtitle]="char.race + ' ' + char.class"
+                    [imageUrl]="char.imageUrl"
+                    [level]="char.level"
+                    [archived]="true"
+                    (opened)="onSelectCharacter(char.id)"
+                    (restored)="onUnarchive(char.id)"
+                  />
+                }
+              </div>
+            }
+          </section>
+        }
+      }
     </div>
-  `
+  `,
+  styles: [`
+    /* A quiet heading on the gradient that opens the archive. */
+    .archive-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      min-height: 40px;
+      font-family: var(--font-display);
+      font-size: 0.76rem;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #fff;
+      text-shadow: 0 1px 6px rgba(34, 16, 80, 0.4);
+    }
+    .archive-toggle:hover { text-decoration: underline; text-underline-offset: 4px; }
+  `]
 })
 export class CharacterListPageComponent {
   private readonly router = inject(Router);

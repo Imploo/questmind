@@ -12,73 +12,74 @@ import { CampaignStoryVersion } from './campaign-story.models';
   template: `
     @if (open()) {
       <div class="fixed inset-0 z-50 flex justify-end">
-        <div class="absolute inset-0 bg-black/30" (click)="closed.emit()" aria-hidden="true"></div>
+        <div class="qm-scrim" (click)="closed.emit()" aria-hidden="true"></div>
 
         <aside
-          class="relative w-full max-w-sm h-full bg-white shadow-xl flex flex-col"
+          class="qm-drawer relative z-50 w-full max-w-sm"
           role="dialog"
           aria-modal="true"
           aria-label="Versies van het verhaal"
         >
-          <div class="p-4 border-b border-gray-200 flex items-center justify-between">
-            <h2 class="text-lg font-semibold m-0">Versies</h2>
+          <div class="px-5 pt-5 pb-3 flex items-start justify-between gap-3">
+            <div>
+              <div class="qm-eyebrow">Verhaal</div>
+              <h2 class="qm-display text-xl">Versies</h2>
+            </div>
             <button
               type="button"
-              class="p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-800"
+              class="qm-btn qm-btn-ghost qm-btn-icon"
               (click)="closed.emit()"
               aria-label="Sluiten"
             >
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
               </svg>
             </button>
           </div>
 
-          <ul class="flex-1 overflow-y-auto p-2 space-y-1 list-none m-0">
+          <ul class="flex-1 overflow-y-auto scrollbar-thin px-3 pb-4 space-y-1 list-none m-0">
             @for (version of versions(); track version.id) {
               <li>
                 <button
                   type="button"
-                  class="w-full text-left p-3 rounded-lg border transition-colors disabled:cursor-not-allowed"
-                  [class.border-primary]="version.version === selectedVersion()"
-                  [class.bg-blue-50]="version.version === selectedVersion()"
-                  [class.border-transparent]="version.version !== selectedVersion()"
-                  [class.hover:bg-gray-50]="version.version !== selectedVersion()"
+                  class="qm-item"
+                  [class.is-active]="version.version === selectedVersion()"
                   [disabled]="version.status !== 'completed'"
                   (click)="selected.emit(version.version)"
                 >
-                  <div class="flex items-center justify-between gap-2">
-                    <span class="text-sm font-semibold text-gray-900">Versie {{ version.version }}</span>
+                  <span class="flex items-center justify-between gap-2">
+                    <span class="font-display text-sm font-bold tracking-wide">Versie {{ version.version }}</span>
                     @switch (version.status) {
                       @case ('generating') {
-                        <span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">Bezig...</span>
+                        <span class="qm-badge qm-badge-info">Bezig...</span>
                       }
                       @case ('failed') {
-                        <span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded">Mislukt</span>
+                        <span class="qm-badge qm-badge-danger">Mislukt</span>
                       }
                       @default {
                         @if (version.podcasts?.length) {
-                          <span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">
-                            🎙️ {{ version.podcasts?.length }}
+                          <span class="qm-badge qm-badge-violet">
+                            <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
+                            {{ version.podcasts?.length }}
                           </span>
                         }
                       }
                     }
-                  </div>
+                  </span>
                   @if (version.title) {
-                    <p class="text-sm text-gray-700 m-0 mt-1 truncate">{{ version.title }}</p>
+                    <span class="block text-sm text-gray-800 mt-1 truncate">{{ version.title }}</span>
                   }
-                  <p class="text-xs text-gray-500 m-0 mt-1">
+                  <span class="block text-xs qm-muted mt-1">
                     {{ formatting.formatDate(version.createdAt) }} · {{ version.sourceSessions.length }}
                     {{ version.sourceSessions.length === 1 ? 'sessie' : 'sessies' }}
-                  </p>
+                  </span>
                   @if (version.status === 'failed' && version.error) {
-                    <p class="text-xs text-red-600 m-0 mt-1">{{ version.error }}</p>
+                    <span class="block text-xs text-wine mt-1">{{ version.error }}</span>
                   }
                 </button>
               </li>
             } @empty {
-              <li class="p-4 text-sm text-gray-500">Nog geen versies.</li>
+              <li class="p-4 text-sm qm-muted">Nog geen versies.</li>
             }
           </ul>
         </aside>
