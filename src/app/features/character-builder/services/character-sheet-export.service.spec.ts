@@ -69,6 +69,18 @@ describe('CharacterSheetExportService', () => {
     expect(pdf.generateCharacterPdf.mock.calls[0][4]).toBe('https://storage/portrait.png');
   });
 
+  it('passes the share link of a stored character on to the sheet', async () => {
+    await service.export(request(character()));
+
+    expect(pdf.generateCharacterPdf.mock.calls[0][5]).toBe(`${window.location.origin}/share/character/char-1`);
+  });
+
+  it('passes no share link for a character that is not stored', async () => {
+    await service.export({ ...request(character()), characterId: null });
+
+    expect(pdf.generateCharacterPdf.mock.calls[0][5]).toBeNull();
+  });
+
   it('leaves the equipment alone without inventory items', async () => {
     const c = character({ equipment: ['Quarterstaff'] });
 

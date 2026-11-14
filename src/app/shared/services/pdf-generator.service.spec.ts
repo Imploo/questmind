@@ -1,11 +1,11 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { provideZonelessChangeDetection } from '@angular/core';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { readFileSync } from 'node:fs';
-import { PDFDict, PDFDocument, PDFName, PDFRef, PDFStream } from 'pdf-lib';
-import { PdfGeneratorService, toPlainText } from './pdf-generator.service';
+import { PDFArray, PDFButton, PDFDict, PDFDocument, PDFName, PDFStream, PDFString } from 'pdf-lib';
+import { PdfGeneratorService, qrModulesPath, toPlainText } from './pdf-generator.service';
 import { DndCharacter } from '../models/dnd-character.model';
 
 function createCharacter(): DndCharacter {
@@ -59,6 +59,7 @@ function collectText(content: unknown): string[] {
 
 const TEMPLATE_URL = '/templates/dnd-5e-character-sheet.pdf';
 const PORTRAIT_URL = 'https://storage/portrait.png';
+const SHARE_URL = 'https://questmind.nl/share/character/AbCdEfGhIjKlMnOpQrSt';
 const PNG_1X1 = Uint8Array.from(
   atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='),
   ch => ch.charCodeAt(0)
@@ -84,18 +85,31 @@ async function flushWhenRequested(
   requests[0].flush(body, opts);
 }
 
-/** Subtype of every XObject drawn by the character image field's widgets. */
-function portraitImages(doc: PDFDocument): string[] {
-  return doc.getForm().getButton('CHARACTER IMAGE').acroField.getWidgets().flatMap(widget => {
-    const appearance = widget.getNormalAppearance();
-    const stream = appearance instanceof PDFRef ? doc.context.lookup(appearance) : appearance;
-    const xObjects = stream instanceof PDFStream
-      ? stream.dict.lookupMaybe(PDFName.of('Resources'), PDFDict)?.lookupMaybe(PDFName.of('XObject'), PDFDict)
-      : undefined;
-    return (xObjects?.keys() ?? []).map(key =>
-      xObjects!.lookup(key, PDFStream).dict.lookup(PDFName.of('Subtype'), PDFName).decodeText()
-    );
-  });
+/** Number of pictures drawn on page 2, the page with the Character Appearance box. */
+function picturesOnPageTwo(doc: PDFDocument): number {
+  const xObjects = doc.getPage(1).node.Resources()?.lookupMaybe(PDFName.of('XObject'), PDFDict);
+  return (xObjects?.keys() ?? []).filter(key =>
+    xObjects!.lookup(key, PDFStream).dict.lookup(PDFName.of('Subtype'), PDFName) === PDFName.of('Image')
+  ).length;
+}
+
+/** The link annotations on page 1: where they are and where they lead. */
+function linksOnPageOne(doc: PDFDocument): { url: string; top: number }[] {
+  const annots = doc.getPage(0).node.Annots()?.asArray() ?? [];
+  return annots
+    .map(ref => doc.context.lookup(ref, PDFDict))
+    .filter(annot => annot.lookup(PDFName.of('Subtype'), PDFName) === PDFName.of('Link'))
+    .map(annot => {
+      const rect = annot.lookup(PDFName.of('Rect'), PDFArray).asRectangle();
+      return {
+        url: annot.lookup(PDFName.of('A'), PDFDict).lookup(PDFName.of('URI'), PDFString).asString(),
+        top: rect.y + rect.height,
+      };
+    });
+}
+
+function featuresField(doc: PDFDocument): { y: number; height: number } {
+  return doc.getForm().getTextField('Features and Traits').acroField.getWidgets()[0].getRectangle();
 }
 
 describe('PdfGeneratorService', () => {
@@ -177,6 +191,12 @@ describe('PdfGeneratorService', () => {
   });
 
   describe('buildCharacterPdf', () => {
+    let templatePictures: number;
+
+    beforeAll(async () => {
+      templatePictures = picturesOnPageTwo(await PDFDocument.load(templateBytes()));
+    });
+
     it('fills the official template and appends the description pages', async () => {
       const character: DndCharacter = {
         ...createCharacter(),
@@ -200,7 +220,8 @@ describe('PdfGeneratorService', () => {
       expect(form.getTextField('Features and Traits').getText()).toContain('Arcane Recovery');
       expect(form.getTextField('Backstory').getText()).toBe('Born in Waterdeep - raised by wolves -> became a wizard.');
       expect(form.getCheckBox('Check Box 20').isChecked()).toBe(true);
-      expect(portraitImages(result)).toEqual([]);
+      expect(form.getFieldMaybe('CHARACTER IMAGE')).toBeInstanceOf(PDFButton);
+      expect(picturesOnPageTwo(result)).toBe(templatePictures);
       TestBed.inject(HttpTestingController).verify();
     });
 
@@ -211,8 +232,9 @@ describe('PdfGeneratorService', () => {
 
       const result = await PDFDocument.load(await pending);
 
-      // The field has three widgets on the same spot; each shows the picture.
-      expect(portraitImages(result)).toEqual(['Image', 'Image', 'Image']);
+      expect(picturesOnPageTwo(result)).toBe(templatePictures + 1);
+      // The picture is part of the page; the field would only get a viewer's highlight over it.
+      expect(result.getForm().getFieldMaybe('CHARACTER IMAGE')).toBeUndefined();
     });
 
     it('still exports the sheet when the portrait cannot be loaded', async () => {
@@ -223,7 +245,7 @@ describe('PdfGeneratorService', () => {
       const result = await PDFDocument.load(await pending);
 
       expect(result.getForm().getTextField('CharacterName').getText()).toBe('Test Hero');
-      expect(portraitImages(result)).toEqual([]);
+      expect(picturesOnPageTwo(result)).toBe(templatePictures);
     });
 
     it('leaves the box empty for a picture that is neither PNG nor JPEG', async () => {
@@ -231,7 +253,44 @@ describe('PdfGeneratorService', () => {
       await flushWhenRequested(TEMPLATE_URL, templateBytes().buffer);
       await flushWhenRequested(PORTRAIT_URL, Uint8Array.from('RIFF....WEBP', ch => ch.charCodeAt(0)).buffer);
 
-      expect(portraitImages(await PDFDocument.load(await pending))).toEqual([]);
+      expect(picturesOnPageTwo(await PDFDocument.load(await pending))).toBe(templatePictures);
+    });
+  });
+
+  describe('share QR code', () => {
+    it('puts a linked QR code in the Features & Traits box, which makes room for it', async () => {
+      const template = featuresField(await PDFDocument.load(templateBytes()));
+      const pending = service.buildCharacterPdf(createCharacter(), [], [{ name: 'Arcane Recovery' }], [], null, SHARE_URL);
+      await flushWhenRequested(TEMPLATE_URL, templateBytes().buffer);
+
+      const result = await PDFDocument.load(await pending);
+      const field = featuresField(result);
+      const links = linksOnPageOne(result);
+
+      expect(links.map(link => link.url)).toEqual([SHARE_URL]);
+      // The panel is in the bottom of the box and the field ends above it.
+      expect(links[0].top).toBeGreaterThan(template.y);
+      expect(field.y).toBeGreaterThan(links[0].top);
+      expect(field.y + field.height).toBeCloseTo(template.y + template.height);
+      expect(result.getForm().getTextField('Features and Traits').getText()).toContain('Arcane Recovery');
+    });
+
+    it('leaves the sheet as it is without a share link', async () => {
+      const template = featuresField(await PDFDocument.load(templateBytes()));
+      const pending = service.buildCharacterPdf(createCharacter(), [], []);
+      await flushWhenRequested(TEMPLATE_URL, templateBytes().buffer);
+
+      const result = await PDFDocument.load(await pending);
+
+      expect(linksOnPageOne(result)).toEqual([]);
+      expect(featuresField(result)).toEqual(template);
+    });
+  });
+
+  describe('qrModulesPath', () => {
+    it('draws one rectangle per run of dark modules in a row', () => {
+      const dark = ['##.', '..#', '...'];
+      expect(qrModulesPath(3, (row, col) => dark[row][col] === '#')).toBe('M0 0h2v1h-2zM2 1h1v1h-1z');
     });
   });
 

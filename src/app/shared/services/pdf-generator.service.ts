@@ -1,7 +1,7 @@
 import { inject, Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import type { PDFDocument, PDFFont, PDFForm } from 'pdf-lib';
+import type { PDFDocument, PDFFont, PDFForm, PDFPage } from 'pdf-lib';
 import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces';
 import { DndCharacter } from '../models/dnd-character.model';
 import { InventoryItem } from '../models/character-play-state.model';
@@ -25,6 +25,18 @@ const MIN_FONT_SIZE = 5;
 const SINGLE_LINE_MAX_FONT_SIZE = 12;
 const LINE_HEIGHT = 1.2;
 const FIELD_PADDING = 4;
+
+/**
+ * The share panel: a QR code with a caption in the bottom of page 1's "Features & Traits"
+ * box. It is the one box on that page with room to spare (the feature names are short and
+ * their texts are in the appendix), and the outer corner of the sheet is easy to scan.
+ */
+const SHARE_PANEL_HEIGHT = 66;
+/** 52pt is 18mm: modules of about half a millimetre, which a phone reads from a home print. */
+const SHARE_CODE_SIZE = 52;
+const SHARE_CODE_MARGIN = 4;
+const SHARE_PANEL_TITLE = 'OPEN IN QUESTMIND';
+const SHARE_PANEL_TEXT = 'Scan to view this character in the app. Clone it to your own account to use it in play mode.';
 
 const OVERFLOW_TITLES: Record<string, string> = {
   [TEXT_FIELDS.backstory]: 'Appearance & Backstory',
@@ -56,15 +68,17 @@ export class PdfGeneratorService {
   /**
    * `inventory`: items the player keeps by hand; those with a description are described in the appendix.
    * `portraitUrl`: the picture for the "Character Appearance" box on page 2.
+   * `shareUrl`: the character's share link; page 1 gets a QR code that opens it.
    */
   async generateCharacterPdf(
     character: DndCharacter,
     spells: SheetSpell[],
     features: SheetFeature[],
     inventory: InventoryItem[] = [],
-    portraitUrl: string | null = null
+    portraitUrl: string | null = null,
+    shareUrl: string | null = null
   ): Promise<void> {
-    const bytes = await this.buildCharacterPdf(character, spells, features, inventory, portraitUrl);
+    const bytes = await this.buildCharacterPdf(character, spells, features, inventory, portraitUrl, shareUrl);
     this.download(bytes, `${character.name} - Character Sheet.pdf`);
   }
 
@@ -73,7 +87,8 @@ export class PdfGeneratorService {
     spells: SheetSpell[],
     features: SheetFeature[],
     inventory: InventoryItem[] = [],
-    portraitUrl: string | null = null
+    portraitUrl: string | null = null,
+    shareUrl: string | null = null
   ): Promise<Uint8Array> {
     const { PDFDocument, PDFTextField, PDFCheckBox, StandardFonts } = await import('pdf-lib');
     const template = await firstValueFrom(this.http.get(CHARACTER_SHEET_TEMPLATE_URL, { responseType: 'arraybuffer' }));
@@ -81,6 +96,8 @@ export class PdfGeneratorService {
     const form = doc.getForm();
     const font = await doc.embedFont(StandardFonts.Helvetica);
     const sanitize = createSanitizer(font);
+    // Before the fields are filled: the panel takes room from a field, whose text must fit what is left.
+    if (shareUrl) await this.placeShareCode(doc, form, font, shareUrl);
 
     const values = buildSheetFieldValues(character, spells, features);
     const overflow: OverflowSection[] = [];
@@ -134,11 +151,84 @@ export class PdfGeneratorService {
         return;
       }
       const image = format === 'png' ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
-      // Scaled to fit the box and centred, with its proportions kept.
-      form.getButton(CHARACTER_IMAGE_FIELD).setImage(image);
+      const field = form.getButton(CHARACTER_IMAGE_FIELD);
+      const widget = field.acroField.getWidgets()[0];
+      const box = widget.getRectangle();
+      const page = doc.getPages().find(p => p.ref === widget.P());
+      if (!page) throw new Error(`"${CHARACTER_IMAGE_FIELD}" is not on a page`);
+      // Drawn on the page instead of set on the field: viewers that highlight form fields
+      // would otherwise colour the box around the picture. The field makes way for it.
+      form.removeField(field);
+      const size = image.scaleToFit(box.width, box.height);
+      page.drawImage(image, {
+        x: box.x + (box.width - size.width) / 2,
+        y: box.y + (box.height - size.height) / 2,
+        width: size.width,
+        height: size.height,
+      });
     } catch (e) {
       logger.warn('Could not place the character portrait on the sheet:', e);
     }
+  }
+
+  /** Best-effort: a sheet without the QR code is still a complete sheet. */
+  private async placeShareCode(doc: PDFDocument, form: PDFForm, font: PDFFont, url: string): Promise<void> {
+    try {
+      const { PDFString, StandardFonts, rgb } = await import('pdf-lib');
+      const qrcode = (await import('qrcode-generator')).default;
+      const code = qrcode(0, 'M');
+      code.addData(url);
+      code.make();
+
+      const widget = form.getTextField(TEXT_FIELDS.featuresAndTraits).acroField.getWidgets()[0];
+      const box = widget.getRectangle();
+      const page = doc.getPages().find(p => p.ref === widget.P());
+      if (!page) throw new Error(`"${TEXT_FIELDS.featuresAndTraits}" is not on a page`);
+      const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+      // The field makes way: a viewer draws a field over the page, and typed text must not run into the code.
+      widget.setRectangle({ ...box, y: box.y + SHARE_PANEL_HEIGHT, height: box.height - SHARE_PANEL_HEIGHT });
+
+      const left = box.x + FIELD_PADDING / 2;
+      const right = box.x + box.width - FIELD_PADDING / 2;
+      const codeX = right - SHARE_CODE_SIZE;
+      const codeY = box.y + SHARE_CODE_MARGIN;
+      const ruleY = box.y + SHARE_PANEL_HEIGHT - SHARE_CODE_MARGIN;
+      page.drawLine({ start: { x: left, y: ruleY }, end: { x: right, y: ruleY }, thickness: 0.5, color: rgb(0.7, 0.7, 0.7) });
+      // One path for all modules: separate squares would show hairlines between them in some viewers.
+      page.drawSvgPath(qrModulesPath(code.getModuleCount(), (row, col) => code.isDark(row, col)), {
+        x: codeX,
+        y: codeY + SHARE_CODE_SIZE,
+        scale: SHARE_CODE_SIZE / code.getModuleCount(),
+        color: rgb(0, 0, 0),
+        borderWidth: 0,
+      });
+      this.drawShareCaption(page, font, bold, left, codeX - 2 * SHARE_CODE_MARGIN - left, codeY + SHARE_CODE_SIZE / 2);
+
+      // On a screen there is nothing to scan with, so the panel is also a link.
+      const link = doc.context.register(doc.context.obj({
+        Type: 'Annot',
+        Subtype: 'Link',
+        Rect: [left, codeY, right, codeY + SHARE_CODE_SIZE],
+        Border: [0, 0, 0],
+        A: { Type: 'Action', S: 'URI', URI: PDFString.of(url) },
+      }));
+      page.node.addAnnot(link);
+    } catch (e) {
+      logger.warn('Could not place the share QR code on the sheet:', e);
+    }
+  }
+
+  /** Title and explanation left of the code, centred on `centerY`. */
+  private drawShareCaption(page: PDFPage, font: PDFFont, bold: PDFFont, x: number, width: number, centerY: number): void {
+    const titleSize = 7;
+    const textSize = 6.5;
+    const lineHeight = 8;
+    const lines = wrapText(SHARE_PANEL_TEXT, font, textSize, width);
+    const top = centerY + (titleSize + 3 + lines.length * lineHeight) / 2;
+    page.drawText(SHARE_PANEL_TITLE, { x, y: top - titleSize, size: titleSize, font: bold });
+    lines.forEach((line, i) => {
+      page.drawText(line, { x, y: top - titleSize - 3 - (i + 1) * lineHeight + 1.5, size: textSize, font, opacity: 0.7 });
+    });
   }
 
   /** Exposed for testing. Returns null when there is nothing to describe. */
@@ -252,6 +342,24 @@ function imageFormat(bytes: Uint8Array): 'png' | 'jpg' | null {
   return null;
 }
 
+/**
+ * The dark modules of a QR code as one SVG path on a grid of 1x1 modules, origin top left.
+ * Neighbours in a row are joined into one rectangle.
+ */
+export function qrModulesPath(size: number, isDark: (row: number, col: number) => boolean): string {
+  const parts: string[] = [];
+  for (let row = 0; row < size; row++) {
+    for (let col = 0; col < size; col++) {
+      if (!isDark(row, col)) continue;
+      const start = col;
+      while (col + 1 < size && isDark(row, col + 1)) col++;
+      const run = col - start + 1;
+      parts.push(`M${start} ${row}h${run}v1h${-run}z`);
+    }
+  }
+  return parts.join('');
+}
+
 /** The template's fields use Helvetica (WinAnsi); map or drop anything it cannot encode. */
 function createSanitizer(font: PDFFont): (text: string) => string {
   const supported = new Set(font.getCharacterSet());
@@ -279,19 +387,24 @@ export function fitFontSize(text: string, font: PDFFont, width: number, height: 
 }
 
 function countWrappedLines(text: string, font: PDFFont, size: number, width: number): number {
-  let lines = 0;
+  return wrapText(text, font, size, width).length;
+}
+
+/** The lines of `text` when it wraps at word boundaries within `width`. */
+function wrapText(text: string, font: PDFFont, size: number, width: number): string[] {
+  const lines: string[] = [];
   for (const paragraph of text.split('\n')) {
     let current = '';
-    lines++;
     for (const word of paragraph.split(' ')) {
       const candidate = current ? `${current} ${word}` : word;
       if (current && font.widthOfTextAtSize(candidate, size) > width) {
-        lines++;
+        lines.push(current);
         current = word;
       } else {
         current = candidate;
       }
     }
+    lines.push(current);
   }
   return lines;
 }

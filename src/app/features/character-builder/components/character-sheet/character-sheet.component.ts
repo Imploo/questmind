@@ -47,6 +47,7 @@ import { ImageLightboxComponent } from '../../../../chat/image-lightbox.componen
 import { CharacterEntryResolverService } from '../../../../core/services/character-entry-resolver.service';
 import { ToastService } from '../../../../shared/services/toast.service';
 import { copyText } from '../../../../shared/utils/clipboard';
+import { characterShareUrl } from '../../../../shared/utils/character-share-url';
 import * as logger from '../../../../shared/logger';
 
 export interface SpellResolvedEvent {
@@ -1106,15 +1107,10 @@ export class CharacterSheetComponent {
     inject(DestroyRef).onDestroy(() => this.clearToastTimer());
   }
 
-  /**
-   * Copy a link to this character. The character page is public, so anyone with the
-   * link can view it; the share address also gives chat apps a preview with the
-   * character's name and portrait.
-   */
+  /** Copy a link to this character; anyone with the link can view it. */
   async shareLink(): Promise<void> {
     const id = this.characterId();
-    const path = id ? `/share/character/${id}` : window.location.pathname;
-    const url = `${window.location.origin}${path}`;
+    const url = id ? characterShareUrl(id) : `${window.location.origin}${window.location.pathname}`;
     if (await copyText(url)) {
       this.toastService.show('Link gekopieerd — iedereen met deze link kan dit karakter bekijken.', 'success');
     } else {

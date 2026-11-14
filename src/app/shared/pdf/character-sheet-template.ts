@@ -12,7 +12,7 @@
 
 export const CHARACTER_SHEET_TEMPLATE_URL = '/templates/dnd-5e-character-sheet.pdf';
 
-/** Page 2's "Character Appearance" box: a button field that shows a picture. */
+/** Page 2's "Character Appearance" box: a button field that marks where the picture goes. */
 export const CHARACTER_IMAGE_FIELD = 'CHARACTER IMAGE';
 
 export type AbilityKey = 'strength' | 'dexterity' | 'constitution' | 'intelligence' | 'wisdom' | 'charisma';
