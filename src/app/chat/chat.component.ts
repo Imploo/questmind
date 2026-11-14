@@ -24,7 +24,11 @@ import { dayLabel, formatTime, isSameDay } from './chat-view';
       <app-image-lightbox [url]="lightboxUrl()!" (closed)="closeLightbox()" />
     }
 
-    <div class="relative flex flex-col h-full overflow-hidden bg-paper text-ink">
+    <div
+      class="chat relative flex flex-col h-full overflow-hidden bg-paper text-ink"
+      [class.is-floating]="floating()"
+      [style.--dock-height]="floating() ? dockHeight() + 'px' : null"
+    >
       <div class="chat-head">
         <button
           type="button"
@@ -39,10 +43,12 @@ import { dayLabel, formatTime, isSameDay } from './chat-view';
             <path d="M12 7v5l4 2" />
           </svg>
         </button>
-        <div class="min-w-0 flex-1 text-center">
-          <div class="font-display text-[0.6rem] font-semibold uppercase tracking-[0.18em] text-white/75">The Sidekick</div>
-          <h2 class="truncate font-display text-sm font-bold leading-tight">{{ title() }}</h2>
-        </div>
+        @if (!floating()) {
+          <div class="min-w-0 flex-1 text-center">
+            <div class="font-display text-[0.6rem] font-semibold uppercase tracking-[0.18em] text-white/75">The Sidekick</div>
+            <h2 class="truncate font-display text-sm font-bold leading-tight">{{ title() }}</h2>
+          </div>
+        }
         <button
           type="button"
           class="head-btn"
@@ -57,7 +63,13 @@ import { dayLabel, formatTime, isSameDay } from './chat-view';
         </button>
       </div>
 
-      <div class="flex-1 overflow-y-auto p-4 flex flex-col gap-3 bg-paper-2 scrollbar-thin" #messagesContainer>
+      @if (floating()) {
+        <!-- The messages scroll on behind the floating buttons and the composer, fading out. -->
+        <div class="fade fade-top" aria-hidden="true"></div>
+        <div class="fade fade-bottom" aria-hidden="true"></div>
+      }
+
+      <div class="messages flex-1 overflow-y-auto flex flex-col gap-3 bg-paper-2 scrollbar-thin" #messagesContainer>
         @if (messages().length === 0) {
           <div class="m-auto px-2 text-center">
             <span class="qm-medallion mx-auto">
@@ -164,13 +176,16 @@ import { dayLabel, formatTime, isSameDay } from './chat-view';
         }
       </div>
 
-      <div class="border-t border-line bg-paper"
+      <div class="dock" #dock>
+      <div class="dock-card"
         (dragover)="onDragOver($event)"
         (dragleave)="onDragLeave($event)"
         (drop)="onDrop($event)"
         [class.ring-2]="isDragOver()"
         [class.ring-primary]="isDragOver()"
         [class.ring-inset]="isDragOver()"
+        [class.is-image]="isImageMode()"
+        [class.is-busy]="isLoading()"
       >
         @if (isImageMode()) {
           <div class="flex flex-wrap items-center gap-2 px-3 pt-3 pb-1">
@@ -204,16 +219,16 @@ import { dayLabel, formatTime, isSameDay } from './chat-view';
             <span>Drop PDF here</span>
           </div>
         }
-        <div class="flex gap-2 p-3" [class.pt-2]="isImageMode() || pendingAttachment()">
+        <div class="composer-row" [class.has-chip]="isImageMode() || pendingAttachment()">
           <div class="composer" [class.is-image]="isImageMode()" [class.is-busy]="isLoading()">
-            <div class="relative">
+            <div class="composer-plus relative">
               <button
                 type="button"
                 (click)="toggleActionMenu($event)"
                 [disabled]="isLoading()"
                 aria-label="Meer acties"
                 [attr.aria-expanded]="showActionMenu()"
-                class="flex items-center justify-center w-8 h-8 ml-1 rounded-md text-gray-500 hover:text-ink hover:bg-paper-2 transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+                class="plus-btn flex items-center justify-center w-8 h-8 ml-1 rounded-md text-gray-500 hover:text-ink hover:bg-paper-2 transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <svg class="w-4 h-4 transition-transform duration-150" [class.rotate-45]="showActionMenu()" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                   <path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"/>
@@ -242,20 +257,22 @@ import { dayLabel, formatTime, isSameDay } from './chat-view';
               [disabled]="isLoading()"
               [placeholder]="pendingAttachment() ? 'Import this character (or add instructions)...' : 'Type a message...'"
               aria-label="Bericht"
-              class="min-w-0 flex-1 px-2 py-2 text-sm bg-transparent border-none outline-none placeholder:text-gray-400 disabled:cursor-not-allowed"
+              class="composer-input min-w-0 flex-1 px-2 py-2 text-sm bg-transparent border-none outline-none placeholder:text-gray-400 disabled:cursor-not-allowed"
             />
           </div>
           <button
             type="button"
             (click)="sendMessage()"
             [disabled]="isLoading() || (!newMessage().trim() && !pendingAttachment())"
-            class="qm-btn qm-btn-primary"
-            [attr.aria-label]="isImageMode() ? 'Afbeelding genereren' : null"
+            class="send qm-btn qm-btn-primary"
+            [attr.aria-label]="isImageMode() ? 'Afbeelding genereren' : floating() ? 'Verstuur' : null"
           >
             @if (isLoading()) {
               <span class="qm-spinner qm-spinner-light" aria-hidden="true"></span>
             } @else if (isImageMode()) {
               <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg>
+            } @else if (floating()) {
+              <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
             } @else {
               Send
             }
@@ -264,11 +281,12 @@ import { dayLabel, formatTime, isSameDay } from './chat-view';
       </div>
 
       @if (error()) {
-        <div class="qm-alert flex items-center justify-between mx-3 mb-3 animate-slide-in" role="alert">
+        <div class="dock-alert qm-alert flex items-center justify-between animate-slide-in" role="alert">
           <span class="flex-1">{{ error() }}</span>
           <button type="button" (click)="clearError()" aria-label="Sluiten" class="ml-2 w-5 h-5 text-xl leading-none hover:opacity-70">&times;</button>
         </div>
       }
+      </div>
 
       <app-chat-history-panel
         [open]="historyOpen()"
@@ -376,6 +394,13 @@ import { dayLabel, formatTime, isSameDay } from './chat-view';
     .bubble.is-error .bubble-meta { color: inherit; }
     .time { font-family: var(--font-sans); font-weight: 500; letter-spacing: 0; opacity: 0.8; }
 
+    /* The messages, and under them the dock: the composer with a possible error below it. */
+    .messages { padding: 1rem; }
+    .dock-card { border-top: 1px solid var(--line); background: var(--paper); }
+    .dock-alert { margin: 0 0.75rem 0.75rem; }
+    .composer-row { display: flex; gap: 0.5rem; padding: 0.75rem; }
+    .composer-row.has-chip { padding-top: 0.5rem; }
+
     .composer {
       position: relative;
       display: flex;
@@ -391,11 +416,121 @@ import { dayLabel, formatTime, isSameDay } from './chat-view';
     .composer.is-image { border-color: var(--color-secondary); }
     .composer.is-image:focus-within { box-shadow: 0 0 0 3px rgba(118, 75, 162, 0.22); }
     .composer.is-busy { background: var(--paper-2); }
+
+    /*
+     * Floating: the chat fills a whole panel on a phone. No header and no footer; the two
+     * header buttons and the composer float over the messages instead.
+     */
+    .is-floating .chat-head {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 6;
+      justify-content: space-between;
+      padding: 0.75rem;
+      background: none;
+      box-shadow: none;
+      pointer-events: none;
+    }
+    .is-floating .head-btn {
+      width: 2.75rem;
+      height: 2.75rem;
+      border-radius: 50%;
+      color: #4d4339;
+      background: #fff;
+      border: 1px solid var(--line);
+      box-shadow: 0 1px 2px rgba(30, 20, 60, 0.08), 0 8px 20px -8px rgba(30, 16, 70, 0.4);
+      pointer-events: auto;
+    }
+    .is-floating .head-btn:hover { background: var(--paper-2); }
+
+    .is-floating .messages {
+      padding-top: 4.25rem;
+      padding-bottom: calc(var(--dock-height, 6.75rem) + 1.75rem + env(safe-area-inset-bottom, 0px));
+    }
+    .fade {
+      position: absolute;
+      left: 0;
+      right: 0;
+      z-index: 5;
+      pointer-events: none;
+    }
+    .fade-top {
+      top: 0;
+      height: 4.75rem;
+      background: linear-gradient(to top, rgb(248 242 230 / 0), rgb(248 242 230 / 0.95) 70%);
+    }
+    .fade-bottom {
+      bottom: 0;
+      height: calc(var(--dock-height, 6.75rem) + 3rem + env(safe-area-inset-bottom, 0px));
+      background: linear-gradient(to bottom, rgb(248 242 230 / 0), rgb(248 242 230 / 0.95) 55%);
+    }
+
+    .is-floating .dock {
+      position: absolute;
+      left: 0.75rem;
+      right: 0.75rem;
+      bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+      z-index: 6;
+      display: flex;
+      flex-direction: column-reverse;
+      gap: 0.5rem;
+    }
+    .is-floating .dock-alert { margin: 0; box-shadow: 0 8px 20px -8px rgba(30, 16, 70, 0.4); }
+    .is-floating .dock-card {
+      border: 1px solid var(--line);
+      border-radius: 1.5rem;
+      background: #fff;
+      box-shadow: 0 1px 2px rgba(30, 20, 60, 0.08), 0 12px 30px -10px rgba(30, 16, 70, 0.4);
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .is-floating .dock-card:focus-within {
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.22), 0 12px 30px -10px rgba(30, 16, 70, 0.4);
+    }
+    .is-floating .dock-card.is-image { border-color: var(--color-secondary); }
+    .is-floating .dock-card.is-busy { background: var(--paper-2); }
+
+    /* The field on top, the two round buttons in the corners below it. */
+    .is-floating .composer-row {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      grid-template-areas: "input input input" "plus . send";
+      row-gap: 0.25rem;
+      padding: 0.5rem;
+    }
+    .is-floating .composer { display: contents; }
+    .is-floating .composer-plus { grid-area: plus; }
+    /* 16px keeps iOS from zooming in when the field takes the focus. */
+    .is-floating .composer-input { grid-area: input; padding: 0.55rem 0.5rem; font-size: 1rem; line-height: 1.375rem; }
+    .is-floating .plus-btn {
+      width: 2.75rem;
+      height: 2.75rem;
+      margin: 0;
+      border-radius: 50%;
+      color: #5f5347;
+      background: var(--paper-2);
+      border: 1px solid var(--line);
+    }
+    .is-floating .send {
+      grid-area: send;
+      width: 2.75rem;
+      min-height: 2.75rem;
+      padding: 0;
+      border-radius: 50%;
+    }
   `]
 })
 export class ChatComponent {
   // Optional character input - when provided, enables character-aware mode
   character = input<DndCharacter | null>(null);
+
+  /**
+   * The chat fills a panel of its own on a phone: no header and no footer, the header
+   * buttons and the composer float over the messages.
+   */
+  floating = input(false);
 
   /** The user asks for the version history (from a finished character update). */
   viewVersions = output<void>();
@@ -418,6 +553,11 @@ export class ChatComponent {
   messagesContainer = viewChild<ElementRef<HTMLDivElement>>('messagesContainer');
   messageInput = viewChild<ElementRef<HTMLInputElement>>('messageInput');
   pdfFileInput = viewChild<ElementRef<HTMLInputElement>>('pdfFileInput');
+  private dock = viewChild<ElementRef<HTMLElement>>('dock');
+  /** Height of the floating composer, so the last message can scroll clear of it. */
+  dockHeight = signal(108);
+  /** The newest message is in view: keep it there when the room for the messages changes. */
+  private stickToBottom = true;
   isImageMode = computed(() => this.chatService.isImageGenerationRequest(this.newMessage()));
 
   lightboxUrl = signal<string | null>(null);
@@ -474,6 +614,32 @@ export class ChatComponent {
         });
       });
     });
+
+    // A keyboard that opens, or a composer that grows, takes room away from the messages:
+    // whoever was reading the newest message keeps it in view.
+    effect(onCleanup => {
+      const container = this.messagesContainer()?.nativeElement;
+      const dock = this.dock()?.nativeElement;
+      if (!container || !dock || typeof ResizeObserver === 'undefined') {
+        return;
+      }
+      const onScroll = () => {
+        this.stickToBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 48;
+      };
+      const observer = new ResizeObserver(() => {
+        this.dockHeight.set(Math.round(dock.offsetHeight));
+        if (this.stickToBottom) {
+          this.scrollToBottom(container);
+        }
+      });
+      container.addEventListener('scroll', onScroll, { passive: true });
+      observer.observe(container);
+      observer.observe(dock);
+      onCleanup(() => {
+        container.removeEventListener('scroll', onScroll);
+        observer.disconnect();
+      });
+    });
   }
 
   /** Send a PDF right away, as if the user attached it and pressed send. */
@@ -508,7 +674,8 @@ export class ChatComponent {
     if (!input) {
       return;
     }
-    input.nativeElement.focus();
+    // The chat can be the panel that is off screen: getting there is the caller's job.
+    input.nativeElement.focus({ preventScroll: true });
   }
 
   appendToMessage(text: string): void {

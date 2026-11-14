@@ -1,4 +1,4 @@
-import { Component, inject, ChangeDetectionStrategy } from '@angular/core';
+import { Component, computed, inject, ChangeDetectionStrategy } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink, RouterOutlet } from '@angular/router';
 import { CampaignContextService } from './campaign/campaign-context.service';
@@ -6,6 +6,7 @@ import { NavRailComponent } from './layout/nav-rail/nav-rail.component';
 import { MobileTopbarComponent } from './layout/mobile-topbar/mobile-topbar.component';
 import { AuthService } from './auth/auth.service';
 import { LogoComponent } from './shared/components/logo.component';
+import { PanelSwitcherService } from './layout/panel-switcher/panel-switcher.service';
 
 @Component({
   selector: 'app-shell',
@@ -19,7 +20,7 @@ import { LogoComponent } from './shared/components/logo.component';
         <app-mobile-topbar />
       }
 
-      <div [class]="authService.isAuthenticated() ? 'sm:ml-20 min-h-dvh p-3 pt-[4.5rem] sm:p-6' : 'min-h-dvh p-3 sm:p-6'">
+      <div [class]="contentClass()">
         @if (!authService.isAuthenticated()) {
           <!-- A shared character is the first thing a visitor sees of the app: say where they are. -->
           <header class="max-w-5xl mx-auto mb-4 flex items-center justify-between gap-3">
@@ -41,6 +42,13 @@ export class AppShellComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly campaignContext = inject(CampaignContextService);
   readonly authService = inject(AuthService);
+  private readonly panels = inject(PanelSwitcherService);
+
+  /** Room for the nav rail and the top bar; a page with panels runs edge to edge below the bar. */
+  readonly contentClass = computed(() => {
+    if (!this.authService.isAuthenticated()) return 'min-h-dvh p-3 sm:p-6';
+    return this.panels.enabled() ? 'sm:ml-20 pt-14 sm:pt-0' : 'sm:ml-20 min-h-dvh p-3 pt-[4.5rem] sm:p-6';
+  });
 
   constructor() {
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(params => {

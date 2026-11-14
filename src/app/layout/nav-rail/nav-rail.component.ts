@@ -28,6 +28,8 @@ import { LogoComponent } from '../../shared/components/logo.component';
       background: transparent;
       border: none;
       color: white;
+      /* Stays in the top bar while a keyboard pushes the visible part of a panel page down. */
+      transform: translateY(var(--vv-top, 0px));
     }
     .hamburger-btn:hover { background: rgba(255, 255, 255, 0.15); }
 

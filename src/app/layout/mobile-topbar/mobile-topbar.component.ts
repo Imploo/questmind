@@ -4,10 +4,12 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { filter, map, startWith } from 'rxjs/operators';
 import { CampaignSelectorComponent } from '../../campaign/campaign-selector.component';
 import { LogoComponent } from '../../shared/components/logo.component';
+import { PanelSwitcherComponent } from '../panel-switcher/panel-switcher.component';
+import { PanelSwitcherService } from '../panel-switcher/panel-switcher.service';
 
 @Component({
   selector: 'app-mobile-topbar',
-  imports: [CampaignSelectorComponent, LogoComponent],
+  imports: [CampaignSelectorComponent, LogoComponent, PanelSwitcherComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [`
     :host {
@@ -26,6 +28,8 @@ import { LogoComponent } from '../../shared/components/logo.component';
       backdrop-filter: blur(14px);
       -webkit-backdrop-filter: blur(14px);
       border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+      /* A page with panels sets this while a keyboard pushes the visible part down. */
+      transform: translateY(var(--vv-top, 0px));
     }
 
     @media (min-width: 640px) {
@@ -52,7 +56,10 @@ import { LogoComponent } from '../../shared/components/logo.component';
     }
   `],
   template: `
-    @if (onCampaignRoute()) {
+    @if (panels.enabled()) {
+      <!-- A character page with a chat: the bar switches between its two panels. -->
+      <app-panel-switcher />
+    } @else if (onCampaignRoute()) {
       <div class="topbar-content">
         <app-campaign-selector [isCollapsed]="false" />
       </div>
@@ -63,6 +70,7 @@ import { LogoComponent } from '../../shared/components/logo.component';
 })
 export class MobileTopbarComponent {
   private readonly router = inject(Router);
+  readonly panels = inject(PanelSwitcherService);
 
   private readonly currentUrl = toSignal(
     this.router.events.pipe(

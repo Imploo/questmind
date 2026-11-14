@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed, effect, linkedSignal, viewChild, ChangeDetectionStrategy, DestroyRef } from '@angular/core';
+import { Component, inject, signal, computed, effect, linkedSignal, untracked, viewChild, ChangeDetectionStrategy, DestroyRef, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { AuthService } from '../../../../auth/auth.service';
@@ -19,7 +19,9 @@ import { CharacterSheetComponent, SpellResolvedEvent, FeatureResolvedEvent, Uses
 import { ChatComponent } from '../../../../chat/chat.component';
 import { CharacterDraftPreviewComponent } from '../../components/character-draft-preview/character-draft-preview.component';
 import { CharacterVersionHistoryComponent } from '../../components/character-version-history/character-version-history.component';
-import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.component';
+import { PanelSwitcherComponent } from '../../../../layout/panel-switcher/panel-switcher.component';
+import { PagePanel, PanelSwitcherService } from '../../../../layout/panel-switcher/panel-switcher.service';
+import { trackVisualViewport } from '../../../../shared/utils/visual-viewport';
 
 @Component({
   selector: 'app-character-builder-page',
@@ -35,13 +37,24 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
     ChatComponent,
     CharacterDraftPreviewComponent,
     CharacterVersionHistoryComponent,
-    ChatDrawerComponent,
+    PanelSwitcherComponent,
   ],
   template: `
-    <div class="flex w-full items-start gap-6">
+    <!--
+      Wide, the chat stands beside the sheet. Narrow, each gets a panel as high as the
+      screen and you swipe between the two, or tap a tab of the switcher in the top bar.
+    -->
+    <div class="page" [class.is-panels]="panelsMode()">
+      @if (panelsMode()) {
+        <!-- From 640px up there is no top bar: the page brings its own switcher. -->
+        <div class="switcher-bar">
+          <app-panel-switcher />
+        </div>
+      }
+      <div class="page-panels" #panels>
       <!-- Character sheet -->
-      <div class="min-w-0 flex-1" [class.pb-24]="isNarrow() && isOwner()">
-        <div class="max-w-5xl mx-auto flex flex-col gap-4">
+      <div class="sheet-panel" [attr.inert]="panelsMode() && activePanel() !== 'sheet' ? '' : null">
+        <div class="sheet-column max-w-5xl mx-auto flex flex-col gap-4">
           <!-- Back to the character list. The list is behind sign-in, so a signed-out visitor gets no link. -->
           @if (isAuthenticated()) {
             <nav aria-label="Breadcrumb" class="-mb-1 flex">
@@ -54,7 +67,7 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
             </nav>
           }
           @if (isDraft()) {
-            <div class="sticky top-[4.25rem] sm:top-4 z-10">
+            <div class="sticky z-10" [class]="panelsMode() ? 'top-0' : 'top-[4.25rem] sm:top-4'">
               <app-character-draft-preview
                   [loading]="isCommitting()"
                   [abilityScoreWarnings]="latestVersion()?.abilityScoreWarnings ?? []"
@@ -113,26 +126,19 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
 
       <!-- Chat panel (owner only) -->
       @if (isOwner()) {
-        @if (isNarrow()) {
-          <app-chat-drawer
-              #chatDrawer
-              [character]="liveCharacter()"
-              (viewVersions)="showHistory.set(true)"
-          ></app-chat-drawer>
-        } @else {
-          <aside class="w-1/3 max-w-[26rem] shrink-0 sticky top-6 h-[calc(100dvh-3rem)]" aria-label="Chat">
-            <div class="qm-panel h-full overflow-hidden !p-0">
-              @if (latestVersion()) {
-                <app-chat #chat [character]="liveCharacter()!" (viewVersions)="showHistory.set(true)"></app-chat>
-              } @else {
-                <div class="flex h-full items-center justify-center text-sm qm-muted">
-                  Select a character to chat
-                </div>
-              }
-            </div>
-          </aside>
-        }
+        <aside class="chat-panel" aria-label="Chat" [attr.inert]="panelsMode() && activePanel() !== 'chat' ? '' : null">
+          <div class="chat-frame">
+            @if (latestVersion()) {
+              <app-chat [character]="liveCharacter()!" [floating]="panelsMode()" (viewVersions)="showHistory.set(true)"></app-chat>
+            } @else {
+              <div class="flex h-full items-center justify-center text-sm qm-muted">
+                Select a character to chat
+              </div>
+            }
+          </div>
+        </aside>
       }
+      </div>
     </div>
 
     @if (isOwner() && showHistory() && selectedCharacterId()) {
@@ -143,7 +149,99 @@ import { ChatDrawerComponent } from '../../components/chat-drawer/chat-drawer.co
         (restore)="restoreVersion($event)"
       ></app-character-version-history>
     }
-  `
+  `,
+  styles: [`
+    :host { display: block; }
+
+    .page-panels {
+      display: flex;
+      width: 100%;
+      align-items: flex-start;
+      gap: 1.5rem;
+    }
+    .sheet-panel { min-width: 0; flex: 1; }
+    .chat-panel {
+      position: sticky;
+      top: 1.5rem;
+      flex-shrink: 0;
+      width: 33.333%;
+      max-width: 26rem;
+      height: calc(100dvh - 3rem);
+    }
+    .chat-frame {
+      height: 100%;
+      overflow: hidden;
+      color: var(--ink);
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: var(--panel-shadow);
+    }
+
+    /*
+     * Two panels, each as high as what is left of the screen. The height follows the
+     * visible part of the page, so an open keyboard shrinks the panels instead of
+     * covering the composer. No transform or fixed position here: the dialogs of the
+     * sheet have to keep stacking above the top bar.
+     */
+    .page.is-panels {
+      position: relative;
+      top: var(--vv-top, 0px);
+      display: flex;
+      flex-direction: column;
+      height: calc(var(--vv-height, 100dvh) - 3.5rem);
+    }
+    .switcher-bar { display: none; }
+    .is-panels .page-panels {
+      flex: 1;
+      min-height: 0;
+      align-items: stretch;
+      gap: 0;
+      overflow-x: auto;
+      overflow-y: hidden;
+      overscroll-behavior-x: contain;
+      scroll-snap-type: x mandatory;
+      scrollbar-width: none;
+    }
+    .is-panels .page-panels::-webkit-scrollbar { display: none; }
+    .is-panels .sheet-panel,
+    .is-panels .chat-panel {
+      position: static;
+      flex: 0 0 100%;
+      width: auto;
+      max-width: none;
+      height: auto;
+      min-width: 0;
+      scroll-snap-align: start;
+      scroll-snap-stop: always;
+    }
+    .is-panels .sheet-panel {
+      overflow-y: auto;
+      overscroll-behavior-y: contain;
+    }
+    /* The room around the sheet scrolls along, so the draft banner can stick to the very top. */
+    .is-panels .sheet-column {
+      padding: 0.75rem 0.75rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+    }
+    .is-panels .chat-frame {
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
+    }
+
+    @media (min-width: 640px) {
+      .page.is-panels { height: var(--vv-height, 100dvh); }
+      .is-panels .switcher-bar {
+        display: flex;
+        flex-shrink: 0;
+        justify-content: center;
+        padding: 6px 0.75rem;
+        background: linear-gradient(90deg, rgba(36, 24, 92, 0.5), rgba(58, 28, 104, 0.56));
+        border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+      }
+      .is-panels .sheet-column { padding: 1.5rem; }
+    }
+  `]
 })
 export class CharacterBuilderPageComponent {
   private route = inject(ActivatedRoute);
@@ -157,6 +255,7 @@ export class CharacterBuilderPageComponent {
   private characterImportService = inject(CharacterImportService);
   private toastService = inject(ToastService);
   private destroyRef = inject(DestroyRef);
+  private panelSwitcher = inject(PanelSwitcherService);
 
   // State
   characters = signal<Character[]>([]);
@@ -210,8 +309,13 @@ export class CharacterBuilderPageComponent {
   exportingPdf = signal(false);
   versions = signal<CharacterVersion[]>([]);
   chat = viewChild(ChatComponent);
-  chatDrawer = viewChild<ChatDrawerComponent>('chatDrawer');
+  private panels = viewChild<ElementRef<HTMLElement>>('panels');
   isNarrow = signal<boolean>(false);
+  /** Narrow and with a chat: the sheet and the chat are two panels you swipe between. */
+  panelsMode = computed(() => this.isNarrow() && this.isOwner());
+  activePanel = this.panelSwitcher.active;
+  /** Someone started typing on the sheet: the chat takes the focus once it is on screen. */
+  private focusChatOnArrival = false;
   isCommitting = signal<boolean>(false);
 
   isGenerating = computed(() => this.selectedCharacter()?.isGenerating === true);
@@ -271,10 +375,57 @@ export class CharacterBuilderPageComponent {
     // the freshly created character as soon as that chat is on screen.
     effect(() => {
       const characterId = this.selectedCharacterId();
-      const chat = this.isNarrow() ? this.chatDrawer() : this.chat();
+      const chat = this.chat();
       if (!characterId || !chat || !this.isOwner() || !this.latestVersion()) return;
       // Wait a tick, so the chat has been told which character it is talking about.
       setTimeout(() => this.sendPendingPdf(characterId));
+    });
+
+    // The panels: report the swipe to the switcher, follow its tabs, and size with the
+    // visible part of the page so the keyboard does not cover the chat.
+    effect(onCleanup => {
+      const panels = this.panels()?.nativeElement;
+      if (!this.panelsMode() || !panels) return;
+
+      this.panelSwitcher.enabled.set(true);
+      const stopViewport = trackVisualViewport();
+      const onScroll = () =>
+        this.panelSwitcher.setProgress(panels.clientWidth ? panels.scrollLeft / panels.clientWidth : 0);
+      panels.addEventListener('scroll', onScroll, { passive: true });
+      const requests = this.panelSwitcher.requested.subscribe(panel => this.showPanel(panel));
+
+      onCleanup(() => {
+        requests.unsubscribe();
+        panels.removeEventListener('scroll', onScroll);
+        stopViewport();
+        this.panelSwitcher.reset();
+      });
+    });
+
+    // Leaving the chat puts the keyboard away with it; arriving there by typing takes the focus.
+    effect(() => {
+      const panel = this.activePanel();
+      if (!untracked(() => this.panelsMode())) return;
+      if (panel === 'sheet') {
+        const focused = document.activeElement;
+        if (focused instanceof HTMLElement && focused.closest('.chat-panel')) {
+          focused.blur();
+        }
+      } else if (this.focusChatOnArrival) {
+        this.focusChatOnArrival = false;
+        // After the render: until then the chat panel is still inert and refuses the focus.
+        setTimeout(() => this.chat()?.focusInput());
+      }
+    });
+
+    // An answer that comes in while the sheet is on screen lights the dot on the Chat tab.
+    let wasBusy = false;
+    effect(() => {
+      const busy = this.chatService.isBusy();
+      if (wasBusy && !busy && untracked(() => this.panelsMode() && this.activePanel() === 'sheet')) {
+        this.panelSwitcher.unread.set(true);
+      }
+      wasBusy = busy;
     });
 
     // Clean up service state on destroy
@@ -291,13 +442,24 @@ export class CharacterBuilderPageComponent {
   }
 
   private sendPendingPdf(characterId: string): void {
-    const chat = this.isNarrow() ? this.chatDrawer() : this.chat();
+    const chat = this.chat();
     if (!chat || this.selectedCharacterId() !== characterId) return;
     const pdf = this.characterImportService.takePdf(characterId);
-    // The drawer reports false while its chat is not rendered yet: keep the PDF for the next try.
-    if (pdf && chat.sendAttachment(pdf) === false) {
-      this.characterImportService.queuePdf(characterId, pdf);
-    }
+    if (!pdf) return;
+    chat.sendAttachment(pdf);
+    // The import happens in the chat: show it.
+    this.showPanel('chat');
+  }
+
+  /** Scrolls to a panel; without panels there is nothing to scroll. */
+  private showPanel(panel: PagePanel): void {
+    const panels = this.panels()?.nativeElement;
+    if (!panels || !this.panelsMode()) return;
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    panels.scrollTo({
+      left: panel === 'chat' ? panels.clientWidth : 0,
+      behavior: reducedMotion ? 'auto' : 'smooth',
+    });
   }
 
   async loadCharacters() {
@@ -423,22 +585,18 @@ export class CharacterBuilderPageComponent {
       return;
     }
 
-    if (this.isNarrow()) {
-      const drawer = this.chatDrawer();
-      if (drawer) {
-        drawer.expand();
-        drawer.focusChat();
-      }
-      return;
-    }
-
     const chat = this.chat();
     if (!chat) {
       return;
     }
 
     event.preventDefault();
-    chat.focusInput();
+    if (this.panelsMode() && this.activePanel() !== 'chat') {
+      this.focusChatOnArrival = true;
+      this.showPanel('chat');
+    } else {
+      chat.focusInput();
+    }
     chat.appendToMessage(key);
   }
 
