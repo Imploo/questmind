@@ -40,6 +40,10 @@ ${JSON.stringify(characterJsonSchema)}
 - Stuur NOOIT description in features.
 - Stuur de volledige featuresAndTraits array mee.
 - Source waarden: "Race", "Class", "Subclass", "Background", "Feat", "Other"
+- Features met een keuze uit opties: leg vast wat er gekozen is, met de exacte Engelse namen uit de regels. De beschrijving wordt later op naam opgezocht en toont dan alleen de gekozen opties.
+  - Eén optie gekozen (Fighting Style, Pact Boon, Hunter's Prey, ...): zet de keuze in de naam, bijv. "Fighting Style: Defense" of "Pact Boon: Pact of the Tome".
+  - Meerdere opties gekozen (Metamagic, Eldritch Invocations, Maneuvers, ...): houd de feature zelf en voeg elke gekozen optie toe als eigen feature met dezelfde source, bijv. "Metamagic", "Quickened Spell" en "Twinned Spell".
+  - Is niet bekend welke opties gekozen zijn, verzin er dan geen: laat alleen de feature zelf staan.
 
 ## Beperkt gebruik (uses)
 
