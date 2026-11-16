@@ -125,4 +125,44 @@ describe('resolveSpell', () => {
       prompt: expect.stringContaining('"Fireball" (level 3 spell (Evocation))'),
     }));
   });
+
+  // ── Prompt ──
+
+  const promptFor = async (data: Record<string, unknown>): Promise<string> => {
+    mockResolve.mockResolvedValueOnce({ description: 'x', usage: 'u' });
+    await resolveSpellHandler(makeRequest({ data: { characterId: 'char-1', ...data } }));
+    return mockResolve.mock.calls[0][0].prompt as string;
+  };
+  const wizard = { characterClass: 'Wizard', characterRace: 'High Elf', characterLevel: 5 };
+
+  it('names the character that casts the spell', async () => {
+    const prompt = await promptFor({ spellName: 'Fireball', spellLevel: 3, ...wizard });
+
+    expect(prompt).toContain('as cast by a level 5 High Elf Wizard');
+  });
+
+  it('leaves out "At Higher Levels" when the character has no higher slot', async () => {
+    const prompt = await promptFor({ spellName: 'Fireball', spellLevel: 3, maxSpellSlotLevel: 3, ...wizard });
+
+    expect(prompt).toContain('Leave out the "At Higher Levels." section');
+  });
+
+  it('keeps "At Higher Levels" when the character can cast the spell with a higher slot', async () => {
+    const prompt = await promptFor({ spellName: 'Magic Missile', spellLevel: 1, maxSpellSlotLevel: 3, ...wizard });
+
+    expect(prompt).toContain('Include the "At Higher Levels." section if the spell has one; the character\'s highest spell slot is level 3.');
+  });
+
+  it('asks for a cantrip at the character\'s level, without the higher tiers', async () => {
+    const prompt = await promptFor({ spellName: 'Fire Bolt', spellLevel: 0, maxSpellSlotLevel: 3, ...wizard });
+
+    expect(prompt).toContain('give its damage or effect at level 5 and leave out the higher tiers');
+  });
+
+  it('keeps "At Higher Levels" when nothing is known about the character', async () => {
+    const prompt = await promptFor({ spellName: 'Fireball', spellLevel: 3 });
+
+    expect(prompt).toContain('"Fireball" (level 3 spell).');
+    expect(prompt).toContain('Include the "At Higher Levels." section if the spell has one.');
+  });
 });

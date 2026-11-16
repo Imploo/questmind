@@ -1,5 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
+import { tailorToLevel } from './level-tailoring';
+import { ResolutionContext } from './resolution-context';
 
 export interface SpellDetails {
   description: string;
@@ -32,8 +34,8 @@ interface SpellJsonEntry {
   fields: SpellJsonFields;
 }
 
-let cache: Map<string, SpellDetails> | null = null;
-let pending: Promise<Map<string, SpellDetails>> | null = null;
+let cache: Map<string, SpellJsonFields> | null = null;
+let pending: Promise<Map<string, SpellJsonFields>> | null = null;
 
 function buildComponents(f: SpellJsonFields): string {
   const parts: string[] = [];
@@ -45,8 +47,22 @@ function buildComponents(f: SpellJsonFields): string {
   return parts.join(', ') || 'None';
 }
 
-function buildDescription(f: SpellJsonFields): string {
-  return f.higher_level ? `${f.desc}\n\nAt Higher Levels. ${f.higher_level}` : f.desc;
+/** What the spell does beyond its base text, as far as this character can make use of it. */
+function higherLevelText(f: SpellJsonFields, context?: ResolutionContext): string {
+  if (!f.higher_level) return '';
+  if (!context) return f.higher_level;
+  // A cantrip grows with the character's level.
+  if (f.level === 0) return tailorToLevel(f.higher_level, context.level);
+  // Other spells grow with the slot they are cast with, which takes a slot above the spell's own level.
+  const canUpcast = context.maxSpellSlotLevel === undefined || f.level === undefined || context.maxSpellSlotLevel > f.level;
+  return canUpcast ? f.higher_level : '';
+}
+
+function buildDescription(f: SpellJsonFields, context?: ResolutionContext): string {
+  // Only a cantrip's own text talks about character levels; in other spells "5th level" is a spell or slot level.
+  const desc = context && f.level === 0 ? tailorToLevel(f.desc, context.level) || f.desc : f.desc;
+  const higher = higherLevelText(f, context);
+  return higher ? `${desc}\n\nAt Higher Levels. ${higher}` : desc;
 }
 
 function buildUsage(f: SpellJsonFields): string {
@@ -61,20 +77,14 @@ function buildUsage(f: SpellJsonFields): string {
   return lines.join('\n');
 }
 
-async function loadDatabase(http: HttpClient): Promise<Map<string, SpellDetails>> {
+async function loadDatabase(http: HttpClient): Promise<Map<string, SpellJsonFields>> {
   if (cache) return cache;
   if (pending) return pending;
 
   pending = firstValueFrom(http.get<SpellJsonEntry[]>('/Spell.json')).then(entries => {
-    const map = new Map<string, SpellDetails>();
+    const map = new Map<string, SpellJsonFields>();
     for (const entry of entries) {
-      map.set(entry.fields.name.toLowerCase(), {
-        description: buildDescription(entry.fields),
-        usage: buildUsage(entry.fields),
-        level: entry.fields.level,
-        school: entry.fields.school,
-        concentration: entry.fields.concentration === true,
-      });
+      map.set(entry.fields.name.toLowerCase(), entry.fields);
     }
     cache = map;
     pending = null;
@@ -84,7 +94,23 @@ async function loadDatabase(http: HttpClient): Promise<Map<string, SpellDetails>
   return pending;
 }
 
-export async function lookupSpellFromJson(http: HttpClient, name: string): Promise<SpellDetails | null> {
-  const db = await loadDatabase(http);
-  return db.get(name.toLowerCase()) ?? null;
+/**
+ * The spell as the bundled data has it. With a `context`, the description leaves out
+ * what the character cannot use yet: cantrip damage of higher levels, and "At Higher
+ * Levels" when it has no slot above the spell's level.
+ */
+export async function lookupSpellFromJson(
+  http: HttpClient,
+  name: string,
+  context?: ResolutionContext
+): Promise<SpellDetails | null> {
+  const fields = (await loadDatabase(http)).get(name.toLowerCase());
+  if (!fields) return null;
+  return {
+    description: buildDescription(fields, context),
+    usage: buildUsage(fields),
+    level: fields.level,
+    school: fields.school,
+    concentration: fields.concentration === true,
+  };
 }

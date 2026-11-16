@@ -641,7 +641,7 @@ export class CharacterBuilderPageComponent {
     const charId = this.selectedCharacterId();
     const versionId = this.latestVersion()?.id;
     if (charId && versionId) {
-      await this.characterVersionService.patchSpellDetails(charId, versionId, event.spellName, event.description, event.usage);
+      await this.characterVersionService.patchSpellDetails(charId, versionId, event.spellName, event);
     }
   }
 
@@ -716,7 +716,7 @@ export class CharacterBuilderPageComponent {
     const charId = this.selectedCharacterId();
     const versionId = this.latestVersion()?.id;
     if (charId && versionId) {
-      await this.characterVersionService.patchFeatureDescription(charId, versionId, event.featureName, event.description);
+      await this.characterVersionService.patchFeatureDescription(charId, versionId, event.featureName, event);
     }
   }
 

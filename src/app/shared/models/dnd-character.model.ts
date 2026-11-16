@@ -64,6 +64,8 @@ export interface Spell {
   name: string;
   description?: string;
   usage?: string;
+  /** Key of the class, race and level the description was looked up for (see resolutionKey). */
+  resolvedFor?: string;
   level?: number;
   school?: string;
   /** Uses of its own, apart from spell slots (racial and feat spells). */
@@ -73,6 +75,8 @@ export interface Spell {
 export interface CharacterFeature {
   name: string;
   description: string;
+  /** Key of the class, race and level the description was looked up for (see resolutionKey). */
+  resolvedFor?: string;
   source?: string;
   uses?: LimitedUses;
 }
