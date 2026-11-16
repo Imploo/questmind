@@ -12,6 +12,7 @@ import {
   TEXT_FIELDS,
 } from '../pdf/character-sheet-template';
 import { buildSheetFieldValues, SheetFeature, SheetSpell } from '../pdf/character-sheet-field-values';
+import { markdownToPdfContent } from '../pdf/markdown-content';
 import * as logger from '../logger';
 
 /** A multi-line field whose text did not fit, so the appendix repeats it in full. */
@@ -308,7 +309,7 @@ export class PdfGeneratorService {
       stack.push({ stack: usageLines.map(line => boldLabel(line)), style: 'usage', margin: [0, 2, 0, 2] });
     }
     stack.push(description
-      ? { text: toPlainText(description), style: 'body' }
+      ? { stack: markdownToPdfContent(description), style: 'body' }
       : { text: 'No description available.', style: 'missing' });
     return { stack, margin: [0, 0, 0, 10], unbreakable: !description || description.length < 600 };
   }
@@ -434,20 +435,4 @@ function boldLabel(line: string): Content {
   const idx = line.indexOf(':');
   if (idx <= 0) return { text: line };
   return { text: [{ text: line.slice(0, idx + 1), bold: true }, line.slice(idx + 1)] };
-}
-
-/** Strip the light markdown used in the SRD data and AI output. */
-export function toPlainText(markdown: string): string {
-  return markdown
-    .replace(/\r\n/g, '\n')
-    .replace(/^#{1,6}\s+/gm, '')
-    .replace(/^[ \t]*\|?[ \t]*:?-{3,}:?[ \t]*(\|[ \t]*:?-{3,}:?[ \t]*)*\|?[ \t]*(\n|$)/gm, '')
-    .replace(/^[ \t]*\|(.*)\|[ \t]*$/gm, (_, row: string) => row.split('|').map(cell => cell.trim()).join('   '))
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
-    .replace(/(\*\*|__)(.+?)\1/g, '$2')
-    .replace(/(^|[^*\w])\*(?!\s)([^*\n]+?)\*(?!\w)/g, '$1$2')
-    .replace(/(^|[^_\w])_(?!\s)([^_\n]+?)_(?!\w)/g, '$1$2')
-    .replace(/^[ \t]*[*-][ \t]+/gm, '• ')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
 }

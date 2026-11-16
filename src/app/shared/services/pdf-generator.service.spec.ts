@@ -5,7 +5,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { readFileSync } from 'node:fs';
 import { PDFArray, PDFButton, PDFDict, PDFDocument, PDFName, PDFStream, PDFString } from 'pdf-lib';
-import { PdfGeneratorService, qrModulesPath, toPlainText } from './pdf-generator.service';
+import { PdfGeneratorService, qrModulesPath } from './pdf-generator.service';
 import { DndCharacter } from '../models/dnd-character.model';
 
 function createCharacter(): DndCharacter {
@@ -137,7 +137,9 @@ describe('PdfGeneratorService', () => {
       expect(doc.pageSize).toBe('LETTER');
       expect(text).toContain('Features & Traits');
       expect(text).toContain('Arcane Recovery');
-      expect(text).toContain('Once per day, recover spell slots.');
+      // The description keeps its markdown: the bold word is a piece of its own.
+      expect(text.join('')).toContain('Once per day, recover spell slots.');
+      expect(JSON.stringify(doc.content)).toContain('{"text":"recover","bold":true}');
       expect(text).toContain('Mystery Trait');
       expect(text).toContain('No description available.');
     });
@@ -291,17 +293,6 @@ describe('PdfGeneratorService', () => {
     it('draws one rectangle per run of dark modules in a row', () => {
       const dark = ['##.', '..#', '...'];
       expect(qrModulesPath(3, (row, col) => dark[row][col] === '#')).toBe('M0 0h2v1h-2zM2 1h1v1h-1z');
-    });
-  });
-
-  describe('toPlainText', () => {
-    it('strips markdown emphasis, headings, links and table separators', () => {
-      const md = '## Title\n**Bold** and *italic* and _under_ [link](http://x)\n| a | b |\n|---|---|\n| 1 | 2 |\n- item';
-      expect(toPlainText(md)).toBe('Title\nBold and italic and under link\na   b\n1   2\n• item');
-    });
-
-    it('keeps dice expressions and asterisks inside words intact', () => {
-      expect(toPlainText('Deal 2d6 + 3 damage')).toBe('Deal 2d6 + 3 damage');
     });
   });
 });
