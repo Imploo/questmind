@@ -62,6 +62,23 @@ describe('characterJsonGeneratorPrompt', () => {
     expect(prompt).toContain('**summary**: één korte zin');
   });
 
+  it('asks for every damaging spell in the attack list, with its saving throw', () => {
+    const prompt = characterJsonGeneratorPrompt('2014');
+
+    expect(prompt).toContain('neem ELKE spell uit spellcasting.spells op die schade doet');
+    expect(prompt).toContain('{"ability": "dexterity", "dc": 15}');
+    expect(prompt).toContain('"save":{"type":"object"');
+  });
+
+  it('asks for every bonus action and for the reactions, without the opportunity attack', () => {
+    const prompt = characterJsonGeneratorPrompt('2014');
+
+    expect(prompt).toContain('ALLES wat het karakter met een bonus action kan doen, ook wat geen schade doet');
+    expect(prompt).toContain('Neem de Opportunity Attack NIET op');
+    expect(prompt).toContain('"bonusActions":{');
+    expect(prompt).toContain('"reactions":{');
+  });
+
   it('holds the character schema either way', () => {
     expect(characterJsonGeneratorPrompt('2014')).toContain('"featuresAndTraits"');
     expect(characterJsonGeneratorPrompt('2024')).toContain('"featuresAndTraits"');

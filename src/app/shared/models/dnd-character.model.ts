@@ -41,11 +41,28 @@ export interface Coins {
   pp: number;
 }
 
+/** A weapon attack, or anything else that deals damage: a spell, a breath weapon. */
 export interface WeaponAttack {
   name: string;
+  /** Attack roll bonus; absent when there is no attack roll. */
   bonus?: number;
   damage?: string;
   type?: string;
+  /** The saving throw the target makes instead of an attack roll (Lightning Bolt, a breath weapon). */
+  save?: {
+    ability: 'strength' | 'dexterity' | 'constitution' | 'intelligence' | 'wisdom' | 'charisma';
+    dc?: number;
+  };
+}
+
+/** Something the character can do with its bonus action or its reaction. */
+export interface CharacterAction {
+  /** The spell or feature that gives it. */
+  name: string;
+  /** What it does, in one short line. */
+  effect?: string;
+  /** "Spell", "Class", "Subclass", "Race", "Feat", "Item", "Other". */
+  source?: string;
 }
 
 export interface SpellSlot {
@@ -147,6 +164,9 @@ export interface DndCharacter {
 
   // Actions
   attacks: WeaponAttack[];
+  /** Absent on a character from before these lists were recorded. */
+  bonusActions?: CharacterAction[];
+  reactions?: CharacterAction[];
   spellcasting?: {
     ability?: 'strength' | 'dexterity' | 'constitution' | 'intelligence' | 'wisdom' | 'charisma';
     spellSaveDc?: number;

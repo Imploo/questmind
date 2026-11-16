@@ -87,6 +87,38 @@ Zet "rulesVersion" op "${rulesVersion}".
   - Uitzondering: een optie met een eigen beperkt gebruik (uses), zoals een invocation die je één keer per long rest gebruikt, blijft een eigen feature, zodat het gebruik bijgehouden kan worden.
   - Is niet bekend welke opties gekozen zijn, verzin er dan geen: laat alleen de naam van de feature staan.
 
+## Attacks
+
+"attacks" bevat alles waarmee het karakter schade doet aan een tegenstander: wapens, en ook elke spell die schade doet.
+
+- **Wapens**: name, bonus (de attack bonus), damage (bijv. "1d8 + 3") en type (bijv. "Slashing").
+- **Spells**: neem ELKE spell uit spellcasting.spells op die schade doet aan een creature. Ook cantrips, ook spells zonder attack roll, ook spells die een gebied raken of pas in latere beurten schade doen: Fire Bolt, Sacred Flame, Magic Missile, Thunderwave, Moonbeam, Heat Metal, Spiritual Weapon, Lightning Bolt, Fireball, Spirit Guardians, ... Een spell die geen schade doet (Bless, Cure Wounds, Hold Person) hoort er niet in.
+  - **name**: de naam van de spell, exact zoals in spellcasting.spells.
+  - Met een attack roll (Fire Bolt, Guiding Bolt, Spiritual Weapon): bonus = de spell attack bonus. Geen save.
+  - Met een saving throw (Sacred Flame, Moonbeam, Lightning Bolt): save = {"ability": de ability waarmee het doelwit de save maakt, "dc": de spell save DC}, bijv. {"ability": "dexterity", "dc": 15}. Laat bonus weg.
+  - Zonder attack roll en zonder save (Magic Missile), of extra schade bovenop een andere aanval (Hex, Hunter's Mark, Booming Blade): laat bonus en save allebei weg.
+  - **damage**: de dobbelstenen op het laagste level waarop de spell gecast kan worden (Lightning Bolt "8d6", Magic Missile "3 x 1d4 + 1", Hex "+1d6"). Bij een cantrip de dobbelstenen op het huidige character level (Fire Bolt op level 5: "2d10"). **type**: het damage type.
+- Een feature met een eigen save, zoals Breath Weapon, krijgt dezelfde vorm, met de DC van die feature.
+- Volgorde: eerst de wapens, dan de cantrips, dan de andere spells op oplopend spell level.
+- Houd de lijst bij elke update compleet, ook als het gesprek er niet over gaat: voeg een schadespell toe die er nog niet in staat, en haal een spell weg die het karakter niet meer heeft.
+
+## Bonus actions en reactions
+
+"bonusActions" en "reactions" zeggen wat het karakter met zijn bonus action en met zijn reaction kan doen. Ze staan los van attacks: wat schade doet en een bonus action of reaction kost, staat in beide.
+
+- **bonusActions**: ALLES wat het karakter met een bonus action kan doen, ook wat geen schade doet.
+  - Spells met een casting time van 1 bonus action: Healing Word, Misty Step, Spiritual Weapon, Hex, Shillelagh, ...
+  - Features en feats: Cunning Action, Second Wind, Rage, Bardic Inspiration, Flurry of Blows, Quickened Spell, Polearm Master, ...
+  - De aanval met het tweede wapen ("Off-hand attack", source "Other") wanneer het karakter twee light melee weapons draagt.
+  - Ook een spell of feature die pas in latere beurten een bonus action kost, zoals de straal van Moonbeam verplaatsen of Flaming Sphere laten rollen.
+- **reactions**: alles wat het karakter met een reaction kan doen door een spell, feature of feat: Shield, Counterspell, Hellish Rebuke, Absorb Elements, Uncanny Dodge, Deflect Missiles, Sentinel, ... Neem de Opportunity Attack NIET op: die heeft elk karakter.
+- Per item:
+  - **name**: de naam van de spell of feature, exact zoals in spellcasting.spells of featuresAndTraits. Bij een feature met een keuze uit opties de naam van de optie, bijv. "Quickened Spell".
+  - **source**: "Spell", "Class", "Subclass", "Race", "Feat", "Item" of "Other".
+  - **effect**: één korte regel in het Engels, maximaal 80 tekens, die zegt wat het doet, met de getallen voor het huidige level. Bijv. "Heal 1d4 + 3 to a creature within 60 ft", "Dash, Disengage or Hide", "+5 AC until the start of your next turn". Dit is de enige plek waar je zelf een korte omschrijving schrijft; het verbod op descriptions geldt hier niet.
+- Neem alleen op wat het karakter op zijn huidige level kan.
+- Stuur beide lijsten altijd mee, ook als ze leeg zijn ([]), en houd ze bij elke update compleet, ook als het gesprek er niet over gaat.
+
 ## Beperkt gebruik (uses)
 
 Features en spells die je maar een beperkt aantal keer kunt gebruiken voordat je rust, krijgen een uses-object: {"max": aantal, "recharge": "shortRest" | "longRest" | "manual"}.
@@ -123,6 +155,7 @@ Saving throws, skills, initiative, passiveWisdom, spellSaveDc en spellAttackBonu
   - spellSaveDc en spellAttack (bijv. magische items)
 - **spellcasting.ability**: de spellcasting ability ("intelligence", "wisdom" of "charisma"), zeker bij multiclass of een subclass als Eldritch Knight.
 - Jack of All Trades wordt herkend aan de feature-naam in featuresAndTraits.
+- Een spell in attacks wordt herkend aan zijn naam in spellcasting.spells: zijn bonus wordt gelijkgezet aan spellAttackBonus en zijn save.dc aan spellSaveDc.
 
 ## PDF Character Sheet Import
 

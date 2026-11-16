@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, input, output, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { CharacterFeature, Coins, DndCharacter, LimitedUses, Spell, SpellSlot, UsesRecharge } from '../../../../shared/models/dnd-character.model';
+import { CharacterAction, CharacterFeature, Coins, DndCharacter, LimitedUses, Spell, SpellSlot, UsesRecharge } from '../../../../shared/models/dnd-character.model';
 import { CharacterPlayState } from '../../../../shared/models/character-play-state.model';
 import {
   PlayStateResult,
@@ -47,6 +47,7 @@ import { CharacterActionsMenuComponent } from '../character-actions-menu/charact
 import { ImageLightboxComponent } from '../../../../chat/image-lightbox.component';
 import { CharacterEntryResolverService } from '../../../../core/services/character-entry-resolver.service';
 import { resolutionContextOf, resolutionKey } from '../../../../shared/utils/resolution-context';
+import { attackRollLabel, attackRollTitle } from '../../../../shared/utils/attack-roll';
 import { RulesVersion, rulesVersionOf } from '../../../../shared/models/rules-version';
 import { ToastService } from '../../../../shared/services/toast.service';
 import { copyText } from '../../../../shared/utils/clipboard';
@@ -107,6 +108,14 @@ export interface UsesChangeEvent {
 }
 
 /** A feature's or spell's uses tracker together with how many uses are spent. */
+/** A card with what the character can do with its bonus action or its reaction. */
+interface ActionCard {
+  title: string;
+  /** Shown when the list is empty. */
+  empty: string;
+  actions: CharacterAction[];
+}
+
 interface TrackerView {
   key: string;
   max: number;
@@ -421,11 +430,14 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
             <h3 class="qm-section-title">Attacks</h3>
             @if (character().attacks.length) {
               <ul class="space-y-2">
-                @for (attack of character().attacks; track attack.name) {
+                @for (attack of character().attacks; track $index) {
+                  @let roll = attackRollLabel(attack);
                   <li class="attack">
                     <span class="attack-name">{{ attack.name }}</span>
-                    <span class="attack-bonus" title="Attack bonus">{{ signed(attack.bonus ?? 0) }}</span>
-                    <span class="text-sm qm-muted min-w-0">{{ attack.damage }} {{ attack.type }}</span>
+                    @if (roll) {
+                      <span class="attack-bonus" [title]="attackRollTitle(attack)">{{ roll }}</span>
+                    }
+                    <span class="text-sm qm-muted min-w-0" [class.attack-wide]="!roll">{{ attack.damage }} {{ attack.type }}</span>
                   </li>
                 }
               </ul>
@@ -433,6 +445,29 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
               <p class="empty">No attacks configured</p>
             }
           </section>
+
+          @for (card of actionCards(); track card.title) {
+            <section class="qm-panel">
+              <h3 class="qm-section-title">{{ card.title }}</h3>
+              @if (card.actions.length) {
+                <ul class="space-y-2">
+                  @for (action of card.actions; track $index) {
+                    <li class="action">
+                      <span class="action-name">{{ action.name }}</span>
+                      @if (action.source) {
+                        <span class="qm-tag qm-tag-quiet action-source">{{ action.source }}</span>
+                      }
+                      @if (action.effect) {
+                        <span class="action-effect text-sm qm-muted">{{ action.effect }}</span>
+                      }
+                    </li>
+                  }
+                </ul>
+              } @else {
+                <p class="empty">{{ card.empty }}</p>
+              }
+            </section>
+          }
 
           @let spellcasting = character().spellcasting;
           @if (spellcasting) {
@@ -929,7 +964,8 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
       border: 1px solid var(--line);
       font-size: 0.9rem;
     }
-    .attack-name { grid-column: 1 / -1; font-weight: 600; overflow-wrap: anywhere; }
+    .attack-name, .attack-wide { grid-column: 1 / -1; }
+    .attack-name { font-weight: 600; overflow-wrap: anywhere; }
     .attack-bonus {
       font-weight: 700;
       font-variant-numeric: tabular-nums;
@@ -939,6 +975,22 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
       color: #f6efe0;
       font-size: 0.8rem;
     }
+
+    /* Bonus actions and reactions */
+    .action {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 0.25rem 0.6rem;
+      padding: 0.6rem 0.8rem;
+      border-radius: 10px;
+      background: var(--paper-2);
+      border: 1px solid var(--line);
+      font-size: 0.9rem;
+    }
+    .action-name { font-weight: 600; overflow-wrap: anywhere; }
+    .action-source { font-size: 0.7rem; padding: 0.1rem 0.5rem; }
+    .action-effect { grid-column: 1 / -1; overflow-wrap: anywhere; }
 
     /* Spellcasting */
     .stat-chip {
@@ -1376,6 +1428,18 @@ export class CharacterSheetComponent {
 
   hasAppearanceDetails = computed(() => this.appearanceDetails().length > 0);
 
+  /**
+   * Bonus actions as soon as the character has the list on record, also when it is empty;
+   * reactions only when it has any. A character from before the lists has neither card.
+   */
+  actionCards = computed<ActionCard[]>(() => {
+    const { bonusActions, reactions } = this.character();
+    const cards: ActionCard[] = [];
+    if (bonusActions) cards.push({ title: 'Bonus Actions', empty: 'No bonus actions', actions: bonusActions });
+    if (reactions?.length) cards.push({ title: 'Reactions', empty: 'No reactions', actions: reactions });
+    return cards;
+  });
+
   /** Spells grouped by level (cantrips first), with the matching slot row attached. */
   spellGroups = computed<SpellGroup[]>(() => {
     const spells = this.character().spellcasting?.spells ?? [];
@@ -1479,6 +1543,9 @@ export class CharacterSheetComponent {
     }
     return options;
   }
+
+  readonly attackRollLabel = attackRollLabel;
+  readonly attackRollTitle = attackRollTitle;
 
   signed(value: number): string {
     return `${value >= 0 ? '+' : ''}${value}`;
