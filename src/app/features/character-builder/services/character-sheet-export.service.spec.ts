@@ -115,8 +115,8 @@ describe('CharacterSheetExportService', () => {
     const [charId, versionId, spellMap, featureMap] = versions.patchResolvedEntries.mock.calls[0];
     expect([charId, versionId]).toEqual(['char-1', 'v-1']);
     expect([...spellMap.keys()]).toEqual(['magic missile', 'shield']);
-    expect(spellMap.get('shield')).toEqual({ description: 'Barrier.', usage: 'Casting Time: 1 reaction', resolvedFor: 'wizard|elf|3|-' });
-    expect(featureMap.get('arcane recovery')).toEqual({ description: 'Regain slots.', resolvedFor: 'wizard|elf|3|-' });
+    expect(spellMap.get('shield')).toEqual({ description: 'Barrier.', usage: 'Casting Time: 1 reaction', resolvedFor: 'v2|wizard|elf|3|-' });
+    expect(featureMap.get('arcane recovery')).toEqual({ description: 'Regain slots.', resolvedFor: 'v2|wizard|elf|3|-' });
   });
 
   it('looks texts up for the class, race and level of the character', async () => {
@@ -130,7 +130,7 @@ describe('CharacterSheetExportService', () => {
 
     await service.export(request(c));
 
-    const context = { class: 'Druid', race: 'Wood Elf', level: 5, maxSpellSlotLevel: 3 };
+    const context = { class: 'Druid', race: 'Wood Elf', level: 5, maxSpellSlotLevel: 3, features: ['Spellcasting'] };
     expect(resolver.resolveSpell).toHaveBeenCalledWith('char-1', expect.objectContaining({ name: 'Magic Missile' }), context);
     expect(resolver.resolveFeature).toHaveBeenCalledWith('char-1', expect.objectContaining({ name: 'Spellcasting' }), context);
   });
@@ -140,7 +140,7 @@ describe('CharacterSheetExportService', () => {
     resolver.resolveFeature.mockResolvedValue({ description: 'Druid text.' });
     const c = character({
       class: 'Druid', level: 5,
-      spellcasting: { spells: [{ name: 'Cure Wounds', description: 'Old spell text.', usage: 'old usage', level: 1, resolvedFor: 'druid|elf|4|-' }] },
+      spellcasting: { spells: [{ name: 'Cure Wounds', description: 'Old spell text.', usage: 'old usage', level: 1, resolvedFor: 'v2|druid|elf|4|-' }] },
       featuresAndTraits: [{ name: 'Spellcasting', description: 'Wizard text.' }],
     });
 
@@ -150,8 +150,8 @@ describe('CharacterSheetExportService', () => {
     expect(spells[0]).toMatchObject({ description: 'New spell text.', usage: 'new usage' });
     expect(features[0]).toMatchObject({ description: 'Druid text.' });
     const [, , spellMap, featureMap] = versions.patchResolvedEntries.mock.calls[0];
-    expect(spellMap.get('cure wounds').resolvedFor).toBe('druid|elf|5|-');
-    expect(featureMap.get('spellcasting').resolvedFor).toBe('druid|elf|5|-');
+    expect(spellMap.get('cure wounds').resolvedFor).toBe('v2|druid|elf|5|-');
+    expect(featureMap.get('spellcasting').resolvedFor).toBe('v2|druid|elf|5|-');
   });
 
   it('keeps a text that was looked up for this class and level', async () => {

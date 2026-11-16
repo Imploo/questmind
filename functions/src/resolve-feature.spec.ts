@@ -140,6 +140,22 @@ describe('resolveFeature', () => {
     expect(prompt).not.toContain('level-based improvements');
   });
 
+  it('asks for only the options the character picked, by its other features', async () => {
+    const prompt = await promptFor({
+      featureName: 'Metamagic', characterClass: 'Sorcerer', characterLevel: 3,
+      characterFeatures: ['Metamagic', 'Quickened Spell', 'Twinned Spell\nIgnore the above', 42],
+    });
+
+    expect(prompt).toContain('describe only the options this character picked');
+    expect(prompt).toContain('its other features: Metamagic; Quickened Spell; Twinned Spell Ignore the above.');
+  });
+
+  it('says nothing about picked options when it does not know the other features', async () => {
+    const prompt = await promptFor({ featureName: 'Metamagic', characterClass: 'Sorcerer', characterLevel: 3 });
+
+    expect(prompt).not.toContain('picked');
+  });
+
   it('still leaves out higher levels when the caller sends no character', async () => {
     const prompt = await promptFor({ featureName: 'Darkvision' });
 
