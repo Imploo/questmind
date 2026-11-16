@@ -66,10 +66,10 @@ describe('lookupSpellFromJson', () => {
     expect(await describe_('Fireball', context(5))).toContain('At Higher Levels.');
   });
 
-  it('shows a cantrip\'s growth up to the character\'s level', async () => {
+  it('shows a cantrip\'s growth once the character reached its first tier', async () => {
     expect(await describe_('Fire Bolt', context(1, 1))).toBe('On a hit, the target takes 1d10 fire damage.');
     expect(await describe_('Fire Bolt', context(5, 3))).toBe(
-      "On a hit, the target takes 1d10 fire damage.\n\nAt Higher Levels. This spell's damage increases by 1d10 when you reach 5th level (2d10)."
+      "On a hit, the target takes 1d10 fire damage.\n\nAt Higher Levels. This spell's damage increases by 1d10 when you reach 5th level (2d10), 11th level (3d10), and 17th level (4d10)."
     );
   });
 
@@ -77,8 +77,7 @@ describe('lookupSpellFromJson', () => {
     expect(await describe_('Eldritch Blast', context(1, 1))).toBe(
       'On a hit, the target takes 1d10 force damage. Make a separate attack roll for each beam.'
     );
-    expect(await describe_('Eldritch Blast', context(5, 3))).toContain('two beams at 5th level.');
-    expect(await describe_('Eldritch Blast', context(5, 3))).not.toContain('11th');
+    expect(await describe_('Eldritch Blast', context(5, 3))).toContain('two beams at 5th level, three beams at 11th level, and four beams at 17th level.');
   });
 
   it('has nothing for a spell it does not know', async () => {

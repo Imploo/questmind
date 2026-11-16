@@ -3,30 +3,30 @@
  * "This increases to two additional dice at 13th level" for a 9th-level barbarian,
  * or the 8th-level row of the Wild Shape table for a 4th-level druid.
  *
- * Rules are prose, so this is cautious on purpose: text goes only when every level
- * it names is out of reach, and it stays whenever that is unclear.
+ * Rules are prose, so this is cautious on purpose: a sentence goes only when every
+ * level it names is out of reach. Sentences are never cut: one that names a reached
+ * level stays whole, also when it goes on about later levels.
  */
 
 const ORDINAL = String.raw`\d+(?:st|nd|rd|th)`;
 /** "5th level", "3rd-level", "8th, 12th, 16th, and 19th level". */
-const LEVEL_MENTION = String.raw`((?:${ORDINAL}(?:,| and|, and| or|, or)? )*${ORDINAL})[-\s­]+level`;
-/** Words that tie a level to the moment a character gets something. */
-const GATE = String.raw`(?:and\s+)?(?:again\s+)?(?:also\s+)?(?:when you reach|once you reach|upon reaching|by the time you reach|beginning at|starting at|at|by)\s+${LEVEL_MENTION}(?:\s+in this class)?`;
-
+const LEVEL_MENTION = String.raw`((?:${ORDINAL}(?:,| and|, and| or|, or)? )*${ORDINAL})[-\s\u00ad]+level`;
 /** What precedes a level when it is the level a character gets something at. */
 const GAINED_AT = /\b(?:at|by|reach|reaching)\s+$/i;
 /** What stands between two levels of one list: " (2d10), " or ", and ". */
 const LIST_GLUE = /^\s*(?:\([^)]*\))?\s*,?\s*(?:and\s+)?$/i;
-const GATE_OPENER = new RegExp(`^(?:[*-]\\s+)?${GATE}`, 'i');
+/** How a paragraph opens when all of it is about one level: "Starting at 14th level, ...". */
+const GATE_OPENER = new RegExp(
+  String.raw`^(?:[*-]\s+)?(?:also\s+)?(?:when you reach|once you reach|upon reaching|by the time you reach|beginning at|starting at|at|by)\s+${LEVEL_MENTION}`,
+  'i'
+);
 const SENTENCE_BREAK = /(?<=[.!?])\s+(?=[A-Z"“*(])/;
-const CLAUSE_BREAK = /,? and |, |; /g;
 const TABLE_ROW = /^\s*\|/;
 const TABLE_SEPARATOR = /^\s*\|[\s|:-]+$/;
 const HEADING = /^\s*#{1,6}/;
 const LIST_ITEM = /^\s*[*-]\s+/;
 
 interface LevelMention {
-  start: number;
   end: number;
   levels: number[];
 }
@@ -43,7 +43,6 @@ function levelMentions(text: string): LevelMention[] {
     const continuesList = previous !== undefined && LIST_GLUE.test(text.slice(previous.end, match.index));
     if (!continuesList && !GAINED_AT.test(text.slice(0, match.index))) continue;
     mentions.push({
-      start: match.index,
       end: match.index + match[0].length,
       levels: (match[1].match(/\d+/g) ?? []).map(Number),
     });
@@ -51,29 +50,13 @@ function levelMentions(text: string): LevelMention[] {
   return mentions;
 }
 
-/** A sentence must say something besides "when you reach 4th level". */
-function saysSomething(text: string): boolean {
-  const rest = text.replace(new RegExp(GATE, 'gi'), ' ').replace(/\([^)]*\)/g, ' ');
-  return (rest.match(/[a-z]+/gi) ?? []).length >= 3;
-}
-
-/** The sentence without what lies above `level`; null when nothing of it applies yet. */
-function tailorSentence(sentence: string, level: number): string | null {
+/**
+ * Whether a sentence applies yet: it does unless every level it names is above `level`.
+ * A sentence that names a reached level stays whole, also when it goes on about later ones.
+ */
+function appliesAt(sentence: string, level: number): boolean {
   const mentions = levelMentions(sentence);
-  if (!mentions.length) return sentence;
-
-  const reachable = mentions.map(mention => mention.levels.some(l => l <= level));
-  if (!reachable.includes(true)) return null;
-
-  // "... three at 11th level and four at 20th level": cut where the unreachable part starts.
-  const firstBeyond = reachable.lastIndexOf(true) + 1;
-  if (firstBeyond >= mentions.length) return sentence;
-  const from = mentions[firstBeyond - 1].end;
-  const between = sentence.slice(from, mentions[firstBeyond].start);
-  const breaks = [...between.matchAll(CLAUSE_BREAK)];
-  if (!breaks.length) return sentence;
-  const head = sentence.slice(0, from + breaks[breaks.length - 1].index).trimEnd();
-  return saysSomething(head) ? `${head}.` : sentence;
+  return !mentions.length || mentions.some(mention => mention.levels.some(l => l <= level));
 }
 
 /** The paragraph without what lies above `level`; null when the whole paragraph is about a later level. */
@@ -82,9 +65,8 @@ function tailorParagraph(paragraph: string, level: number): string | null {
   const kept: string[] = [];
   const sentences = paragraph.split(SENTENCE_BREAK);
   for (const [index, sentence] of sentences.entries()) {
-    const tailored = tailorSentence(sentence, level);
-    if (tailored !== null) {
-      kept.push(tailored);
+    if (appliesAt(sentence, level)) {
+      kept.push(sentence);
     } else if (index === 0 && GATE_OPENER.test(sentence)) {
       // "At 18th level, you gain X. It lasts ..." — the rest describes X too.
       return null;

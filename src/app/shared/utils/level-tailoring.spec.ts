@@ -12,31 +12,27 @@ describe('tailorToLevel', () => {
     );
   });
 
-  it('cuts a sentence where the levels out of reach start', () => {
-    expect(tailorToLevel(extraAttack, 11)).toContain(
-      'The number of attacks increases to three when you reach 11th level in this class.'
-    );
-    expect(tailorToLevel(extraAttack, 11)).not.toContain('20th');
+  it('keeps a sentence whole once the character reached one of its levels', () => {
+    expect(tailorToLevel(extraAttack, 11)).toBe(extraAttack);
   });
 
   it('keeps the text whole at the highest level it names', () => {
     expect(tailorToLevel(extraAttack, 20)).toBe(extraAttack);
   });
 
-  it('cuts a list of tiers after the last one reached', () => {
+  it('keeps a list of tiers whole from the first tier on, and drops it before that', () => {
     const fireBolt = "This spell's damage increases by 1d10 when you reach 5th level (2d10), 11th level (3d10), and 17th level (4d10).";
 
-    expect(tailorToLevel(fireBolt, 5)).toBe("This spell's damage increases by 1d10 when you reach 5th level (2d10).");
-    expect(tailorToLevel(fireBolt, 12)).toBe(
-      "This spell's damage increases by 1d10 when you reach 5th level (2d10), 11th level (3d10)."
-    );
+    expect(tailorToLevel(fireBolt, 4)).toBe('');
+    expect(tailorToLevel(fireBolt, 5)).toBe(fireBolt);
+    expect(tailorToLevel(fireBolt, 12)).toBe(fireBolt);
   });
 
-  it('keeps a sentence it cannot cut without breaking it', () => {
-    const asi =
-      'When you reach 4th level, and again at 8th, 12th, 16th, and 19th level, you can increase one ability score of your choice by 2.';
+  it('counts every level of a list, not only the first', () => {
+    const tiers = 'You hit hard. The die becomes a d8 at 5th level, a d10 at 10th level, and a d12 at 15th level.';
 
-    expect(tailorToLevel(asi, 4)).toBe(asi);
+    expect(tailorToLevel(tiers, 4)).toBe('You hit hard.');
+    expect(tailorToLevel(tiers, 10)).toBe(tiers);
   });
 
   it('reads a list of ordinals as levels', () => {

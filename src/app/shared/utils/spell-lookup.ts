@@ -96,8 +96,8 @@ async function loadDatabase(http: HttpClient): Promise<Map<string, SpellJsonFiel
 
 /**
  * The spell as the bundled data has it. With a `context`, the description leaves out
- * what the character cannot use yet: cantrip damage of higher levels, and "At Higher
- * Levels" when it has no slot above the spell's level.
+ * what the character cannot use yet: how a cantrip grows while it has not reached the
+ * first tier, and "At Higher Levels" when it has no slot above the spell's level.
  */
 export async function lookupSpellFromJson(
   http: HttpClient,

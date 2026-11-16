@@ -54,6 +54,7 @@ describe('lookupFeatureFromJson', () => {
 
   it('leaves out what the character gets at a higher level', async () => {
     expect(await describe_('Extra Attack', 'Fighter', 5)).toBe('Beginning at 5th level, you can attack twice.');
+    expect(await describe_('Extra Attack', 'Fighter', 10)).toBe('Beginning at 5th level, you can attack twice.');
     expect(await describe_('Extra Attack', 'Fighter', 11)).toContain('increases to three');
   });
 
