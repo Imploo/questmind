@@ -49,6 +49,7 @@ import { resolutionContextOf, resolutionKey } from '../../../../shared/utils/res
 import { RulesVersion, rulesVersionOf } from '../../../../shared/models/rules-version';
 import { ToastService } from '../../../../shared/services/toast.service';
 import { copyText } from '../../../../shared/utils/clipboard';
+import { MarkdownComponent } from '../../../../shared/components/markdown.component';
 import { characterShareUrl } from '../../../../shared/utils/character-share-url';
 import * as logger from '../../../../shared/logger';
 
@@ -178,6 +179,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
     InspirationToggleComponent,
     CoinPurseComponent,
     InventoryItemsComponent,
+    MarkdownComponent,
   ],
   template: `
     @if (portraitLightbox()) {
@@ -534,7 +536,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
                           @if (loadingSpells().has(entry.index)) {
                             <div class="qm-progress is-indeterminate h-1" role="progressbar" aria-label="Loading"><div class="qm-progress-bar"></div></div>
                           } @else if (spell.description) {
-                            <div class="whitespace-pre-line">{{ spell.description }}</div>
+                            <app-markdown [text]="spell.description" />
                             @if (spell.usage) {
                               <div class="usage">{{ spell.usage }}</div>
                             }
@@ -586,7 +588,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
                     (click)="toggleFeature(entry.index, feature)"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" class="chevron" [class.rotate-90]="expandedFeatures().has(entry.index)" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
-                    <span class="font-semibold text-sm">{{ entry.name }}</span>
+                    <span class="font-semibold text-sm flex-1">{{ entry.name }}</span>
                   </button>
                 } @else {
                   <div class="entry-head entry-main font-semibold text-sm">{{ entry.name }}</div>
@@ -615,7 +617,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
                     @if (loadingFeatures().has(entry.index)) {
                       <div class="qm-progress is-indeterminate h-1" role="progressbar" aria-label="Loading"><div class="qm-progress-bar"></div></div>
                     } @else if (feature.description) {
-                      <div class="whitespace-pre-line">{{ feature.description }}</div>
+                      <app-markdown [text]="feature.description" />
                     } @else {
                       <span class="italic qm-muted">No description available</span>
                     }
@@ -957,6 +959,8 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
     .entry-row { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 0 0.35rem; }
     /* The name's own labels wrap under it rather than run into the controls on a narrow screen. */
     .entry-head.entry-main { flex: 1 1 9rem; min-width: 0; margin-right: 0; flex-wrap: wrap; row-gap: 0.1rem; }
+    /* A long name breaks within its own column, so its next line starts under the first, clear of the chevron. */
+    .entry-head > .flex-1 { min-width: 0; overflow-wrap: anywhere; }
     .tracker { display: inline-flex; align-items: center; gap: 0.5rem; margin-left: auto; }
     /* Pull the last diamond up to the edge of the row; its tap area has room to spare. */
     .tracker app-use-pips:not(.is-pool) { margin-right: -0.5rem; }
@@ -991,7 +995,8 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
       transition: background 0.15s;
     }
     button.entry-head:hover { background: var(--paper-2); }
-    .chevron { width: 0.75rem; height: 0.75rem; color: var(--gold); transition: transform 0.15s; flex-shrink: 0; }
+    /* The chevron stays beside the first line of a name that takes two. */
+    .chevron { width: 0.75rem; height: 0.75rem; margin-top: 0.25rem; align-self: flex-start; color: var(--gold); transition: transform 0.15s; flex-shrink: 0; }
     .entry-body {
       margin: 0.25rem 0 0.6rem 0.75rem;
       padding: 0.25rem 0 0.25rem 0.85rem;
