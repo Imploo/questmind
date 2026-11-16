@@ -130,6 +130,9 @@ export function buildSheetFieldValues(
     text[WEAPON_FIELDS[i].damage] = damageOf(attack);
   });
   const attackNotes: string[] = c.attacks.slice(WEAPON_FIELDS.length).map(attackLine);
+  const actionNames = (actions: DndCharacter['bonusActions']) => (actions ?? []).map(a => a.name).filter(Boolean).join(', ');
+  if (actionNames(c.bonusActions)) attackNotes.push(`Bonus actions: ${actionNames(c.bonusActions)}`);
+  if (actionNames(c.reactions)) attackNotes.push(`Reactions: ${actionNames(c.reactions)}`);
   if (c.spellcasting) {
     const parts: string[] = [];
     if (c.spellcasting.spellSaveDc) parts.push(`Spell save DC ${c.spellcasting.spellSaveDc}`);

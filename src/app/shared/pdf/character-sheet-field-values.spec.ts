@@ -144,6 +144,30 @@ describe('buildSheetFieldValues', () => {
     expect(text[TEXT_FIELDS.attacksAndSpellcasting]).toContain('Breath Weapon: DEX save, 2d6 fire');
   });
 
+  it('names the bonus actions and reactions in the free-text box', () => {
+    const character = createTestCharacter();
+    character.bonusActions = [
+      { name: 'Misty Step', effect: 'Teleport up to 30 ft', source: 'Spell' },
+      { name: 'Healing Word', source: 'Spell' },
+    ];
+    character.reactions = [{ name: 'Shield', effect: '+5 AC until the start of your next turn', source: 'Spell' }];
+
+    const { text } = buildSheetFieldValues(character, [], []);
+
+    expect(text[TEXT_FIELDS.attacksAndSpellcasting]).toContain('Bonus actions: Misty Step, Healing Word');
+    expect(text[TEXT_FIELDS.attacksAndSpellcasting]).toContain('Reactions: Shield');
+  });
+
+  it('leaves bonus actions and reactions out when the character has none', () => {
+    const character = createTestCharacter();
+    character.bonusActions = [];
+
+    const { text } = buildSheetFieldValues(character, [], []);
+
+    expect(text[TEXT_FIELDS.attacksAndSpellcasting]).not.toContain('Bonus actions');
+    expect(text[TEXT_FIELDS.attacksAndSpellcasting]).not.toContain('Reactions');
+  });
+
   it('lists feature names on the sheet with a pointer to the appendix', () => {
     const { text } = buildSheetFieldValues(createTestCharacter(), [], [
       { name: 'Arcane Recovery', description: 'Recover slots' },

@@ -55,6 +55,13 @@ export const WeaponAttackSchema = z.object({
   save: AttackSaveSchema.optional().catch(undefined), // A malformed save never costs the whole character
 });
 
+/** Something the character can do with its bonus action or its reaction. */
+export const CharacterActionSchema = z.object({
+  name: z.string(), // The spell or feature that gives it
+  effect: z.string().optional(), // What it does, in one short line
+  source: z.string().optional(), // "Spell", "Class", "Subclass", "Race", "Feat", "Item", "Other"
+});
+
 export const SpellSlotSchema = z.object({
   level: z.number().min(1).max(9),
   total: z.number().min(0),
@@ -139,6 +146,9 @@ export const DndCharacterSchema = z.object({
 
   // Actions
   attacks: z.array(WeaponAttackSchema).default([]),
+  // Absent on a character from before these lists were recorded
+  bonusActions: z.array(CharacterActionSchema).optional(),
+  reactions: z.array(CharacterActionSchema).optional(),
   spellcasting: z.object({
     ability: AbilityKeySchema.optional(), // Spellcasting ability; derived from the class when missing
     spellSaveDc: z.number().optional(),

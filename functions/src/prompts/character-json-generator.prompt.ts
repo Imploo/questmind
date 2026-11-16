@@ -102,6 +102,23 @@ Zet "rulesVersion" op "${rulesVersion}".
 - Volgorde: eerst de wapens, dan de cantrips, dan de andere spells op oplopend spell level.
 - Houd de lijst bij elke update compleet, ook als het gesprek er niet over gaat: voeg een schadespell toe die er nog niet in staat, en haal een spell weg die het karakter niet meer heeft.
 
+## Bonus actions en reactions
+
+"bonusActions" en "reactions" zeggen wat het karakter met zijn bonus action en met zijn reaction kan doen. Ze staan los van attacks: wat schade doet en een bonus action of reaction kost, staat in beide.
+
+- **bonusActions**: ALLES wat het karakter met een bonus action kan doen, ook wat geen schade doet.
+  - Spells met een casting time van 1 bonus action: Healing Word, Misty Step, Spiritual Weapon, Hex, Shillelagh, ...
+  - Features en feats: Cunning Action, Second Wind, Rage, Bardic Inspiration, Flurry of Blows, Quickened Spell, Polearm Master, ...
+  - De aanval met het tweede wapen ("Off-hand attack", source "Other") wanneer het karakter twee light melee weapons draagt.
+  - Ook een spell of feature die pas in latere beurten een bonus action kost, zoals de straal van Moonbeam verplaatsen of Flaming Sphere laten rollen.
+- **reactions**: alles wat het karakter met een reaction kan doen door een spell, feature of feat: Shield, Counterspell, Hellish Rebuke, Absorb Elements, Uncanny Dodge, Deflect Missiles, Sentinel, ... Neem de Opportunity Attack NIET op: die heeft elk karakter.
+- Per item:
+  - **name**: de naam van de spell of feature, exact zoals in spellcasting.spells of featuresAndTraits. Bij een feature met een keuze uit opties de naam van de optie, bijv. "Quickened Spell".
+  - **source**: "Spell", "Class", "Subclass", "Race", "Feat", "Item" of "Other".
+  - **effect**: één korte regel in het Engels, maximaal 80 tekens, die zegt wat het doet, met de getallen voor het huidige level. Bijv. "Heal 1d4 + 3 to a creature within 60 ft", "Dash, Disengage or Hide", "+5 AC until the start of your next turn". Dit is de enige plek waar je zelf een korte omschrijving schrijft; het verbod op descriptions geldt hier niet.
+- Neem alleen op wat het karakter op zijn huidige level kan.
+- Stuur beide lijsten altijd mee, ook als ze leeg zijn ([]), en houd ze bij elke update compleet, ook als het gesprek er niet over gaat.
+
 ## Beperkt gebruik (uses)
 
 Features en spells die je maar een beperkt aantal keer kunt gebruiken voordat je rust, krijgen een uses-object: {"max": aantal, "recharge": "shortRest" | "longRest" | "manual"}.

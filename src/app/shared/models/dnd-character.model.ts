@@ -55,6 +55,16 @@ export interface WeaponAttack {
   };
 }
 
+/** Something the character can do with its bonus action or its reaction. */
+export interface CharacterAction {
+  /** The spell or feature that gives it. */
+  name: string;
+  /** What it does, in one short line. */
+  effect?: string;
+  /** "Spell", "Class", "Subclass", "Race", "Feat", "Item", "Other". */
+  source?: string;
+}
+
 export interface SpellSlot {
   level: number;
   total: number;
@@ -154,6 +164,9 @@ export interface DndCharacter {
 
   // Actions
   attacks: WeaponAttack[];
+  /** Absent on a character from before these lists were recorded. */
+  bonusActions?: CharacterAction[];
+  reactions?: CharacterAction[];
   spellcasting?: {
     ability?: 'strength' | 'dexterity' | 'constitution' | 'intelligence' | 'wisdom' | 'charisma';
     spellSaveDc?: number;
