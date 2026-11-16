@@ -103,7 +103,7 @@ export const characterChat = onCall(
           lastMessagePreview: makePreview(text),
           updatedAt: userCreatedAt,
           ...(stored ? { hasPdf: true } : {}),
-          // The conversation follows these rules until the converted character is saved as a draft.
+          // The conversation follows these rules until the converted character is saved as a new version.
           ...(convertToRules ? { pendingRulesVersion: convertToRules } : {}),
         };
 

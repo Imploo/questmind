@@ -29,6 +29,16 @@ const CHARACTER_UPDATE_TEXT: Record<string, string> = {
   cancelled: 'Karakter aanpassen geannuleerd.',
 };
 
+/** What a finished character update tells about the version it was saved as. */
+function savedVersionOf(stored: StoredChatMessage): Partial<Message> {
+  return {
+    ...(stored.versionNumber ? { versionNumber: stored.versionNumber } : {}),
+    ...(stored.versionId ? { versionId: stored.versionId } : {}),
+    ...(stored.previousVersionId ? { previousVersionId: stored.previousVersionId } : {}),
+    ...(stored.abilityScoreWarnings?.length ? { abilityScoreWarnings: stored.abilityScoreWarnings } : {}),
+  };
+}
+
 /** A stored message as the chat panel shows it. `now` decides when unfinished work counts as lost. */
 export function toViewMessage(stored: StoredChatMessage, now: number): Message {
   const timestamp = toDate(stored.createdAt) ?? new Date(now);
@@ -44,7 +54,7 @@ export function toViewMessage(stored: StoredChatMessage, now: number): Message {
       text: CHARACTER_UPDATE_TEXT[status] ?? '',
       timestamp,
       ...(working && !lost ? { isUpdatingCharacter: true } : {}),
-      ...(status === 'done' && stored.versionNumber ? { versionNumber: stored.versionNumber } : {}),
+      ...(status === 'done' ? savedVersionOf(stored) : {}),
     };
   }
 

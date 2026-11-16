@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, input, output, signal, viewChild } from '@angular/core';
 import { Coins } from '../../../../shared/models/dnd-character.model';
+import { MAX_COINS } from '../../../../shared/utils/character-play-state';
 
 type CoinKey = keyof Coins;
 
@@ -11,7 +12,6 @@ const COIN_TYPES: { key: CoinKey; name: string; color: string }[] = [
   { key: 'cp', name: 'Copper', color: '#b8693a' },
 ];
 
-const MAX_COINS = 9_999_999;
 
 /** The five coin types. When `editable`, a coin turns into a number field on click. */
 @Component({

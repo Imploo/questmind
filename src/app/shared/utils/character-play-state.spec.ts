@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { DndCharacter } from '../models/dnd-character.model';
+import { Coins, DndCharacter } from '../models/dnd-character.model';
 import {
   addInventoryItem,
   applyDamage,
@@ -12,6 +12,7 @@ import {
   longRestPreview,
   removeInventoryItem,
   resolvePlayState,
+  setCoins,
   setSlotsExpended,
   setTempHp,
   setUsesSpent,
@@ -269,7 +270,33 @@ describe('currentPlayState', () => {
       concentration: null,
       inspiration: false,
       inventory: [],
+      coins: { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 },
     });
+  });
+});
+
+describe('coins', () => {
+  const built = { cp: 4, sp: 0, ep: 0, gp: 15, pp: 0 };
+  const purse = { cp: 0, sp: 7, ep: 0, gp: 120, pp: 2 };
+
+  it('starts from the purse of the build until the player has one of their own', () => {
+    expect(resolvePlayState(character({ coins: built }), null).coins).toEqual(built);
+    expect(resolvePlayState(character({ coins: built }), { coins: purse }).coins).toEqual(purse);
+  });
+
+  it('keeps the purse whichever version of the character it is resolved against', () => {
+    const { state } = setCoins(character({ coins: built }), null, purse);
+    expect(state.coins).toEqual(purse);
+    expect(resolvePlayState(character({ coins: { ...built, gp: 900 } }), state).coins).toEqual(purse);
+  });
+
+  it('stores whole, non-negative amounts and fills in a missing coin type', () => {
+    const { state } = setCoins(character(), null, { cp: -3, sp: 2.9, gp: Number.NaN, pp: 1 } as Coins);
+    expect(state.coins).toEqual({ cp: 0, sp: 2, ep: 0, gp: 0, pp: 1 });
+  });
+
+  it('survives another play action', () => {
+    expect(applyDamage(character({ coins: built }), { coins: purse }, 5).state.coins).toEqual(purse);
   });
 });
 
@@ -323,7 +350,9 @@ describe('applyPlayStateToCharacter', () => {
       hitDice: 2,
       deathSaves: { successes: 0, failures: 1 },
       slotsExpended: { '1': 3 },
+      coins: { cp: 0, sp: 0, ep: 0, gp: 30, pp: 0 },
     });
+    expect(live.coins.gp).toBe(30);
     expect(live.hitPoints).toEqual({ max: 44, current: 20, temp: 4 });
     expect(live.hitDice).toEqual({ total: 5, current: 2, die: 'd10' });
     expect(live.deathSaves).toEqual({ successes: 0, failures: 1 });

@@ -1,7 +1,7 @@
 /**
  * The edition of the D&D 5e rules a character is built with: the 2014 Player's
  * Handbook or the revised one of 2024. Stored as `rulesVersion` in the character of
- * each version, so going back to an older version (or dropping a draft) also goes
+ * each version, so going back to an older version (or undoing a change) also goes
  * back to its rules. A character without it uses the 2014 rules.
  */
 export type RulesVersion = '2014' | '2024';

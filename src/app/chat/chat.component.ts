@@ -113,6 +113,14 @@ import { dayLabel, formatTime, isSameDay } from './chat-view';
                     title="Versiegeschiedenis openen"
                   >versie {{ message.versionNumber }}</button>
                 }
+                @if (message.previousVersionId && message.versionId === activeVersionId()) {
+                  <button
+                    type="button"
+                    (click)="undoVersion.emit(message.previousVersionId)"
+                    class="ml-auto shrink-0 text-xs underline underline-offset-2 hover:no-underline"
+                    title="Terug naar de versie van voor deze aanpassing"
+                  >Undo</button>
+                }
                 @if (message.isUpdatingCharacter) {
                   <button
                     type="button"
@@ -121,6 +129,17 @@ import { dayLabel, formatTime, isSameDay } from './chat-view';
                   >Annuleren</button>
                 }
               </div>
+              @if (message.abilityScoreWarnings?.length) {
+                <div class="mt-1.5 text-xs" role="alert">
+                  <div class="font-semibold">De ability scores volgen de regels niet:</div>
+                  <ul class="ml-4 mt-0.5 list-disc">
+                    @for (warning of message.abilityScoreWarnings; track $index) {
+                      <li>{{ warning }}</li>
+                    }
+                  </ul>
+                  <div class="mt-0.5">Vraag The Sidekick om dit te herstellen.</div>
+                </div>
+              }
             </div>
           } @else if (message.text || message.images?.length || message.pdfFileName) {
             <div
@@ -376,7 +395,8 @@ import { dayLabel, formatTime, isSameDay } from './chat-view';
     .bubble.is-error { color: #7c2630; background: #fbefed; border-color: #e6bfc0; }
     .bubble.is-system {
       padding: 0.45rem 0.75rem;
-      border-radius: 999px;
+      /* A pill for one line; with warnings below it the corners must not cut into the text. */
+      border-radius: 1.1rem;
       font-size: 0.8rem;
       color: #62480f;
       background: var(--gold-soft);
@@ -537,8 +557,14 @@ export class ChatComponent {
    */
   floating = input(false);
 
+  /** The version the character is on. Only the update that led to it can be undone. */
+  activeVersionId = input<string | null>(null);
+
   /** The user asks for the version history (from a finished character update). */
   viewVersions = output<void>();
+
+  /** The user undoes a character update: the version to go back to. */
+  undoVersion = output<string>();
 
   private chatService = inject(ChatService);
   private sanitizer = inject(DomSanitizer);
@@ -796,7 +822,7 @@ export class ChatComponent {
     return this.sanitizer.sanitize(1, html) || '';
   }
 
-  /** Stop a running character update; the backend then drops the draft it is making. */
+  /** Stop a running character update; the backend then does not save the version it is making. */
   cancelCharacterUpdate(messageId: string): void {
     void this.chatService.cancelCharacterUpdate(messageId);
   }
