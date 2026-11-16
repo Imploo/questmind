@@ -159,6 +159,35 @@ describe('lookupFeatureFromJson: features with a choice', () => {
     expect(text).not.toContain('Careful Spell');
   });
 
+  it('reads options written after a colon, as the generator writes them', async () => {
+    const text = await metamagic([], 'Metamagic: Quickened Spell, Twinned Spell');
+
+    expect(text).toContain('You can use only one Metamagic option on a spell');
+    expect(text).toContain('### Quickened Spell');
+    expect(text).toContain('### Twinned Spell');
+    expect(text).not.toContain('Careful Spell');
+  });
+
+  it('adds named options that the class keeps in a list of their own', async () => {
+    const text = (await lookupFeatureFromJson(
+      http, { name: 'Eldritch Invocations: Agonizing Blast, Ascendant Step' }, context('Warlock', 9)
+    ))?.description;
+
+    expect(text).toBe(
+      'At 2nd level, you gain two eldritch invocations of your choice.\n\n' +
+      '### Agonizing Blast\n\nPrerequisite: eldritch blast cantrip\n\nAdd your Charisma modifier to the damage.\n\n' +
+      '### Ascendant Step\n\nPrerequisite: 9th level\n\nYou can cast levitate on yourself at will.'
+    );
+  });
+
+  it('leaves a feature without options as it is when its name names something else', async () => {
+    const text = (await lookupFeatureFromJson(
+      http, { name: 'Channel Divinity: Sacred Weapon' }, context('Paladin (Oath of Devotion)', 3)
+    ))?.description;
+
+    expect(text).toBe('When you take this oath at 3rd level, you gain Sacred Weapon.');
+  });
+
   it('shows every option when the character names none of them', async () => {
     const text = await metamagic(['Metamagic', 'Font of Magic']);
 

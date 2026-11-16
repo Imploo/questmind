@@ -95,7 +95,7 @@ const OPTION_HEADING = /^\s*#{2,6}\s*(.+?)\s*$/;
 const OPTION_LEAD = /^\s*\*{2,3}(.+?)\.?\*{2,3}/;
 /** An option title the data left unmarked ("Armor of Shadows" in the invocation list). */
 const UNMARKED_TITLE = /^[A-Z][A-Za-z' -]{2,40}$/;
-/** What separates the parts of a feature name: "Metamagic (Quickened Spell, Twinned Spell)", "Fighting Style: Defense". */
+/** What separates the parts of a feature name: "Metamagic: Quickened Spell, Twinned Spell", "Fighting Style (Defense)". */
 const NAME_SEPARATOR = /\s*[:;,()/]\s*|\s+[-–—&]\s+|\s+and\s+/;
 
 let cache: Map<string, FeatureVariant[]> | null = null;
@@ -223,6 +223,15 @@ function findVariant(
   return null;
 }
 
+/** The options of every feature with a choice that one class of the character has. */
+function classOptions(db: Map<string, FeatureVariant[]>, part: ClassPart): FeatureOption[] {
+  return [...db.values()].flatMap(variants =>
+    variants
+      .filter(variant => belongsTo(variant, part, variants.length === 1))
+      .flatMap(variant => choiceOf(variant)?.options ?? [])
+  );
+}
+
 /** An option of one of the character's own features: "Quickened Spell" inside the sorcerer's Metamagic. */
 function findOption(
   db: Map<string, FeatureVariant[]>,
@@ -230,21 +239,33 @@ function findOption(
   parts: ClassPart[]
 ): { text: string; part: ClassPart } | null {
   for (const part of parts) {
-    for (const variants of db.values()) {
-      for (const variant of variants) {
-        if (!belongsTo(variant, part, variants.length === 1)) continue;
-        const option = choiceOf(variant)?.options.find(candidate => names.includes(candidate.name));
-        if (option) return { text: option.body.join('\n').trim(), part };
-      }
-    }
+    const option = classOptions(db, part).find(candidate => names.includes(candidate.name));
+    if (option) return { text: option.body.join('\n').trim(), part };
   }
   return null;
 }
 
 /**
+ * The text of a feature that is on the sheet with its options: "Metamagic: Quickened
+ * Spell, Twinned Spell". Options the feature text does not hold itself are added from
+ * where the class keeps them: the invocations of "Eldritch Invocations: Agonizing Blast".
+ */
+function withNamedOptions(
+  db: Map<string, FeatureVariant[]>,
+  variant: FeatureVariant,
+  part: ClassPart,
+  named: string[],
+  elsewhere: string[]
+): string {
+  if (choiceOf(variant) || !named.length) return scopedToChosen(variant, [named, elsewhere]);
+  const options = classOptions(db, part).filter(option => named.includes(option.name));
+  return [variant.description.trimEnd(), ...options.map(option => option.lines.join('\n').trimEnd())].join('\n\n');
+}
+
+/**
  * The text of a class feature for this character: the variant of its own class
  * (a druid's Spellcasting, not a wizard's), of a feature with a choice only the
- * options it has (two Metamagic options, not all eight), and without what it only
+ * options it has ("Metamagic: Quickened Spell, Twinned Spell", not all eight), and without what it only
  * gets at a higher level. Null when the bundled data has no text that is certain
  * to be the right one.
  */
@@ -260,11 +281,11 @@ export async function lookupFeatureFromJson(
   const fullName = feature.name.trim().toLowerCase();
   const [baseName, ...named] = nameParts(feature.name);
 
-  // "Metamagic", or "Metamagic (Quickened Spell, Twinned Spell)" by the name before its options.
+  // "Metamagic", or "Metamagic: Quickened Spell, Twinned Spell" by the name before its options.
   const found = findVariant(db, fullName, parts) ?? (named.length ? findVariant(db, baseName, parts) : null);
   if (found) {
     const elsewhere = (context.features ?? []).flatMap(nameParts);
-    const text = scopedToChosen(found.variant, [named, elsewhere]);
+    const text = withNamedOptions(db, found.variant, found.part, named, elsewhere);
     return { description: tailorToLevel(text, found.part.level) || text };
   }
 

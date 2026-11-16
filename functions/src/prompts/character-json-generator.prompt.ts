@@ -40,10 +40,10 @@ ${JSON.stringify(characterJsonSchema)}
 - Stuur NOOIT description in features.
 - Stuur de volledige featuresAndTraits array mee.
 - Source waarden: "Race", "Class", "Subclass", "Background", "Feat", "Other"
-- Features met een keuze uit opties: leg vast wat er gekozen is, met de exacte Engelse namen uit de regels. De beschrijving wordt later op naam opgezocht en toont dan alleen de gekozen opties.
-  - Eén optie gekozen (Fighting Style, Pact Boon, Hunter's Prey, ...): zet de keuze in de naam, bijv. "Fighting Style: Defense" of "Pact Boon: Pact of the Tome".
-  - Meerdere opties gekozen (Metamagic, Eldritch Invocations, Maneuvers, ...): houd de feature zelf en voeg elke gekozen optie toe als eigen feature met dezelfde source, bijv. "Metamagic", "Quickened Spell" en "Twinned Spell".
-  - Is niet bekend welke opties gekozen zijn, verzin er dan geen: laat alleen de feature zelf staan.
+- Features met een keuze uit opties (Fighting Style, Metamagic, Eldritch Invocations, Pact Boon, Hunter's Prey, Maneuvers, ...): zet de gekozen opties achter de naam, met de exacte Engelse namen uit de regels en gescheiden door komma's, bijv. "Fighting Style: Defense" of "Metamagic: Quickened Spell, Twinned Spell". De beschrijving wordt later op naam opgezocht en toont dan alleen de gekozen opties.
+  - Maak geen aparte features voor de opties; staan die er al, voeg ze dan samen tot deze ene feature.
+  - Uitzondering: een optie met een eigen beperkt gebruik (uses), zoals een invocation die je één keer per long rest gebruikt, blijft een eigen feature, zodat het gebruik bijgehouden kan worden.
+  - Is niet bekend welke opties gekozen zijn, verzin er dan geen: laat alleen de naam van de feature staan.
 
 ## Beperkt gebruik (uses)
 
