@@ -16,8 +16,11 @@ export interface SheetView {
 const AFTER_SECTIONS = 'story';
 /** How far below the top of the view a section has to come before its tab lights up. */
 const READING_LINE_PX = 96;
-/** A smooth scroll that never reports its end is taken to be over by now. */
-const SCROLL_TIMEOUT_MS = 1200;
+/** How long the sheet takes to scroll to a tapped section, however far away that is. */
+const SCROLL_DURATION_MS = 300;
+
+/** Sets off at speed and settles gently. */
+const easeOut = (progress: number) => 1 - Math.pow(1 - progress, 3);
 
 /**
  * The section someone is reading: the last one whose top has passed the reading line.
@@ -181,8 +184,8 @@ export class SheetSectionTabsComponent {
   active = signal<string | null>(null);
 
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
-  /** Set while a tap scrolls the sheet: the tapped tab stays lit until the scroll has ended. */
-  private scrollTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Set while a tap scrolls the sheet: the tapped tab stays lit until the sheet has arrived. */
+  private scrollFrame: number | null = null;
   private frame: number | null = null;
 
   constructor() {
@@ -193,38 +196,52 @@ export class SheetSectionTabsComponent {
       const onScroll = (event: Event) => {
         if (this.concerns(event)) this.scheduleUpdate();
       };
-      const onScrollEnd = (event: Event) => {
-        if (this.scrollTimer !== null && this.concerns(event)) this.endScroll();
-      };
       const onResize = () => this.scheduleUpdate();
       document.addEventListener('scroll', onScroll, { capture: true, passive: true });
-      document.addEventListener('scrollend', onScrollEnd, { capture: true, passive: true });
       window.addEventListener('resize', onResize, { passive: true });
       destroyRef.onDestroy(() => {
         document.removeEventListener('scroll', onScroll, { capture: true });
-        document.removeEventListener('scrollend', onScrollEnd, { capture: true });
         window.removeEventListener('resize', onResize);
         if (this.frame !== null) cancelAnimationFrame(this.frame);
-        if (this.scrollTimer !== null) clearTimeout(this.scrollTimer);
+        if (this.scrollFrame !== null) cancelAnimationFrame(this.scrollFrame);
       });
       this.update();
     });
   }
 
+  /**
+   * Scrolls the sheet to a section, in a fixed short time: the scroll of the browser
+   * itself takes up to a second for a section far away, and cannot be told to hurry.
+   */
   goTo(id: string): void {
     const target = this.sectionElement(id);
     if (!target) return;
-    const smooth = !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (this.scrollFrame !== null) cancelAnimationFrame(this.scrollFrame);
+    this.scrollFrame = null;
     this.active.set(id);
-    if (this.scrollTimer !== null) clearTimeout(this.scrollTimer);
-    this.scrollTimer = setTimeout(() => this.endScroll(), smooth ? SCROLL_TIMEOUT_MS : 0);
-    target.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
-  }
 
-  private endScroll(): void {
-    if (this.scrollTimer !== null) clearTimeout(this.scrollTimer);
-    this.scrollTimer = null;
-    this.update();
+    const scroller = scrollParentOf(this.host);
+    const page = document.scrollingElement ?? document.documentElement;
+    const from = scroller ? scroller.scrollTop : window.scrollY;
+    const viewTop = scroller ? scroller.getBoundingClientRect().top : 0;
+    const end = scroller ? scroller.scrollHeight - scroller.clientHeight : page.scrollHeight - window.innerHeight;
+    // The section keeps the distance from the top that its scroll margin asks for.
+    const margin = parseFloat(getComputedStyle(target).scrollMarginTop) || 0;
+    const to = Math.max(0, Math.min(end, from + target.getBoundingClientRect().top - viewTop - margin));
+    const scrollTo = (top: number) => (scroller ?? window).scrollTo({ top, behavior: 'instant' });
+
+    // The scroll events of the last step, or of the jump, set the lit tab right once the sheet is there.
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      scrollTo(to);
+      return;
+    }
+    const start = performance.now();
+    const step = (now: number) => {
+      const progress = Math.max(0, Math.min(1, (now - start) / SCROLL_DURATION_MS));
+      scrollTo(from + (to - from) * easeOut(progress));
+      this.scrollFrame = progress < 1 ? requestAnimationFrame(step) : null;
+    };
+    this.scrollFrame = requestAnimationFrame(step);
   }
 
   /** Whether the scroll moved the sheet: that of the page, or of an element around the sheet. */
@@ -242,7 +259,7 @@ export class SheetSectionTabsComponent {
   }
 
   private update(): void {
-    if (this.scrollTimer !== null) return;
+    if (this.scrollFrame !== null) return;
     const sections = this.sections().flatMap(({ id }) => {
       const element = this.sectionElement(id);
       return element ? [{ id, top: element.getBoundingClientRect().top }] : [];

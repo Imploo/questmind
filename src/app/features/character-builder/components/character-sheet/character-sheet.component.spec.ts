@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { CharacterSheetComponent } from './character-sheet.component';
 import { CharacterEntryResolverService } from '../../../../core/services/character-entry-resolver.service';
@@ -117,11 +117,11 @@ describe('CharacterSheetComponent', () => {
     });
 
     it('scrolls to the section of a tapped tab and lights that tab', () => {
-      const scrolledTo: string[] = [];
-      const original = Element.prototype.scrollIntoView;
-      Element.prototype.scrollIntoView = function (this: Element) {
-        scrolledTo.push(this.getAttribute('data-section') ?? '');
-      };
+      // Without motion the sheet jumps there at once, so the place it goes to can be read straight away.
+      const matchMedia = window.matchMedia;
+      window.matchMedia = (() => ({ matches: true })) as unknown as typeof window.matchMedia;
+      const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined);
+      Object.defineProperty(document.documentElement, 'scrollHeight', { configurable: true, value: 5000 });
       try {
         TestBed.configureTestingModule({
           providers: [{ provide: CharacterEntryResolverService, useValue: { lookupSpellLocally: async () => null } }],
@@ -131,15 +131,23 @@ describe('CharacterSheetComponent', () => {
         fixture.componentRef.setInput('characterName', 'Mira');
         fixture.detectChanges();
         const sheet = fixture.nativeElement as HTMLElement;
+        const spells = sheet.querySelector<HTMLElement>('[data-section="spells"]')!;
+        spells.getBoundingClientRect = () => ({ top: 640 }) as DOMRect;
 
         tabs(sheet).find(tab => text(tab) === 'Spells')!.click();
         fixture.detectChanges();
 
-        expect(scrolledTo).toEqual(['spells']);
+        // The top of the section, less the room it keeps above itself (at most that of the top bar).
+        const { top, behavior } = scrollTo.mock.calls.at(-1)![0] as ScrollToOptions;
+        expect(behavior).toBe('instant');
+        expect(top).toBeLessThanOrEqual(640);
+        expect(top).toBeGreaterThanOrEqual(640 - 72);
         expect(tabs(sheet).filter(tab => tab.getAttribute('aria-current') === 'location').map(text)).toEqual(['Spells']);
         fixture.destroy();
       } finally {
-        Element.prototype.scrollIntoView = original;
+        window.matchMedia = matchMedia;
+        scrollTo.mockRestore();
+        delete (document.documentElement as { scrollHeight?: number }).scrollHeight;
       }
     });
   });
