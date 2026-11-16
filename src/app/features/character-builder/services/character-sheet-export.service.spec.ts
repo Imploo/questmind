@@ -90,18 +90,19 @@ describe('CharacterSheetExportService', () => {
     expect(pdf.generateCharacterPdf.mock.calls[0][0]).toBe(c);
   });
 
-  it('looks texts up under the rules the character follows', async () => {
+  it('looks texts up under the rules the character was built with', async () => {
     resolver.resolveSpell.mockResolvedValue({ description: 'Darts (2024).', usage: 'Casting Time: Action', level: 1 });
     resolver.resolveFeature.mockResolvedValue({ description: 'Regain slots (2024).' });
     const c = character({
+      rulesVersion: '2024',
       // A text looked up under the 2014 rules is redone.
       spellcasting: { spells: [{ name: 'Magic Missile', level: 1, description: 'Darts.', usage: 'U', resolvedFor: resolutionKey(resolutionContextOf(character())) }] },
       featuresAndTraits: [{ name: 'Arcane Recovery' } as DndCharacter['featuresAndTraits'][number]],
     });
 
-    await service.export({ ...request(c), rulesVersion: '2024' });
+    await service.export(request(c));
 
-    const context = resolutionContextOf(c, '2024');
+    const context = resolutionContextOf(c);
     expect(resolver.resolveSpell).toHaveBeenCalledWith('char-1', expect.objectContaining({ name: 'Magic Missile' }), context);
     expect(resolver.resolveFeature).toHaveBeenCalledWith('char-1', expect.objectContaining({ name: 'Arcane Recovery' }), context);
     const [, , spells, features] = versions.patchResolvedEntries.mock.calls[0] as [string, string, Map<string, { resolvedFor: string }>, Map<string, { resolvedFor: string }>];

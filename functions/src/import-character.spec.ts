@@ -194,7 +194,6 @@ describe('executeImportCharacter', () => {
       userId: 'me',
       name: 'Vesper',
       campaignId: null,
-      rulesVersion: '2014',
     });
     // The owner's play state stays behind: the copy starts fresh.
     expect(character).not.toHaveProperty('playState');
@@ -220,15 +219,17 @@ describe('executeImportCharacter', () => {
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('someone-else'))).toBe(false);
   });
 
-  it('keeps the rules the original follows', async () => {
-    routes[`${DOCS}/characters/${SOURCE_ID}`] = () => json({
-      name: `x/characters/${SOURCE_ID}`,
-      fields: { userId: str('someone-else'), activeVersionId: str('v2'), rulesVersion: str('2024') },
+  it('keeps the rules the copied version was built with', async () => {
+    routes[`${DOCS}/characters/${SOURCE_ID}/versions/v2`] = () => json({
+      name: 'x/versions/v2',
+      fields: { character: map({ ...characterFields, rulesVersion: str('2024') }) },
     });
 
     const { characterId } = await executeImportCharacter('me', link);
 
-    expect(written[`characters/${characterId}`]).toMatchObject({ rulesVersion: '2024' });
+    const character = written[`characters/${characterId}`];
+    const version = written[`characters/${characterId}/versions/${character.activeVersionId}`];
+    expect(version.character).toMatchObject({ name: 'Vesper', rulesVersion: '2024' });
   });
 
   it('falls back to the newest committed version when the active one is missing', async () => {

@@ -1,6 +1,6 @@
 import { DndCharacter } from '../models/dnd-character.model';
 import { normalizeSpellSlots } from '../pdf/character-sheet-field-values';
-import { DEFAULT_RULES_VERSION, RulesVersion } from '../models/rules-version';
+import { DEFAULT_RULES_VERSION, RulesVersion, rulesVersionOf } from '../models/rules-version';
 
 /** What the rules text of a spell or feature depends on, besides its name. */
 export interface ResolutionContext {
@@ -27,8 +27,8 @@ export interface ResolutionContext {
 const TEXT_VERSION = 2;
 
 export function resolutionContextOf(
-  character: Pick<DndCharacter, 'class' | 'race' | 'level' | 'spellcasting'> & Partial<Pick<DndCharacter, 'featuresAndTraits'>>,
-  rulesVersion: RulesVersion = DEFAULT_RULES_VERSION
+  character: Pick<DndCharacter, 'class' | 'race' | 'level' | 'spellcasting'>
+    & Partial<Pick<DndCharacter, 'featuresAndTraits' | 'rulesVersion'>>
 ): ResolutionContext {
   const features = (character.featuresAndTraits ?? []) as (string | { name: string })[];
   const slotLevels = normalizeSpellSlots(character.spellcasting?.slots)
@@ -40,7 +40,7 @@ export function resolutionContextOf(
     level: character.level,
     maxSpellSlotLevel: slotLevels.length ? Math.max(...slotLevels) : undefined,
     features: features.map(feature => (typeof feature === 'string' ? feature : feature.name)).filter(Boolean),
-    rulesVersion,
+    rulesVersion: rulesVersionOf(character),
   };
 }
 

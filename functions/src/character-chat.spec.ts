@@ -167,17 +167,24 @@ describe('characterChat', () => {
       replyMessageId: REPLY_ID,
       mode: 'text',
       currentCharacter: character,
-      rulesVersion: '2014',
       attachment: null,
     });
+    expect(fake.db.data(CHAT)).not.toHaveProperty('pendingRulesVersion');
   });
 
-  it('hands the worker the rules stored on the character, whatever the client sends', async () => {
-    mockAssertCharacterOwner.mockResolvedValue({ userId: 'owner-1', rulesVersion: '2024' });
+  it('records on the chat which rules a message asks to convert the character to', async () => {
+    await characterChat(request({ convertToRules: '2024' }));
 
-    await characterChat(request({ rulesVersion: '2014' }));
+    expect(fake.db.data(CHAT)).toMatchObject({ pendingRulesVersion: '2024' });
+  });
 
-    expect(mockEnqueue).toHaveBeenCalledWith('characterChatWorker', expect.objectContaining({ rulesVersion: '2024' }));
+  it.each([
+    ['rules it does not know', { convertToRules: '3.5' }],
+    ['a portrait request', { convertToRules: '2024', mode: 'image', text: 'maak afbeelding van Mira' }],
+  ])('starts no conversion for %s', async (_case, data) => {
+    await characterChat(request(data));
+
+    expect(fake.db.data(CHAT)).not.toHaveProperty('pendingRulesVersion');
   });
 
   it('puts the reply right after the question', async () => {

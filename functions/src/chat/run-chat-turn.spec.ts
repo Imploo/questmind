@@ -176,14 +176,26 @@ describe('runChatTurn', () => {
       expect(request.config.responseSchema.required).toContain('title');
     });
 
-    it('answers by the rules the character follows', async () => {
+    it('answers by the rules of the character on screen', async () => {
       seedTurn();
       mockGenerateContent.mockResolvedValueOnce(answer({ text: 'Antwoord', shouldUpdateCharacter: false, title: 'Titel' }));
 
-      await runChatTurn(payload({ rulesVersion: '2024' }));
+      await runChatTurn(payload({ currentCharacter: { ...character, rulesVersion: '2024' } }));
 
       const request = mockGenerateContent.mock.calls[0][0] as { config: { systemInstruction: string } };
       expect(request.config.systemInstruction).toBe('responder prompt 2024 +title');
+    });
+
+    it('answers by the rules a conversation is converting the character to', async () => {
+      seedTurn('Zet dit karakter om.', { pendingRulesVersion: '2024' });
+      mockGenerateContent.mockResolvedValueOnce(answer({ text: 'Welke background wil je?', shouldUpdateCharacter: false, title: 'Titel' }));
+
+      await runChatTurn(payload());
+
+      const request = mockGenerateContent.mock.calls[0][0] as { config: { systemInstruction: string } };
+      expect(request.config.systemInstruction).toBe('responder prompt 2024 +title');
+      // No draft yet: the conversion is still to be done, also in the next turn.
+      expect(fake.db.data(CHAT)).toMatchObject({ pendingRulesVersion: '2024' });
     });
 
     it('keeps a title the owner chose while the answer was being written', async () => {
@@ -363,6 +375,30 @@ describe('runChatTurn', () => {
 
       expect(fake.db.data(UPDATE)).toMatchObject({ status: 'cancelled' });
       expect(fake.db.data(CHAT)?.updatedCharacter).toBeUndefined();
+    });
+
+    it('builds the draft of a conversion under the new rules, and then follows the character again', async () => {
+      seedTurn('Zet dit karakter om naar de regels van 2024.', { pendingRulesVersion: '2024' });
+      mockGenerateContent.mockResolvedValueOnce(updateAnswer);
+      mockGenerateDraft.mockResolvedValueOnce({ versionId: 'version-8', versionNumber: 8 });
+
+      await runChatTurn(payload());
+
+      expect(mockGenerateDraft).toHaveBeenCalledWith(
+        expect.objectContaining({ currentCharacter: character, rulesVersion: '2024' }),
+        { shouldSave: expect.any(Function) }
+      );
+      expect(fake.db.data(CHAT)).toMatchObject({ lastVersionNumber: 8, pendingRulesVersion: null });
+    });
+
+    it('keeps the conversion pending when the owner cancelled its draft', async () => {
+      seedTurn('Zet dit karakter om naar de regels van 2024.', { pendingRulesVersion: '2024' });
+      mockGenerateContent.mockResolvedValueOnce(updateAnswer);
+      mockGenerateDraft.mockResolvedValueOnce(null);
+
+      await runChatTurn(payload());
+
+      expect(fake.db.data(CHAT)).toMatchObject({ pendingRulesVersion: '2024' });
     });
 
     it('marks the update as failed and reports it, but keeps the answer', async () => {

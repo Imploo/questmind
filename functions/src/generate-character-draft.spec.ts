@@ -103,16 +103,19 @@ describe('executeGenerateCharacterDraft', () => {
   });
 
   it.each([
-    ['the 2014 rules when the payload names none', {}, 'test system prompt 2014'],
-    ['the rules the character follows', { rulesVersion: '2024' }, 'test system prompt 2024'],
-  ])('should instruct the generator for %s', async (_case, overrides, expected) => {
-    mockGenerateContent.mockResolvedValueOnce({ text: JSON.stringify({ name: 'Gandalf' }) });
+    ['the 2014 rules for a character without the setting', {}, '2014'],
+    ['the rules of the current character', { currentCharacter: { name: 'Gandalf', rulesVersion: '2024' } }, '2024'],
+    ['the rules it is converted to', { currentCharacter: { name: 'Gandalf', rulesVersion: '2024' }, rulesVersion: '2014' }, '2014'],
+  ])('should build the draft under %s and mark it with them', async (_case, overrides, expected) => {
+    // Whatever the generator says about the rules, the draft gets the ones it was built under.
+    mockGenerateContent.mockResolvedValueOnce({ text: JSON.stringify({ name: 'Gandalf', rulesVersion: '5e' }) });
 
     const { executeGenerateCharacterDraft } = await import('./generate-character-draft');
     await executeGenerateCharacterDraft(makePayload(overrides));
 
     const request = mockGenerateContent.mock.calls[0][0] as { config: { systemInstruction: string } };
-    expect(request.config.systemInstruction).toBe(expected);
+    expect(request.config.systemInstruction).toBe(`test system prompt ${expected}`);
+    expect(mockSet.mock.calls[0][0].character).toMatchObject({ name: 'Gandalf', rulesVersion: expected });
   });
 
   it('should drop the generated draft when the update was cancelled in the meantime', async () => {

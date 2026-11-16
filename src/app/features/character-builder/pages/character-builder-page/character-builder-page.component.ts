@@ -100,7 +100,6 @@ import { RulesVersion, rulesConversionRequest, rulesVersionOf } from '../../../.
                   [canClone]="canClone()"
                   [cloning]="cloning()"
                   [archived]="selectedCharacter()?.archived === true"
-                  [rulesVersion]="rulesVersion()"
                   (rulesVersionChange)="onRulesVersionChange($event)"
                   (cloneCharacter)="onCloneCharacter()"
                   (archivedChange)="onArchivedChange($event)"
@@ -289,8 +288,6 @@ export class CharacterBuilderPageComponent {
   });
   cloning = signal(false);
 
-  /** The edition of the rules the character follows: 2014 unless the owner chose 2024. */
-  rulesVersion = computed(() => rulesVersionOf(this.selectedCharacter()));
 
   // Latest version from Firestore real-time listener
   latestVersion = this.characterVersionService.latestVersion;
@@ -639,7 +636,6 @@ export class CharacterBuilderPageComponent {
         characterId: this.selectedCharacterId(),
         versionId: version.id ?? null,
         canResolveRemotely: this.isOwner(),
-        rulesVersion: this.rulesVersion(),
       });
     } catch (e) {
       logger.error('Failed to export character sheet PDF:', e);
@@ -718,28 +714,21 @@ export class CharacterBuilderPageComponent {
   }
 
   /**
-   * Switch the character to the other edition of the rules. The choice is stored first,
-   * so the chat and the spell and feature texts follow the new rules; then a new
-   * conversation asks The Sidekick to rebuild the character under them. What comes out
-   * of that is a draft, like any other change by the chat.
+   * Rebuild the character under the other edition of the rules. Nothing changes right
+   * away: a new conversation asks The Sidekick for the conversion, and the draft that
+   * comes out of it carries the new rules. Dropping that draft, or restoring an older
+   * version, brings the old rules back with the old character.
    */
-  async onRulesVersionChange(rulesVersion: RulesVersion): Promise<void> {
-    const charId = this.selectedCharacterId();
-    if (!charId || !this.isOwner() || rulesVersion === this.rulesVersion()) return;
+  onRulesVersionChange(rulesVersion: RulesVersion): void {
+    const version = this.latestVersion();
+    const chat = this.chat();
+    if (!version || !chat || !this.isOwner() || rulesVersion === rulesVersionOf(version.character)) return;
     // A second update next to a running one would have the two overwrite each other's draft.
-    if (this.isGenerating()) {
-      this.toastService.show('Het karakter wordt nog bijgewerkt. Probeer het daarna opnieuw.', 'warning');
+    if (this.isGenerating() || this.chatService.isBusy()) {
+      this.toastService.show('The Sidekick is nog bezig. Probeer het daarna opnieuw.', 'warning');
       return;
     }
-    try {
-      await this.characterService.setRulesVersion(charId, rulesVersion);
-    } catch (e) {
-      logger.error('Failed to store the rules version:', e);
-      this.toastService.show('Omzetten is mislukt. Probeer het opnieuw.', 'error');
-      return;
-    }
-    if (this.selectedCharacterId() !== charId) return;
-    this.chat()?.sendInNewChat(rulesConversionRequest(rulesVersion));
+    chat.startRulesConversion(rulesVersion, rulesConversionRequest(rulesVersion));
     // The conversion happens in the chat: show it.
     this.showPanel('chat');
   }

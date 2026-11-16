@@ -11,7 +11,6 @@ import { fetchPublicDocument, listPublicDocuments, PublicDocument } from './util
 import { environmentForHost, environmentForProject, QuestmindEnvironment } from './config/environments';
 import { DndCharacterSchema, DndCharacter } from './schemas/dnd-character.schema';
 import { characterImagePrefix } from './generate-image';
-import { readRulesVersion } from './character/rules-version';
 import * as logger from './utils/logger';
 
 const CHARACTER_ID_PATTERN = /^[\w-]{8,64}$/;
@@ -109,8 +108,6 @@ export async function executeImportCharacter(uid: string, source: CharacterSourc
     name: character.name,
     activeVersionId: versionId,
     campaignId: null,
-    // The copy follows the same rules as the original.
-    rulesVersion: readRulesVersion(sourceDoc.data['rulesVersion']),
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });

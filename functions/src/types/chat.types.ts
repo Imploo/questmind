@@ -61,6 +61,11 @@ export interface ChatDoc {
   /** Summary of the messages up to and including `summarizedUntil`; they are no longer sent as history. */
   summary?: string;
   summarizedUntil?: Timestamp;
+  /**
+   * The rules this conversation is converting the character to. Until the draft of that
+   * conversion is saved, the conversation follows these rules instead of the character's own.
+   */
+  pendingRulesVersion?: RulesVersion | null;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -83,7 +88,5 @@ export interface ChatTurnPayload {
   mode: ChatTurnMode;
   /** The character as the owner sees it right now (latest version + play state), without descriptions. */
   currentCharacter: DndCharacter;
-  /** The rules the character follows, as stored on it when the message was sent; 2014 when absent. */
-  rulesVersion?: RulesVersion;
   attachment: StoredChatAttachment | null;
 }

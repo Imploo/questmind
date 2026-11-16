@@ -41,6 +41,7 @@ describe('characterJsonGeneratorPrompt', () => {
     expect(prompt).toContain('Racial bonuses volgen de PHB (2014)');
     expect(prompt).toContain('Second Wind (max 1, shortRest)');
     expect(prompt).toContain('Handhaaf de D&D 5e regels van 2014');
+    expect(prompt).toContain('Zet "rulesVersion" op "2014".');
   });
 
   it('records a 2024 character by the 2024 rules', () => {
@@ -51,6 +52,7 @@ describe('characterJsonGeneratorPrompt', () => {
     expect(prompt).toContain('Second Wind (max 2 op level 1, longRest)');
     expect(prompt).not.toContain('Racial bonuses volgen de PHB (2014)');
     expect(prompt).toContain('Handhaaf de D&D 5e regels van 2024');
+    expect(prompt).toContain('Zet "rulesVersion" op "2024".');
   });
 
   it('holds the character schema either way', () => {

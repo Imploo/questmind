@@ -52,6 +52,8 @@ ${JSON.stringify(characterJsonSchema)}
 
 ${RULES_SECTION[rulesVersion]}
 
+Zet "rulesVersion" op "${rulesVersion}".
+
 ## Regels
 
 1. Retourneer altijd het VOLLEDIGE karakter als JSON-object.

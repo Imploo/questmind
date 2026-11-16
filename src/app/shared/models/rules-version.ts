@@ -1,7 +1,8 @@
 /**
  * The edition of the D&D 5e rules a character is built with: the 2014 Player's
- * Handbook or the revised one of 2024. Stored as `rulesVersion` on the character;
- * a character without it uses the 2014 rules.
+ * Handbook or the revised one of 2024. Stored as `rulesVersion` in the character of
+ * each version, so going back to an older version (or dropping a draft) also goes
+ * back to its rules. A character without it uses the 2014 rules.
  */
 export type RulesVersion = '2014' | '2024';
 
@@ -18,8 +19,8 @@ export function otherRulesVersion(current: RulesVersion): RulesVersion {
 }
 
 /**
- * The message that opens the conversation after the rules of a character were switched:
- * it asks The Sidekick to rebuild the character under the chosen rules.
+ * The message that opens the conversation in which the rules of a character are
+ * switched: it asks The Sidekick to rebuild the character under the chosen rules.
  */
 export function rulesConversionRequest(rulesVersion: RulesVersion): string {
   return [

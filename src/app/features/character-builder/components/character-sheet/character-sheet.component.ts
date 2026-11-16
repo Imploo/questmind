@@ -46,7 +46,7 @@ import { CharacterActionsMenuComponent } from '../character-actions-menu/charact
 import { ImageLightboxComponent } from '../../../../chat/image-lightbox.component';
 import { CharacterEntryResolverService } from '../../../../core/services/character-entry-resolver.service';
 import { resolutionContextOf, resolutionKey } from '../../../../shared/utils/resolution-context';
-import { DEFAULT_RULES_VERSION, RulesVersion } from '../../../../shared/models/rules-version';
+import { RulesVersion, rulesVersionOf } from '../../../../shared/models/rules-version';
 import { ToastService } from '../../../../shared/services/toast.service';
 import { copyText } from '../../../../shared/utils/clipboard';
 import { characterShareUrl } from '../../../../shared/utils/character-share-url';
@@ -227,6 +227,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
               @if (character().playerName) {
                 <span class="qm-tag qm-tag-quiet">Player: {{ character().playerName }}</span>
               }
+              <span class="qm-tag qm-tag-quiet" [title]="'Built with the 5e rules of ' + rulesVersion()">{{ rulesVersion() }} rules</span>
               @if (editable() && archived()) {
                 <span class="qm-tag tag-archived">Archived</span>
               }
@@ -1052,8 +1053,8 @@ export class CharacterSheetComponent {
   cloning = input<boolean>(false);
   /** Whether the owner put this character away; it then carries an "Archived" tag. */
   archived = input<boolean>(false);
-  /** The edition of the rules the character follows; it decides which spell and feature texts are shown. */
-  rulesVersion = input<RulesVersion>(DEFAULT_RULES_VERSION);
+  /** The edition of the rules this version of the character is built with. */
+  rulesVersion = computed(() => rulesVersionOf(this.character()));
   viewHistory = output<void>();
   exportPdf = output<void>();
   deleteImage = output<CharacterImage>();
@@ -1253,7 +1254,7 @@ export class CharacterSheetComponent {
 
   // ── Spell and feature texts ───────────────────────────────────
 
-  private readonly resolutionContext = computed(() => resolutionContextOf(this.character(), this.rulesVersion()));
+  private readonly resolutionContext = computed(() => resolutionContextOf(this.character()));
 
   /**
    * An entry without a text is looked up. So is one whose text was looked up for another

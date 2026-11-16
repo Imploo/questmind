@@ -4,6 +4,7 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { ChatService, ChatAttachment } from './chat.service';
 import { marked } from 'marked';
 import { DndCharacter } from '../shared/models/dnd-character.model';
+import { RulesVersion } from '../shared/models/rules-version';
 import { ImageLightboxComponent } from './image-lightbox.component';
 import { ChatHistoryPanelComponent } from './chat-history-panel.component';
 import { readPdfAttachment } from './pdf-attachment';
@@ -649,14 +650,15 @@ export class ChatComponent {
   }
 
   /**
-   * Open a new conversation with this message as its first, as if the user typed it.
-   * Whatever conversation was open stays as it is, also when it still waits for an answer.
+   * Open a new conversation that asks to rebuild the character under other rules, with
+   * `text` as its first message, as if the user typed it. Whatever conversation was open
+   * stays as it is.
    */
-  sendInNewChat(text: string): void {
+  startRulesConversion(rulesVersion: RulesVersion, text: string): void {
     this.chatService.newChat();
     this.historyOpen.set(false);
     this.error.set('');
-    void this.chatService.send(text);
+    void this.chatService.send(text, undefined, rulesVersion);
   }
 
   sendMessage(): void {

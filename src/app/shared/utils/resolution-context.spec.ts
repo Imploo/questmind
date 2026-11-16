@@ -8,8 +8,8 @@ describe('resolutionContextOf', () => {
     });
   });
 
-  it('takes the rules the character follows from the caller', () => {
-    expect(resolutionContextOf({ class: 'Druid', race: 'Wood Elf', level: 3 }, '2024').rulesVersion).toBe('2024');
+  it('takes the rules from the character, as this version of it was built', () => {
+    expect(resolutionContextOf({ class: 'Druid', race: 'Wood Elf', level: 3, rulesVersion: '2024' }).rulesVersion).toBe('2024');
   });
 
   it('lists the names of the character\'s features', () => {

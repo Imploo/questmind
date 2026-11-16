@@ -6,7 +6,6 @@ import { DndCharacter } from '../../shared/models/dnd-character.model';
 import { CharacterVersionService } from './character-version.service';
 import { CharacterRepository } from '../../shared/repository/character.repository';
 import { CharacterPlayState } from '../../shared/models/character-play-state.model';
-import { RulesVersion } from '../../shared/models/rules-version';
 
 @Injectable({ providedIn: 'root' })
 export class CharacterService {
@@ -81,14 +80,6 @@ export class CharacterService {
    */
   async setArchived(characterId: string, archived: boolean): Promise<void> {
     await this.characterRepo.patch(characterId, { archived });
-  }
-
-  /**
-   * Choose the edition of the rules the character follows. This only records the choice;
-   * rebuilding the character under those rules is a conversation with The Sidekick.
-   */
-  async setRulesVersion(characterId: string, rulesVersion: RulesVersion): Promise<void> {
-    await this.characterRepo.patch(characterId, { rulesVersion });
   }
 
   async updateCharacter(characterId: string, updates: Partial<Pick<Character, 'name' | 'campaignId'>>): Promise<void> {
