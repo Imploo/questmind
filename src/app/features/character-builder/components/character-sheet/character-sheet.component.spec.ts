@@ -93,4 +93,54 @@ describe('CharacterSheetComponent', () => {
     expect(card(sheet, 'Bonus Actions')).toBeNull();
     expect(card(sheet, 'Reactions')).toBeNull();
   });
+
+  describe('section tabs', () => {
+    const tabs = (sheet: HTMLElement) => Array.from(sheet.querySelectorAll<HTMLButtonElement>('app-sheet-section-tabs .tab'));
+    const caster = { spellcasting: { ability: 'wisdom', spellSaveDc: 14, spellAttackBonus: 6, slots: [], spells: [] } } as Partial<DndCharacter>;
+
+    it('has a tab for every section of the sheet, each with a place to scroll to', () => {
+      const sheet = render(druid(caster));
+
+      expect(tabs(sheet).map(text)).toEqual(['Abilities', 'Attacks', 'Spells', 'Traits', 'Inventory']);
+      for (const id of ['abilities', 'attacks', 'spells', 'traits', 'inventory']) {
+        expect(sheet.querySelectorAll(`[data-section="${id}"]`).length, id).toBe(1);
+      }
+      expect(text(sheet.querySelector('[data-section="attacks"] .qm-section-title'))).toBe('Attacks');
+      expect(text(sheet.querySelector('[data-section="traits"] .qm-section-title'))).toBe('Features & Traits');
+    });
+
+    it('leaves the spells tab out for a character that casts no spells', () => {
+      const sheet = render(druid());
+
+      expect(tabs(sheet).map(text)).toEqual(['Abilities', 'Attacks', 'Traits', 'Inventory']);
+      expect(sheet.querySelector('[data-section="spells"]')).toBeNull();
+    });
+
+    it('scrolls to the section of a tapped tab and lights that tab', () => {
+      const scrolledTo: string[] = [];
+      const original = Element.prototype.scrollIntoView;
+      Element.prototype.scrollIntoView = function (this: Element) {
+        scrolledTo.push(this.getAttribute('data-section') ?? '');
+      };
+      try {
+        TestBed.configureTestingModule({
+          providers: [{ provide: CharacterEntryResolverService, useValue: { lookupSpellLocally: async () => null } }],
+        });
+        const fixture = TestBed.createComponent(CharacterSheetComponent);
+        fixture.componentRef.setInput('character', druid(caster));
+        fixture.componentRef.setInput('characterName', 'Mira');
+        fixture.detectChanges();
+        const sheet = fixture.nativeElement as HTMLElement;
+
+        tabs(sheet).find(tab => text(tab) === 'Spells')!.click();
+        fixture.detectChanges();
+
+        expect(scrolledTo).toEqual(['spells']);
+        expect(tabs(sheet).filter(tab => tab.getAttribute('aria-current') === 'location').map(text)).toEqual(['Spells']);
+        fixture.destroy();
+      } finally {
+        Element.prototype.scrollIntoView = original;
+      }
+    });
+  });
 });
