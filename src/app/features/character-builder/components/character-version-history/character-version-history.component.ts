@@ -26,9 +26,6 @@ import { CharacterVersion } from '../../../../core/models/schemas/character.sche
         </header>
 
         <div class="flex-1 overflow-y-auto scrollbar-thin px-5 pb-6">
-          @if (locked()) {
-            <p class="qm-help mb-4">Save or discard the draft to switch to another version.</p>
-          }
           <ol class="timeline">
             @for (version of versions(); track version.id) {
               <li
@@ -41,8 +38,6 @@ import { CharacterVersion } from '../../../../core/models/schemas/character.sche
                     <h3 class="font-display text-sm font-bold tracking-wide">Version {{ version.versionNumber }}</h3>
                     @if (version.id === activeVersionId()) {
                       <span class="qm-badge qm-badge-brand">Active</span>
-                    } @else if (version.isDraft) {
-                      <span class="qm-badge">Draft</span>
                     }
                   </div>
                   <p class="mt-1 text-sm text-gray-800">{{ version.commitMessage }}</p>
@@ -50,8 +45,8 @@ import { CharacterVersion } from '../../../../core/models/schemas/character.sche
                     {{ version.createdAt.toDate() | date:'medium' }} · {{ version.source }}
                   </div>
 
-                  @if (version.id !== activeVersionId() && !version.isDraft) {
-                    <button type="button" class="qm-btn qm-btn-sm mt-2.5" [disabled]="locked()" (click)="activate.emit(version)">
+                  @if (version.id !== activeVersionId()) {
+                    <button type="button" class="qm-btn qm-btn-sm mt-2.5" (click)="activate.emit(version)">
                       Make active
                     </button>
                   }
@@ -92,8 +87,6 @@ export class CharacterVersionHistoryComponent {
   versions = input.required<CharacterVersion[]>();
   /** The version the character is on. */
   activeVersionId = input.required<string>();
-  /** A draft is waiting: no switching until it is saved or discarded. */
-  locked = input(false);
 
   closed = output<void>();
   /** The owner picked another version to put the character on. */

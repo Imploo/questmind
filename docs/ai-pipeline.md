@@ -24,7 +24,7 @@ Elke stap heeft een key onder `settings/ai` → `features.<key>` in Firestore en
 |---|---|---|---|---|
 | 1 | **Character Chat** (`characterChatText`) | Gemini, thinking low | Gebruikersbericht, opgeslagen chatgeschiedenis (+ samenvatting), huidig character | JSON `{ text, shouldUpdateCharacter, title? }`, opgeslagen als bericht |
 | 1b | **Chat-samenvatting** (`characterChatText`) | Gemini, thinking low | Oudere berichten van een lang gesprek + vorige samenvatting | `summary` op het gesprek |
-| 2 | **Character Draft** (`characterDraft`) | Gemini, thinking medium | Chatcontext | Volledig D&D 5e-character (JSON) als draft-versie |
+| 2 | **Character Draft** (`characterDraft`) | Gemini, thinking medium | Chatcontext | `{ summary, character }`: volledig D&D 5e-character (JSON) + één zin over de wijziging, opgeslagen als nieuwe actieve versie |
 | 3 | **Spell Resolution** (`spellResolution`) | Gemini, thinking low | Spells zonder beschrijving | `description` + `usage` per spell |
 | 4 | **Feature Resolution** (`featureResolution`) | Gemini, thinking low | Features/traits zonder beschrijving | `description` per feature |
 | 5 | **Image Prompt** (`imagePromptGeneration`) | Gemini, thinking low | Character-context + optionele referentieafbeelding | Beschrijvende beeldprompt (tussenstap) |
@@ -46,16 +46,18 @@ app ──► characterChat (callable) ──► Cloud Task ──► characterC
 - **`characterChatWorker`** (`runChatTurn`) bouwt de context op uit de opgeslagen berichten, streamt het antwoord en schrijft de tekst hooguit elke halve seconde naar het antwoordbericht (`status: 'streaming'` → `'done'`). Een fout komt als `status: 'error'` + `errorCode` op het bericht; de app maakt er een melding van. Een taak die dubbel wordt afgeleverd doet niets: alleen een antwoord dat nog `pending` is wordt opgepakt.
 - **Context**: het character, de samenvatting van het oudere deel (als die er is) en de vragen en antwoorden daarna. Afbeeldingsverzoeken, character-updates en mislukte antwoorden tellen niet mee.
 - **Titel**: een nieuw gesprek krijgt de ingekorte eerste vraag als titel (`titleSource: 'auto'`). Zolang dat zo is vraagt stap 1 in hetzelfde antwoord om een `title` (`'ai'`). Een titel die de eigenaar zelf koos (`'user'`) wordt niet overschreven.
-- **Als `shouldUpdateCharacter` true is** start de worker stap 2 zelf. De voortgang staat als systeembericht (`kind: 'characterUpdate'`) in het gesprek; na afloop staat daar het versienummer van de draft. Annuleert de eigenaar (`status: 'cancelled'`), dan wordt de gegenereerde draft niet opgeslagen.
+- **Als `shouldUpdateCharacter` true is** start de worker stap 2 zelf. De voortgang staat als systeembericht (`kind: 'characterUpdate'`) in het gesprek; na afloop staan daar het versienummer en `previousVersionId`, de versie die tot dan actief was: de link "Undo" in de chat zet die weer actief. Annuleert de eigenaar (`status: 'cancelled'`), dan wordt het gegenereerde character niet opgeslagen.
 - **Afbeelding**: een bericht met "maak afbeelding" gaat als `mode: 'image'` naar dezelfde worker, die stap 5 + 6 uitvoert en de afbeelding op het antwoordbericht zet. Het nieuwste portret van het character dient als stijlreferentie.
 
 **1b. Chat-samenvatting** — `functions/src/chat/chat-summary.ts`, prompt in `functions/src/prompts/chat-summary.prompt.ts`
 Draait na een antwoord. Staan er meer dan 30 vragen en antwoorden klaar als context, dan worden alle behalve de laatste 20 samengevat in `summary` op het gesprek (`summarizedUntil` markeert tot waar). Gebruikt de instellingen van `characterChatText`. Mislukt de samenvatting, dan gaat de volgende beurt gewoon met een langere context mee.
 
 **2. Character Draft** — `functions/src/generate-character-draft.ts`
-Schrijft naar `characters/{id}/versions`:
-- Is de laatste versie al een draft → die wordt overschreven.
-- Anders → nieuwe versie met `isDraft: true`, `source: 'ai'`, `commitMessage: 'Draft via AI chat'`.
+Het vertrekpunt is het character dat de app meestuurt: de versie die de eigenaar actief heeft. Een wijziging op een oudere versie bouwt dus verder op die versie.
+
+Schrijft in één transactie naar `characters/{id}/versions`:
+- Een nieuwe versie met het volgende versienummer (hoogste + 1), `source: 'ai'` en als `commitMessage` de `summary` van het model (één zin; ontbreekt die, dan `'Updated via AI chat'`).
+- `activeVersionId` op het character wijst daarna naar die versie. Er is geen draft meer: de wijziging is direct de actieve versie, en ongedaan maken is terugschakelen naar de vorige.
 
 Tijdens generatie staat `isGenerating: true` op het character.
 

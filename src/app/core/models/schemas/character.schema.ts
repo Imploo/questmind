@@ -24,10 +24,9 @@ export interface CharacterVersion {
   commitMessage: string;
   source: 'ai' | 'restore' | 'manual';
   restoredFromVersionId?: string;
-  isDraft?: boolean;
-  /** Ability score rule violations the AI could not fix (set on AI drafts). */
+  /** Ability score rule violations the AI could not fix (set on versions made by the chat). */
   abilityScoreWarnings?: string[];
-  /** Derived values (saves, skills, initiative, ...) that were recalculated on an AI draft. */
+  /** Derived values (saves, skills, initiative, ...) that were recalculated on a version made by the chat. */
   derivedStatCorrections?: string[];
   createdAt: Timestamp;
 }

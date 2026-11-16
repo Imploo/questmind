@@ -240,19 +240,4 @@ export class CharacterVersionService {
     }
     repo.destroy();
   }
-
-  async commitDraft(characterId: string, draftVersionId: string): Promise<void> {
-    const repo = this.versionRepoFactory.create(characterId);
-    await repo.patch(draftVersionId, { isDraft: false });
-
-    await this.characterRepo.patch(characterId, {
-      activeVersionId: draftVersionId,
-      updatedAt: Timestamp.now(),
-    });
-  }
-
-  async dismissDraft(characterId: string, draftVersionId: string): Promise<void> {
-    const repo = this.versionRepoFactory.create(characterId);
-    await repo.delete(draftVersionId);
-  }
 }

@@ -256,7 +256,7 @@ export class ChatService {
    * hand it over shows up as an error message in the conversation.
    *
    * With `convertToRules` the message asks to rebuild the character under those rules:
-   * the conversation follows them, and the draft it leads to is marked with them.
+   * the conversation follows them, and the version it leads to is marked with them.
    */
   async send(text: string, attachment?: ChatAttachment, convertToRules?: RulesVersion): Promise<void> {
     const characterId = this.characterId();
@@ -348,7 +348,7 @@ export class ChatService {
     }
   }
 
-  /** Stop a running character update: the backend then does not save the draft it is making. */
+  /** Stop a running character update: the backend then does not save the version it is making. */
   async cancelCharacterUpdate(messageId: string): Promise<void> {
     const characterId = this.characterId();
     const chatId = this.activeChatId();

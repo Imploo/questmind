@@ -55,6 +55,13 @@ describe('characterJsonGeneratorPrompt', () => {
     expect(prompt).toContain('Zet "rulesVersion" op "2024".');
   });
 
+  it('asks for a one-sentence summary next to the character', () => {
+    const prompt = characterJsonGeneratorPrompt('2014');
+
+    expect(prompt).toContain('{"summary": "...", "character": { ... }}');
+    expect(prompt).toContain('**summary**: één korte zin');
+  });
+
   it('holds the character schema either way', () => {
     expect(characterJsonGeneratorPrompt('2014')).toContain('"featuresAndTraits"');
     expect(characterJsonGeneratorPrompt('2024')).toContain('"featuresAndTraits"');

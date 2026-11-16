@@ -21,8 +21,13 @@ export interface StoredChatMessage {
   text: string;
   images?: MessageImage[];
   pdfFileName?: string;
-  /** Draft version a character update was saved as. */
+  /** The version a character update was saved as; it became the active one. */
+  versionId?: string;
   versionNumber?: number;
+  /** The version that was active before the update: where its undo goes back to. */
+  previousVersionId?: string;
+  /** Ability score rule violations the update could not fix. */
+  abilityScoreWarnings?: string[];
   errorCode?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
@@ -57,7 +62,12 @@ export interface Message {
   /** A character update that is still running and can be cancelled. */
   isUpdatingCharacter?: boolean;
   /** The version a finished character update was saved as. */
+  versionId?: string;
   versionNumber?: number;
+  /** The version that was active before that update; undoing the update goes back to it. */
+  previousVersionId?: string;
+  /** What is still against the ability score rules in that version. */
+  abilityScoreWarnings?: string[];
 }
 
 export interface ConversationGroup {

@@ -104,6 +104,15 @@ function seedTurn(question = 'Welke spells raad je aan?', chat: Record<string, u
 
 const answer = (fields: Record<string, unknown>) => ({ text: JSON.stringify(fields) });
 
+/** What the character generator returns after saving version `versionNumber`. */
+const savedVersion = (versionNumber: number, overrides: Record<string, unknown> = {}) => ({
+  versionId: `version-${versionNumber}`,
+  versionNumber,
+  previousVersionId: null,
+  abilityScoreWarnings: [],
+  ...overrides,
+});
+
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe('runChatTurn', () => {
@@ -318,10 +327,10 @@ describe('runChatTurn', () => {
   describe('a character update', () => {
     const updateAnswer = answer({ text: 'Ik voeg Hypnotic Pattern toe.', shouldUpdateCharacter: true, title: 'Spells' });
 
-    it('generates the draft and links it to the conversation', async () => {
+    it('generates the new version and links it to the conversation, with the version an undo goes back to', async () => {
       seedTurn('Doe Hypnotic Pattern.');
       mockGenerateContent.mockResolvedValueOnce(updateAnswer);
-      mockGenerateDraft.mockResolvedValueOnce({ versionId: 'version-7', versionNumber: 7 });
+      mockGenerateDraft.mockResolvedValueOnce(savedVersion(7, { previousVersionId: 'version-6' }));
 
       await runChatTurn(payload());
 
@@ -341,18 +350,35 @@ describe('runChatTurn', () => {
         status: 'done',
         versionId: 'version-7',
         versionNumber: 7,
+        previousVersionId: 'version-6',
       });
+      expect(fake.db.data(UPDATE)).not.toHaveProperty('abilityScoreWarnings');
       expect(fake.db.data(CHAT)).toMatchObject({ updatedCharacter: true, lastVersionNumber: 7 });
       expect(fake.db.writesTo(CHARACTER)[0].data).toEqual({ isGenerating: true });
     });
 
-    it('shows the update as running while the draft is generated', async () => {
+    it('puts what is still against the ability score rules on the update', async () => {
+      seedTurn('Zet mijn Strength op 20.');
+      mockGenerateContent.mockResolvedValueOnce(updateAnswer);
+      mockGenerateDraft.mockResolvedValueOnce(savedVersion(2, { abilityScoreWarnings: ['Point buy costs 36 points, the maximum is 27'] }));
+
+      await runChatTurn(payload());
+
+      expect(fake.db.data(UPDATE)).toMatchObject({
+        status: 'done',
+        abilityScoreWarnings: ['Point buy costs 36 points, the maximum is 27'],
+      });
+      // The first version of a character has nothing to go back to.
+      expect(fake.db.data(UPDATE)).not.toHaveProperty('previousVersionId');
+    });
+
+    it('shows the update as running while the character is generated', async () => {
       seedTurn('Doe Hypnotic Pattern.');
       mockGenerateContent.mockResolvedValueOnce(updateAnswer);
       mockGenerateDraft.mockImplementationOnce(async () => {
         expect(fake.db.data(UPDATE)).toMatchObject({ status: 'pending' });
         expect(fake.db.data(REPLY)).toMatchObject({ status: 'done' });
-        return { versionId: 'version-7', versionNumber: 7 };
+        return savedVersion(7);
       });
 
       await runChatTurn(payload());
@@ -360,7 +386,7 @@ describe('runChatTurn', () => {
       expect(mockGenerateDraft).toHaveBeenCalledOnce();
     });
 
-    it('does not save the draft after the owner cancelled', async () => {
+    it('does not save the version after the owner cancelled', async () => {
       seedTurn('Doe Hypnotic Pattern.');
       mockGenerateContent.mockResolvedValueOnce(updateAnswer);
       mockGenerateDraft.mockImplementationOnce(async (_payload, options: { shouldSave: () => Promise<boolean> }) => {
@@ -377,10 +403,10 @@ describe('runChatTurn', () => {
       expect(fake.db.data(CHAT)?.updatedCharacter).toBeUndefined();
     });
 
-    it('builds the draft of a conversion under the new rules, and then follows the character again', async () => {
+    it('builds the version of a conversion under the new rules, and then follows the character again', async () => {
       seedTurn('Zet dit karakter om naar de regels van 2024.', { pendingRulesVersion: '2024' });
       mockGenerateContent.mockResolvedValueOnce(updateAnswer);
-      mockGenerateDraft.mockResolvedValueOnce({ versionId: 'version-8', versionNumber: 8 });
+      mockGenerateDraft.mockResolvedValueOnce(savedVersion(8));
 
       await runChatTurn(payload());
 
@@ -391,7 +417,7 @@ describe('runChatTurn', () => {
       expect(fake.db.data(CHAT)).toMatchObject({ lastVersionNumber: 8, pendingRulesVersion: null });
     });
 
-    it('keeps the conversion pending when the owner cancelled its draft', async () => {
+    it('keeps the conversion pending when the owner cancelled it', async () => {
       seedTurn('Zet dit karakter om naar de regels van 2024.', { pendingRulesVersion: '2024' });
       mockGenerateContent.mockResolvedValueOnce(updateAnswer);
       mockGenerateDraft.mockResolvedValueOnce(null);
@@ -418,11 +444,11 @@ describe('runChatTurn', () => {
       );
     });
 
-    it('passes the PDF on to the draft generator', async () => {
+    it('passes the PDF on to the character generator', async () => {
       seedTurn('Import this character');
       mockDownload.mockResolvedValueOnce([Buffer.from('%PDF-1.7')]);
       mockGenerateContent.mockResolvedValueOnce(updateAnswer);
-      mockGenerateDraft.mockResolvedValueOnce({ versionId: 'version-2', versionNumber: 2 });
+      mockGenerateDraft.mockResolvedValueOnce(savedVersion(2));
 
       await runChatTurn(payload({
         attachment: { storagePath: 'chat-attachments/char-1/chat-1/user-msg.pdf', mimeType: 'application/pdf', fileName: 'mira.pdf' },

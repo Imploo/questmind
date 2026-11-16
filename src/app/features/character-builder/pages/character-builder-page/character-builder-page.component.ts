@@ -16,10 +16,8 @@ import { CharacterImage, portraitUrlOf } from '../../../../core/models/schemas/c
 import { DndCharacter } from '../../../../shared/models/dnd-character.model';
 import { CharacterPlayState } from '../../../../shared/models/character-play-state.model';
 import { applyPlayStateToCharacter, resolvePlayState } from '../../../../shared/utils/character-play-state';
-import { activeVersionOf, pendingDraft } from '../../../../shared/utils/character-versions';
 import { CharacterSheetComponent, SpellResolvedEvent, FeatureResolvedEvent, UsesChangeEvent } from '../../components/character-sheet/character-sheet.component';
 import { ChatComponent } from '../../../../chat/chat.component';
-import { CharacterDraftPreviewComponent } from '../../components/character-draft-preview/character-draft-preview.component';
 import { CharacterVersionHistoryComponent } from '../../components/character-version-history/character-version-history.component';
 import { PanelSwitcherComponent } from '../../../../layout/panel-switcher/panel-switcher.component';
 import { PagePanel, PanelSwitcherService } from '../../../../layout/panel-switcher/panel-switcher.service';
@@ -38,7 +36,6 @@ import { RulesVersion, rulesConversionRequest, rulesVersionOf } from '../../../.
     RouterModule,
     CharacterSheetComponent,
     ChatComponent,
-    CharacterDraftPreviewComponent,
     CharacterVersionHistoryComponent,
     PanelSwitcherComponent,
   ],
@@ -69,19 +66,8 @@ import { RulesVersion, rulesConversionRequest, rulesVersionOf } from '../../../.
               </a>
             </nav>
           }
-          @if (isDraft()) {
-            <div class="sticky z-10" [class]="panelsMode() ? 'top-0' : 'top-[4.25rem] sm:top-4'">
-              <app-character-draft-preview
-                  [loading]="isCommitting()"
-                  [abilityScoreWarnings]="draftVersion()?.abilityScoreWarnings ?? []"
-                  [derivedStatCorrections]="draftVersion()?.derivedStatCorrections ?? []"
-                  (commit)="commitDraft()"
-                  (dismiss)="dismissDraft()"
-              ></app-character-draft-preview>
-            </div>
-          }
           @if (selectedCharacterId()) {
-            @if (shownVersion()) {
+            @if (activeVersion()) {
               <div class="relative">
                 @if (isGenerating()) {
                   <div class="absolute -inset-2 z-10 flex items-start justify-center rounded-2xl bg-[rgba(40,24,90,0.35)] pt-[30vh] backdrop-blur-[2px]" role="status" aria-label="Updating character">
@@ -89,10 +75,10 @@ import { RulesVersion, rulesConversionRequest, rulesVersionOf } from '../../../.
                   </div>
                 }
                 <app-character-sheet
-                  [character]="shownVersion()!.character"
+                  [character]="activeVersion()!.character"
                   [characterName]="selectedCharacter()?.name || 'Unknown'"
                   [characterId]="selectedCharacterId()"
-                  [activeVersionId]="shownVersion()?.id ?? ''"
+                  [activeVersionId]="activeVersion()?.id ?? ''"
                   [images]="characterImages()"
                   [canDelete]="isOwner()"
                   [exportingPdf]="exportingPdf()"
@@ -131,8 +117,14 @@ import { RulesVersion, rulesConversionRequest, rulesVersionOf } from '../../../.
       @if (isOwner()) {
         <aside class="chat-panel" aria-label="Chat" [attr.inert]="panelsMode() && activePanel() !== 'chat' ? '' : null">
           <div class="chat-frame">
-            @if (shownVersion()) {
-              <app-chat [character]="liveCharacter()!" [floating]="panelsMode()" (viewVersions)="showHistory.set(true)"></app-chat>
+            @if (activeVersion()) {
+              <app-chat
+                [character]="liveCharacter()!"
+                [activeVersionId]="activeVersion()?.id ?? null"
+                [floating]="panelsMode()"
+                (viewVersions)="showHistory.set(true)"
+                (undoVersion)="activateVersion($event)"
+              ></app-chat>
             } @else {
               <div class="flex h-full items-center justify-center text-sm qm-muted">
                 Select a character to chat
@@ -148,9 +140,8 @@ import { RulesVersion, rulesConversionRequest, rulesVersionOf } from '../../../.
       <app-character-version-history
         [versions]="versions()"
         [activeVersionId]="activeVersion()?.id ?? ''"
-        [locked]="isDraft()"
         (closed)="showHistory.set(false)"
-        (activate)="activateVersion($event)"
+        (activate)="activateVersion($event.id)"
       ></app-character-version-history>
     }
   `,
@@ -223,7 +214,6 @@ import { RulesVersion, rulesConversionRequest, rulesVersionOf } from '../../../.
       overflow-y: auto;
       overscroll-behavior-y: contain;
     }
-    /* The room around the sheet scrolls along, so the draft banner can stick to the very top. */
     .is-panels .sheet-column {
       padding: 0.75rem 0.75rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
     }
@@ -293,17 +283,17 @@ export class CharacterBuilderPageComponent {
   /** Every version of the character, newest first, from a live listener. */
   versions = this.characterVersionService.versions;
 
-  /** An AI draft waiting to be saved or discarded. It is the owner's: a visitor never sees it. */
-  draftVersion = computed(() => (this.isOwner() ? pendingDraft(this.versions()) : null));
-
-  /** The saved version the character is on, as its `activeVersionId` tracks it. */
-  activeVersion = computed(() => {
+  /**
+   * The version the character is on, as its `activeVersionId` tracks it: the one the
+   * sheet shows and the chat builds on. Should that version be missing, the newest one
+   * takes its place.
+   */
+  activeVersion = computed<CharacterVersion | null>(() => {
     const character = this.selectedCharacter();
-    return character ? activeVersionOf(this.versions(), character.activeVersionId) : null;
+    if (!character) return null;
+    const versions = this.versions();
+    return versions.find(version => version.id === character.activeVersionId) ?? versions[0] ?? null;
   });
-
-  /** What the sheet shows: a waiting draft as a preview, otherwise the active version. */
-  shownVersion = computed(() => this.draftVersion() ?? this.activeVersion());
 
   /**
    * Live table state of the selected character. Set locally first so the sheet reacts at
@@ -314,13 +304,11 @@ export class CharacterBuilderPageComponent {
     this.isOwner() ? this.selectedCharacter()?.playState ?? null : null
   );
 
-  /** The version on screen with the live hit points, hit dice, slots and coins, for the AI chat. */
+  /** The active version with the live hit points, hit dice, slots and coins, for the AI chat. */
   liveCharacter = computed(() => {
-    const version = this.shownVersion();
+    const version = this.activeVersion();
     return version ? applyPlayStateToCharacter(version.character, this.playState()) : null;
   });
-
-  isDraft = computed(() => !!this.draftVersion());
 
   showHistory = signal(false);
   exportingPdf = signal(false);
@@ -332,7 +320,6 @@ export class CharacterBuilderPageComponent {
   activePanel = this.panelSwitcher.active;
   /** Someone started typing on the sheet: the chat takes the focus once it is on screen. */
   private focusChatOnArrival = false;
-  isCommitting = signal<boolean>(false);
 
   isGenerating = computed(() => this.selectedCharacter()?.isGenerating === true);
 
@@ -384,7 +371,7 @@ export class CharacterBuilderPageComponent {
     effect(() => {
       const characterId = this.selectedCharacterId();
       const chat = this.chat();
-      if (!characterId || !chat || !this.isOwner() || !this.shownVersion()) return;
+      if (!characterId || !chat || !this.isOwner() || !this.activeVersion()) return;
       // Wait a tick, so the chat has been told which character it is talking about.
       setTimeout(() => this.sendPendingPdf(characterId));
     });
@@ -548,41 +535,18 @@ export class CharacterBuilderPageComponent {
     this.onSelectCharacter(id);
   }
 
-  async commitDraft() {
-    const version = this.draftVersion();
-    const charId = this.selectedCharacterId();
-    if (!version || !charId) return;
-
-    this.isCommitting.set(true);
-
-    try {
-      await this.characterVersionService.commitDraft(charId, version.id);
-      await this.loadCharacters();
-    } finally {
-      this.isCommitting.set(false);
-    }
-  }
-
-  async dismissDraft() {
-    const version = this.draftVersion();
-    const charId = this.selectedCharacterId();
-    if (!version || !charId) return;
-
-    await this.characterVersionService.dismissDraft(charId, version.id);
-  }
-
   /**
-   * Put the character on another saved version. No version is made or changed: only the
-   * tracker on the character moves, so switching back and forth is free. The history
-   * stays open, with the chip on the version that is now active.
+   * Put the character on another of its versions. No version is made or changed: only
+   * the tracker on the character moves, so switching back and forth is free. The history
+   * drawer uses it to switch, the chat to undo a change.
    */
-  async activateVersion(version: CharacterVersion) {
+  async activateVersion(versionId: string) {
     const charId = this.selectedCharacterId();
-    if (!charId || !this.isOwner() || version.isDraft || this.isDraft()) return;
-    if (version.id === this.activeVersion()?.id) return;
+    if (!charId || !this.isOwner() || versionId === this.activeVersion()?.id) return;
+    if (!this.versions().some(version => version.id === versionId)) return;
 
     try {
-      await this.characterVersionService.activateVersion(charId, version.id);
+      await this.characterVersionService.activateVersion(charId, versionId);
     } catch (e) {
       logger.error('Failed to switch character version:', e);
       this.toastService.show('Wisselen van versie is mislukt. Probeer het opnieuw.', 'error');
@@ -590,7 +554,7 @@ export class CharacterBuilderPageComponent {
   }
 
   onWindowKeydown(event: KeyboardEvent): void {
-    if (!this.isOwner() || !this.shownVersion() || event.defaultPrevented) {
+    if (!this.isOwner() || !this.activeVersion() || event.defaultPrevented) {
       return;
     }
     if (event.ctrlKey || event.metaKey || event.altKey) {
@@ -635,7 +599,7 @@ export class CharacterBuilderPageComponent {
    * slots, ...) out, except for what the player carries: the purse and the items kept by hand.
    */
   async onExportPdf(): Promise<void> {
-    const version = this.shownVersion();
+    const version = this.activeVersion();
     if (!version || this.exportingPdf()) return;
     this.exportingPdf.set(true);
     try {
@@ -662,7 +626,7 @@ export class CharacterBuilderPageComponent {
   async onSpellResolved(event: SpellResolvedEvent): Promise<void> {
     // Patch Firestore — the onSnapshot listener will pick up the change automatically
     const charId = this.selectedCharacterId();
-    const versionId = this.shownVersion()?.id;
+    const versionId = this.activeVersion()?.id;
     if (charId && versionId) {
       await this.characterVersionService.patchSpellDetails(charId, versionId, event.spellName, event);
     }
@@ -681,7 +645,7 @@ export class CharacterBuilderPageComponent {
 
   async onUsesChange(event: UsesChangeEvent): Promise<void> {
     const charId = this.selectedCharacterId();
-    const versionId = this.shownVersion()?.id;
+    const versionId = this.activeVersion()?.id;
     if (!charId || !versionId || !this.isOwner()) return;
     try {
       await this.characterVersionService.patchUses(charId, versionId, event.owner, event.name, event.uses);
@@ -726,15 +690,15 @@ export class CharacterBuilderPageComponent {
 
   /**
    * Rebuild the character under the other edition of the rules. Nothing changes right
-   * away: a new conversation asks The Sidekick for the conversion, and the draft that
-   * comes out of it carries the new rules. Dropping that draft, or switching back to an
+   * away: a new conversation asks The Sidekick for the conversion, and the version that
+   * comes out of it carries the new rules. Undoing that change, or switching back to an
    * older version, brings the old rules back with the old character.
    */
   onRulesVersionChange(rulesVersion: RulesVersion): void {
-    const version = this.shownVersion();
+    const version = this.activeVersion();
     const chat = this.chat();
     if (!version || !chat || !this.isOwner() || rulesVersion === rulesVersionOf(version.character)) return;
-    // A second update next to a running one would have the two overwrite each other's draft.
+    // A second update next to a running one would start from the same character and undo the first.
     if (this.isGenerating() || this.chatService.isBusy()) {
       this.toastService.show('The Sidekick is nog bezig. Probeer het daarna opnieuw.', 'warning');
       return;
@@ -746,7 +710,7 @@ export class CharacterBuilderPageComponent {
 
   async onFeatureResolved(event: FeatureResolvedEvent): Promise<void> {
     const charId = this.selectedCharacterId();
-    const versionId = this.shownVersion()?.id;
+    const versionId = this.activeVersion()?.id;
     if (charId && versionId) {
       await this.characterVersionService.patchFeatureDescription(charId, versionId, event.featureName, event);
     }

@@ -92,6 +92,26 @@ describe('toViewMessage', () => {
       expect(message.isUpdatingCharacter).toBeUndefined();
     });
 
+    it('carries what a finished update needs for its undo, and its warnings', () => {
+      const message = update({
+        status: 'done',
+        versionNumber: 9,
+        versionId: 'v9',
+        previousVersionId: 'v8',
+        abilityScoreWarnings: ['Point buy costs 36 points, the maximum is 27'],
+      });
+      expect(message).toMatchObject({
+        versionId: 'v9',
+        previousVersionId: 'v8',
+        abilityScoreWarnings: ['Point buy costs 36 points, the maximum is 27'],
+      });
+    });
+
+    it('offers no undo for an update that was not saved', () => {
+      const message = update({ status: 'cancelled', versionId: 'v9', previousVersionId: 'v8' });
+      expect(message.previousVersionId).toBeUndefined();
+    });
+
     it('shows a cancelled and a failed update', () => {
       expect(update({ status: 'cancelled' })).toMatchObject({ sender: 'system', text: 'Karakter aanpassen geannuleerd.' });
       expect(update({ status: 'error' })).toMatchObject({ sender: 'error', text: 'Karakter aanpassen mislukt.' });
