@@ -704,8 +704,9 @@ export class CharacterBuilderPageComponent {
       return;
     }
     chat.startRulesConversion(rulesVersion, rulesConversionRequest(rulesVersion));
-    // The conversion happens in the chat: show it.
-    this.showPanel('chat');
+    // The conversion happens in the chat: show it. Not before the menu has closed, though:
+    // closing hands the focus back to its button on the sheet, which stops a scroll to the chat.
+    setTimeout(() => this.showPanel('chat'));
   }
 
   async onFeatureResolved(event: FeatureResolvedEvent): Promise<void> {
