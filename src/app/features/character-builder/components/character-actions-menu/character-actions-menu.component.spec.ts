@@ -111,6 +111,44 @@ describe('CharacterActionsMenuComponent', () => {
     expect(archivedChange).toHaveBeenCalledWith(false);
   });
 
+  it('offers the owner to convert a 2014 character to the 2024 rules', () => {
+    const rulesVersionChange = vi.fn();
+    fixture.componentRef.setInput('canViewHistory', true);
+    fixture.componentRef.setInput('canArchive', true);
+    fixture.componentRef.setInput('canConvertRules', true);
+    fixture.componentInstance.rulesVersionChange.subscribe(rulesVersionChange);
+
+    open();
+    expect(labels()).toEqual(['Download PDF', 'History', 'Convert to 2024 rules', 'Share', 'Archive']);
+    item('Convert to 2024 rules').click();
+    fixture.detectChanges();
+
+    expect(rulesVersionChange).toHaveBeenCalledWith('2024');
+    expect(items()).toHaveLength(0);
+  });
+
+  it('offers the owner to convert a 2024 character back to the 2014 rules', () => {
+    const rulesVersionChange = vi.fn();
+    fixture.componentRef.setInput('canConvertRules', true);
+    fixture.componentRef.setInput('rulesVersion', '2024');
+    fixture.componentInstance.rulesVersionChange.subscribe(rulesVersionChange);
+
+    open();
+    expect(labels()).toContain('Convert to 2014 rules');
+    expect(labels()).not.toContain('Convert to 2024 rules');
+    item('Convert to 2014 rules').click();
+
+    expect(rulesVersionChange).toHaveBeenCalledWith('2014');
+  });
+
+  it('keeps the rules out of the menu of a visitor', () => {
+    fixture.componentRef.setInput('canClone', true);
+    fixture.componentRef.setInput('rulesVersion', '2024');
+    open();
+
+    expect(labels().some(label => label.startsWith('Convert to'))).toBe(false);
+  });
+
   it('shows on the button that the PDF is being made and blocks a second export', () => {
     const exportPdf = vi.fn();
     fixture.componentInstance.exportPdf.subscribe(exportPdf);

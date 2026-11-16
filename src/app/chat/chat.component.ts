@@ -648,6 +648,17 @@ export class ChatComponent {
     this.sendMessage();
   }
 
+  /**
+   * Open a new conversation with this message as its first, as if the user typed it.
+   * Whatever conversation was open stays as it is, also when it still waits for an answer.
+   */
+  sendInNewChat(text: string): void {
+    this.chatService.newChat();
+    this.historyOpen.set(false);
+    this.error.set('');
+    void this.chatService.send(text);
+  }
+
   sendMessage(): void {
     const messageText = this.newMessage().trim();
     const attachment = this.pendingAttachment();

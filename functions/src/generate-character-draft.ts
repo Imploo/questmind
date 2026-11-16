@@ -1,6 +1,7 @@
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { DndCharacterSchema, DndCharacter } from './schemas/dnd-character.schema';
-import { CHARACTER_JSON_GENERATOR_PROMPT } from './prompts/character-json-generator.prompt';
+import { characterJsonGeneratorPrompt } from './prompts/character-json-generator.prompt';
+import { DEFAULT_RULES_VERSION, RulesVersion } from './character/rules-version';
 import { getAiFeatureConfig } from './utils/ai-settings';
 import { GeminiEmptyResponseError, generateJson, getGeminiClient } from './utils/gemini-client';
 import * as logger from './utils/logger';
@@ -21,6 +22,8 @@ const MAX_ABILITY_SCORE_RETRIES = 2;
 export interface GenerateCharacterDraftPayload {
   characterId: string;
   currentCharacter: DndCharacter;
+  /** The rules the character follows; 2014 when absent. */
+  rulesVersion?: RulesVersion;
   chatHistory: ChatHistoryMessage[];
   ai1Response: string;
   pdfAttachment?: { mimeType: string; data: string };
@@ -47,6 +50,7 @@ export async function executeGenerateCharacterDraft(
   options: GenerateCharacterDraftOptions = {}
 ): Promise<SavedDraft | null> {
   const { characterId, currentCharacter, chatHistory, ai1Response, pdfAttachment } = payload;
+  const rulesVersion = payload.rulesVersion ?? DEFAULT_RULES_VERSION;
 
   if (!characterId || !currentCharacter || !chatHistory || !ai1Response) {
     throw new Error('generateCharacterDraft: missing required payload fields');
@@ -77,6 +81,7 @@ export async function executeGenerateCharacterDraft(
   logger.info('generateCharacterDraft: calling Gemini', {
     model: config.model,
     hasPdf: Boolean(pdfAttachment),
+    rulesVersion,
     contentPartsCount: contentParts.length,
     characterId,
   });
@@ -91,7 +96,7 @@ export async function executeGenerateCharacterDraft(
             config,
             label: 'generateCharacterDraft',
             contents: parts,
-            systemInstruction: CHARACTER_JSON_GENERATOR_PROMPT,
+            systemInstruction: characterJsonGeneratorPrompt(rulesVersion),
             logContext: { characterId },
           },
           client

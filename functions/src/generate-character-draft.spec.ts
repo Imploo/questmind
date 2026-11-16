@@ -48,7 +48,7 @@ vi.mock('./schemas/dnd-character.schema', () => ({
 }));
 
 vi.mock('./prompts/character-json-generator.prompt', () => ({
-  CHARACTER_JSON_GENERATOR_PROMPT: 'test system prompt',
+  characterJsonGeneratorPrompt: (rulesVersion: string) => `test system prompt ${rulesVersion}`,
 }));
 
 vi.mock('./utils/logger', () => ({
@@ -100,6 +100,19 @@ describe('executeGenerateCharacterDraft', () => {
 
     expect(saved).toEqual({ versionId: 'new-doc-id', versionNumber: 1 });
     expect(mockSet).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ['the 2014 rules when the payload names none', {}, 'test system prompt 2014'],
+    ['the rules the character follows', { rulesVersion: '2024' }, 'test system prompt 2024'],
+  ])('should instruct the generator for %s', async (_case, overrides, expected) => {
+    mockGenerateContent.mockResolvedValueOnce({ text: JSON.stringify({ name: 'Gandalf' }) });
+
+    const { executeGenerateCharacterDraft } = await import('./generate-character-draft');
+    await executeGenerateCharacterDraft(makePayload(overrides));
+
+    const request = mockGenerateContent.mock.calls[0][0] as { config: { systemInstruction: string } };
+    expect(request.config.systemInstruction).toBe(expected);
   });
 
   it('should drop the generated draft when the update was cancelled in the meantime', async () => {

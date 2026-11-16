@@ -1,6 +1,7 @@
 import { Timestamp } from 'firebase/firestore';
 import { DndCharacter } from '../../../shared/models/dnd-character.model';
 import { CharacterPlayState } from '../../../shared/models/character-play-state.model';
+import { RulesVersion } from '../../../shared/models/rules-version';
 
 export interface Character {
   id: string;
@@ -13,6 +14,8 @@ export interface Character {
   playState?: CharacterPlayState;
   /** Put away by the owner: left out of the character list, still reachable by its link. */
   archived?: boolean;
+  /** The edition of the rules the character follows; 2014 when absent. Not versioned. */
+  rulesVersion?: RulesVersion;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

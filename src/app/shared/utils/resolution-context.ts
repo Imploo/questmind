@@ -1,5 +1,6 @@
 import { DndCharacter } from '../models/dnd-character.model';
 import { normalizeSpellSlots } from '../pdf/character-sheet-field-values';
+import { DEFAULT_RULES_VERSION, RulesVersion } from '../models/rules-version';
 
 /** What the rules text of a spell or feature depends on, besides its name. */
 export interface ResolutionContext {
@@ -15,6 +16,8 @@ export interface ResolutionContext {
    * choice it has: "Quickened Spell", "Fighting Style: Defense".
    */
   features?: string[];
+  /** The edition of the rules the character follows; 2014 when left out. */
+  rulesVersion?: RulesVersion;
 }
 
 /**
@@ -24,7 +27,8 @@ export interface ResolutionContext {
 const TEXT_VERSION = 2;
 
 export function resolutionContextOf(
-  character: Pick<DndCharacter, 'class' | 'race' | 'level' | 'spellcasting'> & Partial<Pick<DndCharacter, 'featuresAndTraits'>>
+  character: Pick<DndCharacter, 'class' | 'race' | 'level' | 'spellcasting'> & Partial<Pick<DndCharacter, 'featuresAndTraits'>>,
+  rulesVersion: RulesVersion = DEFAULT_RULES_VERSION
 ): ResolutionContext {
   const features = (character.featuresAndTraits ?? []) as (string | { name: string })[];
   const slotLevels = normalizeSpellSlots(character.spellcasting?.slots)
@@ -36,6 +40,7 @@ export function resolutionContextOf(
     level: character.level,
     maxSpellSlotLevel: slotLevels.length ? Math.max(...slotLevels) : undefined,
     features: features.map(feature => (typeof feature === 'string' ? feature : feature.name)).filter(Boolean),
+    rulesVersion,
   };
 }
 
@@ -43,10 +48,20 @@ export function resolutionContextOf(
  * Names the context a text was looked up for. It is stored next to the text, so a
  * text that was looked up for another class or level can be recognised and redone.
  * The features are not part of it: they only change with a new version of the
- * character, and that starts without texts.
+ * character, and that starts without texts. The rules are part of it only when they
+ * are not the default, so the keys of texts stored before the setting existed still match.
  */
 export function resolutionKey(context: ResolutionContext): string {
-  return [`v${TEXT_VERSION}`, context.class, context.race, context.level, context.maxSpellSlotLevel ?? '-']
+  const rules = usesBundledRules(context) ? [] : [context.rulesVersion];
+  return [`v${TEXT_VERSION}`, context.class, context.race, context.level, context.maxSpellSlotLevel ?? '-', ...rules]
     .map(part => String(part).trim().toLowerCase())
     .join('|');
+}
+
+/**
+ * Whether the bundled SRD data (Spell.json, ClassFeature.json) holds the texts for this
+ * character. That data is the 2014 SRD; under other rules a text has to be asked for.
+ */
+export function usesBundledRules(context: Pick<ResolutionContext, 'rulesVersion'> | undefined): boolean {
+  return (context?.rulesVersion ?? DEFAULT_RULES_VERSION) === '2014';
 }

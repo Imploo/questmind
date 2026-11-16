@@ -42,7 +42,9 @@ vi.mock('@google/genai', () => ({
 vi.mock('../utils/ai-settings', () => ({
   getAiFeatureConfig: vi.fn(() => Promise.resolve({ model: 'gemini-test', maxOutputTokens: 4096 })),
 }));
-vi.mock('../prompts/character-responder.prompt', () => ({ CHARACTER_RESPONDER_PROMPT: 'responder prompt' }));
+vi.mock('../prompts/character-responder.prompt', () => ({
+  characterResponderPrompt: (rulesVersion: string) => `responder prompt ${rulesVersion}`,
+}));
 vi.mock('../prompts/chat-summary.prompt', () => ({ CHAT_TITLE_INSTRUCTION: ' +title', CHAT_SUMMARY_PROMPT: 'summary prompt' }));
 vi.mock('../utils/logger', () => ({ error: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn() }));
 
@@ -157,7 +159,7 @@ describe('runChatTurn', () => {
         ['user', 'En daarna?'],
       ]);
       // The chat already has a model-written title, so no new one is asked for.
-      expect(request.config.systemInstruction).toBe('responder prompt');
+      expect(request.config.systemInstruction).toBe('responder prompt 2014');
       expect(request.config.responseSchema.required).toEqual(['text', 'shouldUpdateCharacter']);
     });
 
@@ -170,8 +172,18 @@ describe('runChatTurn', () => {
       const request = mockGenerateContent.mock.calls[0][0] as {
         config: { systemInstruction: string; responseSchema: { required: string[] } };
       };
-      expect(request.config.systemInstruction).toBe('responder prompt +title');
+      expect(request.config.systemInstruction).toBe('responder prompt 2014 +title');
       expect(request.config.responseSchema.required).toContain('title');
+    });
+
+    it('answers by the rules the character follows', async () => {
+      seedTurn();
+      mockGenerateContent.mockResolvedValueOnce(answer({ text: 'Antwoord', shouldUpdateCharacter: false, title: 'Titel' }));
+
+      await runChatTurn(payload({ rulesVersion: '2024' }));
+
+      const request = mockGenerateContent.mock.calls[0][0] as { config: { systemInstruction: string } };
+      expect(request.config.systemInstruction).toBe('responder prompt 2024 +title');
     });
 
     it('keeps a title the owner chose while the answer was being written', async () => {
@@ -305,6 +317,7 @@ describe('runChatTurn', () => {
         {
           characterId: 'char-1',
           currentCharacter: character,
+          rulesVersion: '2014',
           chatHistory: [{ role: 'user', content: 'Doe Hypnotic Pattern.' }],
           ai1Response: 'Ik voeg Hypnotic Pattern toe.',
         },

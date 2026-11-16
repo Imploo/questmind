@@ -7,6 +7,7 @@ import { CharacterEntryResolverService } from '../../../core/services/character-
 import { CharacterVersionService, ResolvedFeatureText, ResolvedSpellText } from '../../../core/services/character-version.service';
 import { ResolutionContext, resolutionContextOf, resolutionKey } from '../../../shared/utils/resolution-context';
 import { characterShareUrl } from '../../../shared/utils/character-share-url';
+import { RulesVersion } from '../../../shared/models/rules-version';
 import * as logger from '../../../shared/logger';
 
 export interface CharacterSheetExportRequest {
@@ -19,6 +20,8 @@ export interface CharacterSheetExportRequest {
   inventory?: InventoryItem[];
   /** The character's portrait; it goes in the "Character Appearance" box. */
   portraitUrl?: string | null;
+  /** The rules the character follows; they decide which spell and feature texts it gets. 2014 when left out. */
+  rulesVersion?: RulesVersion;
 }
 
 /** One equipment line for a hand-kept item: "Arrows (20)". */
@@ -43,7 +46,7 @@ export class CharacterSheetExportService {
     const character: DndCharacter = inventory.length
       ? { ...request.character, equipment: [...(request.character.equipment ?? []), ...inventory.map(inventoryLine)] }
       : request.character;
-    const context = resolutionContextOf(request.character);
+    const context = resolutionContextOf(request.character, request.rulesVersion);
     const [spells, features] = await Promise.all([
       this.resolveSpells(request, context),
       this.resolveFeatures(request, context),

@@ -8,7 +8,8 @@ import {
 } from 'firebase-admin/firestore';
 import { executeGenerateCharacterDraft } from '../generate-character-draft';
 import { generateCharacterImage, latestCharacterImagePath } from '../generate-image';
-import { CHARACTER_RESPONDER_PROMPT } from '../prompts/character-responder.prompt';
+import { readRulesVersion } from '../character/rules-version';
+import { characterResponderPrompt } from '../prompts/character-responder.prompt';
 import { CHAT_TITLE_INSTRUCTION } from '../prompts/chat-summary.prompt';
 import type { ChatDoc, ChatHistoryMessage, ChatTurnPayload } from '../types/chat.types';
 import { getAiFeatureConfig } from '../utils/ai-settings';
@@ -127,7 +128,7 @@ async function runTextTurn(
     config,
     label: 'characterChat',
     contents: buildContents([...contextPreamble(payload.currentCharacter, chatDoc.summary), ...history], pdf),
-    systemInstruction: CHARACTER_RESPONDER_PROMPT + (wantsTitle ? CHAT_TITLE_INSTRUCTION : ''),
+    systemInstruction: characterResponderPrompt(readRulesVersion(payload.rulesVersion)) + (wantsTitle ? CHAT_TITLE_INSTRUCTION : ''),
     schema: responderSchema(wantsTitle),
     logContext: { characterId: payload.characterId, chatId: payload.chatId },
     onProgress: raw => writer.progress(extractPartialJsonString(raw, 'text')),
@@ -249,6 +250,7 @@ async function runCharacterUpdate(
       {
         characterId: payload.characterId,
         currentCharacter: payload.currentCharacter,
+        rulesVersion: readRulesVersion(payload.rulesVersion),
         chatHistory: history,
         ai1Response: answer,
         ...(pdf ? { pdfAttachment: pdf } : {}),

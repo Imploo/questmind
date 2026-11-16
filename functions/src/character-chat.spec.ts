@@ -167,8 +167,17 @@ describe('characterChat', () => {
       replyMessageId: REPLY_ID,
       mode: 'text',
       currentCharacter: character,
+      rulesVersion: '2014',
       attachment: null,
     });
+  });
+
+  it('hands the worker the rules stored on the character, whatever the client sends', async () => {
+    mockAssertCharacterOwner.mockResolvedValue({ userId: 'owner-1', rulesVersion: '2024' });
+
+    await characterChat(request({ rulesVersion: '2014' }));
+
+    expect(mockEnqueue).toHaveBeenCalledWith('characterChatWorker', expect.objectContaining({ rulesVersion: '2024' }));
   });
 
   it('puts the reply right after the question', async () => {

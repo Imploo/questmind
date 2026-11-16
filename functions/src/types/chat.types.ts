@@ -1,5 +1,6 @@
 import type { Timestamp } from 'firebase-admin/firestore';
 import type { DndCharacter } from '../schemas/dnd-character.schema';
+import type { RulesVersion } from '../character/rules-version';
 
 export interface ChatHistoryMessage {
   role: 'user' | 'assistant';
@@ -82,5 +83,7 @@ export interface ChatTurnPayload {
   mode: ChatTurnMode;
   /** The character as the owner sees it right now (latest version + play state), without descriptions. */
   currentCharacter: DndCharacter;
+  /** The rules the character follows, as stored on it when the message was sent; 2014 when absent. */
+  rulesVersion?: RulesVersion;
   attachment: StoredChatAttachment | null;
 }

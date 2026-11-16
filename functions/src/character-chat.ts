@@ -10,6 +10,7 @@ import { deleteStorageFiles } from './utils/storage-cleanup';
 import * as logger from './utils/logger';
 import { TASK_WORKERS, TASK_WORKER_TIMEOUT_SECONDS, enqueueWorkerTask } from './services/task-queue.service';
 import { DndCharacter } from './schemas/dnd-character.schema';
+import { readRulesVersion } from './character/rules-version';
 import {
   ChatAttachment,
   ChatTurnMode,
@@ -83,7 +84,7 @@ export const characterChat = onCall(
       const attachment = mode === 'text' ? validateAttachment(data.attachment) : null;
 
       const db = getFirestore();
-      await assertCharacterOwner(db, characterId, uid);
+      const storedCharacter = await assertCharacterOwner(db, characterId, uid);
 
       const chat = chatRef(db, characterId, chatId);
       const userMessage = messagesRef(chat).doc(userMessageId);
@@ -149,6 +150,8 @@ export const characterChat = onCall(
         replyMessageId,
         mode,
         currentCharacter,
+        // The setting as stored, not as the client says: it decides which rules the answer follows.
+        rulesVersion: readRulesVersion(storedCharacter.rulesVersion),
         attachment: stored,
       };
 

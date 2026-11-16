@@ -46,6 +46,7 @@ import { CharacterActionsMenuComponent } from '../character-actions-menu/charact
 import { ImageLightboxComponent } from '../../../../chat/image-lightbox.component';
 import { CharacterEntryResolverService } from '../../../../core/services/character-entry-resolver.service';
 import { resolutionContextOf, resolutionKey } from '../../../../shared/utils/resolution-context';
+import { DEFAULT_RULES_VERSION, RulesVersion } from '../../../../shared/models/rules-version';
 import { ToastService } from '../../../../shared/services/toast.service';
 import { copyText } from '../../../../shared/utils/clipboard';
 import { characterShareUrl } from '../../../../shared/utils/character-share-url';
@@ -255,8 +256,11 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
           [canClone]="canClone()"
           [canArchive]="editable()"
           [archived]="archived()"
+          [canConvertRules]="editable()"
+          [rulesVersion]="rulesVersion()"
           [exportingPdf]="exportingPdf()"
           [cloning]="cloning()"
+          (rulesVersionChange)="rulesVersionChange.emit($event)"
           (exportPdf)="exportPdf.emit()"
           (viewHistory)="viewHistory.emit()"
           (cloneCharacter)="cloneCharacter.emit()"
@@ -1048,6 +1052,8 @@ export class CharacterSheetComponent {
   cloning = input<boolean>(false);
   /** Whether the owner put this character away; it then carries an "Archived" tag. */
   archived = input<boolean>(false);
+  /** The edition of the rules the character follows; it decides which spell and feature texts are shown. */
+  rulesVersion = input<RulesVersion>(DEFAULT_RULES_VERSION);
   viewHistory = output<void>();
   exportPdf = output<void>();
   deleteImage = output<CharacterImage>();
@@ -1059,6 +1065,8 @@ export class CharacterSheetComponent {
   cloneCharacter = output<void>();
   /** The owner archived the character (true) or brought it back (false). */
   archivedChange = output<boolean>();
+  /** The owner asked to rebuild the character under the other edition of the rules. */
+  rulesVersionChange = output<RulesVersion>();
   /** The purse after the player changed a coin amount. Coins belong to the build, so they go on the version. */
   coinsChange = output<Coins>();
 
@@ -1245,7 +1253,7 @@ export class CharacterSheetComponent {
 
   // ── Spell and feature texts ───────────────────────────────────
 
-  private readonly resolutionContext = computed(() => resolutionContextOf(this.character()));
+  private readonly resolutionContext = computed(() => resolutionContextOf(this.character(), this.rulesVersion()));
 
   /**
    * An entry without a text is looked up. So is one whose text was looked up for another
