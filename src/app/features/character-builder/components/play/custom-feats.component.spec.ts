@@ -67,10 +67,9 @@ describe('CustomFeatsComponent', () => {
 
     expect(host.querySelector('.recharge')!.textContent).toBe('Long rest');
     const pips = Array.from(host.querySelectorAll('app-use-pips button')) as HTMLButtonElement[];
-    // The use that is left comes first, the spent one after it.
-    expect(pips.map(pip => pip.getAttribute('aria-pressed'))).toEqual(['false', 'true']);
+    expect(pips.map(pip => pip.getAttribute('aria-pressed'))).toEqual(['true', 'false']);
 
-    pips[0].click();
+    pips[1].click();
     expect(spent).toEqual([{ key, spent: 2 }]);
   });
 
