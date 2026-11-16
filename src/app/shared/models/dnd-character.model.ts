@@ -41,11 +41,18 @@ export interface Coins {
   pp: number;
 }
 
+/** A weapon attack, or anything else that deals damage: a spell, a breath weapon. */
 export interface WeaponAttack {
   name: string;
+  /** Attack roll bonus; absent when there is no attack roll. */
   bonus?: number;
   damage?: string;
   type?: string;
+  /** The saving throw the target makes instead of an attack roll (Lightning Bolt, a breath weapon). */
+  save?: {
+    ability: 'strength' | 'dexterity' | 'constitution' | 'intelligence' | 'wisdom' | 'charisma';
+    dc?: number;
+  };
 }
 
 export interface SpellSlot {

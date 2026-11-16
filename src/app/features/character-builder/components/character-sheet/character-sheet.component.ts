@@ -47,6 +47,7 @@ import { CharacterActionsMenuComponent } from '../character-actions-menu/charact
 import { ImageLightboxComponent } from '../../../../chat/image-lightbox.component';
 import { CharacterEntryResolverService } from '../../../../core/services/character-entry-resolver.service';
 import { resolutionContextOf, resolutionKey } from '../../../../shared/utils/resolution-context';
+import { attackRollLabel, attackRollTitle } from '../../../../shared/utils/attack-roll';
 import { RulesVersion, rulesVersionOf } from '../../../../shared/models/rules-version';
 import { ToastService } from '../../../../shared/services/toast.service';
 import { copyText } from '../../../../shared/utils/clipboard';
@@ -421,11 +422,14 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
             <h3 class="qm-section-title">Attacks</h3>
             @if (character().attacks.length) {
               <ul class="space-y-2">
-                @for (attack of character().attacks; track attack.name) {
+                @for (attack of character().attacks; track $index) {
+                  @let roll = attackRollLabel(attack);
                   <li class="attack">
                     <span class="attack-name">{{ attack.name }}</span>
-                    <span class="attack-bonus" title="Attack bonus">{{ signed(attack.bonus ?? 0) }}</span>
-                    <span class="text-sm qm-muted min-w-0">{{ attack.damage }} {{ attack.type }}</span>
+                    @if (roll) {
+                      <span class="attack-bonus" [title]="attackRollTitle(attack)">{{ roll }}</span>
+                    }
+                    <span class="text-sm qm-muted min-w-0" [class.attack-wide]="!roll">{{ attack.damage }} {{ attack.type }}</span>
                   </li>
                 }
               </ul>
@@ -929,7 +933,8 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
       border: 1px solid var(--line);
       font-size: 0.9rem;
     }
-    .attack-name { grid-column: 1 / -1; font-weight: 600; overflow-wrap: anywhere; }
+    .attack-name, .attack-wide { grid-column: 1 / -1; }
+    .attack-name { font-weight: 600; overflow-wrap: anywhere; }
     .attack-bonus {
       font-weight: 700;
       font-variant-numeric: tabular-nums;
@@ -1479,6 +1484,9 @@ export class CharacterSheetComponent {
     }
     return options;
   }
+
+  readonly attackRollLabel = attackRollLabel;
+  readonly attackRollTitle = attackRollTitle;
 
   signed(value: number): string {
     return `${value >= 0 ? '+' : ''}${value}`;

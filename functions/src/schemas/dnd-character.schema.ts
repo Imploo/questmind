@@ -40,11 +40,19 @@ export const CoinSchema = z.object({
   pp: z.number().default(0),
 });
 
+/** The saving throw a target makes against an attack that has no attack roll (Lightning Bolt, a breath weapon). */
+export const AttackSaveSchema = z.object({
+  ability: AbilityKeySchema,
+  dc: z.number().optional(),
+});
+
+/** A weapon attack, or anything else that deals damage: a spell, a breath weapon. */
 export const WeaponAttackSchema = z.object({
   name: z.string(),
-  bonus: z.number().optional().default(0),
+  bonus: z.number().optional(), // Attack roll bonus; absent when there is no attack roll
   damage: z.string().optional().default(''), // e.g., "1d8 + 3"
   type: z.string().optional().default(''), // e.g., "Slashing"
+  save: AttackSaveSchema.optional().catch(undefined), // A malformed save never costs the whole character
 });
 
 export const SpellSlotSchema = z.object({

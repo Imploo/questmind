@@ -122,6 +122,28 @@ describe('buildSheetFieldValues', () => {
     expect(text[TEXT_FIELDS.attacksAndSpellcasting]).toContain('Spell save DC 15');
   });
 
+  it('shows the saving throw of a spell without an attack roll, and no roll for one that simply hits', () => {
+    const character = createTestCharacter();
+    character.attacks = [
+      { name: 'Lightning Bolt', damage: '8d6', type: 'lightning', save: { ability: 'dexterity', dc: 15 } },
+      { name: 'Magic Missile', damage: '3 x 1d4 + 1', type: 'force' },
+      { name: 'Fire Bolt', bonus: 7, damage: '2d10', type: 'fire' },
+      { name: 'Moonbeam', damage: '2d10', type: 'radiant', save: { ability: 'constitution', dc: 15 } },
+      { name: 'Hex', damage: '+1d6', type: 'necrotic' },
+      { name: 'Breath Weapon', damage: '2d6', type: 'fire', save: { ability: 'dexterity' } },
+    ];
+
+    const { text } = buildSheetFieldValues(character, [], []);
+
+    expect(text[WEAPON_FIELDS[0].bonus]).toBe('DC 15 DEX');
+    expect(text[WEAPON_FIELDS[0].damage]).toBe('8d6 lightning');
+    expect(text[WEAPON_FIELDS[1].bonus]).toBe('');
+    expect(text[WEAPON_FIELDS[2].bonus]).toBe('+7');
+    expect(text[TEXT_FIELDS.attacksAndSpellcasting]).toContain('Moonbeam: DC 15 CON, 2d10 radiant');
+    expect(text[TEXT_FIELDS.attacksAndSpellcasting]).toContain('Hex: +1d6 necrotic');
+    expect(text[TEXT_FIELDS.attacksAndSpellcasting]).toContain('Breath Weapon: DEX save, 2d6 fire');
+  });
+
   it('lists feature names on the sheet with a pointer to the appendix', () => {
     const { text } = buildSheetFieldValues(createTestCharacter(), [], [
       { name: 'Arcane Recovery', description: 'Recover slots' },
