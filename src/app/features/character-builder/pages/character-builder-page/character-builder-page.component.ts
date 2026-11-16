@@ -154,7 +154,8 @@ import { RulesVersion, rulesConversionRequest, rulesVersionOf } from '../../../.
       align-items: flex-start;
       gap: 1.5rem;
     }
-    .sheet-panel { min-width: 0; flex: 1; }
+    /* The section tabs of the sheet ask this panel how much room there is: beside the sheet, and in height. */
+    .sheet-panel { min-width: 0; flex: 1; container: sheet-panel / inline-size; }
     .chat-panel {
       position: sticky;
       top: 1.5rem;
@@ -213,9 +214,13 @@ import { RulesVersion, rulesConversionRequest, rulesVersionOf } from '../../../.
     .is-panels .sheet-panel {
       overflow-y: auto;
       overscroll-behavior-y: contain;
+      /* As high as the screen leaves it, whatever is in it: its height can be asked too. */
+      container-type: size;
     }
     .is-panels .sheet-column {
       padding: 0.75rem 0.75rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+      /* The panel starts below the top bar: a section the sheet scrolls to needs no room for it. */
+      --sheet-scroll-margin: 0.75rem;
     }
     .is-panels .chat-frame {
       border: 0;

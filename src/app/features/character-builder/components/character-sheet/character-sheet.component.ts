@@ -52,6 +52,7 @@ import { RulesVersion, rulesVersionOf } from '../../../../shared/models/rules-ve
 import { ToastService } from '../../../../shared/services/toast.service';
 import { copyText } from '../../../../shared/utils/clipboard';
 import { MarkdownComponent } from '../../../../shared/components/markdown.component';
+import { SheetSection, SheetSectionTabsComponent } from './sheet-section-tabs.component';
 import { characterShareUrl } from '../../../../shared/utils/character-share-url';
 import * as logger from '../../../../shared/logger';
 
@@ -166,6 +167,15 @@ const RECHARGE_LABELS: Record<UsesRecharge, string> = {
 
 const TOAST_DURATION_MS = 12_000;
 
+/** The sections the tabs along the edge of the sheet jump to, from top to bottom. */
+const SHEET_SECTIONS: SheetSection[] = [
+  { id: 'abilities', label: 'Abilities' },
+  { id: 'attacks', label: 'Attacks' },
+  { id: 'spells', label: 'Spells' },
+  { id: 'traits', label: 'Traits' },
+  { id: 'inventory', label: 'Inventory' },
+];
+
 /** Matches the usage text of a resolved spell, e.g. "Duration: Concentration, up to 1 minute". */
 const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
 
@@ -190,6 +200,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
     CoinPurseComponent,
     InventoryItemsComponent,
     MarkdownComponent,
+    SheetSectionTabsComponent,
   ],
   template: `
     @if (portraitLightbox()) {
@@ -356,7 +367,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
       </header>
 
       <!-- ═══ Ability scores ═══ -->
-      <section class="grid grid-cols-3 @lg:grid-cols-6 gap-3" aria-label="Ability scores">
+      <section class="grid grid-cols-3 @lg:grid-cols-6 gap-3" aria-label="Ability scores" data-section="abilities">
         @for (ability of abilities; track ability.key) {
           <div class="ability" [title]="ability.name">
             <span class="ability-label">{{ ability.label }}</span>
@@ -426,7 +437,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
 
         <!-- Right column -->
         <div class="space-y-6">
-          <section class="qm-panel">
+          <section class="qm-panel" data-section="attacks">
             <h3 class="qm-section-title">Attacks</h3>
             @if (character().attacks.length) {
               <ul class="space-y-2">
@@ -471,7 +482,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
 
           @let spellcasting = character().spellcasting;
           @if (spellcasting) {
-            <section class="qm-panel">
+            <section class="qm-panel" data-section="spells">
               <h3 class="qm-section-title">Spellcasting</h3>
 
               <div class="flex flex-wrap gap-3 mb-4">
@@ -612,7 +623,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
             </section>
           }
 
-          <section class="qm-panel">
+          <section class="qm-panel" data-section="traits">
             <h3 class="qm-section-title">Features & Traits</h3>
             @for (entry of features(); track entry.index) {
               <div class="entry-row">
@@ -668,7 +679,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
             }
           </section>
 
-          <section class="qm-panel">
+          <section class="qm-panel" data-section="inventory">
             <h3 class="qm-section-title">Inventory</h3>
             <app-coin-purse class="mb-4" [coins]="play().coins" [editable]="editable()" (coinsChange)="onCoinsChange($event)" />
 
@@ -702,7 +713,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
 
       <!-- ═══ Story ═══ -->
       @if (personality().length) {
-        <section class="qm-panel">
+        <section class="qm-panel" data-section="story">
           <h3 class="qm-section-title">Personality</h3>
           <div class="grid @xl:grid-cols-2 gap-4">
             @for (p of personality(); track p.label) {
@@ -716,7 +727,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
       }
 
       @if (character().appearance; as appearance) {
-        <section class="qm-panel">
+        <section class="qm-panel" data-section="story">
           <h3 class="qm-section-title">Appearance</h3>
           @if (appearanceDetails().length) {
             <dl class="grid grid-cols-3 @xl:grid-cols-6 gap-3 mb-4">
@@ -735,7 +746,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
       }
 
       @if (character().backstory) {
-        <section class="qm-panel">
+        <section class="qm-panel" data-section="story">
           <h3 class="qm-section-title">Backstory</h3>
           <p class="prose-text backstory whitespace-pre-line">{{ character().backstory }}</p>
         </section>
@@ -745,6 +756,9 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
         <app-play-toast [message]="t.message" [canUndo]="!!t.undo" (undo)="undo()" (dismissed)="dismissToast()" />
       }
     </div>
+
+    <!-- The tabs along the edge: they stay on screen and jump to the sections marked data-section above -->
+    <app-sheet-section-tabs [sections]="sections()" [lifted]="!!toast()" />
   `,
   styles: [`
     :host {
@@ -759,6 +773,12 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
 
     .ability-label, .vital-label, .portrait-initial, .level-badge {
       font-family: var(--font-display);
+    }
+
+    /* Where a section tab scrolls to: clear of the top of the page, and of the top bar a narrow page has. */
+    [data-section] { scroll-margin-top: var(--sheet-scroll-margin, 1rem); }
+    @media (max-width: 639.98px) {
+      [data-section] { scroll-margin-top: var(--sheet-scroll-margin, 4.5rem); }
     }
 
     .portrait {
@@ -1158,6 +1178,9 @@ export class CharacterSheetComponent {
   });
 
   longRestRows = computed(() => longRestPreview(this.character(), this.playState()));
+
+  /** The sections that have a tab; only a caster has a card of spells. */
+  sections = computed(() => SHEET_SECTIONS.filter(section => section.id !== 'spells' || !!this.character().spellcasting));
 
   private readonly spellNames = computed(() =>
     (this.character().spellcasting?.spells ?? [])
