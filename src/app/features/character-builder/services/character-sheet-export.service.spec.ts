@@ -7,6 +7,7 @@ import { CharacterVersionService } from '../../../core/services/character-versio
 import { PdfGeneratorService } from '../../../shared/services/pdf-generator.service';
 import { DndCharacter } from '../../../shared/models/dnd-character.model';
 import { SheetFeature, SheetSpell } from '../../../shared/pdf/character-sheet-field-values';
+import { resolutionContextOf, resolutionKey } from '../../../shared/utils/resolution-context';
 
 function character(overrides: Partial<DndCharacter> = {}): DndCharacter {
   return {
@@ -114,7 +115,65 @@ describe('CharacterSheetExportService', () => {
     const [charId, versionId, spellMap, featureMap] = versions.patchResolvedEntries.mock.calls[0];
     expect([charId, versionId]).toEqual(['char-1', 'v-1']);
     expect([...spellMap.keys()]).toEqual(['magic missile', 'shield']);
-    expect(featureMap.get('arcane recovery')).toEqual({ description: 'Regain slots.' });
+    expect(spellMap.get('shield')).toEqual({ description: 'Barrier.', usage: 'Casting Time: 1 reaction', resolvedFor: 'wizard|elf|3|-' });
+    expect(featureMap.get('arcane recovery')).toEqual({ description: 'Regain slots.', resolvedFor: 'wizard|elf|3|-' });
+  });
+
+  it('looks texts up for the class, race and level of the character', async () => {
+    resolver.resolveSpell.mockResolvedValue({ description: 'Darts.', usage: 'u', level: 1 });
+    resolver.resolveFeature.mockResolvedValue({ description: 'Druid spells.' });
+    const c = character({
+      class: 'Druid', race: 'Wood Elf', level: 5,
+      spellcasting: { slots: [{ level: 3, total: 2, expended: 0 }], spells: [{ name: 'Magic Missile' }] },
+      featuresAndTraits: [{ name: 'Spellcasting', source: 'Class' } as DndCharacter['featuresAndTraits'][number]],
+    });
+
+    await service.export(request(c));
+
+    const context = { class: 'Druid', race: 'Wood Elf', level: 5, maxSpellSlotLevel: 3 };
+    expect(resolver.resolveSpell).toHaveBeenCalledWith('char-1', expect.objectContaining({ name: 'Magic Missile' }), context);
+    expect(resolver.resolveFeature).toHaveBeenCalledWith('char-1', expect.objectContaining({ name: 'Spellcasting' }), context);
+  });
+
+  it('redoes a text that was looked up for another class or level', async () => {
+    resolver.resolveSpell.mockResolvedValue({ description: 'New spell text.', usage: 'new usage', level: 1 });
+    resolver.resolveFeature.mockResolvedValue({ description: 'Druid text.' });
+    const c = character({
+      class: 'Druid', level: 5,
+      spellcasting: { spells: [{ name: 'Cure Wounds', description: 'Old spell text.', usage: 'old usage', level: 1, resolvedFor: 'druid|elf|4|-' }] },
+      featuresAndTraits: [{ name: 'Spellcasting', description: 'Wizard text.' }],
+    });
+
+    await service.export(request(c));
+
+    const [, spells, features] = rendered();
+    expect(spells[0]).toMatchObject({ description: 'New spell text.', usage: 'new usage' });
+    expect(features[0]).toMatchObject({ description: 'Druid text.' });
+    const [, , spellMap, featureMap] = versions.patchResolvedEntries.mock.calls[0];
+    expect(spellMap.get('cure wounds').resolvedFor).toBe('druid|elf|5|-');
+    expect(featureMap.get('spellcasting').resolvedFor).toBe('druid|elf|5|-');
+  });
+
+  it('keeps a text that was looked up for this class and level', async () => {
+    const c = character({ featuresAndTraits: [] });
+    const resolvedFor = resolutionKey(resolutionContextOf(c));
+    c.spellcasting = { spells: [{ name: 'Shield', description: 'Barrier.', level: 1, resolvedFor }] };
+    c.featuresAndTraits = [{ name: 'Arcane Recovery', description: 'Regain slots.', resolvedFor }];
+
+    await service.export(request(c));
+
+    expect(resolver.resolveSpell).not.toHaveBeenCalled();
+    expect(resolver.resolveFeature).not.toHaveBeenCalled();
+    expect(rendered()[2][0].description).toBe('Regain slots.');
+  });
+
+  it('keeps the stored text of a non-owner\'s export, whatever it was looked up for', async () => {
+    const c = character({ featuresAndTraits: [{ name: 'Spellcasting', description: 'Stored text.' }] });
+
+    await service.export(request(c, false));
+
+    expect(resolver.lookupFeatureLocally).not.toHaveBeenCalled();
+    expect(rendered()[2][0].description).toBe('Stored text.');
   });
 
   it('still exports when a lookup fails', async () => {
@@ -141,7 +200,9 @@ describe('CharacterSheetExportService', () => {
 
   it('looks up only the level of a spell that already has a description', async () => {
     resolver.lookupSpellLocally.mockResolvedValue({ description: 'SRD text', usage: 'SRD usage', level: 3, school: 'evocation' });
-    await service.export(request(character({ spellcasting: { spells: [{ name: 'Fireball', description: 'Own text' }] } })));
+    const c = character();
+    c.spellcasting = { spells: [{ name: 'Fireball', description: 'Own text', resolvedFor: resolutionKey(resolutionContextOf(c)) }] };
+    await service.export(request(c));
 
     expect(resolver.resolveSpell).not.toHaveBeenCalled();
     expect(rendered()[1][0]).toMatchObject({ description: 'Own text', level: 3 });

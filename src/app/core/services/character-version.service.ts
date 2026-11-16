@@ -24,6 +24,21 @@ function stripUndefined(obj: unknown): unknown {
 
 type VersionRecord = CharacterVersion & Record<string, unknown>;
 
+/** A looked-up text and the key of the class, race and level it was looked up for. */
+export interface ResolvedFeatureText {
+  description: string;
+  resolvedFor: string;
+}
+
+export interface ResolvedSpellText extends ResolvedFeatureText {
+  usage: string;
+}
+
+/** An entry takes a looked-up text when it has none, or has one that was looked up for another context. */
+function isOutdated(entry: { description?: string; resolvedFor?: string }, details: ResolvedFeatureText): boolean {
+  return !entry.description || entry.resolvedFor !== details.resolvedFor;
+}
+
 @Injectable({ providedIn: 'root' })
 export class CharacterVersionService {
   private readonly authService = inject(AuthService);
@@ -153,9 +168,9 @@ export class CharacterVersionService {
     characterId: string,
     activeVersionId: string,
     spellName: string,
-    description: string,
-    usage: string
+    details: ResolvedSpellText
   ): Promise<void> {
+    const { description, usage, resolvedFor } = details;
     const repo = this.versionRepoFactory.create(characterId);
     await repo.waitForData();
     const version = await repo.getByKey(activeVersionId) as CharacterVersion | null;
@@ -166,7 +181,7 @@ export class CharacterVersionService {
     const spells = version.character.spellcasting?.spells ?? [];
     const updated = spells.map(spell => {
       if (typeof spell === 'string') return spell;
-      if (spell.name.toLowerCase() === spellName.toLowerCase()) return { ...spell, description, usage };
+      if (spell.name.toLowerCase() === spellName.toLowerCase()) return { ...spell, description, usage, resolvedFor };
       return spell;
     });
     await repo.patch(activeVersionId, { 'character.spellcasting.spells': updated });
@@ -177,8 +192,9 @@ export class CharacterVersionService {
     characterId: string,
     activeVersionId: string,
     featureName: string,
-    description: string
+    details: ResolvedFeatureText
   ): Promise<void> {
+    const { description, resolvedFor } = details;
     const repo = this.versionRepoFactory.create(characterId);
     await repo.waitForData();
     const version = await repo.getByKey(activeVersionId) as CharacterVersion | null;
@@ -189,7 +205,7 @@ export class CharacterVersionService {
     const features = version.character.featuresAndTraits ?? [];
     const updated = features.map(feature => {
       if (typeof feature === 'string') return feature;
-      if (feature.name.toLowerCase() === featureName.toLowerCase()) return { ...feature, description };
+      if (feature.name.toLowerCase() === featureName.toLowerCase()) return { ...feature, description, resolvedFor };
       return feature;
     });
     await repo.patch(activeVersionId, { 'character.featuresAndTraits': updated });
@@ -255,8 +271,8 @@ export class CharacterVersionService {
   async patchResolvedEntries(
     characterId: string,
     versionId: string,
-    spells: Map<string, { description: string; usage?: string }>,
-    features: Map<string, { description: string }>
+    spells: Map<string, ResolvedSpellText>,
+    features: Map<string, ResolvedFeatureText>
   ): Promise<void> {
     if (!spells.size && !features.size) return;
     const repo = this.versionRepoFactory.create(characterId);
@@ -270,16 +286,16 @@ export class CharacterVersionService {
     const currentSpells = version.character.spellcasting?.spells;
     if (spells.size && currentSpells) {
       patch['character.spellcasting.spells'] = currentSpells.map(spell => {
-        if (typeof spell === 'string' || spell.description) return spell;
+        if (typeof spell === 'string') return spell;
         const details = spells.get(spell.name.toLowerCase());
-        return details ? { ...spell, ...details } : spell;
+        return details && isOutdated(spell, details) ? { ...spell, ...details } : spell;
       });
     }
     if (features.size && version.character.featuresAndTraits) {
       patch['character.featuresAndTraits'] = version.character.featuresAndTraits.map(feature => {
-        if (typeof feature === 'string' || feature.description) return feature;
+        if (typeof feature === 'string') return feature;
         const details = features.get(feature.name.toLowerCase());
-        return details ? { ...feature, ...details } : feature;
+        return details && isOutdated(feature, details) ? { ...feature, ...details } : feature;
       });
     }
     if (Object.keys(patch).length) {

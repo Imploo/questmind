@@ -1,10 +1,11 @@
 import { inject, Injectable } from '@angular/core';
-import { DndCharacter, Spell } from '../../../shared/models/dnd-character.model';
+import { CharacterFeature, DndCharacter, Spell } from '../../../shared/models/dnd-character.model';
 import { InventoryItem } from '../../../shared/models/character-play-state.model';
 import { PdfGeneratorService } from '../../../shared/services/pdf-generator.service';
 import { SheetFeature, SheetSpell } from '../../../shared/pdf/character-sheet-field-values';
 import { CharacterEntryResolverService } from '../../../core/services/character-entry-resolver.service';
-import { CharacterVersionService } from '../../../core/services/character-version.service';
+import { CharacterVersionService, ResolvedFeatureText, ResolvedSpellText } from '../../../core/services/character-version.service';
+import { ResolutionContext, resolutionContextOf, resolutionKey } from '../../../shared/utils/resolution-context';
 import { characterShareUrl } from '../../../shared/utils/character-share-url';
 import * as logger from '../../../shared/logger';
 
@@ -27,8 +28,9 @@ function inventoryLine(item: InventoryItem): string {
 
 /**
  * Exports a character as the official D&D 5e sheet. Before rendering it looks up
- * the rules text of every spell and feature that has none yet, so the appendix
- * can show what each one does, and stores those texts on the version in one write.
+ * the rules text of every spell and feature that has none yet (or has one for another
+ * class or level), so the appendix can show what each one does for this character,
+ * and stores those texts on the version in one write.
  */
 @Injectable({ providedIn: 'root' })
 export class CharacterSheetExportService {
@@ -41,9 +43,10 @@ export class CharacterSheetExportService {
     const character: DndCharacter = inventory.length
       ? { ...request.character, equipment: [...(request.character.equipment ?? []), ...inventory.map(inventoryLine)] }
       : request.character;
+    const context = resolutionContextOf(request.character);
     const [spells, features] = await Promise.all([
-      this.resolveSpells(request),
-      this.resolveFeatures(request),
+      this.resolveSpells(request, context),
+      this.resolveFeatures(request, context),
     ]);
 
     await this.persist(request, spells.resolved, features.resolved);
@@ -59,26 +62,33 @@ export class CharacterSheetExportService {
   }
 
   private async resolveSpells(
-    request: CharacterSheetExportRequest
-  ): Promise<{ entries: SheetSpell[]; resolved: Map<string, { description: string; usage: string }> }> {
-    const resolved = new Map<string, { description: string; usage: string }>();
+    request: CharacterSheetExportRequest,
+    context: ResolutionContext
+  ): Promise<{ entries: SheetSpell[]; resolved: Map<string, ResolvedSpellText> }> {
+    const resolved = new Map<string, ResolvedSpellText>();
     const source: (string | Spell)[] = request.character.spellcasting?.spells ?? [];
     const entries = await Promise.all(
       source.map(async (raw): Promise<SheetSpell> => {
-        const spell: SheetSpell = typeof raw === 'string' ? { name: raw } : { ...raw };
+        const spell: Spell = typeof raw === 'string' ? { name: raw } : { ...raw };
         try {
-          if (spell.description && spell.level !== undefined) return spell;
-          const details = spell.description
-            ? await this.resolver.lookupSpellLocally(spell.name)
-            : await this.resolveSpellDetails(request, spell);
+          const needsText = this.needsText(request, spell, context);
+          if (!needsText && spell.level !== undefined) return spell;
+          const details = needsText
+            ? await this.resolveSpellDetails(request, spell, context)
+            : await this.resolver.lookupSpellLocally(spell.name);
           if (!details) return spell;
-          if (!spell.description) {
-            resolved.set(spell.name.toLowerCase(), { description: details.description, usage: details.usage });
+          const text = needsText ? details : { description: spell.description, usage: spell.usage || details.usage };
+          if (needsText) {
+            resolved.set(spell.name.toLowerCase(), {
+              description: details.description,
+              usage: details.usage,
+              resolvedFor: resolutionKey(context),
+            });
           }
           return {
             ...spell,
-            description: spell.description || details.description,
-            usage: spell.usage || details.usage,
+            description: text.description,
+            usage: text.usage,
             level: spell.level ?? details.level,
             school: spell.school ?? details.school,
           };
@@ -91,27 +101,31 @@ export class CharacterSheetExportService {
     return { entries, resolved };
   }
 
-  private resolveSpellDetails(request: CharacterSheetExportRequest, spell: SheetSpell) {
+  private resolveSpellDetails(request: CharacterSheetExportRequest, spell: SheetSpell, context: ResolutionContext) {
     return request.canResolveRemotely
-      ? this.resolver.resolveSpell(request.characterId, spell)
-      : this.resolver.lookupSpellLocally(spell.name);
+      ? this.resolver.resolveSpell(request.characterId, spell, context)
+      : this.resolver.lookupSpellLocally(spell.name, context);
   }
 
   private async resolveFeatures(
-    request: CharacterSheetExportRequest
-  ): Promise<{ entries: SheetFeature[]; resolved: Map<string, { description: string }> }> {
-    const resolved = new Map<string, { description: string }>();
-    const source = (request.character.featuresAndTraits ?? []) as (string | SheetFeature)[];
+    request: CharacterSheetExportRequest,
+    context: ResolutionContext
+  ): Promise<{ entries: SheetFeature[]; resolved: Map<string, ResolvedFeatureText> }> {
+    const resolved = new Map<string, ResolvedFeatureText>();
+    const source = (request.character.featuresAndTraits ?? []) as (string | CharacterFeature)[];
     const entries = await Promise.all(
       source.map(async (raw): Promise<SheetFeature> => {
-        const feature: SheetFeature = typeof raw === 'string' ? { name: raw } : { ...raw };
-        if (feature.description) return feature;
+        const feature: Partial<CharacterFeature> & { name: string } = typeof raw === 'string' ? { name: raw } : { ...raw };
+        if (!this.needsText(request, feature, context)) return feature;
         try {
           const details = request.canResolveRemotely
-            ? await this.resolver.resolveFeature(request.characterId, feature, request.character)
-            : await this.resolver.lookupFeatureLocally(feature.name);
+            ? await this.resolver.resolveFeature(request.characterId, feature, context)
+            : await this.resolver.lookupFeatureLocally(feature, context);
           if (!details) return feature;
-          resolved.set(feature.name.toLowerCase(), details);
+          resolved.set(feature.name.toLowerCase(), {
+            description: details.description,
+            resolvedFor: resolutionKey(context),
+          });
           return { ...feature, description: details.description };
         } catch (e) {
           logger.error(`Failed to resolve feature "${feature.name}" for PDF export:`, e);
@@ -122,11 +136,24 @@ export class CharacterSheetExportService {
     return { entries, resolved };
   }
 
+  /**
+   * An entry needs a text when it has none. The owner's export also redoes a text that
+   * was looked up for another class, race or level, since the result can be stored.
+   */
+  private needsText(
+    request: CharacterSheetExportRequest,
+    entry: { description?: string; resolvedFor?: string },
+    context: ResolutionContext
+  ): boolean {
+    if (!entry.description) return true;
+    return request.canResolveRemotely && entry.resolvedFor !== resolutionKey(context);
+  }
+
   /** Best-effort: a failed write must not block the download. */
   private async persist(
     request: CharacterSheetExportRequest,
-    spells: Map<string, { description: string; usage: string }>,
-    features: Map<string, { description: string }>
+    spells: Map<string, ResolvedSpellText>,
+    features: Map<string, ResolvedFeatureText>
   ): Promise<void> {
     if (!request.canResolveRemotely || !request.characterId || !request.versionId) return;
     try {

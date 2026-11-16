@@ -45,6 +45,7 @@ import { CharacterImageGalleryComponent } from '../character-image-gallery/chara
 import { CharacterActionsMenuComponent } from '../character-actions-menu/character-actions-menu.component';
 import { ImageLightboxComponent } from '../../../../chat/image-lightbox.component';
 import { CharacterEntryResolverService } from '../../../../core/services/character-entry-resolver.service';
+import { resolutionContextOf, resolutionKey } from '../../../../shared/utils/resolution-context';
 import { ToastService } from '../../../../shared/services/toast.service';
 import { copyText } from '../../../../shared/utils/clipboard';
 import { characterShareUrl } from '../../../../shared/utils/character-share-url';
@@ -54,11 +55,13 @@ export interface SpellResolvedEvent {
   spellName: string;
   description: string;
   usage: string;
+  resolvedFor: string;
 }
 
 export interface FeatureResolvedEvent {
   featureName: string;
   description: string;
+  resolvedFor: string;
 }
 
 type AbilityKey = 'strength' | 'dexterity' | 'constitution' | 'intelligence' | 'wisdom' | 'charisma';
@@ -1242,9 +1245,21 @@ export class CharacterSheetComponent {
 
   // ── Spell and feature texts ───────────────────────────────────
 
+  private readonly resolutionContext = computed(() => resolutionContextOf(this.character()));
+
+  /**
+   * An entry without a text is looked up. So is one whose text was looked up for another
+   * class, race or level (or before texts took those into account) — by the owner only,
+   * since nobody else can store the new text.
+   */
+  private needsLookup(entry: { description?: string; resolvedFor?: string }): boolean {
+    if (!entry.description) return true;
+    return this.editable() && entry.resolvedFor !== resolutionKey(this.resolutionContext());
+  }
+
   async toggleSpell(
     index: number,
-    spell: string | { name: string; description?: string; usage?: string; level?: number; school?: string }
+    spell: string | { name: string; description?: string; usage?: string; level?: number; school?: string; resolvedFor?: string }
   ): Promise<void> {
     const isExpanding = !this.expandedSpells().has(index);
     this.expandedSpells.update(set => {
@@ -1257,12 +1272,17 @@ export class CharacterSheetComponent {
       return s;
     });
 
-    if (!isExpanding || typeof spell === 'string' || spell.description) return;
+    if (!isExpanding || typeof spell === 'string' || !this.needsLookup(spell)) return;
 
     this.loadingSpells.update(s => new Set([...s, index]));
     try {
-      const details = await this.resolver.resolveSpell(this.characterId(), spell);
-      this.spellResolved.emit({ spellName: spell.name, description: details.description, usage: details.usage });
+      const details = await this.resolver.resolveSpell(this.characterId(), spell, this.resolutionContext());
+      this.spellResolved.emit({
+        spellName: spell.name,
+        description: details.description,
+        usage: details.usage,
+        resolvedFor: details.resolvedFor,
+      });
     } catch (e) {
       logger.error('Failed to resolve spell details:', e);
     } finally {
@@ -1276,7 +1296,7 @@ export class CharacterSheetComponent {
 
   async toggleFeature(
     index: number,
-    feature: string | { name: string; description?: string; source?: string }
+    feature: string | { name: string; description?: string; source?: string; resolvedFor?: string }
   ): Promise<void> {
     const isExpanding = !this.expandedFeatures().has(index);
     this.expandedFeatures.update(set => {
@@ -1289,12 +1309,16 @@ export class CharacterSheetComponent {
       return s;
     });
 
-    if (!isExpanding || typeof feature === 'string' || feature.description) return;
+    if (!isExpanding || typeof feature === 'string' || !this.needsLookup(feature)) return;
 
     this.loadingFeatures.update(s => new Set([...s, index]));
     try {
-      const details = await this.resolver.resolveFeature(this.characterId(), feature, this.character());
-      this.featureResolved.emit({ featureName: feature.name, description: details.description });
+      const details = await this.resolver.resolveFeature(this.characterId(), feature, this.resolutionContext());
+      this.featureResolved.emit({
+        featureName: feature.name,
+        description: details.description,
+        resolvedFor: details.resolvedFor,
+      });
     } catch (e) {
       logger.error('Failed to resolve feature details:', e);
     } finally {
