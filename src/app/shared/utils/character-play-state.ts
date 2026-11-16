@@ -1,4 +1,4 @@
-import { DndCharacter, LimitedUses, SpellSlot, UsesRecharge } from '../models/dnd-character.model';
+import { Coins, DndCharacter, LimitedUses, SpellSlot, UsesRecharge } from '../models/dnd-character.model';
 import { CharacterPlayState, InventoryItem } from '../models/character-play-state.model';
 import { normalizeSpellSlots } from '../pdf/character-sheet-field-values';
 
@@ -8,6 +8,10 @@ export const CONDITIONS = [
 ] as const;
 
 export const MAX_EXHAUSTION = 6;
+
+export const MAX_COINS = 9_999_999;
+
+const COIN_KEYS = ['cp', 'sp', 'ep', 'gp', 'pp'] as const;
 
 export type UsesOwner = 'feature' | 'spell';
 
@@ -31,6 +35,7 @@ export interface ResolvedPlayState {
   concentration: string | null;
   inspiration: boolean;
   inventory: InventoryItem[];
+  coins: Coins;
 }
 
 export interface PlayStateResult {
@@ -62,6 +67,11 @@ export function usesKey(owner: UsesOwner, name: string): string {
 function clamp(value: number | undefined, min: number, max: number, fallback = min): number {
   if (typeof value !== 'number' || Number.isNaN(value)) return fallback;
   return Math.max(min, Math.min(max, Math.trunc(value)));
+}
+
+/** A whole purse: every coin type a whole number within its limits. */
+function cleanCoins(coins: Partial<Coins> | undefined): Coins {
+  return Object.fromEntries(COIN_KEYS.map(key => [key, clamp(coins?.[key], 0, MAX_COINS)])) as unknown as Coins;
 }
 
 function validUses(uses: LimitedUses | undefined): uses is LimitedUses {
@@ -123,6 +133,7 @@ export function resolvePlayState(character: DndCharacter, state: State): Resolve
     inventory: (state?.inventory ?? [])
       .filter(item => !!item?.id && !!item.name)
       .map(item => ({ id: item.id, name: item.name, value: item.value ?? '', description: item.description ?? '' })),
+    coins: cleanCoins(state?.coins ?? character.coins),
   };
 }
 
@@ -138,6 +149,7 @@ function toState(resolved: ResolvedPlayState): CharacterPlayState {
     concentration: resolved.concentration,
     inspiration: resolved.inspiration,
     inventory: resolved.inventory.map(item => ({ ...item })),
+    coins: { ...resolved.coins },
   };
 }
 
@@ -291,6 +303,13 @@ export function removeInventoryItem(character: DndCharacter, state: State, id: s
   });
 }
 
+export function setCoins(character: DndCharacter, state: State, coins: Coins): PlayStateResult {
+  return update(character, state, r => {
+    r.coins = coins;
+    return '';
+  });
+}
+
 /** Spend a slot (or a use of the spell's own tracker) and start concentrating when asked. */
 export function castSpell(character: DndCharacter, state: State, request: CastRequest): PlayStateResult {
   return update(character, state, r => {
@@ -413,6 +432,7 @@ export function applyPlayStateToCharacter(character: DndCharacter, state: State)
     hitPoints: { ...character.hitPoints, current: r.hp.current, temp: r.hp.temp },
     hitDice: { ...character.hitDice, current: r.hitDice.current },
     deathSaves: { ...r.deathSaves },
+    coins: { ...r.coins },
   };
   if (character.spellcasting?.slots) {
     const expended = new Map(r.slots.map(slot => [slot.level, slot.expended]));

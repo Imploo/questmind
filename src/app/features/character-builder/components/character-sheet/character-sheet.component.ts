@@ -15,6 +15,7 @@ import {
   longRestPreview,
   removeInventoryItem,
   resolvePlayState,
+  setCoins,
   setConcentration,
   setDeathSaves,
   setExhaustion,
@@ -634,7 +635,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
 
           <section class="qm-panel">
             <h3 class="qm-section-title">Inventory</h3>
-            <app-coin-purse class="mb-4" [coins]="character().coins" [editable]="editable()" (coinsChange)="coinsChange.emit($event)" />
+            <app-coin-purse class="mb-4" [coins]="play().coins" [editable]="editable()" (coinsChange)="onCoinsChange($event)" />
 
             @if (editable() || play().inventory.length) {
               <app-inventory-items
@@ -1073,8 +1074,6 @@ export class CharacterSheetComponent {
   archivedChange = output<boolean>();
   /** The owner asked to rebuild the character under the other edition of the rules. */
   rulesVersionChange = output<RulesVersion>();
-  /** The purse after the player changed a coin amount. Coins belong to the build, so they go on the version. */
-  coinsChange = output<Coins>();
 
   expandedSpells = signal<Set<number>>(new Set());
   loadingSpells = signal<Set<number>>(new Set());
@@ -1180,6 +1179,10 @@ export class CharacterSheetComponent {
 
   onInspiration(inspired: boolean): void {
     this.commit(setInspiration(this.character(), this.playState(), inspired));
+  }
+
+  onCoinsChange(coins: Coins): void {
+    this.commit(setCoins(this.character(), this.playState(), coins));
   }
 
   onItemAdded(item: { id: string; name: string }): void {

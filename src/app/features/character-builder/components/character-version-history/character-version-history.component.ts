@@ -26,25 +26,36 @@ import { CharacterVersion } from '../../../../core/models/schemas/character.sche
         </header>
 
         <div class="flex-1 overflow-y-auto scrollbar-thin px-5 pb-6">
+          @if (locked()) {
+            <p class="qm-help mb-4">Save or discard the draft to switch to another version.</p>
+          }
           <ol class="timeline">
             @for (version of versions(); track version.id) {
-              <li class="entry" [class.is-active]="version.id === activeVersionId()">
-                <div class="flex items-center justify-between gap-2">
-                  <h3 class="font-display text-sm font-bold tracking-wide">Version {{ version.versionNumber }}</h3>
-                  @if (version.id === activeVersionId()) {
-                    <span class="qm-badge qm-badge-brand">Active</span>
+              <li
+                class="entry"
+                [class.is-active]="version.id === activeVersionId()"
+                [attr.aria-current]="version.id === activeVersionId() ? 'true' : null"
+              >
+                <div class="entry-body">
+                  <div class="flex items-center justify-between gap-2">
+                    <h3 class="font-display text-sm font-bold tracking-wide">Version {{ version.versionNumber }}</h3>
+                    @if (version.id === activeVersionId()) {
+                      <span class="qm-badge qm-badge-brand">Active</span>
+                    } @else if (version.isDraft) {
+                      <span class="qm-badge">Draft</span>
+                    }
+                  </div>
+                  <p class="mt-1 text-sm text-gray-800">{{ version.commitMessage }}</p>
+                  <div class="qm-help mt-1.5">
+                    {{ version.createdAt.toDate() | date:'medium' }} · {{ version.source }}
+                  </div>
+
+                  @if (version.id !== activeVersionId() && !version.isDraft) {
+                    <button type="button" class="qm-btn qm-btn-sm mt-2.5" [disabled]="locked()" (click)="activate.emit(version)">
+                      Make active
+                    </button>
                   }
                 </div>
-                <p class="mt-1 text-sm text-gray-800">{{ version.commitMessage }}</p>
-                <div class="qm-help mt-1.5">
-                  {{ version.createdAt.toDate() | date:'medium' }} · {{ version.source }}
-                </div>
-
-                @if (version.id !== activeVersionId()) {
-                  <button type="button" class="qm-btn qm-btn-sm mt-2.5" (click)="restore.emit(version)">
-                    Restore
-                  </button>
-                }
               </li>
             } @empty {
               <li class="py-6 text-center text-sm qm-muted">No history available.</li>
@@ -57,13 +68,16 @@ import { CharacterVersion } from '../../../../core/models/schemas/character.sche
   styles: [`
     /* A line of diamonds down the margin, newest first. */
     .timeline { margin-left: 4px; border-left: 1px solid #e0d2b6; }
-    .entry { position: relative; padding: 0 0 1.4rem 1.4rem; }
+    .entry { position: relative; padding: 0 0 0.6rem 1.1rem; }
     .entry:last-child { padding-bottom: 0; }
+    .entry-body { padding: 0.6rem 0.75rem 0.75rem; border: 1px solid transparent; border-radius: 10px; }
+    /* The version the character is on: a shade darker than the drawer, next to its chip. */
+    .entry.is-active .entry-body { background: var(--paper-2); border-color: var(--line); }
     .entry::before {
       content: '';
       position: absolute;
       left: -5px;
-      top: 0.35rem;
+      top: 0.95rem;
       width: 9px;
       height: 9px;
       background: var(--paper);
@@ -74,9 +88,14 @@ import { CharacterVersion } from '../../../../core/models/schemas/character.sche
   `]
 })
 export class CharacterVersionHistoryComponent {
+  /** Every version, newest first. */
   versions = input.required<CharacterVersion[]>();
+  /** The version the character is on. */
   activeVersionId = input.required<string>();
-  
+  /** A draft is waiting: no switching until it is saved or discarded. */
+  locked = input(false);
+
   closed = output<void>();
-  restore = output<CharacterVersion>();
+  /** The owner picked another version to put the character on. */
+  activate = output<CharacterVersion>();
 }
