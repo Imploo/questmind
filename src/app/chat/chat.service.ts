@@ -1,6 +1,7 @@
 import { computed, effect, inject, Injectable, Signal, signal, untracked } from '@angular/core';
 import { httpsCallable } from 'firebase/functions';
 import { DndCharacter } from '../shared/models/dnd-character.model';
+import { RulesVersion } from '../shared/models/rules-version';
 import { stripCharacterDetails, type ChatAttachment } from '../shared/utils/build-character-context';
 import { ChatRepositoryFactory } from '../shared/repository/chat.repository';
 import { FirebaseService } from '../core/firebase.service';
@@ -32,6 +33,7 @@ interface CharacterChatRequest {
   mode: ChatTurnMode;
   currentCharacter: DndCharacter;
   attachment?: ChatAttachment;
+  convertToRules?: RulesVersion;
 }
 
 interface LiveSource<T> {
@@ -252,8 +254,11 @@ export class ChatService {
    * Send a message in the open conversation (or start one). The message and a waiting
    * answer are shown at once; from then on the backend owns the turn. A failure to
    * hand it over shows up as an error message in the conversation.
+   *
+   * With `convertToRules` the message asks to rebuild the character under those rules:
+   * the conversation follows them, and the draft it leads to is marked with them.
    */
-  async send(text: string, attachment?: ChatAttachment): Promise<void> {
+  async send(text: string, attachment?: ChatAttachment, convertToRules?: RulesVersion): Promise<void> {
     const characterId = this.characterId();
     const character = this.currentCharacter;
     if (!characterId || !character) {
@@ -299,6 +304,7 @@ export class ChatService {
         mode,
         currentCharacter: stripCharacterDetails(character),
         ...(sendsAttachment ? { attachment: sendsAttachment } : {}),
+        ...(convertToRules ? { convertToRules } : {}),
       });
     } catch (error) {
       const message = this.describeSendError(error);

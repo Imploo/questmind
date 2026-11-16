@@ -219,6 +219,19 @@ describe('executeImportCharacter', () => {
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('someone-else'))).toBe(false);
   });
 
+  it('keeps the rules the copied version was built with', async () => {
+    routes[`${DOCS}/characters/${SOURCE_ID}/versions/v2`] = () => json({
+      name: 'x/versions/v2',
+      fields: { character: map({ ...characterFields, rulesVersion: str('2024') }) },
+    });
+
+    const { characterId } = await executeImportCharacter('me', link);
+
+    const character = written[`characters/${characterId}`];
+    const version = written[`characters/${characterId}/versions/${character.activeVersionId}`];
+    expect(version.character).toMatchObject({ name: 'Vesper', rulesVersion: '2024' });
+  });
+
   it('falls back to the newest committed version when the active one is missing', async () => {
     delete routes[`${DOCS}/characters/${SOURCE_ID}/versions/v2`];
     routes[`${DOCS}/characters/${SOURCE_ID}/versions?orderBy=versionNumber+desc&pageSize=5`] = () => json({

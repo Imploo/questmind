@@ -8,6 +8,7 @@ import {
   describeCharacter,
   levelInRange,
   readResolutionCharacter,
+  rulesInstruction,
   ResolutionCharacter,
   ResolutionCharacterFields,
 } from './character/resolution-context';
@@ -43,15 +44,17 @@ function scalingRule(spell: SpellToDescribe, character: ResolutionCharacter, max
       ? `If the cantrip grows with character level, give its damage or effect at level ${character.level} and leave out the higher tiers.`
       : `If the cantrip grows with character level, say so.`;
   }
+  // The 2024 rules renamed the section.
+  const section = character.rules === '2024' ? '"Using a Higher-Level Spell Slot."' : '"At Higher Levels."';
   if (maxSlot === null) {
-    return `Include the "At Higher Levels." section if the spell has one.`;
+    return `Include the ${section} section if the spell has one.`;
   }
   if (spell.level === undefined) {
-    return `Include the "At Higher Levels." section only if the spell's level is below ${maxSlot}, the character's highest spell slot.`;
+    return `Include the ${section} section only if the spell's level is below ${maxSlot}, the character's highest spell slot.`;
   }
   return maxSlot > spell.level
-    ? `Include the "At Higher Levels." section if the spell has one; the character's highest spell slot is level ${maxSlot}.`
-    : `Leave out the "At Higher Levels." section: the character has no spell slot above the spell's level.`;
+    ? `Include the ${section} section if the spell has one; the character's highest spell slot is level ${maxSlot}.`
+    : `Leave out the ${section} section: the character has no spell slot above the spell's level.`;
 }
 
 /** The prompt for one spell, written for the character that casts it. */
@@ -61,6 +64,7 @@ export function buildSpellPrompt(spell: SpellToDescribe, character: ResolutionCh
   const who = describeCharacter(character);
 
   return `Return a JSON object (no markdown) for the D&D 5e spell "${spell.name}" (${levelText}${schoolText})${who ? `, as cast by ${who}` : ''}.
+${rulesInstruction(character)}
 Fields:
 - "description": the spell text from the rules. ${scalingRule(spell, character, maxSlot)}
 - "usage": multiline string formatted as "Casting Time: ...\\nRange: ...\\nComponents: ...\\nDuration: ..."

@@ -1,5 +1,6 @@
 import type { Timestamp } from 'firebase-admin/firestore';
 import type { DndCharacter } from '../schemas/dnd-character.schema';
+import type { RulesVersion } from '../character/rules-version';
 
 export interface ChatHistoryMessage {
   role: 'user' | 'assistant';
@@ -60,6 +61,11 @@ export interface ChatDoc {
   /** Summary of the messages up to and including `summarizedUntil`; they are no longer sent as history. */
   summary?: string;
   summarizedUntil?: Timestamp;
+  /**
+   * The rules this conversation is converting the character to. Until the draft of that
+   * conversion is saved, the conversation follows these rules instead of the character's own.
+   */
+  pendingRulesVersion?: RulesVersion | null;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

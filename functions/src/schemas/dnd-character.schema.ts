@@ -168,6 +168,9 @@ export const DndCharacterSchema = z.object({
     description: z.string().optional(), // Full text description
   }).optional(),
   backstory: z.string().optional(),
+
+  // The edition of the rules the character is built with; 2014 when absent.
+  rulesVersion: z.enum(['2014', '2024']).optional(),
 });
 
 export type DndCharacter = z.infer<typeof DndCharacterSchema>;

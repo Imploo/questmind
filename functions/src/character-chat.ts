@@ -10,6 +10,7 @@ import { deleteStorageFiles } from './utils/storage-cleanup';
 import * as logger from './utils/logger';
 import { TASK_WORKERS, TASK_WORKER_TIMEOUT_SECONDS, enqueueWorkerTask } from './services/task-queue.service';
 import { DndCharacter } from './schemas/dnd-character.schema';
+import { readKnownRulesVersion } from './character/rules-version';
 import {
   ChatAttachment,
   ChatTurnMode,
@@ -33,6 +34,8 @@ export interface CharacterChatRequest {
   /** The character as the owner sees it right now, without spell and feature descriptions. */
   currentCharacter: DndCharacter;
   attachment?: ChatAttachment;
+  /** '2014' or '2024': this message asks to rebuild the character under these rules. */
+  convertToRules?: string;
 }
 
 export interface CharacterChatResponse {
@@ -81,6 +84,7 @@ export const characterChat = onCall(
       const mode: ChatTurnMode = data.mode === 'image' ? 'image' : 'text';
       // An image request is answered with a portrait; a PDF sent along with it is not used.
       const attachment = mode === 'text' ? validateAttachment(data.attachment) : null;
+      const convertToRules = mode === 'text' ? readKnownRulesVersion(data.convertToRules) : null;
 
       const db = getFirestore();
       await assertCharacterOwner(db, characterId, uid);
@@ -99,6 +103,8 @@ export const characterChat = onCall(
           lastMessagePreview: makePreview(text),
           updatedAt: userCreatedAt,
           ...(stored ? { hasPdf: true } : {}),
+          // The conversation follows these rules until the converted character is saved as a draft.
+          ...(convertToRules ? { pendingRulesVersion: convertToRules } : {}),
         };
 
         await db.runTransaction(async tx => {

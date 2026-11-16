@@ -1,6 +1,7 @@
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { DndCharacterSchema, DndCharacter } from './schemas/dnd-character.schema';
-import { CHARACTER_JSON_GENERATOR_PROMPT } from './prompts/character-json-generator.prompt';
+import { characterJsonGeneratorPrompt } from './prompts/character-json-generator.prompt';
+import { readRulesVersion, RulesVersion } from './character/rules-version';
 import { getAiFeatureConfig } from './utils/ai-settings';
 import { GeminiEmptyResponseError, generateJson, getGeminiClient } from './utils/gemini-client';
 import * as logger from './utils/logger';
@@ -21,6 +22,11 @@ const MAX_ABILITY_SCORE_RETRIES = 2;
 export interface GenerateCharacterDraftPayload {
   characterId: string;
   currentCharacter: DndCharacter;
+  /**
+   * The rules the draft is built under and marked with. Left out, the draft keeps the
+   * rules of the current character.
+   */
+  rulesVersion?: RulesVersion;
   chatHistory: ChatHistoryMessage[];
   ai1Response: string;
   pdfAttachment?: { mimeType: string; data: string };
@@ -47,6 +53,7 @@ export async function executeGenerateCharacterDraft(
   options: GenerateCharacterDraftOptions = {}
 ): Promise<SavedDraft | null> {
   const { characterId, currentCharacter, chatHistory, ai1Response, pdfAttachment } = payload;
+  const rulesVersion = payload.rulesVersion ?? readRulesVersion(currentCharacter?.rulesVersion);
 
   if (!characterId || !currentCharacter || !chatHistory || !ai1Response) {
     throw new Error('generateCharacterDraft: missing required payload fields');
@@ -77,6 +84,7 @@ export async function executeGenerateCharacterDraft(
   logger.info('generateCharacterDraft: calling Gemini', {
     model: config.model,
     hasPdf: Boolean(pdfAttachment),
+    rulesVersion,
     contentPartsCount: contentParts.length,
     characterId,
   });
@@ -91,7 +99,7 @@ export async function executeGenerateCharacterDraft(
             config,
             label: 'generateCharacterDraft',
             contents: parts,
-            systemInstruction: CHARACTER_JSON_GENERATOR_PROMPT,
+            systemInstruction: characterJsonGeneratorPrompt(rulesVersion),
             logContext: { characterId },
           },
           client
@@ -103,7 +111,9 @@ export async function executeGenerateCharacterDraft(
         throw error;
       }
       logger.info('generateCharacterDraft: JSON parsed successfully, validating schema');
-      return checkAbilityScores(preserveLimitedUses(currentCharacter, DndCharacterSchema.parse(parsed)));
+      // The rules are not the generator's to choose: the draft gets the ones it was built under.
+      const draft = DndCharacterSchema.parse(withRulesVersion(parsed, rulesVersion));
+      return checkAbilityScores(preserveLimitedUses(currentCharacter, draft));
     };
 
     result = await generate(contentParts);
@@ -149,6 +159,12 @@ export async function executeGenerateCharacterDraft(
     abilityScoreWarnings: result.issues.map(issue => issue.message),
     derivedStatCorrections: result.corrections,
   });
+}
+
+function withRulesVersion(generated: unknown, rulesVersion: RulesVersion): unknown {
+  return generated && typeof generated === 'object' && !Array.isArray(generated)
+    ? { ...generated, rulesVersion }
+    : generated;
 }
 
 type ContentPart = { text: string } | { inlineData: { mimeType: string; data: string } };

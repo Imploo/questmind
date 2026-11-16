@@ -23,6 +23,7 @@ import { CharacterVersionHistoryComponent } from '../../components/character-ver
 import { PanelSwitcherComponent } from '../../../../layout/panel-switcher/panel-switcher.component';
 import { PagePanel, PanelSwitcherService } from '../../../../layout/panel-switcher/panel-switcher.service';
 import { trackVisualViewport } from '../../../../shared/utils/visual-viewport';
+import { RulesVersion, rulesConversionRequest, rulesVersionOf } from '../../../../shared/models/rules-version';
 
 @Component({
   selector: 'app-character-builder-page',
@@ -99,6 +100,7 @@ import { trackVisualViewport } from '../../../../shared/utils/visual-viewport';
                   [canClone]="canClone()"
                   [cloning]="cloning()"
                   [archived]="selectedCharacter()?.archived === true"
+                  (rulesVersionChange)="onRulesVersionChange($event)"
                   (cloneCharacter)="onCloneCharacter()"
                   (archivedChange)="onArchivedChange($event)"
                   (playStateChange)="onPlayStateChange($event)"
@@ -285,6 +287,7 @@ export class CharacterBuilderPageComponent {
     return !!user && !!character && user.uid !== character.userId;
   });
   cloning = signal(false);
+
 
   // Latest version from Firestore real-time listener
   latestVersion = this.characterVersionService.latestVersion;
@@ -708,6 +711,26 @@ export class CharacterBuilderPageComponent {
       logger.error('Failed to archive character:', e);
       this.toastService.show(archived ? 'Archiveren is mislukt. Probeer het opnieuw.' : 'Terugzetten is mislukt. Probeer het opnieuw.', 'error');
     }
+  }
+
+  /**
+   * Rebuild the character under the other edition of the rules. Nothing changes right
+   * away: a new conversation asks The Sidekick for the conversion, and the draft that
+   * comes out of it carries the new rules. Dropping that draft, or restoring an older
+   * version, brings the old rules back with the old character.
+   */
+  onRulesVersionChange(rulesVersion: RulesVersion): void {
+    const version = this.latestVersion();
+    const chat = this.chat();
+    if (!version || !chat || !this.isOwner() || rulesVersion === rulesVersionOf(version.character)) return;
+    // A second update next to a running one would have the two overwrite each other's draft.
+    if (this.isGenerating() || this.chatService.isBusy()) {
+      this.toastService.show('The Sidekick is nog bezig. Probeer het daarna opnieuw.', 'warning');
+      return;
+    }
+    chat.startRulesConversion(rulesVersion, rulesConversionRequest(rulesVersion));
+    // The conversion happens in the chat: show it.
+    this.showPanel('chat');
   }
 
   async onCoinsChange(coins: Coins): Promise<void> {

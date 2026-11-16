@@ -140,6 +140,16 @@ describe('resolveFeature', () => {
     expect(prompt).not.toContain('level-based improvements');
   });
 
+  it('asks for the text of the rules the character follows', async () => {
+    const fighter = { featureName: 'Second Wind', characterClass: 'Fighter', characterRace: 'Human', characterLevel: 5 };
+
+    expect(await promptFor(fighter)).toContain('Give the text as it reads in the 2014 rules, never the 2024 version.');
+    mockResolve.mockClear();
+    expect(await promptFor({ ...fighter, rulesVersion: '2024' })).toContain(
+      'Give the text as it reads in the 2024 rules, never the 2014 version.'
+    );
+  });
+
   it('asks for only the options the character picked, by its other features', async () => {
     const prompt = await promptFor({
       featureName: 'Metamagic', characterClass: 'Sorcerer', characterLevel: 3,

@@ -8,6 +8,7 @@ import {
   describeCharacter,
   readFeatureNames,
   readResolutionCharacter,
+  rulesInstruction,
   ResolutionCharacter,
   ResolutionCharacterFields,
 } from './character/resolution-context';
@@ -49,6 +50,7 @@ export function buildFeaturePrompt(
   ].filter(Boolean);
 
   return `Return a JSON object (no markdown) for the D&D 5e feature/trait "${featureName}"${sourceText}${who ? `, as it applies to ${who}` : ''}.
+${rulesInstruction(character)}
 Fields:
 - "description": the feature text from the rules, including its mechanical effects
 

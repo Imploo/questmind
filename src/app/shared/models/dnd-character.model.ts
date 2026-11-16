@@ -1,3 +1,5 @@
+import type { RulesVersion } from './rules-version';
+
 export interface AbilityScoreBonus {
   source: string;
   amount: number;
@@ -175,4 +177,7 @@ export interface DndCharacter {
     description?: string;
   };
   backstory?: string;
+
+  /** The edition of the rules the character is built with; 2014 when absent. */
+  rulesVersion?: RulesVersion;
 }

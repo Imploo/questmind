@@ -4,7 +4,7 @@ import { httpsCallable } from 'firebase/functions';
 import { FirebaseService } from '../firebase.service';
 import { lookupSpellFromJson, SpellDetails } from '../../shared/utils/spell-lookup';
 import { lookupFeatureFromJson, FeatureDetails } from '../../shared/utils/feature-lookup';
-import { ResolutionContext, resolutionKey } from '../../shared/utils/resolution-context';
+import { ResolutionContext, resolutionKey, usesBundledRules } from '../../shared/utils/resolution-context';
 
 export interface SpellToResolve {
   name: string;
@@ -26,19 +26,25 @@ export type Resolved<T> = T & { resolvedFor: string };
  * resolveFeature Cloud Functions, which ask Gemini and store the result on the
  * active version. Both take the character's class, race, level and other features
  * into account, so a druid gets the druid's Spellcasting, nothing it only gets at a
- * higher level, and of Metamagic only the options it chose.
+ * higher level, and of Metamagic only the options it chose. The bundled data is the
+ * 2014 SRD: a character that follows the 2024 rules gets all its texts from the functions.
  */
 @Injectable({ providedIn: 'root' })
 export class CharacterEntryResolverService {
   private readonly http = inject(HttpClient);
   private readonly firebase = inject(FirebaseService);
 
-  /** Bundled data only; no network call beyond the static JSON. Without a context: the full text. */
+  /**
+   * Bundled data only; no network call beyond the static JSON. Without a context: the
+   * full 2014 text. Null when the character follows rules the bundled data does not hold.
+   */
   lookupSpellLocally(name: string, context?: ResolutionContext): Promise<SpellDetails | null> {
+    if (!usesBundledRules(context)) return Promise.resolve(null);
     return lookupSpellFromJson(this.http, name, context);
   }
 
   lookupFeatureLocally(feature: FeatureToResolve, context: ResolutionContext): Promise<FeatureDetails | null> {
+    if (!usesBundledRules(context)) return Promise.resolve(null);
     return lookupFeatureFromJson(this.http, feature, context);
   }
 
@@ -94,6 +100,7 @@ export class CharacterEntryResolverService {
       characterClass: context.class,
       characterRace: context.race,
       characterLevel: context.level,
+      rulesVersion: context.rulesVersion,
     };
   }
 }

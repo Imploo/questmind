@@ -1,12 +1,17 @@
+import { describeRules, readRulesVersion, RulesVersion } from './rules-version';
+
 /**
  * The character a spell or feature text is looked up for. The rules text depends on
  * it: Spellcasting reads differently for a druid than for a wizard, and what a
- * feature does grows with the character's level.
+ * feature does grows with the character's level, and the 2024 rules rewrote many
+ * spells and features of the 2014 ones.
  */
 export interface ResolutionCharacterFields {
   characterClass?: string;
   characterRace?: string;
   characterLevel?: number;
+  /** '2014' or '2024'; 2014 when the caller sent none. */
+  rulesVersion?: string;
 }
 
 export interface ResolutionCharacter {
@@ -14,6 +19,7 @@ export interface ResolutionCharacter {
   race: string | null;
   /** 1-20, or null when the caller sent none (or nonsense). */
   level: number | null;
+  rules: RulesVersion;
 }
 
 const MAX_NAME_LENGTH = 80;
@@ -42,6 +48,7 @@ export function readResolutionCharacter(data: ResolutionCharacterFields): Resolu
     class: clean(data.characterClass),
     race: clean(data.characterRace),
     level: levelInRange(data.characterLevel, 1, 20),
+    rules: readRulesVersion(data.rulesVersion),
   };
 }
 
@@ -50,4 +57,13 @@ export function describeCharacter(character: ResolutionCharacter): string | null
   const who = [character.race, character.class].filter(Boolean).join(' ');
   if (!who && !character.level) return null;
   return character.level ? `a level ${character.level} ${who || 'character'}` : `a ${who}`;
+}
+
+/**
+ * Which edition the text has to come from. Spells and features kept their names
+ * across the editions, so the prompt has to rule the other one out.
+ */
+export function rulesInstruction(character: Pick<ResolutionCharacter, 'rules'>): string {
+  const other = character.rules === '2024' ? '2014' : '2024';
+  return `Rules edition: ${describeRules(character.rules)}. Give the text as it reads in the ${character.rules} rules, never the ${other} version.`;
 }

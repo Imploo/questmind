@@ -169,6 +169,22 @@ describe('characterChat', () => {
       currentCharacter: character,
       attachment: null,
     });
+    expect(fake.db.data(CHAT)).not.toHaveProperty('pendingRulesVersion');
+  });
+
+  it('records on the chat which rules a message asks to convert the character to', async () => {
+    await characterChat(request({ convertToRules: '2024' }));
+
+    expect(fake.db.data(CHAT)).toMatchObject({ pendingRulesVersion: '2024' });
+  });
+
+  it.each([
+    ['rules it does not know', { convertToRules: '3.5' }],
+    ['a portrait request', { convertToRules: '2024', mode: 'image', text: 'maak afbeelding van Mira' }],
+  ])('starts no conversion for %s', async (_case, data) => {
+    await characterChat(request(data));
+
+    expect(fake.db.data(CHAT)).not.toHaveProperty('pendingRulesVersion');
   });
 
   it('puts the reply right after the question', async () => {
