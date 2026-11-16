@@ -1,11 +1,13 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, input, output, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { CharacterFeature, Coins, DndCharacter, LimitedUses, Spell, SpellSlot, UsesRecharge } from '../../../../shared/models/dnd-character.model';
+import { CharacterAction, CharacterFeature, Coins, DndCharacter, LimitedUses, Spell, SpellSlot } from '../../../../shared/models/dnd-character.model';
 import { CharacterPlayState } from '../../../../shared/models/character-play-state.model';
 import {
   PlayStateResult,
+  RECHARGE_LABELS,
   ResolvedPlayState,
   UsesOwner,
+  addCustomFeat,
   addInventoryItem,
   applyDamage,
   applyHealing,
@@ -13,9 +15,12 @@ import {
   currentPlayState,
   longRest,
   longRestPreview,
+  removeCustomFeat,
   removeInventoryItem,
   resolvePlayState,
+  setCoins,
   setConcentration,
+  setCustomFeatUses,
   setDeathSaves,
   setExhaustion,
   setHitDice,
@@ -25,6 +30,7 @@ import {
   setUsesSpent,
   shortRest,
   toggleCondition,
+  updateCustomFeat,
   updateInventoryItem,
   usesKey,
 } from '../../../../shared/utils/character-play-state';
@@ -40,13 +46,19 @@ import { ConcentrationMarkComponent } from '../play/concentration-mark.component
 import { InspirationToggleComponent } from '../play/inspiration-toggle.component';
 import { CoinPurseComponent } from '../play/coin-purse.component';
 import { InventoryItemChange, InventoryItemsComponent } from '../play/inventory-items.component';
+import { CustomFeatChange, CustomFeatUsesChange, CustomFeatsComponent } from '../play/custom-feats.component';
 import { CharacterImage, portraitUrlOf } from '../../../../core/models/schemas/character-image.schema';
 import { CharacterImageGalleryComponent } from '../character-image-gallery/character-image-gallery.component';
 import { CharacterActionsMenuComponent } from '../character-actions-menu/character-actions-menu.component';
 import { ImageLightboxComponent } from '../../../../chat/image-lightbox.component';
 import { CharacterEntryResolverService } from '../../../../core/services/character-entry-resolver.service';
+import { resolutionContextOf, resolutionKey } from '../../../../shared/utils/resolution-context';
+import { attackRollLabel, attackRollTitle } from '../../../../shared/utils/attack-roll';
+import { RulesVersion, rulesVersionOf } from '../../../../shared/models/rules-version';
 import { ToastService } from '../../../../shared/services/toast.service';
 import { copyText } from '../../../../shared/utils/clipboard';
+import { MarkdownComponent } from '../../../../shared/components/markdown.component';
+import { SheetSection, SheetSectionTabsComponent } from './sheet-section-tabs.component';
 import { characterShareUrl } from '../../../../shared/utils/character-share-url';
 import * as logger from '../../../../shared/logger';
 
@@ -54,11 +66,13 @@ export interface SpellResolvedEvent {
   spellName: string;
   description: string;
   usage: string;
+  resolvedFor: string;
 }
 
 export interface FeatureResolvedEvent {
   featureName: string;
   description: string;
+  resolvedFor: string;
 }
 
 type AbilityKey = 'strength' | 'dexterity' | 'constitution' | 'intelligence' | 'wisdom' | 'charisma';
@@ -101,6 +115,14 @@ export interface UsesChangeEvent {
 }
 
 /** A feature's or spell's uses tracker together with how many uses are spent. */
+/** A card with what the character can do with its bonus action or its reaction. */
+interface ActionCard {
+  title: string;
+  /** Shown when the list is empty. */
+  empty: string;
+  actions: CharacterAction[];
+}
+
 interface TrackerView {
   key: string;
   max: number;
@@ -143,13 +165,16 @@ interface PlayToast {
   undo: CharacterPlayState | null;
 }
 
-const RECHARGE_LABELS: Record<UsesRecharge, string> = {
-  shortRest: 'Short rest',
-  longRest: 'Long rest',
-  manual: 'Manual',
-};
-
 const TOAST_DURATION_MS = 12_000;
+
+/** The sections the tabs along the edge of the sheet jump to, from top to bottom. */
+const SHEET_SECTIONS: SheetSection[] = [
+  { id: 'abilities', label: 'Abilities' },
+  { id: 'attacks', label: 'Attacks' },
+  { id: 'spells', label: 'Spells' },
+  { id: 'traits', label: 'Traits' },
+  { id: 'inventory', label: 'Inventory' },
+];
 
 /** Matches the usage text of a resolved spell, e.g. "Duration: Concentration, up to 1 minute". */
 const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
@@ -174,6 +199,9 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
     InspirationToggleComponent,
     CoinPurseComponent,
     InventoryItemsComponent,
+    CustomFeatsComponent,
+    MarkdownComponent,
+    SheetSectionTabsComponent,
   ],
   template: `
     @if (portraitLightbox()) {
@@ -223,6 +251,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
               @if (character().playerName) {
                 <span class="qm-tag qm-tag-quiet">Player: {{ character().playerName }}</span>
               }
+              <span class="qm-tag qm-tag-quiet" [title]="'Built with the 5e rules of ' + rulesVersion()">{{ rulesVersion() }} rules</span>
               @if (editable() && archived()) {
                 <span class="qm-tag tag-archived">Archived</span>
               }
@@ -252,8 +281,11 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
           [canClone]="canClone()"
           [canArchive]="editable()"
           [archived]="archived()"
+          [canConvertRules]="editable()"
+          [rulesVersion]="rulesVersion()"
           [exportingPdf]="exportingPdf()"
           [cloning]="cloning()"
+          (rulesVersionChange)="rulesVersionChange.emit($event)"
           (exportPdf)="exportPdf.emit()"
           (viewHistory)="viewHistory.emit()"
           (cloneCharacter)="cloneCharacter.emit()"
@@ -336,7 +368,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
       </header>
 
       <!-- ═══ Ability scores ═══ -->
-      <section class="grid grid-cols-3 @lg:grid-cols-6 gap-3" aria-label="Ability scores">
+      <section class="grid grid-cols-3 @lg:grid-cols-6 gap-3" aria-label="Ability scores" data-section="abilities">
         @for (ability of abilities; track ability.key) {
           <div class="ability" [title]="ability.name">
             <span class="ability-label">{{ ability.label }}</span>
@@ -406,15 +438,18 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
 
         <!-- Right column -->
         <div class="space-y-6">
-          <section class="qm-panel">
+          <section class="qm-panel" data-section="attacks">
             <h3 class="qm-section-title">Attacks</h3>
             @if (character().attacks.length) {
               <ul class="space-y-2">
-                @for (attack of character().attacks; track attack.name) {
+                @for (attack of character().attacks; track $index) {
+                  @let roll = attackRollLabel(attack);
                   <li class="attack">
                     <span class="attack-name">{{ attack.name }}</span>
-                    <span class="attack-bonus" title="Attack bonus">{{ signed(attack.bonus ?? 0) }}</span>
-                    <span class="text-sm qm-muted min-w-0">{{ attack.damage }} {{ attack.type }}</span>
+                    @if (roll) {
+                      <span class="attack-bonus" [title]="attackRollTitle(attack)">{{ roll }}</span>
+                    }
+                    <span class="text-sm qm-muted min-w-0" [class.attack-wide]="!roll">{{ attack.damage }} {{ attack.type }}</span>
                   </li>
                 }
               </ul>
@@ -423,9 +458,32 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
             }
           </section>
 
+          @for (card of actionCards(); track card.title) {
+            <section class="qm-panel">
+              <h3 class="qm-section-title">{{ card.title }}</h3>
+              @if (card.actions.length) {
+                <ul class="space-y-2">
+                  @for (action of card.actions; track $index) {
+                    <li class="action">
+                      <span class="action-name">{{ action.name }}</span>
+                      @if (action.source) {
+                        <span class="qm-tag qm-tag-quiet action-source">{{ action.source }}</span>
+                      }
+                      @if (action.effect) {
+                        <span class="action-effect text-sm qm-muted">{{ action.effect }}</span>
+                      }
+                    </li>
+                  }
+                </ul>
+              } @else {
+                <p class="empty">{{ card.empty }}</p>
+              }
+            </section>
+          }
+
           @let spellcasting = character().spellcasting;
           @if (spellcasting) {
-            <section class="qm-panel">
+            <section class="qm-panel" data-section="spells">
               <h3 class="qm-section-title">Spellcasting</h3>
 
               <div class="flex flex-wrap gap-3 mb-4">
@@ -526,7 +584,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
                           @if (loadingSpells().has(entry.index)) {
                             <div class="qm-progress is-indeterminate h-1" role="progressbar" aria-label="Loading"><div class="qm-progress-bar"></div></div>
                           } @else if (spell.description) {
-                            <div class="whitespace-pre-line">{{ spell.description }}</div>
+                            <app-markdown [text]="spell.description" />
                             @if (spell.usage) {
                               <div class="usage">{{ spell.usage }}</div>
                             }
@@ -566,7 +624,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
             </section>
           }
 
-          <section class="qm-panel">
+          <section class="qm-panel" data-section="traits">
             <h3 class="qm-section-title">Features & Traits</h3>
             @for (entry of features(); track entry.index) {
               <div class="entry-row">
@@ -578,7 +636,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
                     (click)="toggleFeature(entry.index, feature)"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" class="chevron" [class.rotate-90]="expandedFeatures().has(entry.index)" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
-                    <span class="font-semibold text-sm">{{ entry.name }}</span>
+                    <span class="font-semibold text-sm flex-1">{{ entry.name }}</span>
                   </button>
                 } @else {
                   <div class="entry-head entry-main font-semibold text-sm">{{ entry.name }}</div>
@@ -607,7 +665,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
                     @if (loadingFeatures().has(entry.index)) {
                       <div class="qm-progress is-indeterminate h-1" role="progressbar" aria-label="Loading"><div class="qm-progress-bar"></div></div>
                     } @else if (feature.description) {
-                      <div class="whitespace-pre-line">{{ feature.description }}</div>
+                      <app-markdown [text]="feature.description" />
                     } @else {
                       <span class="italic qm-muted">No description available</span>
                     }
@@ -618,13 +676,28 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
                 }
               }
             } @empty {
-              <p class="empty">No features yet</p>
+              @if (!editable() && !play().feats.length) {
+                <p class="empty">No features yet</p>
+              }
+            }
+
+            @if (editable() || play().feats.length) {
+              <app-custom-feats
+                [feats]="play().feats"
+                [usesSpent]="play().usesSpent"
+                [editable]="editable()"
+                (added)="onFeatAdded($event)"
+                (updated)="onFeatUpdated($event)"
+                (usesChange)="onFeatUsesChange($event)"
+                (spentChange)="onUsesSpent($event.key, $event.spent)"
+                (removed)="onFeatRemoved($event)"
+              />
             }
           </section>
 
-          <section class="qm-panel">
+          <section class="qm-panel" data-section="inventory">
             <h3 class="qm-section-title">Inventory</h3>
-            <app-coin-purse class="mb-4" [coins]="character().coins" [editable]="editable()" (coinsChange)="coinsChange.emit($event)" />
+            <app-coin-purse class="mb-4" [coins]="play().coins" [editable]="editable()" (coinsChange)="onCoinsChange($event)" />
 
             @if (editable() || play().inventory.length) {
               <app-inventory-items
@@ -656,7 +729,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
 
       <!-- ═══ Story ═══ -->
       @if (personality().length) {
-        <section class="qm-panel">
+        <section class="qm-panel" data-section="story">
           <h3 class="qm-section-title">Personality</h3>
           <div class="grid @xl:grid-cols-2 gap-4">
             @for (p of personality(); track p.label) {
@@ -670,7 +743,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
       }
 
       @if (character().appearance; as appearance) {
-        <section class="qm-panel">
+        <section class="qm-panel" data-section="story">
           <h3 class="qm-section-title">Appearance</h3>
           @if (appearanceDetails().length) {
             <dl class="grid grid-cols-3 @xl:grid-cols-6 gap-3 mb-4">
@@ -689,7 +762,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
       }
 
       @if (character().backstory) {
-        <section class="qm-panel">
+        <section class="qm-panel" data-section="story">
           <h3 class="qm-section-title">Backstory</h3>
           <p class="prose-text backstory whitespace-pre-line">{{ character().backstory }}</p>
         </section>
@@ -699,6 +772,9 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
         <app-play-toast [message]="t.message" [canUndo]="!!t.undo" (undo)="undo()" (dismissed)="dismissToast()" />
       }
     </div>
+
+    <!-- The tabs along the edge: they stay on screen and jump to the sections marked data-section above -->
+    <app-sheet-section-tabs [sections]="sections()" [lifted]="!!toast()" />
   `,
   styles: [`
     :host {
@@ -713,6 +789,12 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
 
     .ability-label, .vital-label, .portrait-initial, .level-badge {
       font-family: var(--font-display);
+    }
+
+    /* Where a section tab scrolls to: clear of the top of the page, and of the top bar a narrow page has. */
+    [data-section] { scroll-margin-top: var(--sheet-scroll-margin, 1rem); }
+    @media (max-width: 639.98px) {
+      [data-section] { scroll-margin-top: var(--sheet-scroll-margin, 4.5rem); }
     }
 
     .portrait {
@@ -918,7 +1000,8 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
       border: 1px solid var(--line);
       font-size: 0.9rem;
     }
-    .attack-name { grid-column: 1 / -1; font-weight: 600; overflow-wrap: anywhere; }
+    .attack-name, .attack-wide { grid-column: 1 / -1; }
+    .attack-name { font-weight: 600; overflow-wrap: anywhere; }
     .attack-bonus {
       font-weight: 700;
       font-variant-numeric: tabular-nums;
@@ -928,6 +1011,22 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
       color: #f6efe0;
       font-size: 0.8rem;
     }
+
+    /* Bonus actions and reactions */
+    .action {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 0.25rem 0.6rem;
+      padding: 0.6rem 0.8rem;
+      border-radius: 10px;
+      background: var(--paper-2);
+      border: 1px solid var(--line);
+      font-size: 0.9rem;
+    }
+    .action-name { font-weight: 600; overflow-wrap: anywhere; }
+    .action-source { font-size: 0.7rem; padding: 0.1rem 0.5rem; }
+    .action-effect { grid-column: 1 / -1; overflow-wrap: anywhere; }
 
     /* Spellcasting */
     .stat-chip {
@@ -949,6 +1048,8 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
     .entry-row { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 0 0.35rem; }
     /* The name's own labels wrap under it rather than run into the controls on a narrow screen. */
     .entry-head.entry-main { flex: 1 1 9rem; min-width: 0; margin-right: 0; flex-wrap: wrap; row-gap: 0.1rem; }
+    /* A long name breaks within its own column, so its next line starts under the first, clear of the chevron. */
+    .entry-head > .flex-1 { min-width: 0; overflow-wrap: anywhere; }
     .tracker { display: inline-flex; align-items: center; gap: 0.5rem; margin-left: auto; }
     /* Pull the last diamond up to the edge of the row; its tap area has room to spare. */
     .tracker app-use-pips:not(.is-pool) { margin-right: -0.5rem; }
@@ -983,7 +1084,8 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
       transition: background 0.15s;
     }
     button.entry-head:hover { background: var(--paper-2); }
-    .chevron { width: 0.75rem; height: 0.75rem; color: var(--gold); transition: transform 0.15s; flex-shrink: 0; }
+    /* The chevron stays beside the first line of a name that takes two. */
+    .chevron { width: 0.75rem; height: 0.75rem; margin-top: 0.25rem; align-self: flex-start; color: var(--gold); transition: transform 0.15s; flex-shrink: 0; }
     .entry-body {
       margin: 0.25rem 0 0.6rem 0.75rem;
       padding: 0.25rem 0 0.25rem 0.85rem;
@@ -1045,6 +1147,8 @@ export class CharacterSheetComponent {
   cloning = input<boolean>(false);
   /** Whether the owner put this character away; it then carries an "Archived" tag. */
   archived = input<boolean>(false);
+  /** The edition of the rules this version of the character is built with. */
+  rulesVersion = computed(() => rulesVersionOf(this.character()));
   viewHistory = output<void>();
   exportPdf = output<void>();
   deleteImage = output<CharacterImage>();
@@ -1056,8 +1160,8 @@ export class CharacterSheetComponent {
   cloneCharacter = output<void>();
   /** The owner archived the character (true) or brought it back (false). */
   archivedChange = output<boolean>();
-  /** The purse after the player changed a coin amount. Coins belong to the build, so they go on the version. */
-  coinsChange = output<Coins>();
+  /** The owner asked to rebuild the character under the other edition of the rules. */
+  rulesVersionChange = output<RulesVersion>();
 
   expandedSpells = signal<Set<number>>(new Set());
   loadingSpells = signal<Set<number>>(new Set());
@@ -1090,6 +1194,9 @@ export class CharacterSheetComponent {
   });
 
   longRestRows = computed(() => longRestPreview(this.character(), this.playState()));
+
+  /** The sections that have a tab; only a caster has a card of spells. */
+  sections = computed(() => SHEET_SECTIONS.filter(section => section.id !== 'spells' || !!this.character().spellcasting));
 
   private readonly spellNames = computed(() =>
     (this.character().spellcasting?.spells ?? [])
@@ -1165,6 +1272,10 @@ export class CharacterSheetComponent {
     this.commit(setInspiration(this.character(), this.playState(), inspired));
   }
 
+  onCoinsChange(coins: Coins): void {
+    this.commit(setCoins(this.character(), this.playState(), coins));
+  }
+
   onItemAdded(item: { id: string; name: string }): void {
     this.commit(addInventoryItem(this.character(), this.playState(), item.id, item.name));
   }
@@ -1175,6 +1286,22 @@ export class CharacterSheetComponent {
 
   onItemRemoved(id: string): void {
     this.commit(removeInventoryItem(this.character(), this.playState(), id), true);
+  }
+
+  onFeatAdded(feat: { id: string; name: string }): void {
+    this.commit(addCustomFeat(this.character(), this.playState(), feat.id, feat.name));
+  }
+
+  onFeatUpdated(change: CustomFeatChange): void {
+    this.commit(updateCustomFeat(this.character(), this.playState(), change.id, change.changes));
+  }
+
+  onFeatUsesChange(change: CustomFeatUsesChange): void {
+    this.commit(setCustomFeatUses(this.character(), this.playState(), change.id, change.uses));
+  }
+
+  onFeatRemoved(id: string): void {
+    this.commit(removeCustomFeat(this.character(), this.playState(), id), true);
   }
 
   onCast(spellName: string, choice: CastChoice): void {
@@ -1242,9 +1369,21 @@ export class CharacterSheetComponent {
 
   // ── Spell and feature texts ───────────────────────────────────
 
+  private readonly resolutionContext = computed(() => resolutionContextOf(this.character()));
+
+  /**
+   * An entry without a text is looked up. So is one whose text was looked up for another
+   * class, race or level (or before texts took those into account) — by the owner only,
+   * since nobody else can store the new text.
+   */
+  private needsLookup(entry: { description?: string; resolvedFor?: string }): boolean {
+    if (!entry.description) return true;
+    return this.editable() && entry.resolvedFor !== resolutionKey(this.resolutionContext());
+  }
+
   async toggleSpell(
     index: number,
-    spell: string | { name: string; description?: string; usage?: string; level?: number; school?: string }
+    spell: string | { name: string; description?: string; usage?: string; level?: number; school?: string; resolvedFor?: string }
   ): Promise<void> {
     const isExpanding = !this.expandedSpells().has(index);
     this.expandedSpells.update(set => {
@@ -1257,12 +1396,17 @@ export class CharacterSheetComponent {
       return s;
     });
 
-    if (!isExpanding || typeof spell === 'string' || spell.description) return;
+    if (!isExpanding || typeof spell === 'string' || !this.needsLookup(spell)) return;
 
     this.loadingSpells.update(s => new Set([...s, index]));
     try {
-      const details = await this.resolver.resolveSpell(this.characterId(), spell);
-      this.spellResolved.emit({ spellName: spell.name, description: details.description, usage: details.usage });
+      const details = await this.resolver.resolveSpell(this.characterId(), spell, this.resolutionContext());
+      this.spellResolved.emit({
+        spellName: spell.name,
+        description: details.description,
+        usage: details.usage,
+        resolvedFor: details.resolvedFor,
+      });
     } catch (e) {
       logger.error('Failed to resolve spell details:', e);
     } finally {
@@ -1276,7 +1420,7 @@ export class CharacterSheetComponent {
 
   async toggleFeature(
     index: number,
-    feature: string | { name: string; description?: string; source?: string }
+    feature: string | { name: string; description?: string; source?: string; resolvedFor?: string }
   ): Promise<void> {
     const isExpanding = !this.expandedFeatures().has(index);
     this.expandedFeatures.update(set => {
@@ -1289,12 +1433,16 @@ export class CharacterSheetComponent {
       return s;
     });
 
-    if (!isExpanding || typeof feature === 'string' || feature.description) return;
+    if (!isExpanding || typeof feature === 'string' || !this.needsLookup(feature)) return;
 
     this.loadingFeatures.update(s => new Set([...s, index]));
     try {
-      const details = await this.resolver.resolveFeature(this.characterId(), feature, this.character());
-      this.featureResolved.emit({ featureName: feature.name, description: details.description });
+      const details = await this.resolver.resolveFeature(this.characterId(), feature, this.resolutionContext());
+      this.featureResolved.emit({
+        featureName: feature.name,
+        description: details.description,
+        resolvedFor: details.resolvedFor,
+      });
     } catch (e) {
       logger.error('Failed to resolve feature details:', e);
     } finally {
@@ -1334,6 +1482,18 @@ export class CharacterSheetComponent {
   });
 
   hasAppearanceDetails = computed(() => this.appearanceDetails().length > 0);
+
+  /**
+   * Bonus actions as soon as the character has the list on record, also when it is empty;
+   * reactions only when it has any. A character from before the lists has neither card.
+   */
+  actionCards = computed<ActionCard[]>(() => {
+    const { bonusActions, reactions } = this.character();
+    const cards: ActionCard[] = [];
+    if (bonusActions) cards.push({ title: 'Bonus Actions', empty: 'No bonus actions', actions: bonusActions });
+    if (reactions?.length) cards.push({ title: 'Reactions', empty: 'No reactions', actions: reactions });
+    return cards;
+  });
 
   /** Spells grouped by level (cantrips first), with the matching slot row attached. */
   spellGroups = computed<SpellGroup[]>(() => {
@@ -1438,6 +1598,9 @@ export class CharacterSheetComponent {
     }
     return options;
   }
+
+  readonly attackRollLabel = attackRollLabel;
+  readonly attackRollTitle = attackRollTitle;
 
   signed(value: number): string {
     return `${value >= 0 ? '+' : ''}${value}`;

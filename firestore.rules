@@ -74,9 +74,8 @@ service cloud.firestore {
           get(/databases/$(database)/documents/characters/$(characterId)).data.userId == getUserId();
         allow update: if isAuthenticated() &&
           get(/databases/$(database)/documents/characters/$(characterId)).data.userId == getUserId();
-        allow delete: if isAuthenticated() &&
-          get(/databases/$(database)/documents/characters/$(characterId)).data.userId == getUserId() &&
-          resource.data.isDraft == true;
+        // Versions are kept: the owner switches between them instead of removing one.
+        allow delete: if false;
       }
 
       match /images/{imageId} {
@@ -101,7 +100,7 @@ service cloud.firestore {
 
         match /messages/{messageId} {
           allow read: if isCharacterOwner(characterId);
-          // Cancel a running character update; the worker then drops the draft it is making.
+          // Cancel a running character update; the worker then does not save the version it is making.
           allow update: if isCharacterOwner(characterId) &&
             resource.data.kind == 'characterUpdate' &&
             resource.data.status == 'pending' &&

@@ -103,8 +103,10 @@ export class UsePipsComponent {
 
   left = computed(() => Math.max(0, this.total() - this.spent()));
   isPool = computed(() => this.total() > POOL_THRESHOLD);
+  /** Spent ones first: the row is ticked off from left to right. */
   pips = computed(() => {
-    const left = this.left();
-    return Array.from({ length: Math.max(0, this.total()) }, (_, index) => ({ index, spent: index >= left }));
+    const total = Math.max(0, this.total());
+    const spent = total - this.left();
+    return Array.from({ length: total }, (_, index) => ({ index, spent: index < spent }));
   });
 }

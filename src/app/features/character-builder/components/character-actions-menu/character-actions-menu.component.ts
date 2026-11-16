@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { ConnectedPosition } from '@angular/cdk/overlay';
 import { CdkMenu, CdkMenuItem, CdkMenuTrigger } from '@angular/cdk/menu';
+import { DEFAULT_RULES_VERSION, otherRulesVersion, RulesVersion } from '../../../../shared/models/rules-version';
 
 /** Opens below the button, right edges aligned; above it when there is no room below. */
 const MENU_POSITIONS: ConnectedPosition[] = [
@@ -10,7 +11,8 @@ const MENU_POSITIONS: ConnectedPosition[] = [
 
 /**
  * The "…" button of a character sheet with the actions on the character as a whole:
- * PDF, version history, clone, share and archive. Which ones show depends on the viewer.
+ * PDF, version history, the edition of the rules, clone, share and archive. Which ones
+ * show depends on the viewer.
  */
 @Component({
   selector: 'app-character-actions-menu',
@@ -45,6 +47,12 @@ const MENU_POSITIONS: ConnectedPosition[] = [
           <button type="button" class="qm-menu-item item" cdkMenuItem (cdkMenuItemTriggered)="viewHistory.emit()">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
             History
+          </button>
+        }
+        @if (canConvertRules()) {
+          <button type="button" class="qm-menu-item item" cdkMenuItem [title]="'Rebuild this character under the ' + otherRules() + ' rules'" (cdkMenuItemTriggered)="rulesVersionChange.emit(otherRules())">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+            Convert to {{ otherRules() }} rules
           </button>
         }
         @if (canClone()) {
@@ -109,6 +117,10 @@ export class CharacterActionsMenuComponent {
   /** Archiving is the owner's. */
   canArchive = input(false);
   archived = input(false);
+  /** Switching between the 2014 and the 2024 rules is the owner's. */
+  canConvertRules = input(false);
+  /** The rules the character follows now; the menu offers the other ones. */
+  rulesVersion = input<RulesVersion>(DEFAULT_RULES_VERSION);
   exportingPdf = input(false);
   cloning = input(false);
 
@@ -118,9 +130,13 @@ export class CharacterActionsMenuComponent {
   share = output<void>();
   /** The archived state the owner asked for. */
   archivedChange = output<boolean>();
+  /** The rules the owner wants the character rebuilt under. */
+  rulesVersionChange = output<RulesVersion>();
 
   /** The menu closes on a click, so the button itself shows that an action is running. */
   busy = computed(() => this.exportingPdf() || this.cloning());
+
+  protected readonly otherRules = computed(() => otherRulesVersion(this.rulesVersion()));
 
   protected readonly positions = MENU_POSITIONS;
 }

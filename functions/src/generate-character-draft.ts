@@ -1,6 +1,7 @@
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { DndCharacterSchema, DndCharacter } from './schemas/dnd-character.schema';
-import { CHARACTER_JSON_GENERATOR_PROMPT } from './prompts/character-json-generator.prompt';
+import { characterJsonGeneratorPrompt } from './prompts/character-json-generator.prompt';
+import { readRulesVersion, RulesVersion } from './character/rules-version';
 import { getAiFeatureConfig } from './utils/ai-settings';
 import { GeminiEmptyResponseError, generateJson, getGeminiClient } from './utils/gemini-client';
 import * as logger from './utils/logger';
@@ -18,35 +19,54 @@ import { preserveLimitedUses } from './character/limited-uses';
 /** Extra generator calls when the ability scores break the rules. */
 const MAX_ABILITY_SCORE_RETRIES = 2;
 
+/** The line in the version history is one sentence; a longer one is cut off. */
+const MAX_SUMMARY_LENGTH = 160;
+
+/** Shown in the version history when the generator left its summary out. */
+const FALLBACK_COMMIT_MESSAGE = 'Updated via AI chat';
+
 export interface GenerateCharacterDraftPayload {
   characterId: string;
   currentCharacter: DndCharacter;
+  /**
+   * The rules the new version is built under and marked with. Left out, it keeps the
+   * rules of the current character.
+   */
+  rulesVersion?: RulesVersion;
   chatHistory: ChatHistoryMessage[];
   ai1Response: string;
   pdfAttachment?: { mimeType: string; data: string };
 }
 
-/** The draft version a generated character was stored as. */
-export interface SavedDraft {
+/** The version a generated character was stored as. It is the active version from then on. */
+export interface SavedVersion {
   versionId: string;
   versionNumber: number;
+  /** The version that was active until now: where an undo goes back to. Null when there was none. */
+  previousVersionId: string | null;
+  /** Ability score rule violations the generator could not fix. */
+  abilityScoreWarnings: string[];
 }
 
 export interface GenerateCharacterDraftOptions {
-  /** Asked right before saving; `false` drops the generated draft (the owner cancelled the update). */
+  /** Asked right before saving; `false` drops the generated character (the owner cancelled the update). */
   shouldSave?: () => Promise<boolean>;
 }
 
 /**
- * Core logic for AI 2: generates a character draft from chat context and stores
- * it as a draft version. Run by the chat worker, for a turn whose sender was checked
- * to own the character. Returns the saved draft, or null when `shouldSave` turned it down.
+ * Core logic for AI 2: generates the updated character from chat context and stores it
+ * as a new version, which becomes the active one. The character it starts from is the
+ * one in the payload (the version the owner has active), so a change made on an older
+ * version builds on that version. Run by the chat worker, for a turn whose sender was
+ * checked to own the character. Returns the saved version, or null when `shouldSave`
+ * turned it down.
  */
 export async function executeGenerateCharacterDraft(
   payload: GenerateCharacterDraftPayload,
   options: GenerateCharacterDraftOptions = {}
-): Promise<SavedDraft | null> {
+): Promise<SavedVersion | null> {
   const { characterId, currentCharacter, chatHistory, ai1Response, pdfAttachment } = payload;
+  const rulesVersion = payload.rulesVersion ?? readRulesVersion(currentCharacter?.rulesVersion);
 
   if (!characterId || !currentCharacter || !chatHistory || !ai1Response) {
     throw new Error('generateCharacterDraft: missing required payload fields');
@@ -77,13 +97,14 @@ export async function executeGenerateCharacterDraft(
   logger.info('generateCharacterDraft: calling Gemini', {
     model: config.model,
     hasPdf: Boolean(pdfAttachment),
+    rulesVersion,
     contentPartsCount: contentParts.length,
     characterId,
   });
 
-  let result: CheckedDraft;
+  let result: GeneratedDraft;
   try {
-    const generate = async (parts: ContentPart[]): Promise<CheckedDraft> => {
+    const generate = async (parts: ContentPart[]): Promise<GeneratedDraft> => {
       let parsed: unknown;
       try {
         parsed = await generateJson<unknown>(
@@ -91,7 +112,7 @@ export async function executeGenerateCharacterDraft(
             config,
             label: 'generateCharacterDraft',
             contents: parts,
-            systemInstruction: CHARACTER_JSON_GENERATOR_PROMPT,
+            systemInstruction: characterJsonGeneratorPrompt(rulesVersion),
             logContext: { characterId },
           },
           client
@@ -103,7 +124,10 @@ export async function executeGenerateCharacterDraft(
         throw error;
       }
       logger.info('generateCharacterDraft: JSON parsed successfully, validating schema');
-      return checkAbilityScores(preserveLimitedUses(currentCharacter, DndCharacterSchema.parse(parsed)));
+      const answer = splitAnswer(parsed);
+      // The rules are not the generator's to choose: the character gets the ones it was built under.
+      const draft = DndCharacterSchema.parse(withRulesVersion(answer.character, rulesVersion));
+      return { ...checkAbilityScores(preserveLimitedUses(currentCharacter, draft)), summary: answer.summary };
     };
 
     result = await generate(contentParts);
@@ -132,23 +156,49 @@ export async function executeGenerateCharacterDraft(
   }
 
   if (result.issues.length) {
-    logger.warn('generateCharacterDraft: ability score issues remain, saving draft with warnings', {
+    logger.warn('generateCharacterDraft: ability score issues remain, saving the version with warnings', {
       characterId,
       issues: result.issues.map(issue => issue.code),
     });
   }
 
   if (options.shouldSave && !(await options.shouldSave())) {
-    logger.info('generateCharacterDraft: draft dropped, the update was cancelled', { characterId });
+    logger.info('generateCharacterDraft: character dropped, the update was cancelled', { characterId });
     return null;
   }
 
-  // Save as draft version in Firestore
-  logger.info('generateCharacterDraft: saving draft version');
-  return saveDraftVersion(characterId, result.character, {
+  logger.info('generateCharacterDraft: saving the new version');
+  return saveVersion(characterId, result.character, result.summary ?? FALLBACK_COMMIT_MESSAGE, {
     abilityScoreWarnings: result.issues.map(issue => issue.message),
     derivedStatCorrections: result.corrections,
   });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * The generator answers with `{ summary, character }`. An answer that is the bare
+ * character is taken as such, without a summary.
+ */
+function splitAnswer(parsed: unknown): { character: unknown; summary: string | null } {
+  if (isRecord(parsed) && isRecord(parsed.character)) {
+    return { character: parsed.character, summary: cleanSummary(parsed.summary) };
+  }
+  return { character: parsed, summary: null };
+}
+
+/** One line of plain text, or null when there is nothing usable. */
+function cleanSummary(summary: unknown): string | null {
+  if (typeof summary !== 'string') return null;
+  const line = summary.replace(/\s+/g, ' ').trim();
+  if (!line) return null;
+  return line.length > MAX_SUMMARY_LENGTH ? `${line.slice(0, MAX_SUMMARY_LENGTH - 1).trimEnd()}…` : line;
+}
+
+function withRulesVersion(generated: unknown, rulesVersion: RulesVersion): unknown {
+  return isRecord(generated) ? { ...generated, rulesVersion } : generated;
 }
 
 type ContentPart = { text: string } | { inlineData: { mimeType: string; data: string } };
@@ -158,6 +208,11 @@ interface CheckedDraft {
   issues: AbilityScoreIssue[];
   /** Values that were recalculated, e.g. "Initiative +4 -> +2". */
   corrections: string[];
+}
+
+/** A checked character with the generator's one-sentence summary of what changed. */
+interface GeneratedDraft extends CheckedDraft {
+  summary: string | null;
 }
 
 /**
@@ -179,48 +234,45 @@ interface DraftCheckResults {
   derivedStatCorrections: string[];
 }
 
-async function saveDraftVersion(
+/**
+ * Store the character as the next version and make it the active one, in one go: the
+ * number follows the newest version, whichever version the change started from.
+ */
+async function saveVersion(
   characterId: string,
   character: DndCharacter,
+  commitMessage: string,
   checks: DraftCheckResults
-): Promise<SavedDraft> {
+): Promise<SavedVersion> {
   const db = getFirestore();
-  const versionsRef = db
-    .collection('characters').doc(characterId)
-    .collection('versions');
+  const characterRef = db.collection('characters').doc(characterId);
+  const versionsRef = characterRef.collection('versions');
+  const versionRef = versionsRef.doc();
 
-  // Single query: get the latest version
-  const lastVersionSnap = await versionsRef
-    .orderBy('versionNumber', 'desc')
-    .limit(1)
-    .get();
+  return db.runTransaction(async tx => {
+    const characterSnap = await tx.get(characterRef);
+    const newestSnap = await tx.get(versionsRef.orderBy('versionNumber', 'desc').limit(1));
 
-  if (!lastVersionSnap.empty && lastVersionSnap.docs[0].data().isDraft) {
-    // Latest version is already a draft — overwrite it
-    const draft = lastVersionSnap.docs[0];
-    await draft.ref.update({
+    const versionNumber = newestSnap.empty ? 1 : newestSnap.docs[0].data().versionNumber + 1;
+    const active: unknown = characterSnap.get('activeVersionId');
+    const now = FieldValue.serverTimestamp();
+
+    tx.set(versionRef, {
+      id: versionRef.id,
+      versionNumber,
       character,
       ...checks,
-      updatedAt: FieldValue.serverTimestamp(),
+      commitMessage,
+      source: 'ai',
+      createdAt: now,
     });
-    return { versionId: draft.id, versionNumber: draft.data().versionNumber };
-  }
+    tx.update(characterRef, { activeVersionId: versionRef.id, updatedAt: now });
 
-  // Create a new draft version
-  const nextNumber = lastVersionSnap.empty
-    ? 1
-    : lastVersionSnap.docs[0].data().versionNumber + 1;
-
-  const newDocRef = versionsRef.doc();
-  await newDocRef.set({
-    id: newDocRef.id,
-    versionNumber: nextNumber,
-    character,
-    ...checks,
-    commitMessage: 'Draft via AI chat',
-    source: 'ai',
-    isDraft: true,
-    createdAt: FieldValue.serverTimestamp(),
+    return {
+      versionId: versionRef.id,
+      versionNumber,
+      previousVersionId: typeof active === 'string' && active ? active : null,
+      abilityScoreWarnings: checks.abilityScoreWarnings,
+    };
   });
-  return { versionId: newDocRef.id, versionNumber: nextNumber };
 }

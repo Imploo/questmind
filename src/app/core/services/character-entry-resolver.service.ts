@@ -4,6 +4,7 @@ import { httpsCallable } from 'firebase/functions';
 import { FirebaseService } from '../firebase.service';
 import { lookupSpellFromJson, SpellDetails } from '../../shared/utils/spell-lookup';
 import { lookupFeatureFromJson, FeatureDetails } from '../../shared/utils/feature-lookup';
+import { ResolutionContext, resolutionKey, usesBundledRules } from '../../shared/utils/resolution-context';
 
 export interface SpellToResolve {
   name: string;
@@ -16,28 +17,45 @@ export interface FeatureToResolve {
   source?: string;
 }
 
+/** A looked-up text, with the key of the context (class, race, level) it was looked up for. */
+export type Resolved<T> = T & { resolvedFor: string };
+
 /**
- * Looks up the rules text of a spell or feature: first in the bundled SRD data
- * (Spell.json / ClassFeature.json), then through the resolveSpell / resolveFeature
- * Cloud Functions, which ask Gemini and store the result on the active version.
+ * Looks up the rules text of a spell or feature for one character: first in the
+ * bundled SRD data (Spell.json / ClassFeature.json), then through the resolveSpell /
+ * resolveFeature Cloud Functions, which ask Gemini and store the result on the
+ * active version. Both take the character's class, race, level and other features
+ * into account, so a druid gets the druid's Spellcasting, nothing it only gets at a
+ * higher level, and of Metamagic only the options it chose. The bundled data is the
+ * 2014 SRD: a character that follows the 2024 rules gets all its texts from the functions.
  */
 @Injectable({ providedIn: 'root' })
 export class CharacterEntryResolverService {
   private readonly http = inject(HttpClient);
   private readonly firebase = inject(FirebaseService);
 
-  /** Bundled data only; no network call beyond the static JSON. */
-  lookupSpellLocally(name: string): Promise<SpellDetails | null> {
-    return lookupSpellFromJson(this.http, name);
+  /**
+   * Bundled data only; no network call beyond the static JSON. Without a context: the
+   * full 2014 text. Null when the character follows rules the bundled data does not hold.
+   */
+  lookupSpellLocally(name: string, context?: ResolutionContext): Promise<SpellDetails | null> {
+    if (!usesBundledRules(context)) return Promise.resolve(null);
+    return lookupSpellFromJson(this.http, name, context);
   }
 
-  lookupFeatureLocally(name: string): Promise<FeatureDetails | null> {
-    return lookupFeatureFromJson(this.http, name);
+  lookupFeatureLocally(feature: FeatureToResolve, context: ResolutionContext): Promise<FeatureDetails | null> {
+    if (!usesBundledRules(context)) return Promise.resolve(null);
+    return lookupFeatureFromJson(this.http, feature, context);
   }
 
-  async resolveSpell(characterId: string | null, spell: SpellToResolve): Promise<SpellDetails> {
-    const local = await this.lookupSpellLocally(spell.name);
-    if (local) return local;
+  async resolveSpell(
+    characterId: string | null,
+    spell: SpellToResolve,
+    context: ResolutionContext
+  ): Promise<Resolved<SpellDetails>> {
+    const resolvedFor = resolutionKey(context);
+    const local = await this.lookupSpellLocally(spell.name, context);
+    if (local) return { ...local, resolvedFor };
 
     const fn = httpsCallable<unknown, { description: string; usage: string }>(
       this.firebase.requireFunctions(),
@@ -48,17 +66,20 @@ export class CharacterEntryResolverService {
       spellName: spell.name,
       spellLevel: spell.level,
       spellSchool: spell.school,
+      ...this.characterFields(context),
+      maxSpellSlotLevel: context.maxSpellSlotLevel,
     });
-    return result.data;
+    return { ...result.data, resolvedFor };
   }
 
   async resolveFeature(
     characterId: string | null,
     feature: FeatureToResolve,
-    character: { class: string; race: string }
-  ): Promise<FeatureDetails> {
-    const local = await this.lookupFeatureLocally(feature.name);
-    if (local) return local;
+    context: ResolutionContext
+  ): Promise<Resolved<FeatureDetails>> {
+    const resolvedFor = resolutionKey(context);
+    const local = await this.lookupFeatureLocally(feature, context);
+    if (local) return { ...local, resolvedFor };
 
     const fn = httpsCallable<unknown, { description: string }>(
       this.firebase.requireFunctions(),
@@ -68,9 +89,18 @@ export class CharacterEntryResolverService {
       characterId,
       featureName: feature.name,
       featureSource: feature.source,
-      characterClass: character.class,
-      characterRace: character.race,
+      ...this.characterFields(context),
+      characterFeatures: context.features,
     });
-    return result.data;
+    return { ...result.data, resolvedFor };
+  }
+
+  private characterFields(context: ResolutionContext) {
+    return {
+      characterClass: context.class,
+      characterRace: context.race,
+      characterLevel: context.level,
+      rulesVersion: context.rulesVersion,
+    };
   }
 }

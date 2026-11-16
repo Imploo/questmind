@@ -11,6 +11,7 @@ import { ABILITY_KEYS, AbilityKey, abilityModifier } from './ability-score-valid
  * - passive perception: 10 + Perception + derivedBonuses.passivePerception
  * - spell save DC: 8 + proficiency + casting modifier + derivedBonuses.spellSaveDc
  * - spell attack: proficiency + casting modifier + derivedBonuses.spellAttack
+ * - spells in the attack list: the spell save DC or the spell attack bonus
  *
  * AC, hit points and weapon attacks depend on equipment and choices the model does
  * not record, so they are left alone.
@@ -61,6 +62,9 @@ export function spellcastingAbility(character: Pick<DndCharacter, 'class' | 'spe
 function hasFeature(character: DndCharacter, name: RegExp): boolean {
   return (character.featuresAndTraits ?? []).some(f => name.test(typeof f === 'string' ? f : f.name));
 }
+
+/** A name as it is compared: without a note in brackets ("Moonbeam (2nd level)") and without regard to case. */
+const normalizeName = (name: string | undefined): string => (name ?? '').replace(/\s*\(.*$/, '').trim().toLowerCase();
 
 const sum = (bonuses: Bonus[] | undefined): number => (bonuses ?? []).reduce((total, b) => total + (b.amount ?? 0), 0);
 const signed = (n: number): string => (n >= 0 ? `+${n}` : `${n}`);
@@ -143,8 +147,24 @@ export function recalculateDerivedStats(input: DndCharacter): DerivedStatsResult
       corrections.push(`Spell save DC ${casting.spellSaveDc ?? '(empty)'} -> ${dc}`);
       casting.spellSaveDc = dc;
     }
-    set('Spell attack', casting.spellAttackBonus, pb + mod(castingAbility) + sum(character.derivedBonuses?.spellAttack),
-      v => (casting.spellAttackBonus = v));
+    const attackBonus = pb + mod(castingAbility) + sum(character.derivedBonuses?.spellAttack);
+    set('Spell attack', casting.spellAttackBonus, attackBonus, v => (casting.spellAttackBonus = v));
+
+    // A spell in the attack list follows the two values above: the DC when its target
+    // makes a save, the attack bonus when it has an attack roll.
+    const spellNames = new Set((casting.spells ?? []).map(spell => normalizeName(typeof spell === 'string' ? spell : spell.name)));
+    for (const attack of character.attacks ?? []) {
+      if (!spellNames.has(normalizeName(attack.name))) continue;
+      const save = attack.save;
+      if (save) {
+        if (save.dc !== dc) {
+          corrections.push(`${attack.name} save DC ${save.dc ?? '(empty)'} -> ${dc}`);
+          save.dc = dc;
+        }
+      } else if (attack.bonus !== undefined) {
+        set(`${attack.name} attack`, attack.bonus, attackBonus, v => (attack.bonus = v));
+      }
+    }
   }
 
   return { character: corrections.length ? character : input, corrections };

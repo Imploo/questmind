@@ -8,7 +8,8 @@ import {
 } from 'firebase-admin/firestore';
 import { executeGenerateCharacterDraft } from '../generate-character-draft';
 import { generateCharacterImage, latestCharacterImagePath } from '../generate-image';
-import { CHARACTER_RESPONDER_PROMPT } from '../prompts/character-responder.prompt';
+import { readKnownRulesVersion, readRulesVersion, type RulesVersion } from '../character/rules-version';
+import { characterResponderPrompt } from '../prompts/character-responder.prompt';
 import { CHAT_TITLE_INSTRUCTION } from '../prompts/chat-summary.prompt';
 import type { ChatDoc, ChatHistoryMessage, ChatTurnPayload } from '../types/chat.types';
 import { getAiFeatureConfig } from '../utils/ai-settings';
@@ -112,6 +113,9 @@ async function runTextTurn(
   const pdf = payload.attachment ? await downloadAttachment(payload.attachment) : null;
   const config = await getAiFeatureConfig('characterChatText');
   const wantsTitle = chatDoc.titleSource === 'auto';
+  // A conversion in progress decides; otherwise the rules of the character on screen.
+  const pendingRules = readKnownRulesVersion(chatDoc.pendingRulesVersion);
+  const rulesVersion = pendingRules ?? readRulesVersion(payload.currentCharacter.rulesVersion);
 
   logger.info('characterChat: calling Gemini', {
     model: config.model,
@@ -127,7 +131,7 @@ async function runTextTurn(
     config,
     label: 'characterChat',
     contents: buildContents([...contextPreamble(payload.currentCharacter, chatDoc.summary), ...history], pdf),
-    systemInstruction: CHARACTER_RESPONDER_PROMPT + (wantsTitle ? CHAT_TITLE_INSTRUCTION : ''),
+    systemInstruction: characterResponderPrompt(rulesVersion) + (wantsTitle ? CHAT_TITLE_INSTRUCTION : ''),
     schema: responderSchema(wantsTitle),
     logContext: { characterId: payload.characterId, chatId: payload.chatId },
     onProgress: raw => writer.progress(extractPartialJsonString(raw, 'text')),
@@ -145,7 +149,7 @@ async function runTextTurn(
   }
 
   if (parsed.shouldUpdateCharacter === true) {
-    await runCharacterUpdate(db, chat, payload, history, text, pdf);
+    await runCharacterUpdate(db, chat, payload, history, text, pdf, { rulesVersion, converting: pendingRules !== null });
   }
 
   try {
@@ -216,10 +220,12 @@ async function finishReply(
 }
 
 /**
- * AI 2: turn the answer into a draft version of the character. Progress is shown by a
- * system message in the conversation; the owner can cancel it there, after which the
- * generated draft is not saved. A failure is reported here and does not fail the turn:
- * the answer itself is already stored.
+ * AI 2: turn the answer into a new version of the character, which is the active one
+ * from then on. Progress is shown by a system message in the conversation; the owner
+ * can cancel it there, after which the generated character is not saved. Once it is
+ * saved, the message carries the version that was active before, so the owner can undo
+ * the change. A failure is reported here and does not fail the turn: the answer itself
+ * is already stored. The version is built under, and marked with, the rules of this turn.
  */
 async function runCharacterUpdate(
   db: Firestore,
@@ -227,7 +233,8 @@ async function runCharacterUpdate(
   payload: ChatTurnPayload,
   history: ChatHistoryMessage[],
   answer: string,
-  pdf: InlinePdf | null
+  pdf: InlinePdf | null,
+  rules: { rulesVersion: RulesVersion; converting: boolean }
 ): Promise<void> {
   const update = messagesRef(chat).doc(`${payload.replyMessageId}-update`);
   const character = db.doc(`characters/${payload.characterId}`);
@@ -249,6 +256,7 @@ async function runCharacterUpdate(
       {
         characterId: payload.characterId,
         currentCharacter: payload.currentCharacter,
+        rulesVersion: rules.rulesVersion,
         chatHistory: history,
         ai1Response: answer,
         ...(pdf ? { pdfAttachment: pdf } : {}),
@@ -261,9 +269,16 @@ async function runCharacterUpdate(
       status: 'done',
       versionId: saved.versionId,
       versionNumber: saved.versionNumber,
+      ...(saved.previousVersionId ? { previousVersionId: saved.previousVersionId } : {}),
+      ...(saved.abilityScoreWarnings.length ? { abilityScoreWarnings: saved.abilityScoreWarnings } : {}),
       updatedAt: FieldValue.serverTimestamp(),
     });
-    await chat.update({ updatedCharacter: true, lastVersionNumber: saved.versionNumber });
+    await chat.update({
+      updatedCharacter: true,
+      lastVersionNumber: saved.versionNumber,
+      // The new version carries the new rules; from here on the conversation follows the character again.
+      ...(rules.converting ? { pendingRulesVersion: null } : {}),
+    });
   } catch (error) {
     await character.update({ isGenerating: false }).catch(() => undefined);
     await markUpdateFailed(update).catch(() => undefined);

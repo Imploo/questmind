@@ -9,6 +9,7 @@ import {
   TEXT_FIELDS,
   WEAPON_FIELDS,
 } from './character-sheet-template';
+import { attackRollLabel } from '../utils/attack-roll';
 
 /** A spell as it goes on the sheet: always an object, with the level looked up where possible. */
 export interface SheetSpell {
@@ -120,13 +121,18 @@ export function buildSheetFieldValues(
   DEATH_SAVE_FAILURE_FIELDS.slice(0, c.deathSaves?.failures ?? 0).forEach(f => checked.push(f));
 
   // Attacks: the first three get the table rows, the rest the free-text box
-  const attackLine = (a: DndCharacter['attacks'][number]) => `${a.name}: ${signed(a.bonus)}, ${`${a.damage ?? ''} ${a.type ?? ''}`.trim()}`;
+  const damageOf = (a: DndCharacter['attacks'][number]) => `${a.damage ?? ''} ${a.type ?? ''}`.trim();
+  const attackLine = (a: DndCharacter['attacks'][number]) =>
+    `${a.name}: ${[attackRollLabel(a), damageOf(a)].filter(Boolean).join(', ')}`;
   c.attacks.slice(0, WEAPON_FIELDS.length).forEach((attack, i) => {
     text[WEAPON_FIELDS[i].name] = attack.name;
-    text[WEAPON_FIELDS[i].bonus] = signed(attack.bonus);
-    text[WEAPON_FIELDS[i].damage] = `${attack.damage ?? ''} ${attack.type ?? ''}`.trim();
+    text[WEAPON_FIELDS[i].bonus] = attackRollLabel(attack);
+    text[WEAPON_FIELDS[i].damage] = damageOf(attack);
   });
   const attackNotes: string[] = c.attacks.slice(WEAPON_FIELDS.length).map(attackLine);
+  const actionNames = (actions: DndCharacter['bonusActions']) => (actions ?? []).map(a => a.name).filter(Boolean).join(', ');
+  if (actionNames(c.bonusActions)) attackNotes.push(`Bonus actions: ${actionNames(c.bonusActions)}`);
+  if (actionNames(c.reactions)) attackNotes.push(`Reactions: ${actionNames(c.reactions)}`);
   if (c.spellcasting) {
     const parts: string[] = [];
     if (c.spellcasting.spellSaveDc) parts.push(`Spell save DC ${c.spellcasting.spellSaveDc}`);

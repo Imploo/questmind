@@ -1,3 +1,5 @@
+import type { RulesVersion } from './rules-version';
+
 export interface AbilityScoreBonus {
   source: string;
   amount: number;
@@ -39,11 +41,28 @@ export interface Coins {
   pp: number;
 }
 
+/** A weapon attack, or anything else that deals damage: a spell, a breath weapon. */
 export interface WeaponAttack {
   name: string;
+  /** Attack roll bonus; absent when there is no attack roll. */
   bonus?: number;
   damage?: string;
   type?: string;
+  /** The saving throw the target makes instead of an attack roll (Lightning Bolt, a breath weapon). */
+  save?: {
+    ability: 'strength' | 'dexterity' | 'constitution' | 'intelligence' | 'wisdom' | 'charisma';
+    dc?: number;
+  };
+}
+
+/** Something the character can do with its bonus action or its reaction. */
+export interface CharacterAction {
+  /** The spell or feature that gives it. */
+  name: string;
+  /** What it does, in one short line. */
+  effect?: string;
+  /** "Spell", "Class", "Subclass", "Race", "Feat", "Item", "Other". */
+  source?: string;
 }
 
 export interface SpellSlot {
@@ -64,6 +83,8 @@ export interface Spell {
   name: string;
   description?: string;
   usage?: string;
+  /** Key of the class, race and level the description was looked up for (see resolutionKey). */
+  resolvedFor?: string;
   level?: number;
   school?: string;
   /** Uses of its own, apart from spell slots (racial and feat spells). */
@@ -73,6 +94,8 @@ export interface Spell {
 export interface CharacterFeature {
   name: string;
   description: string;
+  /** Key of the class, race and level the description was looked up for (see resolutionKey). */
+  resolvedFor?: string;
   source?: string;
   uses?: LimitedUses;
 }
@@ -141,6 +164,9 @@ export interface DndCharacter {
 
   // Actions
   attacks: WeaponAttack[];
+  /** Absent on a character from before these lists were recorded. */
+  bonusActions?: CharacterAction[];
+  reactions?: CharacterAction[];
   spellcasting?: {
     ability?: 'strength' | 'dexterity' | 'constitution' | 'intelligence' | 'wisdom' | 'charisma';
     spellSaveDc?: number;
@@ -171,4 +197,7 @@ export interface DndCharacter {
     description?: string;
   };
   backstory?: string;
+
+  /** The edition of the rules the character is built with; 2014 when absent. */
+  rulesVersion?: RulesVersion;
 }

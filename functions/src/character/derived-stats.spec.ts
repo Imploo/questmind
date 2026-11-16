@@ -126,6 +126,31 @@ describe('recalculateDerivedStats', () => {
     expect(character.spellcasting!.spellAttackBonus).toBe(8);
   });
 
+  it('gives a spell in the attack list the spell attack bonus or the spell save DC', () => {
+    const { character, corrections } = recalculateDerivedStats(wizard({
+      spellcasting: {
+        spellSaveDc: 15, spellAttackBonus: 7,
+        spells: ['Fire Bolt', { name: 'Lightning Bolt', level: 3 }, { name: 'Magic Missile', level: 1 }, { name: 'Moonbeam', level: 2 }],
+      },
+      attacks: [
+        { name: 'Dagger', bonus: 5, damage: '1d4 + 2', type: 'Piercing' },
+        { name: 'Fire Bolt', bonus: 6, damage: '2d10', type: 'Fire' },
+        { name: 'Lightning Bolt', damage: '8d6', type: 'Lightning', save: { ability: 'dexterity', dc: 13 } },
+        { name: 'Moonbeam (2nd level)', damage: '2d10', type: 'Radiant', save: { ability: 'constitution' } },
+        { name: 'Magic Missile', damage: '3 x 1d4 + 1', type: 'Force' },
+        { name: 'Breath Weapon', damage: '2d6', type: 'Fire', save: { ability: 'dexterity', dc: 12 } },
+      ],
+    }));
+
+    expect(character.attacks.map(a => a.bonus)).toEqual([5, 7, undefined, undefined, undefined, undefined]);
+    expect(character.attacks.map(a => a.save?.dc)).toEqual([undefined, undefined, 15, 15, undefined, 12]);
+    expect(corrections).toEqual([
+      'Fire Bolt attack +6 -> +7',
+      'Lightning Bolt save DC 13 -> 15',
+      'Moonbeam (2nd level) save DC (empty) -> 15',
+    ]);
+  });
+
   it('computes passive perception without a Perception entry', () => {
     const { character } = recalculateDerivedStats(wizard({ skills: [], passiveWisdom: 99 }));
     expect(character.passiveWisdom).toBe(11);

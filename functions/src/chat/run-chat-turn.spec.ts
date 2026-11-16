@@ -42,7 +42,9 @@ vi.mock('@google/genai', () => ({
 vi.mock('../utils/ai-settings', () => ({
   getAiFeatureConfig: vi.fn(() => Promise.resolve({ model: 'gemini-test', maxOutputTokens: 4096 })),
 }));
-vi.mock('../prompts/character-responder.prompt', () => ({ CHARACTER_RESPONDER_PROMPT: 'responder prompt' }));
+vi.mock('../prompts/character-responder.prompt', () => ({
+  characterResponderPrompt: (rulesVersion: string) => `responder prompt ${rulesVersion}`,
+}));
 vi.mock('../prompts/chat-summary.prompt', () => ({ CHAT_TITLE_INSTRUCTION: ' +title', CHAT_SUMMARY_PROMPT: 'summary prompt' }));
 vi.mock('../utils/logger', () => ({ error: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn() }));
 
@@ -102,6 +104,15 @@ function seedTurn(question = 'Welke spells raad je aan?', chat: Record<string, u
 
 const answer = (fields: Record<string, unknown>) => ({ text: JSON.stringify(fields) });
 
+/** What the character generator returns after saving version `versionNumber`. */
+const savedVersion = (versionNumber: number, overrides: Record<string, unknown> = {}) => ({
+  versionId: `version-${versionNumber}`,
+  versionNumber,
+  previousVersionId: null,
+  abilityScoreWarnings: [],
+  ...overrides,
+});
+
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe('runChatTurn', () => {
@@ -157,7 +168,7 @@ describe('runChatTurn', () => {
         ['user', 'En daarna?'],
       ]);
       // The chat already has a model-written title, so no new one is asked for.
-      expect(request.config.systemInstruction).toBe('responder prompt');
+      expect(request.config.systemInstruction).toBe('responder prompt 2014');
       expect(request.config.responseSchema.required).toEqual(['text', 'shouldUpdateCharacter']);
     });
 
@@ -170,8 +181,30 @@ describe('runChatTurn', () => {
       const request = mockGenerateContent.mock.calls[0][0] as {
         config: { systemInstruction: string; responseSchema: { required: string[] } };
       };
-      expect(request.config.systemInstruction).toBe('responder prompt +title');
+      expect(request.config.systemInstruction).toBe('responder prompt 2014 +title');
       expect(request.config.responseSchema.required).toContain('title');
+    });
+
+    it('answers by the rules of the character on screen', async () => {
+      seedTurn();
+      mockGenerateContent.mockResolvedValueOnce(answer({ text: 'Antwoord', shouldUpdateCharacter: false, title: 'Titel' }));
+
+      await runChatTurn(payload({ currentCharacter: { ...character, rulesVersion: '2024' } }));
+
+      const request = mockGenerateContent.mock.calls[0][0] as { config: { systemInstruction: string } };
+      expect(request.config.systemInstruction).toBe('responder prompt 2024 +title');
+    });
+
+    it('answers by the rules a conversation is converting the character to', async () => {
+      seedTurn('Zet dit karakter om.', { pendingRulesVersion: '2024' });
+      mockGenerateContent.mockResolvedValueOnce(answer({ text: 'Welke background wil je?', shouldUpdateCharacter: false, title: 'Titel' }));
+
+      await runChatTurn(payload());
+
+      const request = mockGenerateContent.mock.calls[0][0] as { config: { systemInstruction: string } };
+      expect(request.config.systemInstruction).toBe('responder prompt 2024 +title');
+      // No draft yet: the conversion is still to be done, also in the next turn.
+      expect(fake.db.data(CHAT)).toMatchObject({ pendingRulesVersion: '2024' });
     });
 
     it('keeps a title the owner chose while the answer was being written', async () => {
@@ -294,10 +327,10 @@ describe('runChatTurn', () => {
   describe('a character update', () => {
     const updateAnswer = answer({ text: 'Ik voeg Hypnotic Pattern toe.', shouldUpdateCharacter: true, title: 'Spells' });
 
-    it('generates the draft and links it to the conversation', async () => {
+    it('generates the new version and links it to the conversation, with the version an undo goes back to', async () => {
       seedTurn('Doe Hypnotic Pattern.');
       mockGenerateContent.mockResolvedValueOnce(updateAnswer);
-      mockGenerateDraft.mockResolvedValueOnce({ versionId: 'version-7', versionNumber: 7 });
+      mockGenerateDraft.mockResolvedValueOnce(savedVersion(7, { previousVersionId: 'version-6' }));
 
       await runChatTurn(payload());
 
@@ -305,6 +338,7 @@ describe('runChatTurn', () => {
         {
           characterId: 'char-1',
           currentCharacter: character,
+          rulesVersion: '2014',
           chatHistory: [{ role: 'user', content: 'Doe Hypnotic Pattern.' }],
           ai1Response: 'Ik voeg Hypnotic Pattern toe.',
         },
@@ -316,18 +350,35 @@ describe('runChatTurn', () => {
         status: 'done',
         versionId: 'version-7',
         versionNumber: 7,
+        previousVersionId: 'version-6',
       });
+      expect(fake.db.data(UPDATE)).not.toHaveProperty('abilityScoreWarnings');
       expect(fake.db.data(CHAT)).toMatchObject({ updatedCharacter: true, lastVersionNumber: 7 });
       expect(fake.db.writesTo(CHARACTER)[0].data).toEqual({ isGenerating: true });
     });
 
-    it('shows the update as running while the draft is generated', async () => {
+    it('puts what is still against the ability score rules on the update', async () => {
+      seedTurn('Zet mijn Strength op 20.');
+      mockGenerateContent.mockResolvedValueOnce(updateAnswer);
+      mockGenerateDraft.mockResolvedValueOnce(savedVersion(2, { abilityScoreWarnings: ['Point buy costs 36 points, the maximum is 27'] }));
+
+      await runChatTurn(payload());
+
+      expect(fake.db.data(UPDATE)).toMatchObject({
+        status: 'done',
+        abilityScoreWarnings: ['Point buy costs 36 points, the maximum is 27'],
+      });
+      // The first version of a character has nothing to go back to.
+      expect(fake.db.data(UPDATE)).not.toHaveProperty('previousVersionId');
+    });
+
+    it('shows the update as running while the character is generated', async () => {
       seedTurn('Doe Hypnotic Pattern.');
       mockGenerateContent.mockResolvedValueOnce(updateAnswer);
       mockGenerateDraft.mockImplementationOnce(async () => {
         expect(fake.db.data(UPDATE)).toMatchObject({ status: 'pending' });
         expect(fake.db.data(REPLY)).toMatchObject({ status: 'done' });
-        return { versionId: 'version-7', versionNumber: 7 };
+        return savedVersion(7);
       });
 
       await runChatTurn(payload());
@@ -335,7 +386,7 @@ describe('runChatTurn', () => {
       expect(mockGenerateDraft).toHaveBeenCalledOnce();
     });
 
-    it('does not save the draft after the owner cancelled', async () => {
+    it('does not save the version after the owner cancelled', async () => {
       seedTurn('Doe Hypnotic Pattern.');
       mockGenerateContent.mockResolvedValueOnce(updateAnswer);
       mockGenerateDraft.mockImplementationOnce(async (_payload, options: { shouldSave: () => Promise<boolean> }) => {
@@ -350,6 +401,30 @@ describe('runChatTurn', () => {
 
       expect(fake.db.data(UPDATE)).toMatchObject({ status: 'cancelled' });
       expect(fake.db.data(CHAT)?.updatedCharacter).toBeUndefined();
+    });
+
+    it('builds the version of a conversion under the new rules, and then follows the character again', async () => {
+      seedTurn('Zet dit karakter om naar de regels van 2024.', { pendingRulesVersion: '2024' });
+      mockGenerateContent.mockResolvedValueOnce(updateAnswer);
+      mockGenerateDraft.mockResolvedValueOnce(savedVersion(8));
+
+      await runChatTurn(payload());
+
+      expect(mockGenerateDraft).toHaveBeenCalledWith(
+        expect.objectContaining({ currentCharacter: character, rulesVersion: '2024' }),
+        { shouldSave: expect.any(Function) }
+      );
+      expect(fake.db.data(CHAT)).toMatchObject({ lastVersionNumber: 8, pendingRulesVersion: null });
+    });
+
+    it('keeps the conversion pending when the owner cancelled it', async () => {
+      seedTurn('Zet dit karakter om naar de regels van 2024.', { pendingRulesVersion: '2024' });
+      mockGenerateContent.mockResolvedValueOnce(updateAnswer);
+      mockGenerateDraft.mockResolvedValueOnce(null);
+
+      await runChatTurn(payload());
+
+      expect(fake.db.data(CHAT)).toMatchObject({ pendingRulesVersion: '2024' });
     });
 
     it('marks the update as failed and reports it, but keeps the answer', async () => {
@@ -369,11 +444,11 @@ describe('runChatTurn', () => {
       );
     });
 
-    it('passes the PDF on to the draft generator', async () => {
+    it('passes the PDF on to the character generator', async () => {
       seedTurn('Import this character');
       mockDownload.mockResolvedValueOnce([Buffer.from('%PDF-1.7')]);
       mockGenerateContent.mockResolvedValueOnce(updateAnswer);
-      mockGenerateDraft.mockResolvedValueOnce({ versionId: 'version-2', versionNumber: 2 });
+      mockGenerateDraft.mockResolvedValueOnce(savedVersion(2));
 
       await runChatTurn(payload({
         attachment: { storagePath: 'chat-attachments/char-1/chat-1/user-msg.pdf', mimeType: 'application/pdf', fileName: 'mira.pdf' },

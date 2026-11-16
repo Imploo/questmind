@@ -40,11 +40,26 @@ export const CoinSchema = z.object({
   pp: z.number().default(0),
 });
 
+/** The saving throw a target makes against an attack that has no attack roll (Lightning Bolt, a breath weapon). */
+export const AttackSaveSchema = z.object({
+  ability: AbilityKeySchema,
+  dc: z.number().optional(),
+});
+
+/** A weapon attack, or anything else that deals damage: a spell, a breath weapon. */
 export const WeaponAttackSchema = z.object({
   name: z.string(),
-  bonus: z.number().optional().default(0),
+  bonus: z.number().optional(), // Attack roll bonus; absent when there is no attack roll
   damage: z.string().optional().default(''), // e.g., "1d8 + 3"
   type: z.string().optional().default(''), // e.g., "Slashing"
+  save: AttackSaveSchema.optional().catch(undefined), // A malformed save never costs the whole character
+});
+
+/** Something the character can do with its bonus action or its reaction. */
+export const CharacterActionSchema = z.object({
+  name: z.string(), // The spell or feature that gives it
+  effect: z.string().optional(), // What it does, in one short line
+  source: z.string().optional(), // "Spell", "Class", "Subclass", "Race", "Feat", "Item", "Other"
 });
 
 export const SpellSlotSchema = z.object({
@@ -131,6 +146,9 @@ export const DndCharacterSchema = z.object({
 
   // Actions
   attacks: z.array(WeaponAttackSchema).default([]),
+  // Absent on a character from before these lists were recorded
+  bonusActions: z.array(CharacterActionSchema).optional(),
+  reactions: z.array(CharacterActionSchema).optional(),
   spellcasting: z.object({
     ability: AbilityKeySchema.optional(), // Spellcasting ability; derived from the class when missing
     spellSaveDc: z.number().optional(),
@@ -168,6 +186,9 @@ export const DndCharacterSchema = z.object({
     description: z.string().optional(), // Full text description
   }).optional(),
   backstory: z.string().optional(),
+
+  // The edition of the rules the character is built with; 2014 when absent.
+  rulesVersion: z.enum(['2014', '2024']).optional(),
 });
 
 export type DndCharacter = z.infer<typeof DndCharacterSchema>;

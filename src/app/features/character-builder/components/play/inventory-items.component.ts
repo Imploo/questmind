@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core';
 import { InventoryItem } from '../../../../shared/models/character-play-state.model';
+import { MarkdownComponent } from '../../../../shared/components/markdown.component';
 
 export interface InventoryItemChange {
   id: string;
@@ -14,6 +15,7 @@ export interface InventoryItemChange {
 @Component({
   selector: 'app-inventory-items',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [MarkdownComponent],
   template: `
     @for (item of items(); track item.id) {
       <div class="item">
@@ -51,7 +53,7 @@ export interface InventoryItemChange {
               </label>
               <button type="button" class="remove" (click)="removed.emit(item.id)">Remove item</button>
             } @else if (item.description) {
-              <p class="description">{{ item.description }}</p>
+              <app-markdown class="description" [text]="item.description" />
             } @else {
               <p class="description is-empty">No description</p>
             }
@@ -131,7 +133,7 @@ export interface InventoryItemChange {
       border: none;
       cursor: pointer;
     }
-    .description { margin: 0; font-size: 0.82rem; line-height: 1.55; color: #4d4339; white-space: pre-line; }
+    .description { margin: 0; font-size: 0.82rem; line-height: 1.55; color: #4d4339; }
     .description.is-empty { font-style: italic; color: var(--muted, #7b6e60); }
 
     .add { display: flex; gap: 0.5rem; margin-top: 0.6rem; }

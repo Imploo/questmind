@@ -1,8 +1,7 @@
 import { Injectable, inject, signal, computed, effect, resource } from '@angular/core';
 import { Timestamp } from 'firebase/firestore';
-import { AuthService } from '../../auth/auth.service';
 import { CharacterVersion } from '../models/schemas/character.schema';
-import { Coins, DndCharacter, LimitedUses } from '../../shared/models/dnd-character.model';
+import { DndCharacter, LimitedUses } from '../../shared/models/dnd-character.model';
 import { CharacterVersionRepositoryFactory } from '../../shared/repository/character-version.repository';
 import { CharacterRepository } from '../../shared/repository/character.repository';
 
@@ -24,9 +23,23 @@ function stripUndefined(obj: unknown): unknown {
 
 type VersionRecord = CharacterVersion & Record<string, unknown>;
 
+/** A looked-up text and the key of the class, race and level it was looked up for. */
+export interface ResolvedFeatureText {
+  description: string;
+  resolvedFor: string;
+}
+
+export interface ResolvedSpellText extends ResolvedFeatureText {
+  usage: string;
+}
+
+/** An entry takes a looked-up text when it has none, or has one that was looked up for another context. */
+function isOutdated(entry: { description?: string; resolvedFor?: string }, details: ResolvedFeatureText): boolean {
+  return !entry.description || entry.resolvedFor !== details.resolvedFor;
+}
+
 @Injectable({ providedIn: 'root' })
 export class CharacterVersionService {
-  private readonly authService = inject(AuthService);
   private readonly versionRepoFactory = inject(CharacterVersionRepositoryFactory);
   private readonly characterRepo = inject(CharacterRepository);
 
@@ -45,11 +58,10 @@ export class CharacterVersionService {
     },
   });
 
-  readonly latestVersion = computed<CharacterVersion | null>(() => {
+  /** Every version of the open character, newest first, kept up to date by a live listener. */
+  readonly versions = computed<CharacterVersion[]>(() => {
     const repo = this.activeRepoResource.value();
-    if (!repo) return null;
-    const versions = repo.get() as unknown as CharacterVersion[];
-    return versions[0] ?? null;
+    return repo ? repo.get() as unknown as CharacterVersion[] : [];
   });
 
   constructor() {
@@ -80,57 +92,6 @@ export class CharacterVersionService {
     return versionId;
   }
 
-  async createVersion(
-    characterId: string,
-    characterData: DndCharacter,
-    commitMessage: string,
-    source: 'ai' | 'restore' | 'manual',
-    restoredFromVersionId?: string
-  ): Promise<string> {
-    const user = this.authService.currentUser();
-    if (!user) throw new Error('User not authenticated');
-
-    const repo = this.versionRepoFactory.create(characterId);
-    await repo.waitForData();
-    const versions = repo.get() as unknown as VersionRecord[];
-    const latest = versions[0];
-    const nextVersionNumber = latest ? latest.versionNumber + 1 : 1;
-
-    const versionId = crypto.randomUUID();
-    const now = Timestamp.now();
-
-    const version: CharacterVersion = {
-      id: versionId,
-      versionNumber: nextVersionNumber,
-      character: characterData,
-      commitMessage,
-      source,
-      createdAt: now,
-    };
-
-    if (restoredFromVersionId) {
-      version.restoredFromVersionId = restoredFromVersionId;
-    }
-
-    await repo.update(stripUndefined(version) as VersionRecord);
-    repo.destroy();
-
-    await this.characterRepo.patch(characterId, {
-      activeVersionId: versionId,
-      updatedAt: now
-    });
-
-    return versionId;
-  }
-
-  async getVersions(characterId: string): Promise<CharacterVersion[]> {
-    const repo = this.versionRepoFactory.create(characterId);
-    await repo.waitForData();
-    const versions = [...repo.get() as unknown as CharacterVersion[]];
-    repo.destroy();
-    return versions;
-  }
-
   async getVersion(characterId: string, versionId: string): Promise<CharacterVersion | null> {
     const repo = this.versionRepoFactory.create(characterId);
     await repo.waitForData();
@@ -139,23 +100,24 @@ export class CharacterVersionService {
     return version;
   }
 
-  async restoreVersion(characterId: string, versionToRestore: CharacterVersion): Promise<string> {
-    return this.createVersion(
-      characterId,
-      versionToRestore.character,
-      `Restored version ${versionToRestore.versionNumber}`,
-      'restore',
-      versionToRestore.id
-    );
+  /**
+   * Put the character on another of its saved versions. Nothing is copied: the
+   * character only tracks which version is the active one.
+   */
+  async activateVersion(characterId: string, versionId: string): Promise<void> {
+    await this.characterRepo.patch(characterId, {
+      activeVersionId: versionId,
+      updatedAt: Timestamp.now(),
+    });
   }
 
   async patchSpellDetails(
     characterId: string,
     activeVersionId: string,
     spellName: string,
-    description: string,
-    usage: string
+    details: ResolvedSpellText
   ): Promise<void> {
+    const { description, usage, resolvedFor } = details;
     const repo = this.versionRepoFactory.create(characterId);
     await repo.waitForData();
     const version = await repo.getByKey(activeVersionId) as CharacterVersion | null;
@@ -166,7 +128,7 @@ export class CharacterVersionService {
     const spells = version.character.spellcasting?.spells ?? [];
     const updated = spells.map(spell => {
       if (typeof spell === 'string') return spell;
-      if (spell.name.toLowerCase() === spellName.toLowerCase()) return { ...spell, description, usage };
+      if (spell.name.toLowerCase() === spellName.toLowerCase()) return { ...spell, description, usage, resolvedFor };
       return spell;
     });
     await repo.patch(activeVersionId, { 'character.spellcasting.spells': updated });
@@ -177,8 +139,9 @@ export class CharacterVersionService {
     characterId: string,
     activeVersionId: string,
     featureName: string,
-    description: string
+    details: ResolvedFeatureText
   ): Promise<void> {
+    const { description, resolvedFor } = details;
     const repo = this.versionRepoFactory.create(characterId);
     await repo.waitForData();
     const version = await repo.getByKey(activeVersionId) as CharacterVersion | null;
@@ -189,21 +152,11 @@ export class CharacterVersionService {
     const features = version.character.featuresAndTraits ?? [];
     const updated = features.map(feature => {
       if (typeof feature === 'string') return feature;
-      if (feature.name.toLowerCase() === featureName.toLowerCase()) return { ...feature, description };
+      if (feature.name.toLowerCase() === featureName.toLowerCase()) return { ...feature, description, resolvedFor };
       return feature;
     });
     await repo.patch(activeVersionId, { 'character.featuresAndTraits': updated });
     repo.destroy();
-  }
-
-  /** Store the coins of a character on a version in place, without creating a new version. */
-  async patchCoins(characterId: string, versionId: string, coins: Coins): Promise<void> {
-    const repo = this.versionRepoFactory.create(characterId);
-    try {
-      await repo.patch(versionId, { 'character.coins': coins });
-    } finally {
-      repo.destroy();
-    }
   }
 
   /**
@@ -255,8 +208,8 @@ export class CharacterVersionService {
   async patchResolvedEntries(
     characterId: string,
     versionId: string,
-    spells: Map<string, { description: string; usage?: string }>,
-    features: Map<string, { description: string }>
+    spells: Map<string, ResolvedSpellText>,
+    features: Map<string, ResolvedFeatureText>
   ): Promise<void> {
     if (!spells.size && !features.size) return;
     const repo = this.versionRepoFactory.create(characterId);
@@ -270,36 +223,21 @@ export class CharacterVersionService {
     const currentSpells = version.character.spellcasting?.spells;
     if (spells.size && currentSpells) {
       patch['character.spellcasting.spells'] = currentSpells.map(spell => {
-        if (typeof spell === 'string' || spell.description) return spell;
+        if (typeof spell === 'string') return spell;
         const details = spells.get(spell.name.toLowerCase());
-        return details ? { ...spell, ...details } : spell;
+        return details && isOutdated(spell, details) ? { ...spell, ...details } : spell;
       });
     }
     if (features.size && version.character.featuresAndTraits) {
       patch['character.featuresAndTraits'] = version.character.featuresAndTraits.map(feature => {
-        if (typeof feature === 'string' || feature.description) return feature;
+        if (typeof feature === 'string') return feature;
         const details = features.get(feature.name.toLowerCase());
-        return details ? { ...feature, ...details } : feature;
+        return details && isOutdated(feature, details) ? { ...feature, ...details } : feature;
       });
     }
     if (Object.keys(patch).length) {
       await repo.patch(versionId, patch);
     }
     repo.destroy();
-  }
-
-  async commitDraft(characterId: string, draftVersionId: string): Promise<void> {
-    const repo = this.versionRepoFactory.create(characterId);
-    await repo.patch(draftVersionId, { isDraft: false });
-
-    await this.characterRepo.patch(characterId, {
-      activeVersionId: draftVersionId,
-      updatedAt: Timestamp.now(),
-    });
-  }
-
-  async dismissDraft(characterId: string, draftVersionId: string): Promise<void> {
-    const repo = this.versionRepoFactory.create(characterId);
-    await repo.delete(draftVersionId);
   }
 }

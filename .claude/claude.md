@@ -2,9 +2,13 @@
 
 ## Strict rules
 ALWAYS FOLLOW THESE RULES
-- Never commit without explicit command from user
 - In backend Cloud Functions (`functions/src/`), use Sentry for error logging instead of `console.error`. Use `captureFunctionError()` or `captureException()` from `./utils/sentry-error-handler`
 - In frontend (`src/`), use `logger.error()` from `shared/logger` instead of `console.error`. It automatically sends to Sentry in production
+
+## Git Workflow
+
+- You may commit and push your changes to your working branch without asking first.
+- Pushing to `develop` triggers an automatic deploy to the beta environment (`.github/workflows/firebase-hosting-beta.yml`). When your changes are ready to be tested, you may ask the user whether to merge your branch into `develop` so the changes can be tested on beta. Only merge into `develop` after the user confirms.
 
 ## Build Process
 

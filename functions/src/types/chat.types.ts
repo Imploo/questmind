@@ -1,5 +1,6 @@
 import type { Timestamp } from 'firebase-admin/firestore';
 import type { DndCharacter } from '../schemas/dnd-character.schema';
+import type { RulesVersion } from '../character/rules-version';
 
 export interface ChatHistoryMessage {
   role: 'user' | 'assistant';
@@ -17,7 +18,7 @@ export interface ChatAttachment {
 
 export type ChatMessageSender = 'user' | 'ai' | 'system';
 
-/** `text`: a question or answer. `image`: a portrait request or result. `characterUpdate`: the draft the answer led to. */
+/** `text`: a question or answer. `image`: a portrait request or result. `characterUpdate`: the new version the answer led to. */
 export type ChatMessageKind = 'text' | 'image' | 'characterUpdate';
 
 /**
@@ -37,9 +38,13 @@ export interface ChatMessageDoc {
   text: string;
   images?: { url: string; mimeType: string }[];
   pdfFileName?: string;
-  /** Draft version a character update was saved as. */
+  /** The version a character update was saved as; it became the active one. */
   versionId?: string;
   versionNumber?: number;
+  /** The version that was active before the update: where its undo goes back to. */
+  previousVersionId?: string;
+  /** Ability score rule violations the update could not fix. */
+  abilityScoreWarnings?: string[];
   errorCode?: ChatErrorCode;
   createdAt: Timestamp;
   updatedAt: Timestamp;
@@ -60,6 +65,11 @@ export interface ChatDoc {
   /** Summary of the messages up to and including `summarizedUntil`; they are no longer sent as history. */
   summary?: string;
   summarizedUntil?: Timestamp;
+  /**
+   * The rules this conversation is converting the character to. Until the version of that
+   * conversion is saved, the conversation follows these rules instead of the character's own.
+   */
+  pendingRulesVersion?: RulesVersion | null;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -80,7 +90,7 @@ export interface ChatTurnPayload {
   userMessageId: string;
   replyMessageId: string;
   mode: ChatTurnMode;
-  /** The character as the owner sees it right now (latest version + play state), without descriptions. */
+  /** The character as the owner sees it right now (active version + play state), without descriptions. */
   currentCharacter: DndCharacter;
   attachment: StoredChatAttachment | null;
 }

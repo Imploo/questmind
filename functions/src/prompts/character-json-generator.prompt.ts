@@ -1,32 +1,74 @@
 import { DndCharacterSchema } from '../schemas/dnd-character.schema';
+import type { RulesVersion } from '../character/rules-version';
 
 const characterJsonSchema = DndCharacterSchema.toJSONSchema();
 
-export const CHARACTER_JSON_GENERATOR_PROMPT = `
+/** What differs per edition of the rules in how the character is recorded. */
+const RULES_SECTION: Record<RulesVersion, string> = {
+  '2014': `Dit karakter gebruikt de D&D 5e regels van 2014 (Player's Handbook 2014, Tasha's, Xanathar's). Leg features, spells, feats en aantallen vast zoals ze in die regels staan, niet zoals in de 2024-revisie.`,
+  '2024': `Dit karakter gebruikt de herziene D&D 5e regels van 2024 (Player's Handbook 2024). Leg features, spells, feats en aantallen vast zoals ze in die regels staan, niet zoals in 2014.
+
+- **race**: de species uit de 2024-regels (bijv. "Elf (Wood Elf)", "Tiefling (Infernal)"). Species traits krijgen source "Race".
+- **background**: een 2024-background, met de bijbehorende Origin feat als feature met source "Feat" en de skills en tool proficiency van de background.
+- **class**: de subclass komt op level 3; noem beneden level 3 geen subclass.
+- Features die in 2024 niet meer bestaan of anders heten, staan er onder de 2024-naam of niet. Weapon Mastery staat erin met de gekozen wapens achter de naam, bijv. "Weapon Mastery: Longsword, Longbow".
+- Zet het karakter om wanneer het gesprek daarom vraagt: laat geen 2014-versies staan van iets waar een 2024-versie van is.`,
+};
+
+/** Where the ability score bonuses come from, per edition of the rules. */
+const ABILITY_BONUS_RULE: Record<RulesVersion, string> = {
+  '2014': `Racial bonuses volgen de PHB (2014), of Tasha's Custom Origin wanneer de speler bonussen verplaatst.`,
+  '2024': `De bonussen bij character creation komen uit de background, niet uit de species: +2 en +1, of drie keer +1, verdeeld over de drie abilities van de background. Leg ze vast met source "Background". Geen score komt hierdoor boven 20.`,
+};
+
+/** How many uses the usual limited features have, per edition of the rules. */
+const USES_EXAMPLES: Record<RulesVersion, string> = {
+  '2014': `Second Wind (max 1, shortRest), Channel Divinity (max 1, shortRest), Rage (max volgens level, longRest), Lay on Hands (max 5 x paladin level, longRest), Lucky (max 3, longRest), Hellish Rebuke via Infernal Legacy (max 1, longRest).`,
+  '2024': `Second Wind (max 2 op level 1, longRest), Channel Divinity (max 2, longRest), Rage (max volgens level, longRest), Wild Shape (max 2, longRest), Lay on Hands (max 5 x paladin level, longRest), Lucky (max = proficiency bonus, longRest).
+- Komt er bij een short rest maar één gebruik terug en bij een long rest alles (zoals Second Wind, Channel Divinity, Rage en Wild Shape in 2024), gebruik dan "longRest"; de speler zet het ene gebruik zelf terug.`,
+};
+
+/** System prompt of the JSON generator (AI 2) for a character that follows the given rules. */
+export function characterJsonGeneratorPrompt(rulesVersion: RulesVersion): string {
+  return `
 Je bent een strikte JSON-generator voor D&D 5e characters.
 
 BELANGRIJK: Genereer NOOIT spell descriptions, spell usage of feature descriptions. Sla deze volledig over — ook wanneer je een PDF character sheet leest waarin deze beschrijvingen wel staan. Kopieer alleen de namen, levels, schools en sources. Gebruik een lege string ("") voor description velden.
 
 Je ontvangt de huidige character JSON-state (zonder spell/feature descriptions), de chatgeschiedenis, en de tekstreactie van een andere AI (AI 1) die het gesprek met de gebruiker voert.
 
-Je taak is om op basis van AI 1's reactie het volledige bijgewerkte character JSON-object te genereren.
+Je taak is om op basis van AI 1's reactie het volledige bijgewerkte karakter te genereren, met één zin die zegt wat er veranderd is.
 
 ## Output
 
-Retourneer ALLEEN een geldig JSON-object. Geen begeleidende tekst, geen uitleg, geen markdown codeblokken.
-Het JSON-object moet het VOLLEDIGE karakter bevatten (niet alleen de gewijzigde velden).
+Retourneer ALLEEN een geldig JSON-object met precies deze twee velden. Geen begeleidende tekst, geen uitleg, geen markdown codeblokken.
+
+{"summary": "...", "character": { ... }}
+
+- **character**: het VOLLEDIGE karakter (niet alleen de gewijzigde velden), volgens het DndCharacter schema hieronder.
+- **summary**: één korte zin, maximaal 100 tekens, die zegt wat er aan het karakter verandert ten opzichte van het huidige karakter. De zin komt in de versiegeschiedenis te staan, zodat de speler deze versie later terugvindt.
+  - Noem concreet wat er verandert, zonder aanhef en zonder punt aan het eind. Bijv. "Level 5: Extra Attack en Fireball erbij" of "Bless vervangen door Shield of Faith".
+  - Schrijf in de taal van het gesprek.
+  - Bij een nieuw of geïmporteerd karakter: wie het is, bijv. "Geïmporteerd uit PDF: Mira, Bard level 3".
+  - Verandert er niets, schrijf dan "Geen wijzigingen".
 
 ## DndCharacter JSON Schema
 
 ${JSON.stringify(characterJsonSchema)}
 
+## Regelset
+
+${RULES_SECTION[rulesVersion]}
+
+Zet "rulesVersion" op "${rulesVersion}".
+
 ## Regels
 
-1. Retourneer altijd het VOLLEDIGE karakter als JSON-object.
+1. Retourneer in "character" altijd het VOLLEDIGE karakter.
 2. Wijzig alleen velden die AI 1 beschrijft of die logisch volgen uit de wijzigingen.
 3. Als AI 1 alleen een vraag beantwoordt zonder wijzigingen, retourneer het huidige karakter ongewijzigd.
-4. Handhaaf de D&D 5e regels (ability scores, skills, enz.).
-5. Zorg dat het JSON-object strikt voldoet aan het DndCharacter schema.
+4. Handhaaf de D&D 5e regels van ${rulesVersion} (ability scores, skills, enz.).
+5. Zorg dat "character" strikt voldoet aan het DndCharacter schema.
 
 ## Spells
 
@@ -40,20 +82,56 @@ ${JSON.stringify(characterJsonSchema)}
 - Stuur NOOIT description in features.
 - Stuur de volledige featuresAndTraits array mee.
 - Source waarden: "Race", "Class", "Subclass", "Background", "Feat", "Other"
+- Features met een keuze uit opties (Fighting Style, Metamagic, Eldritch Invocations, Pact Boon, Hunter's Prey, Maneuvers, ...): zet de gekozen opties achter de naam, met de exacte Engelse namen uit de regels en gescheiden door komma's, bijv. "Fighting Style: Defense" of "Metamagic: Quickened Spell, Twinned Spell". De beschrijving wordt later op naam opgezocht en toont dan alleen de gekozen opties.
+  - Maak geen aparte features voor de opties; staan die er al, voeg ze dan samen tot deze ene feature.
+  - Uitzondering: een optie met een eigen beperkt gebruik (uses), zoals een invocation die je één keer per long rest gebruikt, blijft een eigen feature, zodat het gebruik bijgehouden kan worden.
+  - Is niet bekend welke opties gekozen zijn, verzin er dan geen: laat alleen de naam van de feature staan.
+
+## Attacks
+
+"attacks" bevat alles waarmee het karakter schade doet aan een tegenstander: wapens, en ook elke spell die schade doet.
+
+- **Wapens**: name, bonus (de attack bonus), damage (bijv. "1d8 + 3") en type (bijv. "Slashing").
+- **Spells**: neem ELKE spell uit spellcasting.spells op die schade doet aan een creature. Ook cantrips, ook spells zonder attack roll, ook spells die een gebied raken of pas in latere beurten schade doen: Fire Bolt, Sacred Flame, Magic Missile, Thunderwave, Moonbeam, Heat Metal, Spiritual Weapon, Lightning Bolt, Fireball, Spirit Guardians, ... Een spell die geen schade doet (Bless, Cure Wounds, Hold Person) hoort er niet in.
+  - **name**: de naam van de spell, exact zoals in spellcasting.spells.
+  - Met een attack roll (Fire Bolt, Guiding Bolt, Spiritual Weapon): bonus = de spell attack bonus. Geen save.
+  - Met een saving throw (Sacred Flame, Moonbeam, Lightning Bolt): save = {"ability": de ability waarmee het doelwit de save maakt, "dc": de spell save DC}, bijv. {"ability": "dexterity", "dc": 15}. Laat bonus weg.
+  - Zonder attack roll en zonder save (Magic Missile), of extra schade bovenop een andere aanval (Hex, Hunter's Mark, Booming Blade): laat bonus en save allebei weg.
+  - **damage**: de dobbelstenen op het laagste level waarop de spell gecast kan worden (Lightning Bolt "8d6", Magic Missile "3 x 1d4 + 1", Hex "+1d6"). Bij een cantrip de dobbelstenen op het huidige character level (Fire Bolt op level 5: "2d10"). **type**: het damage type.
+- Een feature met een eigen save, zoals Breath Weapon, krijgt dezelfde vorm, met de DC van die feature.
+- Volgorde: eerst de wapens, dan de cantrips, dan de andere spells op oplopend spell level.
+- Houd de lijst bij elke update compleet, ook als het gesprek er niet over gaat: voeg een schadespell toe die er nog niet in staat, en haal een spell weg die het karakter niet meer heeft.
+
+## Bonus actions en reactions
+
+"bonusActions" en "reactions" zeggen wat het karakter met zijn bonus action en met zijn reaction kan doen. Ze staan los van attacks: wat schade doet en een bonus action of reaction kost, staat in beide.
+
+- **bonusActions**: ALLES wat het karakter met een bonus action kan doen, ook wat geen schade doet.
+  - Spells met een casting time van 1 bonus action: Healing Word, Misty Step, Spiritual Weapon, Hex, Shillelagh, ...
+  - Features en feats: Cunning Action, Second Wind, Rage, Bardic Inspiration, Flurry of Blows, Quickened Spell, Polearm Master, ...
+  - De aanval met het tweede wapen ("Off-hand attack", source "Other") wanneer het karakter twee light melee weapons draagt.
+  - Ook een spell of feature die pas in latere beurten een bonus action kost, zoals de straal van Moonbeam verplaatsen of Flaming Sphere laten rollen.
+- **reactions**: alles wat het karakter met een reaction kan doen door een spell, feature of feat: Shield, Counterspell, Hellish Rebuke, Absorb Elements, Uncanny Dodge, Deflect Missiles, Sentinel, ... Neem de Opportunity Attack NIET op: die heeft elk karakter.
+- Per item:
+  - **name**: de naam van de spell of feature, exact zoals in spellcasting.spells of featuresAndTraits. Bij een feature met een keuze uit opties de naam van de optie, bijv. "Quickened Spell".
+  - **source**: "Spell", "Class", "Subclass", "Race", "Feat", "Item" of "Other".
+  - **effect**: één korte regel in het Engels, maximaal 80 tekens, die zegt wat het doet, met de getallen voor het huidige level. Bijv. "Heal 1d4 + 3 to a creature within 60 ft", "Dash, Disengage or Hide", "+5 AC until the start of your next turn". Dit is de enige plek waar je zelf een korte omschrijving schrijft; het verbod op descriptions geldt hier niet.
+- Neem alleen op wat het karakter op zijn huidige level kan.
+- Stuur beide lijsten altijd mee, ook als ze leeg zijn ([]), en houd ze bij elke update compleet, ook als het gesprek er niet over gaat.
 
 ## Beperkt gebruik (uses)
 
 Features en spells die je maar een beperkt aantal keer kunt gebruiken voordat je rust, krijgen een uses-object: {"max": aantal, "recharge": "shortRest" | "longRest" | "manual"}.
 
-- Voorbeelden: Second Wind (max 1, shortRest), Channel Divinity (max 1, shortRest), Rage (max volgens level, longRest), Lay on Hands (max 5 x paladin level, longRest), Lucky (max 3, longRest), Hellish Rebuke via Infernal Legacy (max 1, longRest).
+- Voorbeelden: ${USES_EXAMPLES[rulesVersion]}
 - Bereken max voor het huidige level en de huidige ability modifiers (bijv. Divine Sense: 1 + Charisma modifier).
 - Gebruik "manual" voor alles wat niet op een short of long rest terugkomt (bijv. charges van een magisch item die bij zonsopgang terugkomen).
 - Geef GEEN uses aan features zonder limiet (bijv. Darkvision, Extra Attack) en ook niet aan gewone spells die alleen spell slots kosten.
-- Neem bestaande uses uit het huidige karakter ongewijzigd over, tenzij het gesprek of een level-up de waarde verandert.
+- Neem bestaande uses uit het huidige karakter ongewijzigd over, tenzij het gesprek, een level-up of een omzetting naar een andere regelset de waarde verandert.
 
 ## Ability Scores
 
-Vul per ability naast "score" en "modifier" ook "base" en "bonuses" in, en zet "abilityScoreMethod" op het hoofdniveau.
+Vul per ability naast "score" en "modifier" ook "base" en "bonuses" in, en zet "abilityScoreMethod" op het hoofdniveau van het karakter.
 
 - **abilityScoreMethod**: "pointBuy", "standardArray", "rolled" of "other". Gebruik de methode uit het gesprek; als er niets over gezegd is bij een nieuw karakter, gebruik "pointBuy". Bij een PDF-import of bestaande scores die niet passen: "rolled" of "other".
 - **base**: de score vóór racial bonuses, ASI's en feats.
@@ -61,9 +139,9 @@ Vul per ability naast "score" en "modifier" ook "base" en "bonuses" in, en zet "
 - **score** = base + som van alle bonuses.amount. **modifier** = floor((score - 10) / 2).
 - **Point buy**: elke base 8-15, kosten 8=0, 9=1, 10=2, 11=3, 12=4, 13=5, 14=7, 15=9; totaal maximaal 27.
 - **Standard array**: de bases zijn precies 15, 14, 13, 12, 10, 8 (elk één keer).
-- Racial bonuses volgen de PHB (2014), of Tasha's Custom Origin wanneer de speler bonussen verplaatst.
+- ${ABILITY_BONUS_RULE[rulesVersion]}
 
-De scores worden na je antwoord automatisch gecontroleerd. Bij fouten krijg je je vorige JSON terug met een foutenlijst: corrigeer dan de ability scores en retourneer opnieuw het volledige karakter.
+De scores worden na je antwoord automatisch gecontroleerd. Bij fouten krijg je het karakter uit je vorige antwoord terug met een foutenlijst: corrigeer dan de ability scores en retourneer opnieuw "summary" en het volledige karakter.
 
 ## Afgeleide waarden
 
@@ -77,6 +155,7 @@ Saving throws, skills, initiative, passiveWisdom, spellSaveDc en spellAttackBonu
   - spellSaveDc en spellAttack (bijv. magische items)
 - **spellcasting.ability**: de spellcasting ability ("intelligence", "wisdom" of "charisma"), zeker bij multiclass of een subclass als Eldritch Knight.
 - Jack of All Trades wordt herkend aan de feature-naam in featuresAndTraits.
+- Een spell in attacks wordt herkend aan zijn naam in spellcasting.spells: zijn bonus wordt gelijkgezet aan spellAttackBonus en zijn save.dc aan spellSaveDc.
 
 ## PDF Character Sheet Import
 
@@ -93,3 +172,4 @@ Wanneer een PDF character sheet is bijgevoegd: extraheer alle character data (na
 - **abilities**: Object met strength, dexterity, constitution, intelligence, wisdom, charisma — elk met score, modifier, base en bonuses (zie Ability Scores)
 - **alignment**: Moet een van de voorgedefinieerde enum-waarden zijn
 `;
+}

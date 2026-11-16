@@ -6,24 +6,33 @@ import type { DndCharacter } from './schemas/dnd-character.schema';
 
 const mockUpdate = vi.fn().mockResolvedValue(undefined);
 const mockSet = vi.fn().mockResolvedValue(undefined);
-const mockDocRef = { id: 'new-doc-id', set: mockSet };
-const mockOrderBy = vi.fn(() => ({
-  limit: vi.fn(() => ({
-    get: vi.fn(() => Promise.resolve({ empty: true, docs: [] })),
-  })),
-}));
+const mockDocRef = { id: 'new-doc-id' };
+// What the transaction reads: the newest version so far, and the version the character is on.
+const stored = { newestVersionNumber: null as number | null, activeVersionId: null as string | null };
+const newestVersionQuery = { kind: 'newest-version' };
 const mockVersionsCollection = vi.fn(() => ({
-  orderBy: mockOrderBy,
+  orderBy: vi.fn(() => ({ limit: vi.fn(() => newestVersionQuery) })),
   doc: vi.fn(() => mockDocRef),
 }));
-const mockCharDoc = vi.fn(() => ({
-  update: mockUpdate,
-  collection: mockVersionsCollection,
-}));
-const mockCollection = vi.fn(() => ({ doc: mockCharDoc }));
+const characterRef = { update: mockUpdate, collection: mockVersionsCollection };
+const mockCollection = vi.fn(() => ({ doc: vi.fn(() => characterRef) }));
+const mockTxUpdate = vi.fn();
+const transaction = {
+  get: vi.fn(async (ref: unknown) => ref === newestVersionQuery
+    ? {
+      empty: stored.newestVersionNumber === null,
+      docs: stored.newestVersionNumber === null ? [] : [{ data: () => ({ versionNumber: stored.newestVersionNumber }) }],
+    }
+    : { get: (field: string) => (field === 'activeVersionId' ? stored.activeVersionId : undefined) }),
+  set: (_ref: unknown, data: unknown) => mockSet(data),
+  update: (_ref: unknown, data: unknown) => mockTxUpdate(data),
+};
 
 vi.mock('firebase-admin/firestore', () => ({
-  getFirestore: () => ({ collection: mockCollection }),
+  getFirestore: () => ({
+    collection: mockCollection,
+    runTransaction: (run: (tx: typeof transaction) => Promise<unknown>) => run(transaction),
+  }),
   FieldValue: { serverTimestamp: () => 'SERVER_TIMESTAMP' },
 }));
 
@@ -48,7 +57,7 @@ vi.mock('./schemas/dnd-character.schema', () => ({
 }));
 
 vi.mock('./prompts/character-json-generator.prompt', () => ({
-  CHARACTER_JSON_GENERATOR_PROMPT: 'test system prompt',
+  characterJsonGeneratorPrompt: (rulesVersion: string) => `test system prompt ${rulesVersion}`,
 }));
 
 vi.mock('./utils/logger', () => ({
@@ -64,6 +73,8 @@ describe('executeGenerateCharacterDraft', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.GOOGLE_AI_API_KEY = 'test-api-key';
+    stored.newestVersionNumber = null;
+    stored.activeVersionId = null;
   });
 
   function makePayload(overrides: Record<string, unknown> = {}) {
@@ -92,17 +103,88 @@ describe('executeGenerateCharacterDraft', () => {
     expect(mockGenerateContent).not.toHaveBeenCalled();
   });
 
-  it('should return the draft version it saved', async () => {
+  it('should return the version it saved', async () => {
     mockGenerateContent.mockResolvedValueOnce({ text: JSON.stringify({ name: 'Gandalf' }) });
 
     const { executeGenerateCharacterDraft } = await import('./generate-character-draft');
     const saved = await executeGenerateCharacterDraft(makePayload());
 
-    expect(saved).toEqual({ versionId: 'new-doc-id', versionNumber: 1 });
+    expect(saved).toEqual({ versionId: 'new-doc-id', versionNumber: 1, previousVersionId: null, abilityScoreWarnings: [] });
     expect(mockSet).toHaveBeenCalledOnce();
   });
 
-  it('should drop the generated draft when the update was cancelled in the meantime', async () => {
+  it('should save the next version, make it the active one and remember the one it replaces', async () => {
+    // The owner went back to version 8 after version 9 was made: the change starts from 8.
+    stored.newestVersionNumber = 9;
+    stored.activeVersionId = 'version-8';
+    mockGenerateContent.mockResolvedValueOnce({ text: JSON.stringify({ name: 'Gandalf' }) });
+
+    const { executeGenerateCharacterDraft } = await import('./generate-character-draft');
+    const saved = await executeGenerateCharacterDraft(makePayload());
+
+    expect(saved).toMatchObject({ versionId: 'new-doc-id', versionNumber: 10, previousVersionId: 'version-8' });
+    const version = mockSet.mock.calls[0][0] as Record<string, unknown>;
+    expect(version).toMatchObject({ id: 'new-doc-id', versionNumber: 10, source: 'ai' });
+    expect(version).not.toHaveProperty('isDraft');
+    expect(mockTxUpdate).toHaveBeenCalledWith({ activeVersionId: 'new-doc-id', updatedAt: 'SERVER_TIMESTAMP' });
+  });
+
+  it('should store the summary of the generator as the line in the version history', async () => {
+    mockGenerateContent.mockResolvedValueOnce({
+      text: JSON.stringify({ summary: '  Level 5:\nExtra Attack erbij ', character: { name: 'Gandalf', level: 5 } }),
+    });
+
+    const { executeGenerateCharacterDraft } = await import('./generate-character-draft');
+    await executeGenerateCharacterDraft(makePayload());
+
+    const version = mockSet.mock.calls[0][0] as { commitMessage: string; character: Record<string, unknown> };
+    expect(version.commitMessage).toBe('Level 5: Extra Attack erbij');
+    expect(version.character).toMatchObject({ name: 'Gandalf', level: 5 });
+    expect(version.character).not.toHaveProperty('summary');
+  });
+
+  it('should cut a summary that runs on', async () => {
+    mockGenerateContent.mockResolvedValueOnce({
+      text: JSON.stringify({ summary: 'spell '.repeat(60), character: { name: 'Gandalf' } }),
+    });
+
+    const { executeGenerateCharacterDraft } = await import('./generate-character-draft');
+    await executeGenerateCharacterDraft(makePayload());
+
+    const { commitMessage } = mockSet.mock.calls[0][0] as { commitMessage: string };
+    expect(commitMessage.length).toBeLessThanOrEqual(160);
+    expect(commitMessage.endsWith('…')).toBe(true);
+  });
+
+  it.each([
+    ['is the bare character', { name: 'Gandalf' }],
+    ['has an empty summary', { summary: '  ', character: { name: 'Gandalf' } }],
+  ])('should fall back to a general line when the answer %s', async (_case, generated) => {
+    mockGenerateContent.mockResolvedValueOnce({ text: JSON.stringify(generated) });
+
+    const { executeGenerateCharacterDraft } = await import('./generate-character-draft');
+    await executeGenerateCharacterDraft(makePayload());
+
+    expect(mockSet.mock.calls[0][0]).toMatchObject({ commitMessage: 'Updated via AI chat', character: { name: 'Gandalf' } });
+  });
+
+  it.each([
+    ['the 2014 rules for a character without the setting', {}, '2014'],
+    ['the rules of the current character', { currentCharacter: { name: 'Gandalf', rulesVersion: '2024' } }, '2024'],
+    ['the rules it is converted to', { currentCharacter: { name: 'Gandalf', rulesVersion: '2024' }, rulesVersion: '2014' }, '2014'],
+  ])('should build the version under %s and mark it with them', async (_case, overrides, expected) => {
+    // Whatever the generator says about the rules, the version gets the ones it was built under.
+    mockGenerateContent.mockResolvedValueOnce({ text: JSON.stringify({ name: 'Gandalf', rulesVersion: '5e' }) });
+
+    const { executeGenerateCharacterDraft } = await import('./generate-character-draft');
+    await executeGenerateCharacterDraft(makePayload(overrides));
+
+    const request = mockGenerateContent.mock.calls[0][0] as { config: { systemInstruction: string } };
+    expect(request.config.systemInstruction).toBe(`test system prompt ${expected}`);
+    expect(mockSet.mock.calls[0][0].character).toMatchObject({ name: 'Gandalf', rulesVersion: expected });
+  });
+
+  it('should drop the generated character when the update was cancelled in the meantime', async () => {
     mockGenerateContent.mockResolvedValueOnce({ text: JSON.stringify({ name: 'Gandalf' }) });
     const shouldSave = vi.fn().mockResolvedValue(false);
 
@@ -112,6 +194,7 @@ describe('executeGenerateCharacterDraft', () => {
     expect(saved).toBeNull();
     expect(shouldSave).toHaveBeenCalledOnce();
     expect(mockSet).not.toHaveBeenCalled();
+    expect(mockTxUpdate).not.toHaveBeenCalled();
     // The loader on the character is cleared either way.
     expect(mockUpdate).toHaveBeenCalledWith({ isGenerating: false });
   });
@@ -171,6 +254,8 @@ describe('executeGenerateCharacterDraft ability score feedback', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.GOOGLE_AI_API_KEY = 'test-api-key';
+    stored.newestVersionNumber = null;
+    stored.activeVersionId = null;
   });
 
   const entry = (base: number, raceBonus = 0) => {
@@ -218,10 +303,12 @@ describe('executeGenerateCharacterDraft ability score feedback', () => {
     mockGenerateContent.mockResolvedValue(reply(overBudget()));
 
     const { executeGenerateCharacterDraft } = await import('./generate-character-draft');
-    await executeGenerateCharacterDraft(payload());
+    const saved = await executeGenerateCharacterDraft(payload());
 
     expect(mockGenerateContent).toHaveBeenCalledTimes(3);
     expect(savedDraft().abilityScoreWarnings).toEqual([expect.stringContaining('36 points')]);
+    // They go back to the chat too, which shows them with the update.
+    expect(saved?.abilityScoreWarnings).toEqual([expect.stringContaining('36 points')]);
     mockGenerateContent.mockReset();
   });
 
