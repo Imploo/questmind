@@ -1,5 +1,5 @@
 import { Coins, DndCharacter, LimitedUses, SpellSlot, UsesRecharge } from '../models/dnd-character.model';
-import { CharacterPlayState, InventoryItem } from '../models/character-play-state.model';
+import { CharacterPlayState, CustomFeat, InventoryItem } from '../models/character-play-state.model';
 import { normalizeSpellSlots } from '../pdf/character-sheet-field-values';
 
 export const CONDITIONS = [
@@ -13,9 +13,17 @@ export const MAX_COINS = 9_999_999;
 
 const COIN_KEYS = ['cp', 'sp', 'ep', 'gp', 'pp'] as const;
 
+export const MAX_USES = 99;
+
+export const RECHARGE_LABELS: Record<UsesRecharge, string> = {
+  shortRest: 'Short rest',
+  longRest: 'Long rest',
+  manual: 'Manual',
+};
+
 export type UsesOwner = 'feature' | 'spell';
 
-/** A feature or spell with a limited number of uses. */
+/** A feature, spell or custom feat with a limited number of uses. */
 export interface UsesTracker {
   key: string;
   name: string;
@@ -35,6 +43,7 @@ export interface ResolvedPlayState {
   concentration: string | null;
   inspiration: boolean;
   inventory: InventoryItem[];
+  feats: CustomFeat[];
   coins: Coins;
 }
 
@@ -64,6 +73,11 @@ export function usesKey(owner: UsesOwner, name: string): string {
   return `${owner}:${name.trim().toLowerCase()}`;
 }
 
+/** A custom feat is tracked by its id, so renaming it keeps its spent uses. */
+export function customFeatUsesKey(id: string): string {
+  return `feat:${id}`;
+}
+
 function clamp(value: number | undefined, min: number, max: number, fallback = min): number {
   if (typeof value !== 'number' || Number.isNaN(value)) return fallback;
   return Math.max(min, Math.min(max, Math.trunc(value)));
@@ -78,8 +92,26 @@ function validUses(uses: LimitedUses | undefined): uses is LimitedUses {
   return !!uses && typeof uses.max === 'number' && uses.max >= 1;
 }
 
-/** Every feature and spell that has a uses tracker. */
-export function listTrackers(character: DndCharacter): UsesTracker[] {
+/** A stored tracker made safe to use: a whole number of uses within the limit and a known recharge. */
+function cleanUses(uses: LimitedUses | undefined): LimitedUses | undefined {
+  if (!validUses(uses)) return undefined;
+  return { max: clamp(uses.max, 1, MAX_USES), recharge: uses.recharge in RECHARGE_LABELS ? uses.recharge : 'manual' };
+}
+
+/** The stored feats without the broken ones (no id or no name), each with only the fields it has. */
+function cleanFeats(feats: CustomFeat[] | undefined): CustomFeat[] {
+  return (feats ?? [])
+    .filter(feat => !!feat?.id && !!feat.name)
+    .map(feat => {
+      const uses = cleanUses(feat.uses);
+      const clean: CustomFeat = { id: feat.id, name: feat.name, description: feat.description ?? '' };
+      // Left out rather than undefined: the play state is stored as it is.
+      return uses ? { ...clean, uses } : clean;
+    });
+}
+
+/** Every feature and spell of the build, and every custom feat, that has a uses tracker. */
+export function listTrackers(character: DndCharacter, feats: CustomFeat[] = []): UsesTracker[] {
   const trackers: UsesTracker[] = [];
   for (const feature of character.featuresAndTraits ?? []) {
     if (typeof feature === 'string' || !validUses(feature.uses)) continue;
@@ -88,6 +120,10 @@ export function listTrackers(character: DndCharacter): UsesTracker[] {
   for (const spell of character.spellcasting?.spells ?? []) {
     if (typeof spell === 'string' || !validUses(spell.uses)) continue;
     trackers.push({ key: usesKey('spell', spell.name), name: spell.name, max: Math.trunc(spell.uses.max), recharge: spell.uses.recharge });
+  }
+  for (const feat of feats) {
+    if (!feat.uses) continue;
+    trackers.push({ key: customFeatUsesKey(feat.id), name: feat.name, max: feat.uses.max, recharge: feat.uses.recharge });
   }
   return trackers;
 }
@@ -104,8 +140,9 @@ export function resolvePlayState(character: DndCharacter, state: State): Resolve
       expended: clamp(state?.slotsExpended?.[String(slot.level)] ?? slot.expended, 0, slot.total),
     }));
 
+  const feats = cleanFeats(state?.feats);
   const usesSpent: Record<string, number> = {};
-  for (const tracker of listTrackers(character)) {
+  for (const tracker of listTrackers(character, feats)) {
     usesSpent[tracker.key] = clamp(state?.usesSpent?.[tracker.key], 0, tracker.max);
   }
 
@@ -133,6 +170,7 @@ export function resolvePlayState(character: DndCharacter, state: State): Resolve
     inventory: (state?.inventory ?? [])
       .filter(item => !!item?.id && !!item.name)
       .map(item => ({ id: item.id, name: item.name, value: item.value ?? '', description: item.description ?? '' })),
+    feats,
     coins: cleanCoins(state?.coins ?? character.coins),
   };
 }
@@ -149,6 +187,7 @@ function toState(resolved: ResolvedPlayState): CharacterPlayState {
     concentration: resolved.concentration,
     inspiration: resolved.inspiration,
     inventory: resolved.inventory.map(item => ({ ...item })),
+    feats: resolved.feats.map(feat => (feat.uses ? { ...feat, uses: { ...feat.uses } } : { ...feat })),
     coins: { ...resolved.coins },
   };
 }
@@ -303,6 +342,55 @@ export function removeInventoryItem(character: DndCharacter, state: State, id: s
   });
 }
 
+/** Add a custom feat. A blank name is ignored. */
+export function addCustomFeat(character: DndCharacter, state: State, id: string, name: string): PlayStateResult {
+  const trimmed = name.trim();
+  return update(character, state, r => {
+    if (trimmed && !r.feats.some(feat => feat.id === id)) {
+      r.feats.push({ id, name: trimmed, description: '' });
+    }
+    return '';
+  });
+}
+
+/** Change the name or the text of a custom feat. A blank name leaves the name as it was. */
+export function updateCustomFeat(
+  character: DndCharacter,
+  state: State,
+  id: string,
+  changes: Partial<Pick<CustomFeat, 'name' | 'description'>>
+): PlayStateResult {
+  const name = changes.name?.trim();
+  return update(character, state, r => {
+    r.feats = r.feats.map(feat => {
+      if (feat.id !== id) return feat;
+      return { ...feat, name: name || feat.name, description: changes.description?.trim() ?? feat.description };
+    });
+    return '';
+  });
+}
+
+/** Give a custom feat a uses tracker, change it, or (uses: null) take it away. */
+export function setCustomFeatUses(character: DndCharacter, state: State, id: string, uses: LimitedUses | null): PlayStateResult {
+  return update(character, state, r => {
+    r.feats = r.feats.map(feat => {
+      if (feat.id !== id) return feat;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { uses: _previous, ...rest } = feat;
+      return uses ? { ...rest, uses } : rest;
+    });
+    return '';
+  });
+}
+
+export function removeCustomFeat(character: DndCharacter, state: State, id: string): PlayStateResult {
+  return update(character, state, r => {
+    const removed = r.feats.find(feat => feat.id === id);
+    r.feats = r.feats.filter(feat => feat.id !== id);
+    return removed ? `Removed the feat ${removed.name}.` : '';
+  });
+}
+
 export function setCoins(character: DndCharacter, state: State, coins: Coins): PlayStateResult {
   return update(character, state, r => {
     r.coins = coins;
@@ -345,7 +433,7 @@ export function hasPactMagic(character: DndCharacter): boolean {
 
 function rechargeUses(character: DndCharacter, r: ResolvedPlayState, recharges: UsesRecharge[]): string[] {
   const recharged: string[] = [];
-  for (const tracker of listTrackers(character)) {
+  for (const tracker of listTrackers(character, r.feats)) {
     if (!recharges.includes(tracker.recharge)) continue;
     if (r.usesSpent[tracker.key] > 0) recharged.push(tracker.name);
     r.usesSpent[tracker.key] = 0;

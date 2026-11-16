@@ -596,7 +596,7 @@ export class CharacterBuilderPageComponent {
 
   /**
    * The PDF is the sheet as built: it leaves the live play state (hit points, spent
-   * slots, ...) out, except for what the player carries: the purse and the items kept by hand.
+   * slots, ...) out, except for what the player keeps by hand: the purse, the items and the custom feats.
    */
   async onExportPdf(): Promise<void> {
     const version = this.activeVersion();
@@ -607,6 +607,7 @@ export class CharacterBuilderPageComponent {
       await this.characterSheetExportService.export({
         character: { ...version.character, coins: carried.coins },
         inventory: carried.inventory,
+        feats: carried.feats,
         portraitUrl: portraitUrlOf(this.characterImages()),
         characterId: this.selectedCharacterId(),
         versionId: version.id ?? null,

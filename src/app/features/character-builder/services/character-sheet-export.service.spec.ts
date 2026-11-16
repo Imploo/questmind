@@ -64,6 +64,24 @@ describe('CharacterSheetExportService', () => {
     expect(c.equipment).toEqual(['Quarterstaff']);
   });
 
+  it('lists custom feats after the features of the build, without looking them up', async () => {
+    const c = character({ featuresAndTraits: [{ name: 'Arcane Recovery', description: 'Regain slots.', resolvedFor: resolutionKey(resolutionContextOf(character())) }] });
+    const feats = [
+      { id: 'a', name: "Stormcaller's Boon", description: 'Call lightning.', uses: { max: 2, recharge: 'longRest' as const } },
+      { id: 'b', name: 'Unwritten', description: '' },
+    ];
+
+    await service.export({ ...request(c), feats });
+
+    expect(rendered()[2]).toEqual([
+      { name: 'Arcane Recovery', description: 'Regain slots.', resolvedFor: resolutionKey(resolutionContextOf(character())) },
+      { name: "Stormcaller's Boon", description: 'Call lightning.', source: 'Custom feat' },
+      { name: 'Unwritten', description: undefined, source: 'Custom feat' },
+    ]);
+    expect(resolver.resolveFeature).not.toHaveBeenCalled();
+    expect(resolver.lookupFeatureLocally).not.toHaveBeenCalled();
+  });
+
   it('passes the portrait on to the sheet', async () => {
     await service.export({ ...request(character()), portraitUrl: 'https://storage/portrait.png' });
 
