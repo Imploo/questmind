@@ -249,15 +249,19 @@ import { dayLabel, formatTime, isSameDay } from './chat-view';
                 </div>
               }
             </div>
+            <!--
+              Never disabled: a field that is switched off loses the focus, and on a phone the
+              keyboard goes with it. While an answer is on its way the next message can be
+              typed; sending it waits.
+            -->
             <input
               #messageInput
               type="text"
               [(ngModel)]="newMessage"
               (keyup.enter)="sendMessage()"
-              [disabled]="isLoading()"
               [placeholder]="pendingAttachment() ? 'Import this character (or add instructions)...' : 'Type a message...'"
               aria-label="Bericht"
-              class="composer-input min-w-0 flex-1 px-2 py-2 text-sm bg-transparent border-none outline-none placeholder:text-gray-400 disabled:cursor-not-allowed"
+              class="composer-input min-w-0 flex-1 px-2 py-2 text-sm bg-transparent border-none outline-none placeholder:text-gray-400"
             />
           </div>
           <button
@@ -667,9 +671,6 @@ export class ChatComponent {
   }
 
   focusInput(): void {
-    if (this.isLoading()) {
-      return;
-    }
     const input = this.messageInput();
     if (!input) {
       return;
@@ -679,7 +680,7 @@ export class ChatComponent {
   }
 
   appendToMessage(text: string): void {
-    if (this.isLoading() || !text) {
+    if (!text) {
       return;
     }
     this.newMessage.update(current => `${current}${text}`);
