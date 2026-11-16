@@ -32,6 +32,24 @@ interface FeatureVariant {
   /** Set when the feature comes from a subclass: "circle of the land". */
   subclass?: string;
   description: string;
+  /** The entry is nothing but the options of another feature (the eldritch invocations). */
+  isOptionList: boolean;
+}
+
+/** One option of a feature with a choice: a Metamagic option, a fighting style. */
+interface FeatureOption {
+  /** Lowercase: "quickened spell". */
+  name: string;
+  /** The option as it stands in the feature text, title included. */
+  lines: string[];
+  /** What the option does, for an entry on the sheet that is just this option. */
+  body: string[];
+}
+
+interface FeatureChoice {
+  /** The text before the options. */
+  intro: string[];
+  options: FeatureOption[];
 }
 
 /** One class of a (multiclass) character. */
@@ -69,15 +87,27 @@ const CLASS_OF_SUBCLASS: Record<string, string> = {
 /** Features with these sources are not class features, even when a class feature shares the name. */
 const NOT_FROM_A_CLASS = /^(rac|background|feat)/i;
 
+/** "You gain two of the following Metamagic options of your choice." */
+const ANNOUNCES_CHOICE = /\b(?:one|two|three) of the following\b/i;
+/** "### Quickened Spell" */
+const OPTION_HEADING = /^\s*#{2,6}\s*(.+?)\s*$/;
+/** "***Colossus Slayer.*** Your tenacity can wear down the most potent foes." */
+const OPTION_LEAD = /^\s*\*{2,3}(.+?)\.?\*{2,3}/;
+/** An option title the data left unmarked ("Armor of Shadows" in the invocation list). */
+const UNMARKED_TITLE = /^[A-Z][A-Za-z' -]{2,40}$/;
+/** What separates the parts of a feature name: "Metamagic (Quickened Spell, Twinned Spell)", "Fighting Style: Defense". */
+const NAME_SEPARATOR = /\s*[:;,()/]\s*|\s+[-–—&]\s+|\s+and\s+/;
+
 let cache: Map<string, FeatureVariant[]> | null = null;
 let pending: Promise<Map<string, FeatureVariant[]>> | null = null;
 
 function toVariant(fields: ClassFeatureJsonFields): FeatureVariant {
   const parent = fields.parent.replace(/^srd_/, '').replace(/-/g, ' ');
   const baseClass = CLASS_OF_SUBCLASS[parent];
+  const isOptionList = fields.feature_type === 'CLASS_FEATURE_OPTION_LIST';
   return baseClass
-    ? { class: baseClass, subclass: parent, description: fields.desc }
-    : { class: parent, description: fields.desc };
+    ? { class: baseClass, subclass: parent, description: fields.desc, isOptionList }
+    : { class: parent, description: fields.desc, isOptionList };
 }
 
 async function loadDatabase(http: HttpClient): Promise<Map<string, FeatureVariant[]>> {
@@ -133,10 +163,90 @@ function belongsTo(variant: FeatureVariant, part: ClassPart, isOnlyVariant: bool
   return new RegExp(`\\b${subclassKeyword(variant.subclass)}\\b`).test(part.subclass);
 }
 
+/** The parts of a feature name, lowercase: "Fighting Style: Defense" -> ["fighting style", "defense"]. */
+export function nameParts(name: string): string[] {
+  return name.toLowerCase().split(NAME_SEPARATOR).map(part => part.trim()).filter(Boolean);
+}
+
+/** The options a feature lets a character choose from; null when it has all of what it describes. */
+function choiceOf(variant: FeatureVariant): FeatureChoice | null {
+  const lines = variant.description.split('\n');
+  const usesHeadings = lines.some(line => OPTION_HEADING.test(line));
+  const intro: string[] = [];
+  const options: FeatureOption[] = [];
+
+  for (const line of lines) {
+    const heading = usesHeadings ? OPTION_HEADING.exec(line) : null;
+    const unmarked = usesHeadings && variant.isOptionList && UNMARKED_TITLE.test(line.trim());
+    const lead = usesHeadings ? null : OPTION_LEAD.exec(line);
+    const title = heading?.[1] ?? lead?.[1] ?? (unmarked ? line : null);
+    const current = options[options.length - 1];
+    if (title) {
+      const name = title.replace(/\(table\)/i, '').replace(/[*_.]/g, '').trim().toLowerCase();
+      // A lead is part of the sentence it opens; a heading stands apart from the text under it.
+      options.push({ name, lines: [line], body: lead ? [line] : [] });
+    } else if (current) {
+      current.lines.push(line);
+      current.body.push(line);
+    } else {
+      intro.push(line);
+    }
+  }
+
+  if (options.length < 2) return null;
+  return variant.isOptionList || ANNOUNCES_CHOICE.test(intro.join(' ')) ? { intro, options } : null;
+}
+
+/** The feature text with, of the options it offers, only the ones named in `chosen`. */
+function scopedToChosen(variant: FeatureVariant, chosen: string[][]): string {
+  const choice = choiceOf(variant);
+  if (!choice) return variant.description;
+  // The first list that names an option decides; a list that names none says nothing about the choice.
+  for (const names of chosen) {
+    const kept = choice.options.filter(option => names.includes(option.name));
+    if (kept.length) return [...choice.intro, ...kept.flatMap(option => option.lines)].join('\n');
+  }
+  return variant.description;
+}
+
+function findVariant(
+  db: Map<string, FeatureVariant[]>,
+  name: string,
+  parts: ClassPart[]
+): { variant: FeatureVariant; part: ClassPart } | null {
+  const variants = db.get(name);
+  if (!variants) return null;
+  for (const part of parts) {
+    const variant = variants.find(candidate => belongsTo(candidate, part, variants.length === 1));
+    if (variant) return { variant, part };
+  }
+  return null;
+}
+
+/** An option of one of the character's own features: "Quickened Spell" inside the sorcerer's Metamagic. */
+function findOption(
+  db: Map<string, FeatureVariant[]>,
+  names: string[],
+  parts: ClassPart[]
+): { text: string; part: ClassPart } | null {
+  for (const part of parts) {
+    for (const variants of db.values()) {
+      for (const variant of variants) {
+        if (!belongsTo(variant, part, variants.length === 1)) continue;
+        const option = choiceOf(variant)?.options.find(candidate => names.includes(candidate.name));
+        if (option) return { text: option.body.join('\n').trim(), part };
+      }
+    }
+  }
+  return null;
+}
+
 /**
  * The text of a class feature for this character: the variant of its own class
- * (a druid's Spellcasting, not a wizard's), without what it only gets at a higher
- * level. Null when the bundled data has no text that is certain to be the right one.
+ * (a druid's Spellcasting, not a wizard's), of a feature with a choice only the
+ * options it has (two Metamagic options, not all eight), and without what it only
+ * gets at a higher level. Null when the bundled data has no text that is certain
+ * to be the right one.
  */
 export async function lookupFeatureFromJson(
   http: HttpClient,
@@ -145,14 +255,20 @@ export async function lookupFeatureFromJson(
 ): Promise<FeatureDetails | null> {
   if (feature.source && NOT_FROM_A_CLASS.test(feature.source.trim())) return null;
 
-  const variants = (await loadDatabase(http)).get(feature.name.toLowerCase());
-  if (!variants) return null;
+  const db = await loadDatabase(http);
+  const parts = classParts(context);
+  const fullName = feature.name.trim().toLowerCase();
+  const [baseName, ...named] = nameParts(feature.name);
 
-  for (const part of classParts(context)) {
-    const variant = variants.find(candidate => belongsTo(candidate, part, variants.length === 1));
-    if (variant) {
-      return { description: tailorToLevel(variant.description, part.level) || variant.description };
-    }
+  // "Metamagic", or "Metamagic (Quickened Spell, Twinned Spell)" by the name before its options.
+  const found = findVariant(db, fullName, parts) ?? (named.length ? findVariant(db, baseName, parts) : null);
+  if (found) {
+    const elsewhere = (context.features ?? []).flatMap(nameParts);
+    const text = scopedToChosen(found.variant, [named, elsewhere]);
+    return { description: tailorToLevel(text, found.part.level) || text };
   }
-  return null;
+
+  // "Quickened Spell" as an entry of its own.
+  const option = findOption(db, [fullName, baseName, ...named], parts);
+  return option ? { description: tailorToLevel(option.text, option.part.level) || option.text } : null;
 }

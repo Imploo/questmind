@@ -4,8 +4,16 @@ import { resolutionContextOf, resolutionKey } from './resolution-context';
 describe('resolutionContextOf', () => {
   it('takes class, race and level from the character', () => {
     expect(resolutionContextOf({ class: 'Druid', race: 'Wood Elf', level: 3 })).toEqual({
-      class: 'Druid', race: 'Wood Elf', level: 3, maxSpellSlotLevel: undefined,
+      class: 'Druid', race: 'Wood Elf', level: 3, maxSpellSlotLevel: undefined, features: [],
     });
+  });
+
+  it('lists the names of the character\'s features', () => {
+    const featuresAndTraits = [{ name: 'Metamagic', description: '' }, { name: 'Quickened Spell', description: 'x' }];
+
+    expect(resolutionContextOf({ class: 'Sorcerer', race: 'Elf', level: 3, featuresAndTraits }).features).toEqual([
+      'Metamagic', 'Quickened Spell',
+    ]);
   });
 
   it('finds the highest slot level the character has slots of', () => {
@@ -25,10 +33,16 @@ describe('resolutionKey', () => {
   it('changes with class, race, level and highest slot', () => {
     const druid = { class: 'Druid', race: 'Wood Elf', level: 3, maxSpellSlotLevel: 2 };
 
-    expect(resolutionKey(druid)).toBe('druid|wood elf|3|2');
+    expect(resolutionKey(druid)).toBe('v2|druid|wood elf|3|2');
     expect(resolutionKey({ ...druid, level: 4 })).not.toBe(resolutionKey(druid));
     expect(resolutionKey({ ...druid, class: 'Wizard' })).not.toBe(resolutionKey(druid));
-    expect(resolutionKey({ ...druid, maxSpellSlotLevel: undefined })).toBe('druid|wood elf|3|-');
+    expect(resolutionKey({ ...druid, maxSpellSlotLevel: undefined })).toBe('v2|druid|wood elf|3|-');
+  });
+
+  it('does not change with the character\'s features', () => {
+    const sorcerer = { class: 'Sorcerer', race: 'Elf', level: 3 };
+
+    expect(resolutionKey({ ...sorcerer, features: ['Metamagic'] })).toBe(resolutionKey(sorcerer));
   });
 
   it('ignores case and surrounding spaces', () => {

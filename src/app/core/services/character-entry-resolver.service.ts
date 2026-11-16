@@ -24,8 +24,9 @@ export type Resolved<T> = T & { resolvedFor: string };
  * Looks up the rules text of a spell or feature for one character: first in the
  * bundled SRD data (Spell.json / ClassFeature.json), then through the resolveSpell /
  * resolveFeature Cloud Functions, which ask Gemini and store the result on the
- * active version. Both take the character's class, race and level into account, so
- * a druid gets the druid's Spellcasting and nothing it only gets at a higher level.
+ * active version. Both take the character's class, race, level and other features
+ * into account, so a druid gets the druid's Spellcasting, nothing it only gets at a
+ * higher level, and of Metamagic only the options it chose.
  */
 @Injectable({ providedIn: 'root' })
 export class CharacterEntryResolverService {
@@ -83,6 +84,7 @@ export class CharacterEntryResolverService {
       featureName: feature.name,
       featureSource: feature.source,
       ...this.characterFields(context),
+      characterFeatures: context.features,
     });
     return { ...result.data, resolvedFor };
   }

@@ -6,6 +6,7 @@ import { requireAuthUid } from './utils/access';
 import { resolveCharacterEntry } from './character/resolve-character-entry';
 import {
   describeCharacter,
+  readFeatureNames,
   readResolutionCharacter,
   ResolutionCharacter,
   ResolutionCharacterFields,
@@ -15,6 +16,8 @@ interface ResolveFeatureRequest extends ResolutionCharacterFields {
   characterId: string;
   featureName: string;
   featureSource?: string;
+  /** Names of all the character's features; they tell which options of a feature with a choice it has. */
+  characterFeatures?: string[];
 }
 
 interface ResolveFeatureResponse {
@@ -22,7 +25,12 @@ interface ResolveFeatureResponse {
 }
 
 /** The prompt for one feature, written for the character that has it. */
-export function buildFeaturePrompt(featureName: string, featureSource: string | undefined, character: ResolutionCharacter): string {
+export function buildFeaturePrompt(
+  featureName: string,
+  featureSource: string | undefined,
+  character: ResolutionCharacter,
+  characterFeatures: string[] = []
+): string {
   const who = describeCharacter(character);
   const sourceText = featureSource ? ` (source: ${featureSource})` : '';
   const rules = [
@@ -35,6 +43,9 @@ export function buildFeaturePrompt(featureName: string, featureSource: string | 
     character.level
       ? `Leave out everything the character only gets at a higher level: no "at 11th level this becomes ...", no table rows above level ${character.level}.`
       : `Leave out improvements that only come at higher levels.`,
+    characterFeatures.length
+      ? `If the feature lets a character pick from a list of options (Metamagic, Fighting Style, Eldritch Invocations, Maneuvers, Pact Boon), describe only the options this character picked, as named in "${featureName}" itself or in its other features: ${characterFeatures.join('; ')}. When none of those names a picked option, describe all options.`
+      : null,
   ].filter(Boolean);
 
   return `Return a JSON object (no markdown) for the D&D 5e feature/trait "${featureName}"${sourceText}${who ? `, as it applies to ${who}` : ''}.
@@ -72,7 +83,12 @@ export const resolveFeature = onCall(
         listPath: 'featuresAndTraits',
         matchName: featureName,
         fields: ['description'],
-        prompt: buildFeaturePrompt(featureName, featureSource, readResolutionCharacter(request.data)),
+        prompt: buildFeaturePrompt(
+          featureName,
+          featureSource,
+          readResolutionCharacter(request.data),
+          readFeatureNames(request.data.characterFeatures)
+        ),
       });
     }
   )

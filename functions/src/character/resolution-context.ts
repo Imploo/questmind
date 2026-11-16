@@ -17,6 +17,7 @@ export interface ResolutionCharacter {
 }
 
 const MAX_NAME_LENGTH = 80;
+const MAX_FEATURES = 60;
 
 /** One line of plain text: the value ends up inside a prompt. */
 function clean(value: unknown): string | null {
@@ -28,6 +29,12 @@ function clean(value: unknown): string | null {
 /** A whole number from `min` to `max`, or null. */
 export function levelInRange(value: unknown, min: number, max: number): number | null {
   return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max ? value : null;
+}
+
+/** The names of the character's features, as plain one-line texts. */
+export function readFeatureNames(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map(clean).filter((name): name is string => name !== null).slice(0, MAX_FEATURES);
 }
 
 export function readResolutionCharacter(data: ResolutionCharacterFields): ResolutionCharacter {
