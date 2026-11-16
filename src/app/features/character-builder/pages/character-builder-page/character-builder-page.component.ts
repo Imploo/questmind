@@ -9,6 +9,7 @@ import { ChatService } from '../../../../chat/chat.service';
 import { CharacterSheetExportService } from '../../services/character-sheet-export.service';
 import { CharacterImportService } from '../../services/character-import.service';
 import { ToastService } from '../../../../shared/services/toast.service';
+import { ScreenWakeLockService } from '../../../../shared/services/screen-wake-lock.service';
 import * as logger from '../../../../shared/logger';
 import { Character, CharacterVersion } from '../../../../core/models/schemas/character.schema';
 import { CharacterImage, portraitUrlOf } from '../../../../core/models/schemas/character-image.schema';
@@ -254,6 +255,7 @@ export class CharacterBuilderPageComponent {
   private characterSheetExportService = inject(CharacterSheetExportService);
   private characterImportService = inject(CharacterImportService);
   private toastService = inject(ToastService);
+  private screenWakeLock = inject(ScreenWakeLockService);
   private destroyRef = inject(DestroyRef);
   private panelSwitcher = inject(PanelSwitcherService);
 
@@ -426,6 +428,13 @@ export class CharacterBuilderPageComponent {
         this.panelSwitcher.unread.set(true);
       }
       wasBusy = busy;
+    });
+
+    // A phone or tablet with a character open lies on the table during play: its screen
+    // stays awake, on the sheet and in the chat alike. A desktop keeps its own sleep settings.
+    effect(onCleanup => {
+      if (!this.selectedCharacterId() || !window.matchMedia('(pointer: coarse)').matches) return;
+      onCleanup(this.screenWakeLock.hold());
     });
 
     // Clean up service state on destroy

@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal, ChangeDetectionStrategy, OnInit, OnDestroy } from '@angular/core';
+import { Component, computed, inject, signal, ChangeDetectionStrategy } from '@angular/core';
 import { Router } from '@angular/router';
 import { AudioUploadComponent, UploadRequestEvent } from './audio-upload.component';
 import { SessionListSidebarComponent } from './session-list-sidebar.component';
@@ -9,6 +9,7 @@ import { CampaignContextService } from '../campaign/campaign-context.service';
 import { AudioUpload, AudioSessionRecord, SessionProgress } from './services/audio-session.models';
 import * as logger from '../shared/logger';
 import { ToastService } from '../shared/services/toast.service';
+import { ScreenWakeLockService } from '../shared/services/screen-wake-lock.service';
 import { isPermissionDenied, PERMISSION_DENIED_MESSAGE } from '../shared/utils/callable-error';
 
 @Component({
@@ -40,7 +41,7 @@ import { isPermissionDenied, PERMISSION_DENIED_MESSAGE } from '../shared/utils/c
           stage="idle"
           [progress]="0"
           statusMessage=""
-          [wakeLockSupported]="wakeLockSupported()"
+          [wakeLockSupported]="wakeLockSupported"
           (uploadRequested)="startCompleteProcessing($event)"
         />
       </main>
@@ -48,26 +49,20 @@ import { isPermissionDenied, PERMISSION_DENIED_MESSAGE } from '../shared/utils/c
   `,
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class AudioUploadPageComponent implements OnInit, OnDestroy {
+export class AudioUploadPageComponent {
   private router = inject(Router);
   private sessionStateService = inject(AudioSessionStateService);
   private completeProcessingService = inject(AudioCompleteProcessingService);
   private authService = inject(AuthService);
   private campaignContextService = inject(CampaignContextService);
   private toastService = inject(ToastService);
-  private wakeLockSentinel: WakeLockSentinel | null = null;
-  private processingInBackground = false;
-  private readonly visibilityHandler = () => {
-    if (document.visibilityState === 'visible' && this.processingInBackground) {
-      void this.requestWakeLock();
-    }
-  };
+  private wakeLock = inject(ScreenWakeLockService);
 
   userId = computed(() => this.authService.currentUser()?.uid ?? null);
   campaignId = computed(() => this.campaignContextService.selectedCampaignId());
 
   isBusy = signal(false);
-  wakeLockSupported = computed(() => typeof navigator !== 'undefined' && 'wakeLock' in navigator);
+  readonly wakeLockSupported = this.wakeLock.supported;
 
   canUploadAudio = computed(() => {
     const userId = this.userId();
@@ -80,22 +75,6 @@ export class AudioUploadPageComponent implements OnInit, OnDestroy {
   sessions = this.sessionStateService.sessions;
 
   sortedSessions = this.sessionStateService.sortedSessions;
-
-  ngOnInit(): void {
-    if (typeof document !== 'undefined') {
-      document.addEventListener('visibilitychange', this.visibilityHandler);
-    }
-  }
-
-  ngOnDestroy(): void {
-    if (typeof document !== 'undefined') {
-      document.removeEventListener('visibilitychange', this.visibilityHandler);
-    }
-    // Only release wake lock if not processing in background
-    if (!this.processingInBackground) {
-      void this.releaseWakeLock();
-    }
-  }
 
   async startCompleteProcessing(event: UploadRequestEvent): Promise<void> {
     const userId = this.userId();
@@ -133,19 +112,12 @@ export class AudioUploadPageComponent implements OnInit, OnDestroy {
     // Navigate to session page immediately
     this.navigateToSession(sessionDraft.id);
 
-    // Acquire wake lock for background processing
-    this.processingInBackground = event.keepAwake ?? true;
-    if (this.processingInBackground) {
-      void this.requestWakeLock();
-    }
+    // The screen stays awake until the processing is done. That outlives this page, which
+    // is left for the session page right away.
+    const releaseWakeLock = (event.keepAwake ?? true) ? this.wakeLock.hold() : () => undefined;
 
     // Fire-and-forget processing
-    void this.processInBackground(campaignId, sessionDraft.id, event).finally(() => {
-      if (this.processingInBackground) {
-        void this.releaseWakeLock();
-        this.processingInBackground = false;
-      }
-    });
+    void this.processInBackground(campaignId, sessionDraft.id, event).finally(releaseWakeLock);
   }
 
   /**
@@ -180,35 +152,6 @@ export class AudioUploadPageComponent implements OnInit, OnDestroy {
         logger.error('Error in background processing:', error);
       }
       await this.completeProcessingService.writeFailure(campaignId, sessionId, errorMessage);
-    }
-  }
-
-  private async requestWakeLock(): Promise<void> {
-    if (!this.wakeLockSupported()) {
-      return;
-    }
-    try {
-      this.wakeLockSentinel = await navigator.wakeLock.request('screen');
-      this.wakeLockSentinel.addEventListener('release', () => {
-        this.wakeLockSentinel = null;
-      });
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      logger.warn('Failed to acquire wake lock: ' + message);
-    }
-  }
-
-  private async releaseWakeLock(): Promise<void> {
-    if (!this.wakeLockSentinel) {
-      return;
-    }
-    try {
-      await this.wakeLockSentinel.release();
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      logger.warn('Failed to release wake lock: ' + message);
-    } finally {
-      this.wakeLockSentinel = null;
     }
   }
 
