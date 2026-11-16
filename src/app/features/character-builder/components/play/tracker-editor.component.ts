@@ -1,16 +1,15 @@
 import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core';
 import { LimitedUses, UsesRecharge } from '../../../../shared/models/dnd-character.model';
+import { MAX_USES, RECHARGE_LABELS } from '../../../../shared/utils/character-play-state';
 
 const RECHARGE_OPTIONS: { value: UsesRecharge; label: string; text: string }[] = [
-  { value: 'shortRest', label: 'Short rest', text: 'recharges on a short rest' },
-  { value: 'longRest', label: 'Long rest', text: 'recharges on a long rest' },
-  { value: 'manual', label: 'Manual', text: 'reset by hand' },
+  { value: 'shortRest', label: RECHARGE_LABELS.shortRest, text: 'recharges on a short rest' },
+  { value: 'longRest', label: RECHARGE_LABELS.longRest, text: 'recharges on a long rest' },
+  { value: 'manual', label: RECHARGE_LABELS.manual, text: 'reset by hand' },
 ];
 
-const MAX_USES = 99;
-
 /**
- * Shown under the text of a feature or spell: says what its uses tracker is, and
+ * Shown under the text of a feature, spell or custom feat: says what its uses tracker is, and
  * opens a small form to add, change or remove it.
  */
 @Component({

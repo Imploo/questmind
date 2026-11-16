@@ -1,4 +1,4 @@
-import { Coins } from './dnd-character.model';
+import { Coins, LimitedUses } from './dnd-character.model';
 
 /** Something the player added to the inventory by hand. */
 export interface InventoryItem {
@@ -7,6 +7,15 @@ export interface InventoryItem {
   /** Free text: a count, a worth, charges left ("20", "50 gp"). */
   value: string;
   description: string;
+}
+
+/** A feat the player wrote down by hand, such as one the DM made up. */
+export interface CustomFeat {
+  id: string;
+  name: string;
+  description: string;
+  /** Its uses tracker; the spent uses are kept in `usesSpent` under customFeatUsesKey(). */
+  uses?: LimitedUses;
 }
 
 /**
@@ -23,7 +32,7 @@ export interface CharacterPlayState {
   deathSaves?: { successes: number; failures: number };
   /** Expended spell slots per slot level ("1" to "9"). */
   slotsExpended?: Record<string, number>;
-  /** Spent uses per tracker key, see usesKey(). */
+  /** Spent uses per tracker key, see usesKey() and customFeatUsesKey(). */
   usesSpent?: Record<string, number>;
   conditions?: string[];
   exhaustion?: number;
@@ -32,6 +41,8 @@ export interface CharacterPlayState {
   inspiration?: boolean;
   /** Items the player added by hand, next to the equipment of the build. */
   inventory?: InventoryItem[];
+  /** Feats the player added by hand, next to the features of the build. */
+  feats?: CustomFeat[];
   /** The purse. Like the inventory it is the player's, whichever version is active. */
   coins?: Coins;
 }

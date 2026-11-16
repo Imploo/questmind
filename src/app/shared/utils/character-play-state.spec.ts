@@ -1,23 +1,28 @@
 import { describe, it, expect } from 'vitest';
 import { Coins, DndCharacter } from '../models/dnd-character.model';
 import {
+  addCustomFeat,
   addInventoryItem,
   applyDamage,
   applyHealing,
   applyPlayStateToCharacter,
   castSpell,
   currentPlayState,
+  customFeatUsesKey,
   hasPactMagic,
   longRest,
   longRestPreview,
+  removeCustomFeat,
   removeInventoryItem,
   resolvePlayState,
   setCoins,
+  setCustomFeatUses,
   setSlotsExpended,
   setTempHp,
   setUsesSpent,
   shortRest,
   toggleCondition,
+  updateCustomFeat,
   updateInventoryItem,
   usesKey,
 } from './character-play-state';
@@ -270,6 +275,7 @@ describe('currentPlayState', () => {
       concentration: null,
       inspiration: false,
       inventory: [],
+      feats: [],
       coins: { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 },
     });
   });
@@ -334,6 +340,84 @@ describe('inventory', () => {
   it('drops stored items without an id or a name', () => {
     const broken = [{ id: '', name: 'x', value: '', description: '' }, { id: 'c', name: '', value: '', description: '' }, rope];
     expect(resolvePlayState(character(), { inventory: broken }).inventory).toEqual([rope]);
+  });
+});
+
+describe('custom feats', () => {
+  const boon = { id: 'boon', name: "Stormcaller's Boon", description: 'Call lightning.' };
+  const BOON = customFeatUsesKey('boon');
+  const tracked = { ...boon, uses: { max: 2, recharge: 'longRest' as const } };
+
+  it('adds a feat with a trimmed name and ignores a blank one or a known id', () => {
+    const { state } = addCustomFeat(character(), null, 'boon', "  Stormcaller's Boon ");
+    expect(state.feats).toEqual([{ id: 'boon', name: "Stormcaller's Boon", description: '' }]);
+    expect(addCustomFeat(character(), state, 'b', '   ').state.feats).toHaveLength(1);
+    expect(addCustomFeat(character(), state, 'boon', 'Again').state.feats).toEqual(state.feats);
+  });
+
+  it('changes the name and the text, and keeps the name when the new one is blank', () => {
+    const { state } = updateCustomFeat(character(), { feats: [boon] }, 'boon', { name: ' Boon ', description: ' Thunder. ' });
+    expect(state.feats).toEqual([{ id: 'boon', name: 'Boon', description: 'Thunder.' }]);
+    expect(updateCustomFeat(character(), state, 'boon', { name: '  ' }).state.feats).toEqual(state.feats);
+  });
+
+  it('gives a feat a tracker next to those of the build', () => {
+    const { state } = setCustomFeatUses(character(), { feats: [boon] }, 'boon', { max: 2, recharge: 'longRest' });
+    expect(state.feats).toEqual([tracked]);
+    expect(state.usesSpent).toEqual({ [REBUKE]: 0, [CHANNEL]: 0, [MISTY]: 0, [BOON]: 0 });
+    expect(setUsesSpent(character(), state, BOON, 5).state.usesSpent?.[BOON]).toBe(2);
+  });
+
+  it('keeps the spent uses when the feat is renamed and clamps them to a smaller tracker', () => {
+    const spent = { feats: [tracked], usesSpent: { [BOON]: 2 } };
+    expect(updateCustomFeat(character(), spent, 'boon', { name: 'Boon' }).state.usesSpent?.[BOON]).toBe(2);
+    expect(setCustomFeatUses(character(), spent, 'boon', { max: 1, recharge: 'manual' }).state.usesSpent?.[BOON]).toBe(1);
+  });
+
+  it('drops the spent uses with the tracker and leaves no empty tracker behind', () => {
+    const { state } = setCustomFeatUses(character(), { feats: [tracked], usesSpent: { [BOON]: 1 } }, 'boon', null);
+    expect(state.feats).toEqual([boon]);
+    expect(state.usesSpent).not.toHaveProperty(BOON);
+  });
+
+  it('recharges on the rest of its tracker', () => {
+    const short = { ...boon, id: 'short', name: 'Second Skin', uses: { max: 1, recharge: 'shortRest' as const } };
+    const manual = { ...boon, id: 'manual', name: 'Wild Card', uses: { max: 3, recharge: 'manual' as const } };
+    const spent = {
+      feats: [tracked, short, manual],
+      usesSpent: { [BOON]: 2, [customFeatUsesKey('short')]: 1, [customFeatUsesKey('manual')]: 3 },
+    };
+
+    const rested = shortRest(character(), spent);
+    expect(rested.state.usesSpent).toMatchObject({ [BOON]: 2, [customFeatUsesKey('short')]: 0, [customFeatUsesKey('manual')]: 3 });
+    expect(rested.message).toContain('Second Skin recharged');
+
+    expect(longRest(character(), spent).state.usesSpent).toMatchObject({ [BOON]: 0, [customFeatUsesKey('short')]: 0, [customFeatUsesKey('manual')]: 3 });
+    expect(longRestPreview(character(), spent)).toContainEqual({ label: 'Features', value: "Stormcaller's Boon, Second Skin" });
+  });
+
+  it('removes a feat with its spent uses and says which one', () => {
+    const { state, message } = removeCustomFeat(character(), { feats: [tracked], usesSpent: { [BOON]: 1 } }, 'boon');
+    expect(state.feats).toEqual([]);
+    expect(state.usesSpent).not.toHaveProperty(BOON);
+    expect(message).toBe("Removed the feat Stormcaller's Boon.");
+  });
+
+  it('keeps the feats through another play action', () => {
+    expect(applyDamage(character(), { feats: [tracked] }, 5).state.feats).toEqual([tracked]);
+  });
+
+  it('drops broken feats and trackers from what was stored', () => {
+    const broken = [
+      { id: '', name: 'x', description: '' },
+      { id: 'c', name: '', description: '' },
+      { ...boon, uses: { max: 0, recharge: 'longRest' as const } },
+      { id: 'd', name: 'Pool', description: '', uses: { max: 250.7, recharge: 'weekly' as never } },
+    ];
+    expect(resolvePlayState(character(), { feats: broken }).feats).toEqual([
+      boon,
+      { id: 'd', name: 'Pool', description: '', uses: { max: 99, recharge: 'manual' } },
+    ]);
   });
 });
 

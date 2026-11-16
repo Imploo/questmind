@@ -1,6 +1,6 @@
 import { inject, Injectable } from '@angular/core';
 import { CharacterFeature, DndCharacter, Spell } from '../../../shared/models/dnd-character.model';
-import { InventoryItem } from '../../../shared/models/character-play-state.model';
+import { CustomFeat, InventoryItem } from '../../../shared/models/character-play-state.model';
 import { PdfGeneratorService } from '../../../shared/services/pdf-generator.service';
 import { SheetFeature, SheetSpell } from '../../../shared/pdf/character-sheet-field-values';
 import { CharacterEntryResolverService } from '../../../core/services/character-entry-resolver.service';
@@ -17,6 +17,8 @@ export interface CharacterSheetExportRequest {
   canResolveRemotely: boolean;
   /** Items the player keeps by hand; they are added to the equipment on the sheet. */
   inventory?: InventoryItem[];
+  /** Feats the player wrote down by hand; they follow the features of the build on the sheet. */
+  feats?: CustomFeat[];
   /** The character's portrait; it goes in the "Character Appearance" box. */
   portraitUrl?: string | null;
 }
@@ -24,6 +26,11 @@ export interface CharacterSheetExportRequest {
 /** One equipment line for a hand-kept item: "Arrows (20)". */
 function inventoryLine(item: InventoryItem): string {
   return item.value ? `${item.name} (${item.value})` : item.name;
+}
+
+/** A custom feat as a feature on the sheet. Its text is the player's own, so nothing is looked up for it. */
+function featEntry(feat: CustomFeat): SheetFeature {
+  return { name: feat.name, description: feat.description || undefined, source: 'Custom feat' };
 }
 
 /**
@@ -53,7 +60,7 @@ export class CharacterSheetExportService {
     await this.pdfGenerator.generateCharacterPdf(
       character,
       spells.entries,
-      features.entries,
+      [...features.entries, ...(request.feats ?? []).map(featEntry)],
       inventory,
       request.portraitUrl ?? null,
       // A QR code on the sheet, so a player holding the print can open the character and clone it.

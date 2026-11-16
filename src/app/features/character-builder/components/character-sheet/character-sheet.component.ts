@@ -1,11 +1,13 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, input, output, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { CharacterAction, CharacterFeature, Coins, DndCharacter, LimitedUses, Spell, SpellSlot, UsesRecharge } from '../../../../shared/models/dnd-character.model';
+import { CharacterAction, CharacterFeature, Coins, DndCharacter, LimitedUses, Spell, SpellSlot } from '../../../../shared/models/dnd-character.model';
 import { CharacterPlayState } from '../../../../shared/models/character-play-state.model';
 import {
   PlayStateResult,
+  RECHARGE_LABELS,
   ResolvedPlayState,
   UsesOwner,
+  addCustomFeat,
   addInventoryItem,
   applyDamage,
   applyHealing,
@@ -13,10 +15,12 @@ import {
   currentPlayState,
   longRest,
   longRestPreview,
+  removeCustomFeat,
   removeInventoryItem,
   resolvePlayState,
   setCoins,
   setConcentration,
+  setCustomFeatUses,
   setDeathSaves,
   setExhaustion,
   setHitDice,
@@ -26,6 +30,7 @@ import {
   setUsesSpent,
   shortRest,
   toggleCondition,
+  updateCustomFeat,
   updateInventoryItem,
   usesKey,
 } from '../../../../shared/utils/character-play-state';
@@ -41,6 +46,7 @@ import { ConcentrationMarkComponent } from '../play/concentration-mark.component
 import { InspirationToggleComponent } from '../play/inspiration-toggle.component';
 import { CoinPurseComponent } from '../play/coin-purse.component';
 import { InventoryItemChange, InventoryItemsComponent } from '../play/inventory-items.component';
+import { CustomFeatChange, CustomFeatUsesChange, CustomFeatsComponent } from '../play/custom-feats.component';
 import { CharacterImage, portraitUrlOf } from '../../../../core/models/schemas/character-image.schema';
 import { CharacterImageGalleryComponent } from '../character-image-gallery/character-image-gallery.component';
 import { CharacterActionsMenuComponent } from '../character-actions-menu/character-actions-menu.component';
@@ -159,12 +165,6 @@ interface PlayToast {
   undo: CharacterPlayState | null;
 }
 
-const RECHARGE_LABELS: Record<UsesRecharge, string> = {
-  shortRest: 'Short rest',
-  longRest: 'Long rest',
-  manual: 'Manual',
-};
-
 const TOAST_DURATION_MS = 12_000;
 
 /** The sections the tabs along the edge of the sheet jump to, from top to bottom. */
@@ -199,6 +199,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
     InspirationToggleComponent,
     CoinPurseComponent,
     InventoryItemsComponent,
+    CustomFeatsComponent,
     MarkdownComponent,
     SheetSectionTabsComponent,
   ],
@@ -675,7 +676,22 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
                 }
               }
             } @empty {
-              <p class="empty">No features yet</p>
+              @if (!editable() && !play().feats.length) {
+                <p class="empty">No features yet</p>
+              }
+            }
+
+            @if (editable() || play().feats.length) {
+              <app-custom-feats
+                [feats]="play().feats"
+                [usesSpent]="play().usesSpent"
+                [editable]="editable()"
+                (added)="onFeatAdded($event)"
+                (updated)="onFeatUpdated($event)"
+                (usesChange)="onFeatUsesChange($event)"
+                (spentChange)="onUsesSpent($event.key, $event.spent)"
+                (removed)="onFeatRemoved($event)"
+              />
             }
           </section>
 
@@ -1270,6 +1286,22 @@ export class CharacterSheetComponent {
 
   onItemRemoved(id: string): void {
     this.commit(removeInventoryItem(this.character(), this.playState(), id), true);
+  }
+
+  onFeatAdded(feat: { id: string; name: string }): void {
+    this.commit(addCustomFeat(this.character(), this.playState(), feat.id, feat.name));
+  }
+
+  onFeatUpdated(change: CustomFeatChange): void {
+    this.commit(updateCustomFeat(this.character(), this.playState(), change.id, change.changes));
+  }
+
+  onFeatUsesChange(change: CustomFeatUsesChange): void {
+    this.commit(setCustomFeatUses(this.character(), this.playState(), change.id, change.uses));
+  }
+
+  onFeatRemoved(id: string): void {
+    this.commit(removeCustomFeat(this.character(), this.playState(), id), true);
   }
 
   onCast(spellName: string, choice: CastChoice): void {
