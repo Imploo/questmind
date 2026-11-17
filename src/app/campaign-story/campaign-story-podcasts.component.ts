@@ -1,18 +1,19 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 import { PodcastVersion } from '../audio/services/audio-session.models';
 import { PodcastVersionItemComponent } from '../shared/components/podcast-version-item.component';
+import { TranslatePipe } from '../core/i18n/translate.pipe';
 
 /** Podcasts of one campaign story version (ticket #69). */
 @Component({
   selector: 'app-campaign-story-podcasts',
-  imports: [PodcastVersionItemComponent],
+  imports: [PodcastVersionItemComponent, TranslatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="qm-panel sm:!p-6 space-y-4">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div class="min-w-0 flex-1">
-          <h3 class="qm-section-title !mb-1.5">Podcast</h3>
-          <p class="text-sm qm-muted">Twee hosts blikken terug op deze versie van het verhaal</p>
+          <h3 class="qm-section-title !mb-1.5">{{ 'campaignStory.podcasts.title' | translate }}</h3>
+          <p class="text-sm qm-muted">{{ 'campaignStory.podcasts.intro' | translate }}</p>
         </div>
         @if (canGenerate()) {
           <button
@@ -21,7 +22,7 @@ import { PodcastVersionItemComponent } from '../shared/components/podcast-versio
             [disabled]="isGenerating()"
             (click)="generate.emit()"
           >
-            {{ isGenerating() ? 'Bezig...' : 'Podcast genereren' }}
+            {{ (isGenerating() ? 'common.busy' : 'campaignStory.podcasts.generate') | translate }}
           </button>
         }
       </div>
@@ -34,10 +35,10 @@ import { PodcastVersionItemComponent } from '../shared/components/podcast-versio
         <app-podcast-version-item
           [podcast]="podcast"
           [shareTarget]="campaignId() && storyVersion() ? { campaignId: campaignId(), storyVersion: storyVersion(), podcastVersion: podcast.version } : null"
-          [downloadName]="downloadName() + '-podcast'"
+          [downloadName]="(downloadName() || ('campaignStory.downloadName' | translate)) + '-podcast'"
         />
       } @empty {
-        <p class="font-prose text-base text-gray-600">Nog geen podcast voor deze versie.</p>
+        <p class="font-prose text-base text-gray-600">{{ 'campaignStory.podcasts.empty' | translate }}</p>
       }
     </section>
   `
@@ -49,7 +50,8 @@ export class CampaignStoryPodcastsComponent {
   readonly canGenerate = input(false);
   readonly isGenerating = input(false);
   readonly error = input('');
-  readonly downloadName = input('campagne-verhaal');
+  /** File name for a downloaded podcast; empty means the translated default. */
+  readonly downloadName = input('');
 
   readonly generate = output<void>();
 }

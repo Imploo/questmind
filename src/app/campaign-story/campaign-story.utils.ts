@@ -1,6 +1,7 @@
 import { AudioSessionRecord } from '../audio/services/audio-session.models';
 import { CampaignStoryVersion } from './campaign-story.models';
 import { toMillis } from '../shared/utils/date.utils';
+import type { Translations } from '../core/i18n/translations';
 
 /** A session counts for the campaign story once its own story is completed (mirrors the backend). */
 export function isUsableSession(session: Pick<AudioSessionRecord, 'status' | 'content'>): boolean {
@@ -34,4 +35,26 @@ export const STALE_GENERATION_MS = 15 * 60 * 1000;
 
 export function isActiveGeneration(createdAt: unknown, now = Date.now()): boolean {
   return now - toMillis(createdAt) < STALE_GENERATION_MS;
+}
+
+/**
+ * The text for how far a version is: its `progressStep`, or its `status` when
+ * the version has no step (written by an older backend) or an unknown one.
+ */
+export function storyProgressText(
+  version: Pick<CampaignStoryVersion, 'status' | 'progressStep'>,
+  t: Pick<Translations, 'campaignStory' | 'common'>
+): string {
+  // Checked at run time too: a newer backend may send a step this client does not know.
+  const stepText = version.progressStep ? t.campaignStory.progress[version.progressStep] : undefined;
+  if (stepText) return stepText;
+
+  switch (version.status) {
+    case 'completed':
+      return t.common.done;
+    case 'failed':
+      return t.common.failed;
+    default:
+      return t.common.busy;
+  }
 }

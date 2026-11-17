@@ -1,16 +1,20 @@
 import { Injectable, inject } from '@angular/core';
 import { httpsCallable } from 'firebase/functions';
 import { FirebaseService } from '../core/firebase.service';
+import { I18nService } from '../core/i18n/i18n.service';
 import { AudioStorageService, sanitizeFileName } from '../audio/services/audio-storage.service';
 import { isWavFile, prepareForUpload } from '../audio/services/wav-to-mp3';
 import { CampaignService } from './campaign.service';
+import { CampaignError } from './campaign-error';
 import { CampaignVoiceIntro } from './campaign.models';
 import * as logger from '../shared/logger';
 
+const BYTES_PER_MB = 1024 * 1024;
+
 /** Maximum size of a selected file that is uploaded as-is (M4A, MP3, …). */
-export const VOICE_INTRO_MAX_SOURCE_BYTES = 100 * 1024 * 1024;
+export const VOICE_INTRO_MAX_SOURCE_BYTES = 100 * BYTES_PER_MB;
 /** WAV is compressed in the browser first, so a larger file is fine. */
-export const VOICE_INTRO_MAX_WAV_BYTES = 500 * 1024 * 1024;
+export const VOICE_INTRO_MAX_WAV_BYTES = 500 * BYTES_PER_MB;
 
 /** Share of the overall progress spent on preparing (WAV compression) and uploading. */
 const PREPARE_PROGRESS_SHARE = 30;
@@ -31,17 +35,19 @@ export class CampaignVoiceIntroService {
   private readonly firebase = inject(FirebaseService);
   private readonly campaignService = inject(CampaignService);
   private readonly audioStorage = inject(AudioStorageService);
+  private readonly i18n = inject(I18nService);
 
-  /** Returns an error message, or null when the file can be used. */
+  /** Returns an error message in the active language, or null when the file can be used. */
   validateFile(file: File): string | null {
+    const texts = this.i18n.t().campaign.voiceIntro;
     const isAudio = file.type.startsWith('audio/') || /\.(mp3|wav|m4a|ogg|aac|flac)$/i.test(file.name);
     if (!isAudio) {
-      return 'Unsupported file type. Please choose an audio file (MP3, WAV, M4A, OGG).';
+      return texts.unsupportedFileType;
     }
     if (isWavFile(file) ? file.size > VOICE_INTRO_MAX_WAV_BYTES : file.size > VOICE_INTRO_MAX_SOURCE_BYTES) {
       return isWavFile(file)
-        ? 'File is too large. Maximum size is 500MB for WAV.'
-        : 'File is too large. Maximum size is 100MB.';
+        ? texts.wavTooLarge(VOICE_INTRO_MAX_WAV_BYTES / BYTES_PER_MB)
+        : texts.fileTooLarge(VOICE_INTRO_MAX_SOURCE_BYTES / BYTES_PER_MB);
     }
     return null;
   }
@@ -54,7 +60,7 @@ export class CampaignVoiceIntroService {
   ): Promise<CampaignVoiceIntro> {
     const validationError = this.validateFile(file);
     if (validationError) {
-      throw new Error(validationError);
+      throw new CampaignError(validationError);
     }
 
     const prepared = await prepareForUpload(file, (p) =>
