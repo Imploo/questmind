@@ -47,8 +47,9 @@ function scrollParentOf(element: HTMLElement): HTMLElement | null {
 /**
  * The tabs along the left edge of the sheet. They hang from the bottom of the screen
  * while the sheet scrolls past: a tap scrolls to that section, and the tab of the
- * section being read is lit. Placed beside the sheet, inside the same parent; it
- * finds the sections in that parent by their `data-section` mark.
+ * section being read is lit. With room beside the sheet they are a table of contents
+ * on its left instead. Placed beside the sheet, inside the same parent, which has to
+ * be positioned; it finds the sections in that parent by their `data-section` mark.
  */
 @Component({
   selector: 'app-sheet-section-tabs',
@@ -138,20 +139,6 @@ function scrollParentOf(element: HTMLElement): HTMLElement | null {
       .rail { left: calc(-1 * var(--sheet-gutter, 1.5rem)); }
     }
 
-    /* With room to spare beside the sheet, the tabs stand in that room, against its edge. */
-    @container sheet-panel (min-width: 66rem) {
-      .rail { left: auto; right: 100%; align-items: flex-end; }
-      .tab {
-        width: 27px;
-        border-left: 1px solid #d9c9a6;
-        border-right: none;
-        border-radius: 8px 0 0 8px;
-        box-shadow: none;
-      }
-      .tab:hover { width: 31px; }
-      .tab.is-active { width: 33px; border-color: var(--line, #e8dcc5); box-shadow: -5px 6px 14px -8px rgba(30, 16, 70, 0.6); }
-    }
-
     /*
      * A short screen: the tabs tighten up rather than run off the top, and on one too
      * short even for that they step aside. Once by the height of the screen, for a
@@ -172,6 +159,63 @@ function scrollParentOf(element: HTMLElement): HTMLElement | null {
     }
     @container sheet-panel (max-height: 430px) {
       :host { display: none; }
+    }
+
+    /*
+     * On a desktop with room beside the sheet the tabs are its table of contents: a
+     * small panel on its left with the labels written out, which stays at the top of
+     * the screen while the sheet scrolls past. The page keeps that room free under the
+     * same two conditions, and says how wide it is. Last in this sheet, so it also
+     * undoes the tightening above.
+     */
+    @media (min-width: 1024px) {
+      @container sheet-panel (min-width: 53.5rem) {
+        /* A column as high as the sheet, for the panel to travel down. */
+        :host, :host(.is-lifted) {
+          position: absolute;
+          top: 0;
+          bottom: 0;
+          right: calc(100% + var(--sheet-toc-gap, 1.25rem));
+          display: block;
+          width: var(--sheet-toc-width, 10.25rem);
+          height: auto;
+          margin: 0;
+        }
+        .rail {
+          position: sticky;
+          top: 1.5rem;
+          bottom: auto;
+          left: auto;
+          align-items: stretch;
+          gap: 2px;
+          padding: 10px;
+          background: var(--paper, #fffdf8);
+          border: 1px solid var(--line, #e8dcc5);
+          border-radius: 14px;
+          box-shadow: var(--panel-shadow);
+        }
+        .tab {
+          flex-direction: row;
+          gap: 10px;
+          width: auto;
+          min-height: 40px;
+          padding: 0 9px;
+          background: transparent;
+          border: 1px solid transparent;
+          border-radius: 8px;
+          box-shadow: none;
+          transition: background 0.18s, color 0.18s;
+        }
+        .tab:hover { background: var(--paper-2, #f8f2e6); }
+        .tab.is-active {
+          width: auto;
+          background: var(--paper-2, #f8f2e6);
+          border-color: #e0d2b6;
+          box-shadow: none;
+        }
+        .mark { display: block; flex-shrink: 0; }
+        .label { writing-mode: horizontal-tb; transform: none; font-size: 11.5px; letter-spacing: 0.12em; }
+      }
     }
   `]
 })
