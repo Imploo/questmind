@@ -759,12 +759,14 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
       }
     </div>
 
-    <!-- The tabs along the edge: they stay on screen and jump to the sections marked data-section above -->
+    <!-- The tabs along the edge, or the table of contents beside a sheet with room for it: they stay on screen and jump to the sections marked data-section above -->
     <app-sheet-section-tabs [sections]="sections()" [lifted]="!!toast()" />
   `,
   styles: [`
     :host {
       display: block;
+      /* The table of contents stands beside the sheet, and is as high as it. */
+      position: relative;
       /* The sheet is dense: it keeps a smaller base size than the pages around it,
          and lays itself out by its own width, since a chat panel may sit beside it. */
       font-size: 14px;

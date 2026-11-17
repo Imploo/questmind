@@ -387,10 +387,13 @@ export const en: Translations = {
     },
     recording: {
       title: 'Recording',
-      details: (duration, size) => `${duration} · ${size} · compressed & normalised`,
+      treatment: 'compressed & normalised',
+      downloadTitle: 'Download the recording',
       retranscribe: 'Re-transcribe',
       retranscribeTitle: 'Transcribe the stored recording again and generate a new story',
-      loading: 'Loading recording...',
+      play: 'Play recording',
+      pause: 'Pause recording',
+      position: 'Position in the recording',
     },
   },
 

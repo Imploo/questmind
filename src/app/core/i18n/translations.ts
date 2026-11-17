@@ -390,10 +390,13 @@ export interface Translations {
     };
     recording: {
       title: string;
-      details: (duration: string, size: string) => string;
+      treatment: string;
+      downloadTitle: string;
       retranscribe: string;
       retranscribeTitle: string;
-      loading: string;
+      play: string;
+      pause: string;
+      position: string;
     };
   };
 

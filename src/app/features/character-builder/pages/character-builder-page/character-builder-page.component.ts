@@ -158,7 +158,14 @@ import { TranslatePipe } from '../../../../core/i18n/translate.pipe';
       gap: 1.5rem;
     }
     /* The section tabs of the sheet ask this panel how much room there is: beside the sheet, and in height. */
-    .sheet-panel { min-width: 0; flex: 1; container: sheet-panel / inline-size; }
+    .sheet-panel {
+      min-width: 0;
+      flex: 1;
+      container: sheet-panel / inline-size;
+      /* The table of contents the tabs become on a wide panel, and its distance to the sheet. */
+      --sheet-toc-width: 10.25rem;
+      --sheet-toc-gap: 1.25rem;
+    }
     .chat-panel {
       position: sticky;
       top: 1.5rem;
@@ -242,6 +249,23 @@ import { TranslatePipe } from '../../../../core/i18n/translate.pipe';
         border-bottom: 1px solid rgba(255, 255, 255, 0.16);
       }
       .is-panels .sheet-column { padding: 1.5rem; }
+    }
+
+    /*
+     * A desktop panel wide enough for the table of contents of the sheet (the section
+     * tabs switch to it under these same two conditions): the sheet leaves room for it
+     * on its left, and keeps at least the width its two columns need. On a wider panel
+     * still, the same room on the right puts the sheet back in the middle.
+     */
+    @media (min-width: 1024px) {
+      @container sheet-panel (min-width: 53.5rem) {
+        .sheet-column {
+          --toc-room: calc(var(--sheet-toc-width) + var(--sheet-toc-gap));
+          max-width: calc(64rem + 2 * var(--toc-room));
+          padding-left: var(--toc-room);
+          padding-right: clamp(0px, 100cqi - 64rem - var(--toc-room), var(--toc-room));
+        }
+      }
     }
   `]
 })

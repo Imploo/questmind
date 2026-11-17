@@ -389,10 +389,13 @@ export const nl: Translations = {
     },
     recording: {
       title: 'Opname',
-      details: (duration, size) => `${duration} · ${size} · gecomprimeerd en genormaliseerd`,
+      treatment: 'gecomprimeerd en genormaliseerd',
+      downloadTitle: 'De opname downloaden',
       retranscribe: 'Opnieuw transcriberen',
       retranscribeTitle: 'Transcribeer de opgeslagen opname opnieuw en genereer een nieuw verhaal',
-      loading: 'Opname laden...',
+      play: 'Opname afspelen',
+      pause: 'Opname pauzeren',
+      position: 'Positie in de opname',
     },
   },
 
