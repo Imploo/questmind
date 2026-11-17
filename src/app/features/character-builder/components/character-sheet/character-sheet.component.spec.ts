@@ -1,8 +1,13 @@
 import { describe, it, expect, vi } from 'vitest';
-import { TestBed } from '@angular/core/testing';
+import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { CharacterSheetComponent } from './character-sheet.component';
 import { CharacterEntryResolverService } from '../../../../core/services/character-entry-resolver.service';
 import { DndCharacter } from '../../../../shared/models/dnd-character.model';
+import { DND_TERMS } from '../../../../shared/dnd-terms';
+import { I18nService } from '../../../../core/i18n/i18n.service';
+import { provideTestLanguage } from '../../../../core/i18n/testing';
+import { en } from '../../../../core/i18n/en';
+import { nl } from '../../../../core/i18n/nl';
 
 const ability = (score: number) => ({ score, modifier: Math.floor((score - 10) / 2) });
 const save = { proficient: false, modifier: 0 };
@@ -25,15 +30,23 @@ function druid(overrides: Partial<DndCharacter> = {}): DndCharacter {
 }
 
 describe('CharacterSheetComponent', () => {
-  function render(character: DndCharacter): HTMLElement {
+  function create(character: DndCharacter, language: 'nl' | 'en' = 'en', editable = false): ComponentFixture<CharacterSheetComponent> {
     TestBed.configureTestingModule({
-      providers: [{ provide: CharacterEntryResolverService, useValue: { lookupSpellLocally: async () => null } }],
+      providers: [
+        provideTestLanguage(language),
+        { provide: CharacterEntryResolverService, useValue: { lookupSpellLocally: async () => null } },
+      ],
     });
     const fixture = TestBed.createComponent(CharacterSheetComponent);
     fixture.componentRef.setInput('character', character);
     fixture.componentRef.setInput('characterName', character.name);
+    fixture.componentRef.setInput('editable', editable);
     fixture.detectChanges();
-    return fixture.nativeElement as HTMLElement;
+    return fixture;
+  }
+
+  function render(character: DndCharacter, language: 'nl' | 'en' = 'en'): HTMLElement {
+    return create(character, language).nativeElement as HTMLElement;
   }
 
   const text = (el: Element | null | undefined) => el?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
@@ -56,7 +69,7 @@ describe('CharacterSheetComponent', () => {
       ],
     }));
 
-    expect(card(sheet, 'Attacks')!.rows).toEqual([
+    expect(card(sheet, DND_TERMS.attacks)!.rows).toEqual([
       'Scimitar | +5 | 1d6 + 2 Slashing',
       'Moonbeam | DC 14 CON | 2d10 Radiant',
       'Magic Missile | 3 x 1d4 + 1 Force',
@@ -72,26 +85,108 @@ describe('CharacterSheetComponent', () => {
       reactions: [{ name: 'Absorb Elements', effect: 'Resist the triggering damage type', source: 'Spell' }],
     }));
 
-    expect(card(sheet, 'Bonus Actions')!.rows).toEqual(['Healing Word | Spell | Heal 1d4 + 3 to a creature within 60 ft', 'Wild Shape']);
-    expect(card(sheet, 'Reactions')!.rows).toEqual(['Absorb Elements | Spell | Resist the triggering damage type']);
+    expect(card(sheet, DND_TERMS.bonusActions)!.rows).toEqual(['Healing Word | Spell | Heal 1d4 + 3 to a creature within 60 ft', 'Wild Shape']);
+    expect(card(sheet, DND_TERMS.reactions)!.rows).toEqual(['Absorb Elements | Spell | Resist the triggering damage type']);
 
     const titles = Array.from(sheet.querySelectorAll('.qm-section-title')).map(text);
-    const attacks = titles.indexOf('Attacks');
-    expect(titles.slice(attacks, attacks + 3)).toEqual(['Attacks', 'Bonus Actions', 'Reactions']);
+    const attacks = titles.indexOf(DND_TERMS.attacks);
+    expect(titles.slice(attacks, attacks + 3)).toEqual([DND_TERMS.attacks, DND_TERMS.bonusActions, DND_TERMS.reactions]);
   });
 
   it('says so when the character has no bonus actions, and leaves the reactions card out', () => {
     const sheet = render(druid({ bonusActions: [], reactions: [] }));
 
-    expect(card(sheet, 'Bonus Actions')!.empty).toBe('No bonus actions');
-    expect(card(sheet, 'Reactions')).toBeNull();
+    expect(card(sheet, DND_TERMS.bonusActions)!.empty).toBe(en.sheet.noBonusActions);
+    expect(card(sheet, DND_TERMS.reactions)).toBeNull();
   });
 
   it('shows neither card for a character from before the lists were recorded', () => {
     const sheet = render(druid());
 
-    expect(card(sheet, 'Bonus Actions')).toBeNull();
-    expect(card(sheet, 'Reactions')).toBeNull();
+    expect(card(sheet, DND_TERMS.bonusActions)).toBeNull();
+    expect(card(sheet, DND_TERMS.reactions)).toBeNull();
+  });
+
+  describe('languages', () => {
+    const titles = (sheet: HTMLElement) => Array.from(sheet.querySelectorAll('.qm-section-title')).map(text);
+    const tabLabels = (sheet: HTMLElement) => Array.from(sheet.querySelectorAll('app-sheet-section-tabs .tab')).map(text);
+
+    it('switches the app texts at once and keeps the game terms English', () => {
+      const fixture = create(druid({ bonusActions: [], experiencePoints: 12500, playerName: 'Sanne' }));
+      const sheet = fixture.nativeElement as HTMLElement;
+      const termsBefore = { titles: titles(sheet), tabs: tabLabels(sheet), abilities: text(sheet.querySelector('[data-section="abilities"]')) };
+
+      expect(card(sheet, DND_TERMS.attacks)!.empty).toBe(en.sheet.noAttacks);
+      expect(card(sheet, DND_TERMS.bonusActions)!.empty).toBe(en.sheet.noBonusActions);
+      expect(text(sheet.querySelector('.qm-hero'))).toContain('12,500 XP');
+      expect(text(sheet.querySelector('.qm-hero'))).toContain(en.sheet.player('Sanne'));
+
+      TestBed.inject(I18nService).use('nl');
+      fixture.detectChanges();
+
+      expect(card(sheet, DND_TERMS.attacks)!.empty).toBe('Nog geen attacks ingesteld');
+      expect(card(sheet, DND_TERMS.bonusActions)!.empty).toBe(nl.sheet.noBonusActions);
+      expect(text(sheet.querySelector('.qm-hero'))).toContain('12.500 XP');
+      expect(text(sheet.querySelector('.qm-hero'))).toContain(nl.sheet.player('Sanne'));
+      expect(sheet.querySelector('app-sheet-section-tabs nav')!.getAttribute('aria-label')).toBe(nl.sheet.sectionsLabel);
+      // Card titles, tabs and abilities are game terms: the same as before the switch.
+      expect({ titles: titles(sheet), tabs: tabLabels(sheet), abilities: text(sheet.querySelector('[data-section="abilities"]')) }).toEqual(termsBefore);
+      expect(titles(sheet)).toEqual(expect.arrayContaining(['Saving Throws', 'Skills', 'Attacks', 'Features & Traits']));
+      expect(text(sheet.querySelector('.vitals'))).toContain('Armor Class');
+    });
+
+    it('finds the stored skills by their English names, in Dutch too', () => {
+      const sheet = render(
+        druid({
+          skills: [
+            { name: 'Sleight of Hand', proficient: true, modifier: 5 },
+            { name: 'Animal Handling', proficient: true, expertise: true, modifier: 9 },
+          ],
+        }),
+        'nl'
+      );
+      const section = Array.from(sheet.querySelectorAll('section.qm-panel'))
+        .find(panel => text(panel.querySelector('.qm-section-title')) === DND_TERMS.skillsTitle)!;
+      const rows = Array.from(section.querySelectorAll('li')).map(li =>
+        ['.truncate', '.ability-hint', '.sr-only', '.mod'].map(part => text(li.querySelector(part))).filter(Boolean).join(' | ')
+      );
+
+      expect(rows).toHaveLength(18);
+      expect(rows).toContain('Sleight of Hand | DEX | (proficient) | +5');
+      expect(rows).toContain('Animal Handling | WIS | (expertise) | +9');
+      expect(rows).toContain('Stealth | DEX | +2');
+    });
+
+    it('offers the ways to pay for a cast in the language of the player, with a plural per language', () => {
+      const caster = druid({
+        spellcasting: {
+          ability: 'wisdom',
+          slots: [
+            { level: 1, total: 4, expended: 3 },
+            { level: 2, total: 3, expended: 1 },
+            { level: 3, total: 2, expended: 2 },
+          ],
+          spells: [{ name: 'Cure Wounds', description: 'Heals.', level: 1 }],
+        },
+      });
+      const fixture = create(caster, 'en', true);
+      const sheet = fixture.nativeElement as HTMLElement;
+      const cast = sheet.querySelector<HTMLButtonElement>('button.cast')!;
+      const options = () => Array.from(sheet.querySelectorAll('app-cast-dialog .option')).map(option => Array.from(option.children).map(text).join(' | '));
+
+      expect(text(cast)).toBe(en.sheet.cast.button);
+      expect(cast.getAttribute('aria-label')).toBe('Cast Cure Wounds');
+      cast.click();
+      fixture.detectChanges();
+
+      expect(options()).toEqual(['Level 1 | 1 slot left', 'Level 2 · upcast | 2 slots left', 'Level 3 · upcast | None left']);
+
+      TestBed.inject(I18nService).use('nl');
+      fixture.detectChanges();
+
+      expect(cast.getAttribute('aria-label')).toBe('Cure Wounds casten');
+      expect(options()).toEqual(['Level 1 | Nog 1 slot', 'Level 2 · upcast | Nog 2 slots', 'Level 3 · upcast | Niets meer over']);
+    });
   });
 
   describe('section tabs', () => {
