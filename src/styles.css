@@ -607,6 +607,77 @@
     box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.22), 0 6px 14px -8px rgba(50, 30, 120, 0.7);
   }
 
+  /* The seal as a play button: the one thing to press on a recording. */
+  .qm-play {
+    transition: filter 0.15s, transform 0.1s;
+    touch-action: manipulation;
+  }
+  .qm-play:hover:not(:disabled) {
+    filter: brightness(1.1) saturate(1.05);
+  }
+  .qm-play:active:not(:disabled) {
+    transform: scale(0.95);
+  }
+  .qm-play:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* A seek bar; set --qm-seek-fill to the part already played. */
+  .qm-seek {
+    --qm-seek-track: linear-gradient(
+      to right,
+      #667eea,
+      #764ba2 var(--qm-seek-fill, 0%),
+      #e4d7bc var(--qm-seek-fill, 0%)
+    );
+    appearance: none;
+    height: 24px;
+    margin: 0;
+    background: transparent;
+    cursor: pointer;
+    touch-action: none;
+  }
+  .qm-seek:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
+  .qm-seek::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: 999px;
+    background: var(--qm-seek-track);
+  }
+  .qm-seek::-moz-range-track {
+    height: 6px;
+    border-radius: 999px;
+    background: var(--qm-seek-track);
+  }
+  .qm-seek::-webkit-slider-thumb {
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    margin-top: -5px;
+    border-radius: 50%;
+    background: var(--paper);
+    border: 2px solid var(--color-secondary);
+    box-shadow: 0 2px 5px -1px rgba(50, 30, 120, 0.5);
+  }
+  .qm-seek::-moz-range-thumb {
+    box-sizing: border-box;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--paper);
+    border: 2px solid var(--color-secondary);
+    box-shadow: 0 2px 5px -1px rgba(50, 30, 120, 0.5);
+  }
+  .qm-seek:disabled::-webkit-slider-thumb {
+    visibility: hidden;
+  }
+  .qm-seek:disabled::-moz-range-thumb {
+    visibility: hidden;
+  }
+
   .qm-alert {
     padding: 0.7rem 0.9rem;
     border-radius: 10px;
