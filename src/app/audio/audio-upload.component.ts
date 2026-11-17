@@ -1,7 +1,9 @@
-import { ChangeDetectionStrategy, Component, signal, computed, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, signal, computed, inject, input, output } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { isWavFile } from './services/wav-to-mp3';
 import { formatFileSize } from '../shared/formatting.service';
+import { I18nService } from '../core/i18n/i18n.service';
+import { TranslatePipe } from '../core/i18n/translate.pipe';
 
 /** Uploaded as-is (M4A, MP3, OGG). */
 const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
@@ -22,14 +24,14 @@ export interface UploadRequestEvent {
 
 @Component({
   selector: 'app-audio-upload',
-  imports: [FormsModule],
+  imports: [FormsModule, TranslatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="qm-panel">
       <div class="flex items-start justify-between gap-3 mb-4">
         <div class="min-w-0 flex-1">
-          <h3 class="qm-section-title !mb-1.5">Upload Session Audio</h3>
-          <p class="qm-help">WAV up to 4GB; MP3, M4A or OGG up to 500MB. Select multiple files to merge.</p>
+          <h3 class="qm-section-title !mb-1.5">{{ 'audio.upload.title' | translate }}</h3>
+          <p class="qm-help">{{ 'audio.upload.formats' | translate }}</p>
         </div>
         <span class="qm-badge" [class]="badgeClass()">
           {{ stageLabel() }}
@@ -68,14 +70,14 @@ export interface UploadRequestEvent {
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 16V4m0 0l-4 4m4-4l4 4" /></svg>
         </span>
         <p class="text-sm text-gray-700">
-          Drag and drop your audio files here, or
+          {{ 'audio.upload.dropHint' | translate }}
           <button
             type="button"
             class="qm-link"
             (click)="fileInput.click()"
             [disabled]="isBusy() || !canUpload()"
           >
-            browse
+            {{ 'audio.upload.browse' | translate }}
           </button>
         </p>
       </div>
@@ -90,14 +92,14 @@ export interface UploadRequestEvent {
                     type="button"
                     (click)="moveFile(i, -1)"
                     [disabled]="i === 0 || isBusy()"
-                    aria-label="Move up"
+                    [attr.aria-label]="'audio.upload.moveUp' | translate"
                     class="text-gold-deep hover:text-ink disabled:opacity-30 text-xs leading-none p-0.5"
                   >&#9650;</button>
                   <button
                     type="button"
                     (click)="moveFile(i, 1)"
                     [disabled]="i === selectedFiles().length - 1 || isBusy()"
-                    aria-label="Move down"
+                    [attr.aria-label]="'audio.upload.moveDown' | translate"
                     class="text-gold-deep hover:text-ink disabled:opacity-30 text-xs leading-none p-0.5"
                   >&#9660;</button>
                 </div>
@@ -109,14 +111,14 @@ export interface UploadRequestEvent {
                 type="button"
                 (click)="removeFile(i)"
                 [disabled]="isBusy()"
-                aria-label="Remove file"
+                [attr.aria-label]="'audio.upload.removeFile' | translate"
                 class="text-gray-500 hover:text-wine disabled:opacity-30 text-lg leading-none px-1"
               >&times;</button>
             </div>
           }
           @if (selectedFiles().length > 1) {
             <p class="qm-help px-1">
-              {{ selectedFiles().length }} files — {{ formatFileSize(totalSize()) }} total — will be merged into one recording
+              {{ 'audio.upload.mergeSummary' | translate: selectedFiles().length : formatFileSize(totalSize()) }}
             </p>
           }
         </div>
@@ -126,17 +128,17 @@ export interface UploadRequestEvent {
         <!-- Session Details -->
         <div class="grid gap-3 md:grid-cols-2">
           <label class="block">
-            <span class="qm-label">Session name</span>
+            <span class="qm-label">{{ 'audio.upload.sessionName' | translate }}</span>
             <input
               type="text"
               class="qm-input"
               [(ngModel)]="sessionName"
               [disabled]="isBusy() || !canUpload()"
-              placeholder="The Goblin Warrens"
+              [placeholder]="'audio.upload.sessionNamePlaceholder' | translate"
             />
           </label>
           <label class="block">
-            <span class="qm-label">Session date</span>
+            <span class="qm-label">{{ 'audio.upload.sessionDate' | translate }}</span>
             <input
               type="date"
               class="qm-input"
@@ -160,14 +162,14 @@ export interface UploadRequestEvent {
             (change)="keepAwake.set(!keepAwake())"
             [disabled]="isBusy() || !wakeLockSupported()"
           />
-          Keep screen awake during upload
+          {{ 'audio.upload.keepAwake' | translate }}
           @if (!wakeLockSupported()) {
-            <span class="text-xs qm-muted">(Not supported on this device)</span>
+            <span class="text-xs qm-muted">{{ 'audio.upload.keepAwakeUnsupported' | translate }}</span>
           }
         </label>
         @if (selectedFiles().length > 0) {
           <button type="button" class="qm-btn" (click)="clearAll()" [disabled]="isBusy()">
-            Clear
+            {{ 'audio.upload.clear' | translate }}
           </button>
         }
         <button
@@ -176,7 +178,7 @@ export interface UploadRequestEvent {
           (click)="uploadFiles()"
           [disabled]="selectedFiles().length === 0 || isBusy() || !canUpload()"
         >
-          {{ isBusy() ? 'Processing...' : (selectedFiles().length > 1 ? 'Merge & Upload' : 'Upload & Process') }}
+          {{ submitLabel() }}
         </button>
       </div>
     </div>
@@ -197,6 +199,8 @@ export interface UploadRequestEvent {
   `]
 })
 export class AudioUploadComponent {
+  private readonly i18n = inject(I18nService);
+
   isBusy = input(false);
   userId = input<string | null>(null);
   campaignId = input<string | null>(null);
@@ -230,16 +234,16 @@ export class AudioUploadComponent {
   });
 
   stageLabel = computed(() => {
-    const labels: Record<Stage, string> = {
-      'idle': 'Ready',
-      'compressing': 'Compressing',
-      'uploading': 'Uploading',
-      'transcribing': 'Transcribing',
-      'generating': 'Generating',
-      'completed': 'Complete',
-      'failed': 'Failed'
-    };
-    return labels[this.stage()] || 'Processing';
+    const texts = this.i18n.t().audio;
+    const labels: Record<Stage, string> = texts.uploadStages;
+    return labels[this.stage()] || texts.list.statusProcessing;
+  });
+
+  /** What the upload button does right now. */
+  submitLabel = computed(() => {
+    const texts = this.i18n.t().audio.upload;
+    if (this.isBusy()) return texts.processing;
+    return this.selectedFiles().length > 1 ? texts.mergeAndUpload : texts.uploadAndProcess;
   });
 
   onDragOver(event: DragEvent): void {
@@ -276,7 +280,7 @@ export class AudioUploadComponent {
     for (const file of files) {
       const errorMessage = this.validateFile(file);
       if (errorMessage) {
-        this.error.set(`${file.name}: ${errorMessage}`);
+        this.error.set(errorMessage);
         return;
       }
     }
@@ -322,7 +326,9 @@ export class AudioUploadComponent {
     });
   }
 
+  /** Why a file cannot be uploaded, as a message that names the file; null when it can. */
   validateFile(file: File): string | null {
+    const texts = this.i18n.t().audio.uploadErrors;
     const validTypes = [
       'audio/mpeg',
       'audio/wav',
@@ -334,14 +340,14 @@ export class AudioUploadComponent {
     // Some browsers report no MIME type for M4A/WAV, so accept by extension too.
     const validExtension = /\.(mp3|wav|m4a|ogg)$/i.test(file.name);
     if (!validTypes.includes(file.type) && !validExtension) {
-      return 'Unsupported file type. Please use MP3, WAV, M4A, or OGG.';
+      return texts.unsupportedType(file.name);
     }
     const isWav = isWavFile(file);
     if (isWav && file.size > MAX_WAV_BYTES) {
-      return 'WAV file is too large. Maximum size is 4GB.';
+      return texts.wavTooLarge(file.name);
     }
     if (!isWav && file.size > MAX_UPLOAD_BYTES) {
-      return 'File is too large. Maximum size is 500MB.';
+      return texts.tooLarge(file.name);
     }
     return null;
   }

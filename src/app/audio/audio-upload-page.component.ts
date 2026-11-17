@@ -10,27 +10,29 @@ import { AudioUpload, AudioSessionRecord, SessionProgress } from './services/aud
 import * as logger from '../shared/logger';
 import { ToastService } from '../shared/services/toast.service';
 import { ScreenWakeLockService } from '../shared/services/screen-wake-lock.service';
-import { isPermissionDenied, PERMISSION_DENIED_MESSAGE } from '../shared/utils/callable-error';
+import { callableErrorMessage, isPermissionDenied } from '../shared/utils/callable-error';
+import { I18nService } from '../core/i18n/i18n.service';
+import { TranslatePipe } from '../core/i18n/translate.pipe';
 
 @Component({
   selector: 'app-audio-upload-page',
-  imports: [AudioUploadComponent, SessionListSidebarComponent],
+  imports: [AudioUploadComponent, SessionListSidebarComponent, TranslatePipe],
   template: `
     <div class="flex flex-col lg:flex-row gap-4 lg:gap-6">
       <app-session-list-sidebar
         [sessions]="sortedSessions()"
         [userId]="userId()"
         [showNewButton]="false"
-        mobileLabel="New Audio Session"
+        [mobileLabel]="'audio.upload.mobileLabel' | translate"
         (sessionSelected)="selectSession($event)"
       />
 
       <!-- Right panel: Upload form -->
       <main class="flex-1 min-w-0">
         <div class="mb-5">
-          <div class="qm-page-eyebrow">New session</div>
-          <h1 class="qm-page-title mt-1">Upload New Audio Session</h1>
-          <p class="qm-page-sub mt-1">Upload and transcribe your D&D session audio</p>
+          <div class="qm-page-eyebrow">{{ 'audio.upload.eyebrow' | translate }}</div>
+          <h1 class="qm-page-title mt-1">{{ 'audio.upload.pageTitle' | translate }}</h1>
+          <p class="qm-page-sub mt-1">{{ 'audio.upload.pageSubtitle' | translate }}</p>
         </div>
 
         <app-audio-upload
@@ -57,6 +59,7 @@ export class AudioUploadPageComponent {
   private campaignContextService = inject(CampaignContextService);
   private toastService = inject(ToastService);
   private wakeLock = inject(ScreenWakeLockService);
+  private i18n = inject(I18nService);
 
   userId = computed(() => this.authService.currentUser()?.uid ?? null);
   campaignId = computed(() => this.campaignContextService.selectedCampaignId());
@@ -138,20 +141,23 @@ export class AudioUploadPageComponent {
         sessionId,
         event.files,
         {
-          sessionTitle: event.sessionName || 'Untitled Session',
+          // A default name is stored in the language of whoever uploads.
+          sessionTitle: event.sessionName || this.i18n.t().audio.untitledSession,
           sessionDate: event.sessionDate,
         },
       );
     } catch (error) {
-      let errorMessage = error instanceof Error ? error.message : 'Upload failed';
       if (isPermissionDenied(error)) {
         logger.warn('Audio processing refused: permission denied');
-        this.toastService.showCallableError(error);
-        errorMessage = PERMISSION_DENIED_MESSAGE;
       } else {
         logger.error('Error in background processing:', error);
       }
-      await this.completeProcessingService.writeFailure(campaignId, sessionId, errorMessage);
+      // What the user reads is translated; the raw error (a parser or network
+      // message) is stored as it is and shown as technical details only.
+      const texts = this.i18n.t();
+      this.toastService.show(callableErrorMessage(error, texts.errors, texts.audio.upload.failed), 'error', 6000);
+      const rawError = error instanceof Error ? error.message : 'Upload failed';
+      await this.completeProcessingService.writeFailure(campaignId, sessionId, rawError);
     }
   }
 

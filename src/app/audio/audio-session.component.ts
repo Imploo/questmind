@@ -24,16 +24,15 @@ import { SessionListSidebarComponent } from './session-list-sidebar.component';
 import { CampaignSelectorComponent } from '../campaign/campaign-selector.component';
 import { FormattingService } from '../shared/formatting.service';
 import { ToastService } from '../shared/services/toast.service';
-import { isPermissionDenied, PERMISSION_DENIED_MESSAGE } from '../shared/utils/callable-error';
-
-/** Shown instead of a retry button when a failed session has no stored audio to retry from. */
-export const NO_STORED_AUDIO_MESSAGE = 'Geen opgeslagen audio; upload de opname opnieuw.';
+import { callableErrorMessage, isPermissionDenied } from '../shared/utils/callable-error';
+import { I18nService } from '../core/i18n/i18n.service';
+import { TranslatePipe } from '../core/i18n/translate.pipe';
 
 const PODCAST_STAGES: SessionProgressStage[] = ['generating-podcast-script', 'generating-podcast-audio'];
 
 @Component({
   selector: 'app-audio-session',
-  imports: [SessionStoryComponent, SessionProgressCardComponent, SessionRecordingComponent, SessionListSidebarComponent, CampaignSelectorComponent],
+  imports: [SessionStoryComponent, SessionProgressCardComponent, SessionRecordingComponent, SessionListSidebarComponent, CampaignSelectorComponent, TranslatePipe],
   providers: [PodcastGenerationService, CorrectionsSaveService],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -46,20 +45,20 @@ const PODCAST_STAGES: SessionProgressStage[] = ['generating-podcast-script', 'ge
     @if (!authService.isAuthenticated()) {
       <div class="qm-panel qm-hero qm-empty max-w-xl mx-auto">
         <span class="qm-medallion qm-medallion-lg"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg></span>
-        <h3 class="qm-empty-title">Audio Transcription</h3>
+        <h3 class="qm-empty-title">{{ 'audio.page.signedOutTitle' | translate }}</h3>
         <p class="qm-empty-text">
-          Sign in to upload audio sessions and generate AI-powered transcriptions and session stories.
+          {{ 'audio.page.signedOutText' | translate }}
         </p>
         <p class="qm-help mt-4">
-          Your audio files and transcriptions will be securely stored and accessible only to you.
+          {{ 'audio.page.signedOutHelp' | translate }}
         </p>
       </div>
     } @else if (!campaignId()) {
       <div class="qm-panel qm-hero qm-empty max-w-xl mx-auto">
         <span class="qm-medallion qm-medallion-lg"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-width="1.75" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M15.5 8.5l-2 5-5 2 2-5 5-2z" /></svg></span>
-        <h3 class="qm-empty-title">Select a campaign</h3>
+        <h3 class="qm-empty-title">{{ 'audio.page.noCampaignTitle' | translate }}</h3>
         <p class="qm-empty-text">
-          Choose a campaign to upload sessions and collaborate with your group.
+          {{ 'audio.page.noCampaignText' | translate }}
         </p>
       </div>
     } @else {
@@ -68,7 +67,7 @@ const PODCAST_STAGES: SessionProgressStage[] = ['generating-podcast-script', 'ge
           [sessions]="sortedSessions()"
           [currentSessionId]="currentSession()?.id ?? null"
           [userId]="userId()"
-          [mobileLabel]="currentSession()?.title || 'Select a session'"
+          [mobileLabel]="currentSession()?.title || ''"
           (sessionSelected)="selectSession($event)"
           (newRequested)="navigateToNew()"
         />
@@ -85,7 +84,7 @@ const PODCAST_STAGES: SessionProgressStage[] = ['generating-podcast-script', 'ge
               />
 
               <app-session-story
-                [title]="currentSession()?.title || 'Session Story'"
+                [title]="currentSession()?.title || ('audio.defaultStoryTitle' | translate)"
                 [subtitle]="formatSubtitle(currentSession())"
                 [sessionDate]="currentSession()?.sessionDate || ''"
                 [story]="currentSession()?.content || ''"
@@ -129,18 +128,18 @@ const PODCAST_STAGES: SessionProgressStage[] = ['generating-podcast-script', 'ge
               <div class="qm-panel qm-hero qm-empty">
                 @if (sortedSessions().length > 0) {
                   <span class="qm-medallion qm-medallion-lg"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg></span>
-                  <h3 class="qm-empty-title">Select a session</h3>
+                  <h3 class="qm-empty-title">{{ 'audio.selectSession' | translate }}</h3>
                   <p class="qm-empty-text">
-                    Choose a session from the list to view its details and story.
+                    {{ 'audio.page.selectSessionText' | translate }}
                   </p>
                 } @else {
                   <span class="qm-medallion qm-medallion-lg"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg></span>
-                  <h3 class="qm-empty-title">No sessions yet</h3>
+                  <h3 class="qm-empty-title">{{ 'audio.page.noSessionsTitle' | translate }}</h3>
                   <p class="qm-empty-text">
-                    Upload your first audio session to get started with AI-powered transcriptions and session stories.
+                    {{ 'audio.page.noSessionsText' | translate }}
                   </p>
                   <button type="button" (click)="navigateToNew()" class="qm-btn qm-btn-primary qm-btn-lg mt-6">
-                    Upload Audio Session
+                    {{ 'audio.page.uploadFirst' | translate }}
                   </button>
                 }
               </div>
@@ -165,6 +164,7 @@ export class AudioSessionComponent {
   private readonly audioStorage = inject(AudioStorageService);
   readonly podcastGen = inject(PodcastGenerationService);
   readonly correctionsSave = inject(CorrectionsSaveService);
+  private readonly i18n = inject(I18nService);
 
   userId = computed(() => this.authService.currentUser()?.uid || null);
   campaignId = computed(() => this.campaignContext.selectedCampaignId());
@@ -217,7 +217,7 @@ export class AudioSessionComponent {
     const failedStage = session.progress?.stage;
     if (failedStage && PODCAST_STAGES.includes(failedStage)) return null;
     if (session.audioRecording || session.audioSources?.length) return null;
-    return NO_STORED_AUDIO_MESSAGE;
+    return this.i18n.t().audio.session.noStoredAudio;
   });
 
   isBusy = computed(() => isActiveStage(this.displayProgress()?.stage));
@@ -292,7 +292,8 @@ export class AudioSessionComponent {
 
   formatSubtitle(session: AudioSessionRecord | null): string {
     if (!session) return '';
-    return `${this.formatting.formatDay(session.sessionDate) || 'No date'} · ${session.audioFileName || 'Unknown'}`;
+    const texts = this.i18n.t();
+    return `${this.formatting.formatDay(session.sessionDate) || texts.audio.noDate} · ${session.audioFileName || texts.common.unknown}`;
   }
 
   // --- Story operations ---
@@ -304,6 +305,7 @@ export class AudioSessionComponent {
 
     const campaignId = session.campaignId;
     if (!campaignId) {
+      this.toastService.show(this.i18n.t().audio.noCampaignSelected, 'error');
       this.failSession('No campaign selected.');
       return;
     }
@@ -330,7 +332,9 @@ export class AudioSessionComponent {
         }
       );
     } catch (error: unknown) {
-      this.failSession(this.callableFailureMessage(error, 'Failed to start story regeneration'));
+      this.failSession(
+        this.reportCallableFailure(error, 'Failed to start story regeneration', this.i18n.t().audio.session.regenerateFailed)
+      );
     }
   }
 
@@ -381,7 +385,7 @@ export class AudioSessionComponent {
   cancelCurrentOperation(): void {
     const session = this.currentSession();
     logger.debug('[Progress] Cancel requested for stage:', session?.progress?.stage);
-    this.toastService.show('Operation cancellation is not yet implemented. The operation will complete in the background.', 'warning');
+    this.toastService.show(this.i18n.t().audio.session.cancelNotImplemented, 'warning');
   }
 
   async retryFailedOperation(): Promise<void> {
@@ -414,7 +418,7 @@ export class AudioSessionComponent {
     logger.debug('[Retry] Retrying failed transcription for session:', session?.id);
 
     if (!session?.campaignId) {
-      this.toastService.show('Cannot retry: No campaign selected.', 'error');
+      this.toastService.show(this.i18n.t().audio.session.retryNoCampaign, 'error');
       return;
     }
 
@@ -446,7 +450,7 @@ export class AudioSessionComponent {
 
     // Sessions without stored audio (e.g. from before recordings were stored)
     // cannot be transcribed again.
-    this.toastService.show(NO_STORED_AUDIO_MESSAGE, 'error');
+    this.toastService.show(this.i18n.t().audio.session.noStoredAudio, 'error');
   }
 
   /** Re-transcribe the stored recording and generate a new story from it. */
@@ -455,9 +459,7 @@ export class AudioSessionComponent {
     const recording = session?.audioRecording;
     if (!session || !recording || !this.isSessionOwner() || this.isBusy()) return;
 
-    const confirmed = await this.toastService.confirm(
-      'Transcribe the recording again? The current transcript and story will be replaced by new ones. Your corrections are kept and applied.'
-    );
+    const confirmed = await this.toastService.confirm(this.i18n.t().audio.session.retranscribeConfirm);
     if (!confirmed) return;
 
     await this.startTranscription(session.id, () =>
@@ -513,24 +515,32 @@ export class AudioSessionComponent {
         logger.info('[BackendJob] Function call successful:', result.message);
       } else {
         logger.error('[BackendJob] Function returned error:', result.message);
+        // The server's message is not shown: it is stored as the raw error only.
+        this.toastService.show(this.i18n.t().audio.session.processingStartFailed, 'error', 6000);
         this.failSession(result.message);
       }
     } catch (error: unknown) {
-      this.failSession(this.callableFailureMessage(error, 'Failed to start processing'));
+      this.failSession(
+        this.reportCallableFailure(error, 'Failed to start processing', this.i18n.t().audio.session.processingStartFailed)
+      );
     }
   }
 
-  /** Message for a failed callable; permission errors also get a toast. */
-  private callableFailureMessage(error: unknown, fallback: string): string {
+  /**
+   * Tell the user, in the active language, why a callable failed, and return the
+   * raw error text for the progress document (shown as technical details only).
+   */
+  private reportCallableFailure(error: unknown, logLabel: string, fallback: string): string {
     if (isPermissionDenied(error)) {
       logger.warn('[BackendJob] Permission denied by the backend');
-      this.toastService.showCallableError(error);
-      return PERMISSION_DENIED_MESSAGE;
+    } else {
+      logger.error(`[BackendJob] ${logLabel}:`, error);
     }
-    logger.error(`[BackendJob] ${fallback}:`, error);
-    return (error as Error)?.message || fallback;
+    this.toastService.show(callableErrorMessage(error, this.i18n.t().errors, fallback), 'error', 6000);
+    return (error as Error)?.message || logLabel;
   }
 
+  /** Store a failure. `message` is raw, untranslated text: the progress card shows its own. */
   private failSession(message: string): void {
     const session = this.currentSession();
     if (session) {
