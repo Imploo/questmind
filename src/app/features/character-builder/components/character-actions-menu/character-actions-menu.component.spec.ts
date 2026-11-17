@@ -2,6 +2,13 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { CharacterActionsMenuComponent } from './character-actions-menu.component';
+import { I18nService } from '../../../../core/i18n/i18n.service';
+import { en } from '../../../../core/i18n/en';
+import { nl } from '../../../../core/i18n/nl';
+
+const texts = en.characters.actions;
+const share = en.common.share;
+const { archive, unarchive } = en.characters;
 
 describe('CharacterActionsMenuComponent', () => {
   let fixture: ComponentFixture<CharacterActionsMenuComponent>;
@@ -48,14 +55,14 @@ describe('CharacterActionsMenuComponent', () => {
   it('offers a visitor without an account the PDF and the share link only', () => {
     open();
 
-    expect(labels()).toEqual(['Download PDF', 'Share']);
+    expect(labels()).toEqual([texts.downloadPdf, share]);
   });
 
   it('offers a signed-in visitor to clone the character', () => {
     fixture.componentRef.setInput('canClone', true);
     open();
 
-    expect(labels()).toEqual(['Download PDF', 'Clone', 'Share']);
+    expect(labels()).toEqual([texts.downloadPdf, texts.clone, share]);
   });
 
   it('offers the owner the history and the archive, each with an icon', () => {
@@ -63,7 +70,7 @@ describe('CharacterActionsMenuComponent', () => {
     fixture.componentRef.setInput('canArchive', true);
     open();
 
-    expect(labels()).toEqual(['Download PDF', 'History', 'Share', 'Archive']);
+    expect(labels()).toEqual([texts.downloadPdf, texts.history, share, archive]);
     expect(items().every(candidate => candidate.querySelector('svg') !== null)).toBe(true);
   });
 
@@ -77,7 +84,7 @@ describe('CharacterActionsMenuComponent', () => {
     fixture.componentInstance.share.subscribe(share);
 
     open();
-    item('History').click();
+    item(texts.history).click();
     fixture.detectChanges();
 
     expect(viewHistory).toHaveBeenCalledTimes(1);
@@ -92,7 +99,7 @@ describe('CharacterActionsMenuComponent', () => {
     fixture.componentInstance.archivedChange.subscribe(archivedChange);
 
     open();
-    item('Archive').click();
+    item(archive).click();
 
     expect(archivedChange).toHaveBeenCalledWith(true);
   });
@@ -104,9 +111,9 @@ describe('CharacterActionsMenuComponent', () => {
     fixture.componentInstance.archivedChange.subscribe(archivedChange);
 
     open();
-    expect(labels()).toContain('Unarchive');
-    expect(labels()).not.toContain('Archive');
-    item('Unarchive').click();
+    expect(labels()).toContain(unarchive);
+    expect(labels()).not.toContain(archive);
+    item(unarchive).click();
 
     expect(archivedChange).toHaveBeenCalledWith(false);
   });
@@ -119,8 +126,10 @@ describe('CharacterActionsMenuComponent', () => {
     fixture.componentInstance.rulesVersionChange.subscribe(rulesVersionChange);
 
     open();
-    expect(labels()).toEqual(['Download PDF', 'History', 'Convert to 2024 rules', 'Share', 'Archive']);
-    item('Convert to 2024 rules').click();
+    expect(texts.convertRules('2024')).toBe('Convert to 2024 rules');
+    expect(labels()).toEqual([texts.downloadPdf, texts.history, texts.convertRules('2024'), share, archive]);
+    expect(item(texts.convertRules('2024')).title).toBe(texts.convertRulesTitle('2024'));
+    item(texts.convertRules('2024')).click();
     fixture.detectChanges();
 
     expect(rulesVersionChange).toHaveBeenCalledWith('2024');
@@ -134,9 +143,9 @@ describe('CharacterActionsMenuComponent', () => {
     fixture.componentInstance.rulesVersionChange.subscribe(rulesVersionChange);
 
     open();
-    expect(labels()).toContain('Convert to 2014 rules');
-    expect(labels()).not.toContain('Convert to 2024 rules');
-    item('Convert to 2014 rules').click();
+    expect(labels()).toContain(texts.convertRules('2014'));
+    expect(labels()).not.toContain(texts.convertRules('2024'));
+    item(texts.convertRules('2014')).click();
 
     expect(rulesVersionChange).toHaveBeenCalledWith('2014');
   });
@@ -146,7 +155,7 @@ describe('CharacterActionsMenuComponent', () => {
     fixture.componentRef.setInput('rulesVersion', '2024');
     open();
 
-    expect(labels().some(label => label.startsWith('Convert to'))).toBe(false);
+    expect(labels()).toEqual([texts.downloadPdf, texts.clone, share]);
   });
 
   it('shows on the button that the PDF is being made and blocks a second export', () => {
@@ -159,8 +168,25 @@ describe('CharacterActionsMenuComponent', () => {
     expect(trigger().querySelector('.spinner')).not.toBeNull();
 
     open();
-    item('Preparing PDF…').click();
+    item(texts.preparingPdf).click();
 
     expect(exportPdf).not.toHaveBeenCalled();
+  });
+
+  it('follows the language, also for a menu that is already open', () => {
+    fixture.componentRef.setInput('canArchive', true);
+    fixture.componentRef.setInput('canConvertRules', true);
+    open();
+
+    TestBed.inject(I18nService).use('nl');
+    fixture.detectChanges();
+
+    expect(labels()).toEqual([
+      nl.characters.actions.downloadPdf,
+      nl.characters.actions.convertRules('2024'),
+      nl.common.share,
+      nl.characters.archive,
+    ]);
+    expect(trigger().getAttribute('aria-label')).toBe(nl.characters.actions.menuLabel);
   });
 });

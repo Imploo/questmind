@@ -1,4 +1,5 @@
 import type { RulesVersion } from './rules-version';
+import type { DndTerms } from '../dnd-terms';
 
 export interface AbilityScoreBonus {
   source: string;
@@ -100,11 +101,8 @@ export interface CharacterFeature {
   uses?: LimitedUses;
 }
 
-export type Alignment =
-  | 'Lawful Good' | 'Neutral Good' | 'Chaotic Good'
-  | 'Lawful Neutral' | 'True Neutral' | 'Chaotic Neutral'
-  | 'Lawful Evil' | 'Neutral Evil' | 'Chaotic Evil'
-  | 'Unaligned';
+/** One of the alignments in the game terms; the value is stored as it is spelled there. */
+export type Alignment = DndTerms['alignments'][number];
 
 export interface DndCharacter {
   // Basic Info

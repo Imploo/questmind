@@ -17,14 +17,23 @@ export interface PodcastScriptSource {
   body: string;
 }
 
+/**
+ * Merge `nextEntry` into the entry of its version (or add it). A field that is
+ * `undefined` in `nextEntry` is removed from the entry: the entries live in an
+ * array, where Firestore can neither delete a single field nor store `undefined`.
+ */
 export function upsertPodcast(existing: PodcastEntry[], nextEntry: Partial<PodcastEntry> & { version: number }): PodcastEntry[] {
   const index = existing.findIndex(podcast => podcast?.version === nextEntry.version);
   if (index === -1) {
-    return [...existing, nextEntry as PodcastEntry];
+    return [...existing, withoutUndefined(nextEntry)];
   }
   const updated = [...existing];
-  updated[index] = { ...existing[index], ...nextEntry } as PodcastEntry;
+  updated[index] = withoutUndefined({ ...existing[index], ...nextEntry });
   return updated;
+}
+
+function withoutUndefined(entry: Partial<PodcastEntry>): PodcastEntry {
+  return Object.fromEntries(Object.entries(entry).filter(([, value]) => value !== undefined)) as unknown as PodcastEntry;
 }
 
 export function parseScriptResponse(text: string): PodcastScript {

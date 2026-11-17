@@ -118,6 +118,12 @@ export type SessionProgressStage =
   | 'completed'
   | 'failed';
 
+/** "x of y" of a step that counts things (segments, audio parts); the frontend writes the sentence. */
+export interface ProgressDetail {
+  current: number;
+  total: number;
+}
+
 /**
  * Unified session progress tracking (Ticket #43)
  * Single progress object per session for ALL operations
@@ -125,7 +131,9 @@ export type SessionProgressStage =
 export interface SessionProgress {
   stage: SessionProgressStage;
   progress: number;                    // 0-100 percentage
-  message: string;                     // User-friendly status message
+  message: string;                     // Status message; no longer shown, kept for clients that have not refreshed
+  /** Only on an update of a step that counts; absent in every other update. */
+  detail?: ProgressDetail;
   startedAt: Date;                     // When current operation started
   estimatedCompletionAt?: Date;        // Estimated completion time
   error?: string;                      // Error message if failed
@@ -133,6 +141,9 @@ export interface SessionProgress {
 }
 
 export type PodcastStatus = 'pending' | 'script_complete' | 'completed' | 'failed';
+
+/** Where a podcast generation is; the frontend shows a text per step, in the user's language. */
+export type PodcastProgressStep = 'starting' | 'script' | 'audio' | 'uploading' | 'done' | 'failed';
 
 /** One turn of a two-host podcast script. */
 export interface PodcastSegment {
@@ -151,6 +162,10 @@ export interface PodcastEntry {
   storyVersion?: number;
   status: PodcastStatus;
   progress?: number;
+  progressStep?: PodcastProgressStep;
+  /** The audio part being generated; absent in every other update. */
+  progressDetail?: ProgressDetail;
+  /** Dutch text of the step; no longer shown, kept for clients that have not refreshed. */
   progressMessage?: string;
   script?: PodcastScript;
   scriptGeneratedAt?: Date;

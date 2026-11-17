@@ -1,5 +1,5 @@
 import * as logger from './utils/logger';
-import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { onCall } from 'firebase-functions/v2/https';
 import { getFirestore } from 'firebase-admin/firestore';
 import { SHARED_CORS } from './config/cors';
 import { ensureAuthForTesting } from './utils/emulator-helpers';
@@ -9,11 +9,27 @@ import { wrapCallable, captureFunctionError } from './utils/sentry-error-handler
 import { getCampaignStoryConfig } from './utils/ai-settings';
 import { selectCampaignStorySources, SessionDocForCampaignStory } from './campaign-story/campaign-story-sources';
 import { generateCampaignStory as generateCampaignStoryText } from './campaign-story/campaign-story-generator.service';
-import { CampaignStoryVersion } from './types/campaign-story.types';
+import { CampaignStoryProgressStep, CampaignStoryVersion } from './types/campaign-story.types';
 import { campaignStoriesCollectionPath, campaignStoryDocPath } from './campaign-story/campaign-story-paths';
+import { refusal } from './utils/error-reasons';
 
 interface GenerateCampaignStoryRequest {
   campaignId: string;
+}
+
+/**
+ * The step and its Dutch text, written together: `progressMessage` is for clients
+ * that have not refreshed yet, the app itself shows its own text for `progressStep`.
+ */
+const STEP_MESSAGES: Record<CampaignStoryProgressStep, string> = {
+  collecting: 'Sessieverhalen verzamelen...',
+  writing: 'Verhaal schrijven...',
+  done: 'Klaar',
+  failed: 'Mislukt',
+};
+
+function progressFields(step: CampaignStoryProgressStep): { progressStep: CampaignStoryProgressStep; progressMessage: string } {
+  return { progressStep: step, progressMessage: STEP_MESSAGES[step] };
 }
 
 /**
@@ -40,7 +56,7 @@ export const generateCampaignStory = onCall(
       .where('status', '==', 'generating')
       .get();
     if (generatingSnap.docs.some(doc => isActiveGeneration(doc.data().createdAt))) {
-      throw new HttpsError('failed-precondition', 'Er wordt al een verhaal gegenereerd.');
+      throw refusal('failed-precondition', 'A campaign story is already being generated.', 'story-already-generating');
     }
 
     const sessionsSnap = await db.collection(`campaigns/${campaignId}/audioSessions`).get();
@@ -50,7 +66,7 @@ export const generateCampaignStory = onCall(
     }));
     const { sources, skipped, inputs } = selectCampaignStorySources(sessions);
     if (sources.length === 0) {
-      throw new HttpsError('failed-precondition', 'Er zijn nog geen sessieverhalen om samen te vatten.');
+      throw refusal('failed-precondition', 'There are no session stories to summarize yet.', 'no-session-stories');
     }
 
     // Allocate the version number atomically so double clicks can't collide
@@ -65,7 +81,7 @@ export const generateCampaignStory = onCall(
         createdBy: uid,
         createdAt: new Date(),
         progress: 10,
-        progressMessage: 'Sessieverhalen verzamelen...',
+        ...progressFields('collecting'),
         error: null,
         podcasts: [],
       };
@@ -79,7 +95,7 @@ export const generateCampaignStory = onCall(
 
     try {
       const config = await getCampaignStoryConfig();
-      await versionRef.update({ progress: 30, progressMessage: 'Verhaal schrijven...' });
+      await versionRef.update({ progress: 30, ...progressFields('writing') });
 
       const story = await generateCampaignStoryText(inputs, config);
 
@@ -91,7 +107,7 @@ export const generateCampaignStory = onCall(
         modelUsed: config.model,
         completedAt: new Date(),
         progress: 100,
-        progressMessage: 'Klaar',
+        ...progressFields('done'),
         error: null,
       });
       // Campaign updatedAt is intentionally left alone (frontend schema expects an ISO string)
@@ -106,7 +122,7 @@ export const generateCampaignStory = onCall(
       await versionRef.update({
         status: 'failed',
         error: err.message,
-        progressMessage: 'Mislukt',
+        ...progressFields('failed'),
       });
       // Don't throw — the failure is persisted on the version document
     }

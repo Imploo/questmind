@@ -1,12 +1,9 @@
-import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core';
 import { LimitedUses, UsesRecharge } from '../../../../shared/models/dnd-character.model';
-import { MAX_USES, RECHARGE_LABELS } from '../../../../shared/utils/character-play-state';
-
-const RECHARGE_OPTIONS: { value: UsesRecharge; label: string; text: string }[] = [
-  { value: 'shortRest', label: RECHARGE_LABELS.shortRest, text: 'recharges on a short rest' },
-  { value: 'longRest', label: RECHARGE_LABELS.longRest, text: 'recharges on a long rest' },
-  { value: 'manual', label: RECHARGE_LABELS.manual, text: 'reset by hand' },
-];
+import { MAX_USES } from '../../../../shared/utils/character-play-state';
+import { I18nService } from '../../../../core/i18n/i18n.service';
+import { TranslatePipe } from '../../../../core/i18n/translate.pipe';
+import { PLAY_TERMS } from '../../../../shared/dnd-terms';
 
 /**
  * Shown under the text of a feature, spell or custom feat: says what its uses tracker is, and
@@ -15,19 +12,20 @@ const RECHARGE_OPTIONS: { value: UsesRecharge; label: string; text: string }[] =
 @Component({
   selector: 'app-tracker-editor',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [TranslatePipe],
   template: `
     @if (editing()) {
       <div class="form">
         <div class="field">
-          <span class="field-label">Uses</span>
-          <button type="button" class="step" aria-label="Fewer uses" [disabled]="max() <= 1" (click)="max.set(max() - 1)">−</button>
+          <span class="field-label">{{ 'play.tracker.uses' | translate }}</span>
+          <button type="button" class="step" [attr.aria-label]="'play.tracker.fewerUses' | translate" [disabled]="max() <= 1" (click)="max.set(max() - 1)">−</button>
           <span class="value">{{ max() }}</span>
-          <button type="button" class="step" aria-label="More uses" [disabled]="max() >= maxUses" (click)="max.set(max() + 1)">+</button>
+          <button type="button" class="step" [attr.aria-label]="'play.tracker.moreUses' | translate" [disabled]="max() >= maxUses" (click)="max.set(max() + 1)">+</button>
         </div>
 
         <div class="field">
-          <span class="field-label">Recharges on</span>
-          @for (option of rechargeOptions; track option.value) {
+          <span class="field-label">{{ 'play.tracker.rechargesOn' | translate }}</span>
+          @for (option of rechargeOptions(); track option.value) {
             <button type="button" class="choice" [class.is-selected]="recharge() === option.value" [attr.aria-pressed]="recharge() === option.value" (click)="recharge.set(option.value)">
               {{ option.label }}
             </button>
@@ -36,19 +34,19 @@ const RECHARGE_OPTIONS: { value: UsesRecharge; label: string; text: string }[] =
 
         <div class="actions">
           @if (uses()) {
-            <button type="button" class="btn is-remove" (click)="finish(null)">Remove tracker</button>
+            <button type="button" class="btn is-remove" (click)="finish(null)">{{ 'play.tracker.remove' | translate }}</button>
           }
           <span class="spacer"></span>
-          <button type="button" class="btn" (click)="editing.set(false)">Cancel</button>
-          <button type="button" class="btn is-primary" (click)="finish({ max: max(), recharge: recharge() })">Save</button>
+          <button type="button" class="btn" (click)="editing.set(false)">{{ 'common.cancel' | translate }}</button>
+          <button type="button" class="btn is-primary" (click)="finish({ max: max(), recharge: recharge() })">{{ 'common.save' | translate }}</button>
         </div>
       </div>
     } @else {
       <div class="summary">
         @if (uses(); as tracker) {
-          <span>Tracker: {{ tracker.max }} {{ tracker.max === 1 ? 'use' : 'uses' }} · {{ rechargeText(tracker.recharge) }}</span>
+          <span>{{ 'play.tracker.summary' | translate: tracker.max : tracker.recharge }}</span>
         }
-        <button type="button" class="btn is-small" (click)="open()">{{ uses() ? 'Edit tracker' : 'Add tracker' }}</button>
+        <button type="button" class="btn is-small" (click)="open()">{{ (uses() ? 'play.tracker.edit' : 'play.tracker.add') | translate }}</button>
       </div>
     }
   `,
@@ -130,7 +128,14 @@ export class TrackerEditorComponent {
   max = signal(1);
   recharge = signal<UsesRecharge>('longRest');
 
-  readonly rechargeOptions = RECHARGE_OPTIONS;
+  private readonly i18n = inject(I18nService);
+
+  /** The rests are game terms; resetting by hand is said in the active language. */
+  readonly rechargeOptions = computed((): { value: UsesRecharge; label: string }[] => [
+    { value: 'shortRest', label: PLAY_TERMS.recharge.shortRest },
+    { value: 'longRest', label: PLAY_TERMS.recharge.longRest },
+    { value: 'manual', label: this.i18n.t().play.tracker.manual },
+  ]);
   readonly maxUses = MAX_USES;
 
   open(): void {
@@ -142,9 +147,5 @@ export class TrackerEditorComponent {
   finish(uses: LimitedUses | null): void {
     this.editing.set(false);
     this.usesChange.emit(uses);
-  }
-
-  rechargeText(recharge: UsesRecharge): string {
-    return RECHARGE_OPTIONS.find(option => option.value === recharge)?.text ?? 'reset by hand';
   }
 }

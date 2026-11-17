@@ -1,15 +1,17 @@
 import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, input, output, signal, viewChild } from '@angular/core';
 import { Coins } from '../../../../shared/models/dnd-character.model';
 import { MAX_COINS } from '../../../../shared/utils/character-play-state';
+import { TranslatePipe } from '../../../../core/i18n/translate.pipe';
+import { PLAY_TERMS } from '../../../../shared/dnd-terms';
 
 type CoinKey = keyof Coins;
 
 const COIN_TYPES: { key: CoinKey; name: string; color: string }[] = [
-  { key: 'pp', name: 'Platinum', color: '#d9dde3' },
-  { key: 'gp', name: 'Gold', color: '#e2b13c' },
-  { key: 'ep', name: 'Electrum', color: '#cfc38a' },
-  { key: 'sp', name: 'Silver', color: '#b9bec4' },
-  { key: 'cp', name: 'Copper', color: '#b8693a' },
+  { key: 'pp', name: PLAY_TERMS.coins.pp, color: '#d9dde3' },
+  { key: 'gp', name: PLAY_TERMS.coins.gp, color: '#e2b13c' },
+  { key: 'ep', name: PLAY_TERMS.coins.ep, color: '#cfc38a' },
+  { key: 'sp', name: PLAY_TERMS.coins.sp, color: '#b9bec4' },
+  { key: 'cp', name: PLAY_TERMS.coins.cp, color: '#b8693a' },
 ];
 
 
@@ -17,6 +19,7 @@ const COIN_TYPES: { key: CoinKey; name: string; color: string }[] = [
 @Component({
   selector: 'app-coin-purse',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [TranslatePipe],
   template: `
     @for (coin of coinList(); track coin.key) {
       @if (editing() === coin.key) {
@@ -27,7 +30,7 @@ const COIN_TYPES: { key: CoinKey; name: string; color: string }[] = [
             type="number"
             min="0"
             inputmode="numeric"
-            [attr.aria-label]="coin.name + ' pieces'"
+            [attr.aria-label]="'play.coins.amountLabel' | translate: coin.name"
             [value]="coin.amount"
             (blur)="commit(coin.key, $any($event.target).value)"
             (keydown.enter)="$any($event.target).blur()"
@@ -36,7 +39,7 @@ const COIN_TYPES: { key: CoinKey; name: string; color: string }[] = [
           <span class="unit">{{ coin.key }}</span>
         </span>
       } @else if (editable()) {
-        <button type="button" class="coin" [title]="'Change ' + coin.name.toLowerCase()" [attr.aria-label]="coin.amount + ' ' + coin.name.toLowerCase() + ', change'" (click)="editing.set(coin.key)">
+        <button type="button" class="coin" [title]="'play.coins.change' | translate: coin.name" [attr.aria-label]="'play.coins.changeAmount' | translate: coin.amount : coin.name" (click)="editing.set(coin.key)">
           <span class="dot" [style.background]="coin.color" aria-hidden="true"></span>
           <strong>{{ coin.amount }}</strong>
           <span class="unit">{{ coin.key }}</span>

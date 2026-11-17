@@ -8,10 +8,12 @@ import { UserService } from '../../core/user.service';
 import { CampaignContextService } from '../../campaign/campaign-context.service';
 import { NavItem } from '../nav-item.model';
 import { LogoComponent } from '../../shared/components/logo.component';
+import { I18nService, LanguagePreferenceService, TranslatePipe, type LanguageCode } from '../../core/i18n';
+import { ProfileDrawerComponent, userInitials, type ProfileDrawerUser } from '../profile-drawer/profile-drawer.component';
 
 @Component({
   selector: 'app-nav-rail',
-  imports: [RouterLink, LucideAngularModule, LogoComponent],
+  imports: [RouterLink, LucideAngularModule, LogoComponent, ProfileDrawerComponent, TranslatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [`
     .hamburger-btn {
@@ -136,7 +138,18 @@ import { LogoComponent } from '../../shared/components/logo.component';
       padding-top: 10px;
       border-top: 1px solid rgba(255, 255, 255, 0.12);
     }
-    .user-row { display: flex; align-items: center; gap: 12px; padding: 4px 14px 2px 22px; }
+    .user-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      padding: 6px 14px 6px 22px;
+      color: inherit;
+      text-align: left;
+      background: none;
+      border: none;
+    }
+    .user-row:hover .user-avatar { box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.18); }
     .user-avatar {
       display: flex;
       align-items: center;
@@ -174,13 +187,13 @@ import { LogoComponent } from '../../shared/components/logo.component';
       .nav-item { flex-direction: column; gap: 4px; padding: 4px 4px; }
       .nav-label { font-size: 10.5px; text-align: center; }
       .user { align-items: center; }
-      .user-row { padding: 2px 0; }
+      .user-row { justify-content: center; padding: 4px 0; }
     }
   `],
   template: `
     @if (authService.isAuthenticated()) {
       <!-- Hamburger button (mobile only) -->
-      <button class="hamburger-btn" (click)="toggleMenu()" [attr.aria-label]="isMenuOpen() ? 'Menu sluiten' : 'Menu openen'">
+      <button class="hamburger-btn" (click)="toggleMenu()" [attr.aria-label]="(isMenuOpen() ? 'nav.closeMenu' : 'nav.openMenu') | translate">
         <lucide-icon [name]="isMenuOpen() ? 'x' : 'menu'" style="width:20px;height:20px;" />
       </button>
 
@@ -189,8 +202,8 @@ import { LogoComponent } from '../../shared/components/logo.component';
         <div class="backdrop" (click)="closeMenu()"></div>
       }
 
-      <nav class="nav-rail" [class.is-open]="isMenuOpen()" aria-label="Hoofdnavigatie">
-        <a routerLink="/characters" class="brand" aria-label="Questmind" (click)="closeMenu()">
+      <nav class="nav-rail" [class.is-open]="isMenuOpen()" [attr.aria-label]="'nav.mainNavigation' | translate">
+        <a routerLink="/characters" class="brand" aria-label="Questmind" data-no-i18n (click)="closeMenu()">
           <app-logo [size]="44" />
           <span class="brand-name">Questmind</span>
         </a>
@@ -213,24 +226,35 @@ import { LogoComponent } from '../../shared/components/logo.component';
           }
         </div>
 
-        <!-- User / Sign out -->
+        <!-- The user: opens the profile drawer, where the language and signing out live -->
         <div class="user">
-          <div class="user-row">
-            @if (authService.currentUser()?.photoURL) {
-              <img [src]="authService.currentUser()!.photoURL!" alt="" class="user-avatar" />
+          <button
+            type="button"
+            class="user-row"
+            aria-haspopup="dialog"
+            [attr.aria-label]="'nav.openProfile' | translate"
+            [attr.title]="'nav.openProfile' | translate"
+            (click)="openProfile()"
+          >
+            @if (profileUser().photoURL; as photo) {
+              <img [src]="photo" alt="" class="user-avatar" />
             } @else {
               <span class="user-avatar" aria-hidden="true">{{ userInitials() }}</span>
             }
-            <span class="user-name">{{ authService.currentUser()?.displayName || authService.currentUser()?.email }}</span>
-          </div>
-          <button type="button" class="nav-item" (click)="signOut()" title="Uitloggen">
-            <span class="nav-indicator">
-              <lucide-icon name="log-out" class="nav-icon" />
-            </span>
-            <span class="nav-label">Uitloggen</span>
+            <span class="user-name">{{ profileUser().displayName || profileUser().email }}</span>
           </button>
         </div>
       </nav>
+
+      <app-profile-drawer
+        [open]="isProfileOpen()"
+        [user]="profileUser()"
+        [language]="i18n.language()"
+        [languages]="i18n.available"
+        (languageChange)="chooseLanguage($event)"
+        (signOut)="signOut()"
+        (closed)="closeProfile()"
+      />
     }
   `
 })
@@ -239,8 +263,11 @@ export class NavRailComponent {
   private readonly userService = inject(UserService);
   private readonly campaignContext = inject(CampaignContextService);
   private readonly router = inject(Router);
+  protected readonly i18n = inject(I18nService);
+  private readonly preference = inject(LanguagePreferenceService);
 
   readonly isMenuOpen = signal(false);
+  readonly isProfileOpen = signal(false);
 
   private readonly routerEvents = toSignal(
     this.router.events.pipe(
@@ -264,28 +291,33 @@ export class NavRailComponent {
     const audioRoute = campaignId ? `/campaign/${campaignId}/audio` : null;
     const storyRoute = campaignId ? `/campaign/${campaignId}/story` : null;
     const podcastsRoute = campaignId ? `/campaign/${campaignId}/podcasts` : null;
+    const nav = this.i18n.t().nav;
 
     const items: NavItem[] = [
-      { id: 'characters', label: 'Characters', route: '/characters', icon: 'users' },
-      ...(audioRoute ? [{ id: 'audio', label: 'Audio', route: audioRoute, icon: 'mic' }] : []),
-      ...(storyRoute ? [{ id: 'story', label: 'Verhaal', route: storyRoute, icon: 'book-open' }] : []),
-      ...(podcastsRoute ? [{ id: 'podcasts', label: 'Podcasts', route: podcastsRoute, icon: 'music' }] : []),
+      { id: 'characters', label: nav.characters, route: '/characters', icon: 'users' },
+      ...(audioRoute ? [{ id: 'audio', label: nav.audio, route: audioRoute, icon: 'mic' }] : []),
+      ...(storyRoute ? [{ id: 'story', label: nav.story, route: storyRoute, icon: 'book-open' }] : []),
+      ...(podcastsRoute ? [{ id: 'podcasts', label: nav.podcasts, route: podcastsRoute, icon: 'music' }] : []),
     ];
 
     if (this.userService.isAdmin()) {
-      items.push({ id: 'admin', label: 'Admin', route: '/admin', icon: 'settings', adminOnly: true });
+      items.push({ id: 'admin', label: nav.admin, route: '/admin', icon: 'settings', adminOnly: true });
     }
 
     return items;
   });
 
-  readonly userInitials = computed((): string => {
+  /** What the rail and the profile drawer show of the signed-in user. */
+  readonly profileUser = computed((): ProfileDrawerUser => {
     const user = this.authService.currentUser();
-    if (user?.displayName) {
-      return user.displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-    }
-    return user?.email?.[0].toUpperCase() ?? '?';
+    return {
+      displayName: user?.displayName ?? null,
+      email: user?.email ?? null,
+      photoURL: user?.photoURL ?? null,
+    };
   });
+
+  readonly userInitials = computed((): string => userInitials(this.profileUser()));
 
   isItemActive(item: NavItem): boolean {
     const active = this.activeRoute();
@@ -304,7 +336,22 @@ export class NavRailComponent {
     this.isMenuOpen.set(false);
   }
 
+  /** The drawer covers the page, so the mobile menu it was opened from makes way. */
+  openProfile(): void {
+    this.closeMenu();
+    this.isProfileOpen.set(true);
+  }
+
+  closeProfile(): void {
+    this.isProfileOpen.set(false);
+  }
+
+  chooseLanguage(language: LanguageCode): void {
+    void this.preference.choose(language);
+  }
+
   async signOut(): Promise<void> {
+    this.closeProfile();
     await this.authService.signOut();
     await this.router.navigate(['/']);
   }

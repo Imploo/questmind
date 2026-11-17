@@ -3,26 +3,29 @@ import { DomSanitizer } from '@angular/platform-browser';
 import { marked } from 'marked';
 import { FormattingService } from '../shared/formatting.service';
 import { CampaignStoryVersion } from './campaign-story.models';
+import { I18nService } from '../core/i18n/i18n.service';
+import { TranslatePipe } from '../core/i18n/translate.pipe';
 
 /** Renders one campaign story version (ticket #69). */
 @Component({
   selector: 'app-campaign-story-view',
+  imports: [TranslatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <article class="qm-panel qm-hero sm:!p-9">
       @if (!isLatest()) {
         <div class="qm-alert qm-alert-warn relative z-[1] mb-5 flex flex-wrap items-center gap-3">
-          <span class="qm-badge">Oudere versie</span>
-          <span>Je bekijkt versie {{ version().version }}.</span>
+          <span class="qm-badge">{{ 'campaignStory.olderVersion' | translate }}</span>
+          <span>{{ 'campaignStory.viewingVersion' | translate: version().version }}</span>
           <button type="button" class="font-semibold underline underline-offset-2 hover:no-underline" (click)="backToLatest.emit()">
-            Terug naar nieuwste
+            {{ 'campaignStory.backToLatest' | translate }}
           </button>
         </div>
       }
 
       <header class="mb-6 text-center">
         <div class="qm-eyebrow">{{ meta() }}</div>
-        <h2 class="qm-display text-2xl sm:text-3xl leading-tight mt-1.5">{{ version().title || 'Het verhaal tot nu toe' }}</h2>
+        <h2 class="qm-display text-2xl sm:text-3xl leading-tight mt-1.5">{{ version().title || ('campaignStory.untitled' | translate) }}</h2>
         <div class="flourish" aria-hidden="true"><span></span></div>
       </header>
 
@@ -46,6 +49,7 @@ import { CampaignStoryVersion } from './campaign-story.models';
 export class CampaignStoryViewComponent {
   private readonly sanitizer = inject(DomSanitizer);
   private readonly formatting = inject(FormattingService);
+  private readonly i18n = inject(I18nService);
 
   readonly version = input.required<CampaignStoryVersion>();
   readonly isLatest = input(true);
@@ -54,11 +58,11 @@ export class CampaignStoryViewComponent {
 
   readonly meta = computed(() => {
     const version = this.version();
-    const sessions = version.sourceSessions?.length ?? 0;
+    const t = this.i18n.t();
     return [
-      `Versie ${version.version}`,
+      t.common.version(version.version),
       this.formatting.formatDate(version.completedAt ?? version.createdAt),
-      `${sessions} ${sessions === 1 ? 'sessie' : 'sessies'}`,
+      t.campaignStory.sessionCount(version.sourceSessions?.length ?? 0),
     ].filter(Boolean).join(' · ');
   });
 

@@ -1,9 +1,34 @@
-import { Component, input, output, computed, ChangeDetectionStrategy } from '@angular/core';
-import { SessionProgress, SessionProgressStage } from './services/audio-session.models';
+import { Component, input, output, computed, inject, ChangeDetectionStrategy } from '@angular/core';
+import { SessionProgressStage } from './services/audio-session.models';
+import { DisplayProgress } from './services/session-progress.utils';
 import { toDate } from '../shared/utils/date.utils';
+import { I18nService } from '../core/i18n/i18n.service';
+import { TranslatePipe } from '../core/i18n/translate.pipe';
+import type { Translations } from '../core/i18n/translations';
 
+/** The text of each stage, as a key of `progress.stages`. */
+const STAGE_TITLE_KEYS: Record<SessionProgressStage, keyof Translations['progress']['stages']> = {
+  'idle': 'idle',
+  'compressing': 'compressing',
+  'uploading': 'uploading',
+  'processing-audio': 'processingAudio',
+  'transcribing': 'transcribing',
+  'generating-story': 'generatingStory',
+  'generating-podcast-script': 'generatingPodcastScript',
+  'generating-podcast-audio': 'generatingPodcastAudio',
+  'completed': 'completed',
+  'failed': 'failed',
+};
+
+/**
+ * Progress of the session's current operation. Every text comes from the
+ * translations: the title follows `stage`, the line below it the count of the
+ * step or the kind of failure. The stored `message` is never shown, and a
+ * stored `error` only as technical details.
+ */
 @Component({
   selector: 'app-session-progress-card',
+  imports: [TranslatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (shouldShow()) {
@@ -23,9 +48,11 @@ import { toDate } from '../shared/utils/date.utils';
                 <h3 class="font-display text-base font-bold" [class.text-wine]="isFailed()">
                   {{ stageTitle() }}
                 </h3>
-                <p class="text-sm" [class]="isFailed() ? 'text-[#7c2630]' : 'qm-muted'">
-                  {{ progress()?.message }}
-                </p>
+                @if (statusLine(); as line) {
+                  <p class="text-sm" [class]="isFailed() ? 'text-[#7c2630]' : 'qm-muted'" data-testid="progress-status">
+                    {{ line }}
+                  </p>
+                }
               </div>
             </div>
 
@@ -33,12 +60,12 @@ import { toDate } from '../shared/utils/date.utils';
             <div class="flex items-center gap-2">
               @if (isFailed() && canRetry()) {
                 <button type="button" (click)="retry.emit()" class="qm-btn qm-btn-primary">
-                  Retry
+                  {{ 'common.retry' | translate }}
                 </button>
               }
               @if (!isFailed() && canCancel()) {
                 <button type="button" (click)="cancelled.emit()" class="qm-btn">
-                  Cancel
+                  {{ 'common.cancel' | translate }}
                 </button>
               }
             </div>
@@ -51,9 +78,9 @@ import { toDate } from '../shared/utils/date.utils';
             <div class="flex items-center justify-between mb-2">
               <span class="text-sm font-semibold">
                 @if (isBackgroundUpload()) {
-                  Uploading in the background...
+                  {{ 'progress.backgroundUpload' | translate }}
                 } @else {
-                  {{ progress()?.progress }}% complete
+                  {{ 'progress.percentComplete' | translate: (progress()?.progress ?? 0) }}
                 }
               </span>
               @if (estimatedTimeRemaining()) {
@@ -70,7 +97,7 @@ import { toDate } from '../shared/utils/date.utils';
 
             @if (isBackgroundUpload()) {
               <p class="qm-help mt-2">
-                Upload continues in the background. You can close the app.
+                {{ 'progress.backgroundUploadHint' | translate }}
               </p>
             }
           </div>
@@ -82,12 +109,12 @@ import { toDate } from '../shared/utils/date.utils';
           </div>
         }
 
-        <!-- Error details (only show if failed) -->
+        <!-- The raw error is not translated: it stays folded away as technical details. -->
         @if (isFailed() && progress()?.error) {
           <div class="px-5 py-4 bg-[#fbefed] border-t border-[#e6bfc0]">
             <details class="text-sm">
               <summary class="font-semibold text-[#7c2630]">
-                Error Details
+                {{ 'errors.technicalDetails' | translate }}
               </summary>
               <pre class="mt-2 p-3 bg-paper border border-[#e6bfc0] rounded-lg text-xs text-[#7c2630] overflow-x-auto whitespace-pre-wrap">{{ progress()?.error }}</pre>
             </details>
@@ -106,8 +133,10 @@ import { toDate } from '../shared/utils/date.utils';
   `]
 })
 export class SessionProgressCardComponent {
+  private readonly i18n = inject(I18nService);
+
   // Inputs
-  progress = input<SessionProgress | null | undefined>();
+  progress = input<DisplayProgress | null | undefined>();
   /** When set, a failed operation cannot be retried; this message replaces the retry button. */
   retryUnavailableMessage = input<string | null>(null);
 
@@ -146,23 +175,22 @@ export class SessionProgressCardComponent {
   });
 
   stageTitle = computed(() => {
+    const texts = this.i18n.t().progress;
     const stage = this.progress()?.stage;
-    if (!stage) return 'Processing';
+    const key = stage ? STAGE_TITLE_KEYS[stage] : undefined;
+    return key ? texts.stages[key] : texts.processing;
+  });
 
-    const titleMap: Record<SessionProgressStage, string> = {
-      'idle': 'Idle',
-      'compressing': 'Compressing Audio',
-      'uploading': 'Uploading File',
-      'processing-audio': 'Processing Audio',
-      'transcribing': 'Transcribing Audio',
-      'generating-story': 'Generating Story',
-      'generating-podcast-script': 'Generating Podcast Script',
-      'generating-podcast-audio': 'Generating Podcast Audio',
-      'completed': 'Completed',
-      'failed': 'Failed',
-    };
-
-    return titleMap[stage] || 'Processing';
+  /** The line under the title: what went wrong, or how far the step is ("Segment 3 of 7"). */
+  statusLine = computed(() => {
+    const progress = this.progress();
+    if (!progress) return '';
+    const texts = this.i18n.t().progress;
+    if (progress.stage === 'failed') {
+      return progress.timedOut ? texts.timedOut : texts.failedMessage;
+    }
+    const detail = progress.detail;
+    return detail && detail.total > 0 ? texts.segmentCount(detail.current, detail.total) : '';
   });
 
   estimatedTimeRemaining = computed(() => {
@@ -172,19 +200,20 @@ export class SessionProgressCardComponent {
     const completion = toDate(p.estimatedCompletionAt);
     if (!completion) return null;
     const remainingMs = completion.getTime() - Date.now();
+    const texts = this.i18n.t().progress;
 
-    if (remainingMs <= 0) return 'Almost done...';
+    if (remainingMs <= 0) return texts.almostDone;
 
     const seconds = Math.floor(remainingMs / 1000);
     const minutes = Math.floor(seconds / 60);
     const hours = Math.floor(minutes / 60);
 
     if (hours > 0) {
-      return `~${hours}h ${minutes % 60}m remaining`;
+      return texts.remainingHours(hours, minutes % 60);
     } else if (minutes > 0) {
-      return `~${minutes}m remaining`;
+      return texts.remainingMinutes(minutes);
     } else {
-      return `~${seconds}s remaining`;
+      return texts.remainingSeconds(seconds);
     }
   });
 }

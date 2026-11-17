@@ -10,10 +10,11 @@ import { executeGenerateCharacterDraft } from '../generate-character-draft';
 import { generateCharacterImage, latestCharacterImagePath } from '../generate-image';
 import { readKnownRulesVersion, readRulesVersion, type RulesVersion } from '../character/rules-version';
 import { characterResponderPrompt } from '../prompts/character-responder.prompt';
-import { CHAT_TITLE_INSTRUCTION } from '../prompts/chat-summary.prompt';
+import { chatTitleInstruction } from '../prompts/chat-summary.prompt';
 import type { ChatDoc, ChatHistoryMessage, ChatTurnPayload } from '../types/chat.types';
 import { getAiFeatureConfig } from '../utils/ai-settings';
 import { extractPartialJsonString, streamJson } from '../utils/gemini-client';
+import { type Language, parseLanguage } from '../utils/language';
 import * as logger from '../utils/logger';
 import { captureFunctionError } from '../utils/sentry-error-handler';
 import { deleteStorageFiles } from '../utils/storage-cleanup';
@@ -31,7 +32,8 @@ import { updateChatSummary } from './chat-summary';
 /** Shortest time between two writes of an answer that is still being generated. */
 const STREAM_WRITE_INTERVAL_MS = 500;
 
-const IMAGE_PREVIEW = 'Afbeelding';
+/** Line under the title in the list of chats after an image turn. */
+const IMAGE_PREVIEW: Record<Language, string> = { nl: 'Afbeelding', en: 'Image' };
 
 interface ResponderResult {
   text?: string;
@@ -116,6 +118,7 @@ async function runTextTurn(
   // A conversion in progress decides; otherwise the rules of the character on screen.
   const pendingRules = readKnownRulesVersion(chatDoc.pendingRulesVersion);
   const rulesVersion = pendingRules ?? readRulesVersion(payload.currentCharacter.rulesVersion);
+  const language = parseLanguage(payload.language);
 
   logger.info('characterChat: calling Gemini', {
     model: config.model,
@@ -131,7 +134,7 @@ async function runTextTurn(
     config,
     label: 'characterChat',
     contents: buildContents([...contextPreamble(payload.currentCharacter, chatDoc.summary), ...history], pdf),
-    systemInstruction: characterResponderPrompt(rulesVersion) + (wantsTitle ? CHAT_TITLE_INSTRUCTION : ''),
+    systemInstruction: characterResponderPrompt(rulesVersion, language) + (wantsTitle ? chatTitleInstruction(language) : ''),
     schema: responderSchema(wantsTitle),
     logContext: { characterId: payload.characterId, chatId: payload.chatId },
     onProgress: raw => writer.progress(extractPartialJsonString(raw, 'text')),
@@ -149,11 +152,11 @@ async function runTextTurn(
   }
 
   if (parsed.shouldUpdateCharacter === true) {
-    await runCharacterUpdate(db, chat, payload, history, text, pdf, { rulesVersion, converting: pendingRules !== null });
+    await runCharacterUpdate(db, chat, payload, history, text, pdf, { rulesVersion, converting: pendingRules !== null, language });
   }
 
   try {
-    await updateChatSummary(chat, config);
+    await updateChatSummary(chat, config, language);
   } catch (error) {
     // The next turn simply sends a longer history and tries again.
     logger.warn('characterChat: could not update the chat summary', error);
@@ -187,7 +190,7 @@ async function runImageTurn(
     chat,
     reply,
     { images: [{ url: image.imageUrl, mimeType: image.mimeType }], status: 'done' },
-    { lastMessagePreview: IMAGE_PREVIEW, hasImages: true },
+    { lastMessagePreview: IMAGE_PREVIEW[parseLanguage(payload.language)], hasImages: true },
     null
   );
 }
@@ -225,7 +228,8 @@ async function finishReply(
  * can cancel it there, after which the generated character is not saved. Once it is
  * saved, the message carries the version that was active before, so the owner can undo
  * the change. A failure is reported here and does not fail the turn: the answer itself
- * is already stored. The version is built under, and marked with, the rules of this turn.
+ * is already stored. The version is built under, and marked with, the rules of this turn;
+ * the warnings it stores are written in the language of this turn.
  */
 async function runCharacterUpdate(
   db: Firestore,
@@ -234,7 +238,7 @@ async function runCharacterUpdate(
   history: ChatHistoryMessage[],
   answer: string,
   pdf: InlinePdf | null,
-  rules: { rulesVersion: RulesVersion; converting: boolean }
+  turn: { rulesVersion: RulesVersion; converting: boolean; language: Language }
 ): Promise<void> {
   const update = messagesRef(chat).doc(`${payload.replyMessageId}-update`);
   const character = db.doc(`characters/${payload.characterId}`);
@@ -256,7 +260,8 @@ async function runCharacterUpdate(
       {
         characterId: payload.characterId,
         currentCharacter: payload.currentCharacter,
-        rulesVersion: rules.rulesVersion,
+        rulesVersion: turn.rulesVersion,
+        language: turn.language,
         chatHistory: history,
         ai1Response: answer,
         ...(pdf ? { pdfAttachment: pdf } : {}),
@@ -277,7 +282,7 @@ async function runCharacterUpdate(
       updatedCharacter: true,
       lastVersionNumber: saved.versionNumber,
       // The new version carries the new rules; from here on the conversation follows the character again.
-      ...(rules.converting ? { pendingRulesVersion: null } : {}),
+      ...(turn.converting ? { pendingRulesVersion: null } : {}),
     });
   } catch (error) {
     await character.update({ isGenerating: false }).catch(() => undefined);

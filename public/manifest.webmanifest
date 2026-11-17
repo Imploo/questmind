@@ -1,7 +1,7 @@
 {
   "name": "QuestMind - AI-Powered Audio Journal",
   "short_name": "QuestMind",
-  "description": "Transform your voice into meaningful insights with AI-powered audio journaling and transcription",
+  "description": "Your D&D companion: build and play characters with an AI sidekick, and turn recorded sessions into stories and podcasts",
   "theme_color": "#667eea",
   "background_color": "#6e64c6",
   "display": "standalone",

@@ -2,28 +2,41 @@ import { ChangeDetectionStrategy, Component, inject, resource } from '@angular/c
 import { ActivatedRoute } from '@angular/router';
 import { PodcastShareService } from './services/podcast-share.service';
 import { FormattingService } from '../shared/formatting.service';
+import { AuthService } from '../auth/auth.service';
 import { LogoComponent } from '../shared/components/logo.component';
+import { PublicTopbarComponent } from '../layout/public-topbar/public-topbar.component';
+import { TranslatePipe } from '../core/i18n/translate.pipe';
 
 /** Public player for a shared podcast — no sign-in needed. */
 @Component({
   selector: 'app-podcast-share-page',
-  imports: [LogoComponent],
+  imports: [LogoComponent, PublicTopbarComponent, TranslatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'block min-h-dvh' },
   template: `
-    <main class="max-w-xl mx-auto px-4 py-12">
-      <div class="mb-6 flex items-center justify-center gap-3">
-        <app-logo [size]="44" />
-        <div>
-          <div class="qm-page-title !text-xl">Questmind</div>
-          <div class="qm-page-eyebrow">Podcast</div>
-        </div>
+    @if (!authService.isAuthenticated()) {
+      <!-- Same bar as on a shared character: where you are, the language, and signing in. -->
+      <div class="p-3 sm:p-6 !pb-0">
+        <app-public-topbar />
       </div>
+    }
+    <main class="max-w-xl mx-auto px-4 py-8">
+      @if (authService.isAuthenticated()) {
+        <div class="mb-6 flex items-center justify-center gap-3">
+          <app-logo [size]="44" />
+          <div>
+            <div class="qm-page-title !text-xl" data-no-i18n>Questmind</div>
+            <div class="qm-page-eyebrow">{{ 'podcast.label' | translate }}</div>
+          </div>
+        </div>
+      } @else {
+        <div class="qm-page-eyebrow mb-3 text-center">{{ 'podcast.label' | translate }}</div>
+      }
 
       @if (share.isLoading()) {
         <div class="text-center py-12" role="status">
           <span class="qm-spinner qm-spinner-lg qm-spinner-light"></span>
-          <p class="mt-4 text-white/90">Podcast laden...</p>
+          <p class="mt-4 text-white/90">{{ 'podcast.sharePage.loading' | translate }}</p>
         </div>
       } @else if (share.hasValue() && share.value(); as podcast) {
         <article class="qm-panel qm-hero space-y-5">
@@ -41,7 +54,7 @@ import { LogoComponent } from '../shared/components/logo.component';
           </div>
 
           <audio controls preload="metadata" class="w-full" [src]="podcast.audioUrl">
-            Je browser ondersteunt het audio element niet.
+            {{ 'podcast.sharePage.audioUnsupported' | translate }}
           </audio>
 
           <a
@@ -52,24 +65,25 @@ import { LogoComponent } from '../shared/components/logo.component';
             rel="noopener"
           >
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v12m0 0l-4-4m4 4l4-4" /></svg>
-            Download
+            {{ 'common.download' | translate }}
           </a>
         </article>
       } @else {
         <div class="qm-panel qm-hero qm-empty">
           <span class="qm-medallion qm-medallion-lg"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg></span>
-          <h1 class="qm-empty-title">Podcast niet gevonden</h1>
-          <p class="qm-empty-text">Deze link bestaat niet (meer).</p>
+          <h1 class="qm-empty-title">{{ 'podcast.sharePage.notFoundTitle' | translate }}</h1>
+          <p class="qm-empty-text">{{ 'podcast.sharePage.notFoundText' | translate }}</p>
         </div>
       }
 
-      <p class="text-center text-xs text-white/70 mt-8">Gemaakt met QuestMind</p>
+      <p class="text-center text-xs text-white/70 mt-8">{{ 'podcast.sharePage.madeWith' | translate }}</p>
     </main>
   `
 })
 export class PodcastSharePageComponent {
   private readonly shareService = inject(PodcastShareService);
   readonly formatting = inject(FormattingService);
+  protected readonly authService = inject(AuthService);
 
   private readonly shareId = inject(ActivatedRoute).snapshot.paramMap.get('shareId') ?? '';
 

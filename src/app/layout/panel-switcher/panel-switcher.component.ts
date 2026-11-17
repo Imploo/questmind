@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { PanelSwitcherService } from './panel-switcher.service';
+import { TranslatePipe } from '../../core/i18n/translate.pipe';
 
 /**
  * Two tabs, Sheet and Chat, for a character page that shows them as swipeable panels.
@@ -8,22 +9,23 @@ import { PanelSwitcherService } from './panel-switcher.service';
  */
 @Component({
   selector: 'app-panel-switcher',
+  imports: [TranslatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="track" role="group" aria-label="Weergave">
+    <div class="track" role="group" [attr.aria-label]="'nav.panels' | translate">
       <button type="button" class="tab" [attr.aria-pressed]="active() === 'sheet'" (click)="panels.show('sheet')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13H7z" /><path d="M14 3v5h5M10 13h6M10 17h6" /></svg>
-        Sheet
+        {{ 'nav.sheet' | translate }}
       </button>
       <button
         type="button"
         class="tab"
         [attr.aria-pressed]="active() === 'chat'"
-        [attr.aria-label]="unread() ? 'Chat, nieuw antwoord' : null"
+        [attr.aria-label]="unread() ? ('nav.chatUnread' | translate) : null"
         (click)="panels.show('chat')"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
-        Chat
+        {{ 'nav.chat' | translate }}
         @if (unread()) {
           <span class="dot" aria-hidden="true"></span>
         }
@@ -33,11 +35,11 @@ import { PanelSwitcherService } from './panel-switcher.service';
         <div class="ink">
           <span class="tab">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h7l5 5v13H7z" /><path d="M14 3v5h5M10 13h6M10 17h6" /></svg>
-            Sheet
+            {{ 'nav.sheet' | translate }}
           </span>
           <span class="tab">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
-            Chat
+            {{ 'nav.chat' | translate }}
           </span>
         </div>
       </div>

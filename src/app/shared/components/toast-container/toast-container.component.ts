@@ -1,8 +1,10 @@
 import { Component, ChangeDetectionStrategy, inject } from '@angular/core';
 import { ToastService, Toast } from '../../services/toast.service';
+import { TranslatePipe } from '../../../core/i18n/translate.pipe';
 
 @Component({
   selector: 'app-toast-container',
+  imports: [TranslatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] flex w-[calc(100%-2rem)] max-w-sm flex-col items-center gap-2 pointer-events-none">
@@ -24,7 +26,7 @@ import { ToastService, Toast } from '../../services/toast.service';
               type="button"
               class="opacity-60 hover:opacity-100 transition-opacity"
               (click)="toastService.dismiss(toast.id)"
-              aria-label="Sluiten"
+              [attr.aria-label]="'common.close' | translate"
             >✕</button>
           }
         </div>

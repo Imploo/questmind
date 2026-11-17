@@ -12,7 +12,10 @@ import {
   isActiveGeneration,
   isUsableSession,
   latestCompletedVersion,
+  storyProgressText,
 } from './campaign-story.utils';
+import { I18nService } from '../core/i18n/i18n.service';
+import { TranslatePipe } from '../core/i18n/translate.pipe';
 
 /**
  * Campaign story page (ticket #69): the newest version of the campaign-wide story,
@@ -25,6 +28,7 @@ import {
     CampaignStoryViewComponent,
     CampaignStoryVersionsDrawerComponent,
     CampaignStoryPodcastsComponent,
+    TranslatePipe,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -35,8 +39,8 @@ import {
 
       <header class="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 class="qm-page-title">Verhaal</h1>
-          <p class="qm-page-sub mt-1">Het verhaal van de campagne tot nu toe, samengevat uit alle sessies.</p>
+          <h1 class="qm-page-title">{{ 'campaignStory.title' | translate }}</h1>
+          <p class="qm-page-sub mt-1">{{ 'campaignStory.intro' | translate }}</p>
         </div>
 
         <div class="flex items-center gap-2">
@@ -51,7 +55,7 @@ import {
                 <span class="qm-spinner" aria-hidden="true"></span>
                 <span>{{ generatingMessage() }}</span>
               } @else {
-                <span>Nieuw verhaal genereren</span>
+                <span>{{ 'campaignStory.generate' | translate }}</span>
               }
             </button>
           }
@@ -59,15 +63,14 @@ import {
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
             </svg>
-            Versies
+            {{ 'campaignStory.versions' | translate }}
           </button>
         </div>
       </header>
 
       @if (isOwner() && changedSessionCount() > 0 && !isGenerating()) {
         <p class="text-sm text-white/85">
-          {{ changedSessionCount() }} {{ changedSessionCount() === 1 ? 'nieuwe/gewijzigde sessie' : 'nieuwe/gewijzigde sessies' }}
-          sinds de nieuwste versie.
+          {{ 'campaignStory.changedSessions' | translate: changedSessionCount() }}
         </p>
       }
 
@@ -76,11 +79,19 @@ import {
       }
 
       @if (isOwner() && latestFailed(); as failed) {
-        <div class="qm-alert" role="alert">Versie {{ failed.version }} is mislukt: {{ failed.error || 'onbekende fout' }}</div>
+        <div class="qm-alert" role="alert">
+          {{ 'campaignStory.versionFailed' | translate: failed.version }}
+          @if (failed.error) {
+            <details class="mt-1 text-xs">
+              <summary class="cursor-pointer">{{ 'errors.technicalDetails' | translate }}</summary>
+              <p class="mt-1 break-words">{{ failed.error }}</p>
+            </details>
+          }
+        </div>
       }
 
       @if (storyService.isLoading()) {
-        <div class="text-center py-12" role="status" aria-label="Verhaal laden">
+        <div class="text-center py-12" role="status" [attr.aria-label]="'campaignStory.loading' | translate">
           <span class="qm-spinner qm-spinner-lg qm-spinner-light"></span>
         </div>
       } @else if (displayedVersion(); as version) {
@@ -98,18 +109,18 @@ import {
           [canGenerate]="isOwner()"
           [isGenerating]="isPodcastGenerating()"
           [error]="podcastError()"
-          [downloadName]="version.title || 'campagne-verhaal'"
+          [downloadName]="version.title ?? ''"
           (generate)="generatePodcast(version.version)"
         />
       } @else if (!isGenerating()) {
         <div class="qm-panel qm-hero qm-empty">
           <span class="qm-medallion qm-medallion-lg"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg></span>
           @if (usableSessionCount() === 0) {
-            <p class="qm-empty-text">Nog geen sessieverhalen om samen te vatten.</p>
+            <p class="qm-empty-text">{{ 'campaignStory.emptyNoSessions' | translate }}</p>
           } @else if (isOwner()) {
-            <p class="qm-empty-text">Nog geen verhaal. Klik op "Nieuw verhaal genereren" om te beginnen.</p>
+            <p class="qm-empty-text">{{ 'campaignStory.emptyOwner' | translate }}</p>
           } @else {
-            <p class="qm-empty-text">De eigenaar van de campagne heeft nog geen verhaal gegenereerd.</p>
+            <p class="qm-empty-text">{{ 'campaignStory.emptyMember' | translate }}</p>
           }
         </div>
       }
@@ -129,6 +140,7 @@ export class CampaignStoryPageComponent {
   private readonly authService = inject(AuthService);
   private readonly campaignContext = inject(CampaignContextService);
   private readonly sessionState = inject(AudioSessionStateService);
+  private readonly i18n = inject(I18nService);
 
   /** null = show the newest completed version */
   readonly campaignId = this.campaignContext.selectedCampaignId;
@@ -165,7 +177,12 @@ export class CampaignStoryPageComponent {
 
   readonly isGenerating = computed(() => this.startingStory() || !!this.activeGeneration());
 
-  readonly generatingMessage = computed(() => this.activeGeneration()?.progressMessage || 'Bezig...');
+  /** The step the backend is at, in the active language; "busy" until the version document exists. */
+  readonly generatingMessage = computed(() => {
+    const active = this.activeGeneration();
+    const t = this.i18n.t();
+    return active ? storyProgressText(active, t) : t.common.busy;
+  });
 
   /** Shown only when the newest version failed and nothing newer is running. */
   readonly latestFailed = computed(() => {

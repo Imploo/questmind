@@ -1,7 +1,18 @@
-import { ChangeDetectionStrategy, Component, ElementRef, computed, input, signal, viewChild } from '@angular/core';
-import { formatDuration } from '../formatting.service';
+import { ChangeDetectionStrategy, Component, ElementRef, computed, inject, input, signal, viewChild } from '@angular/core';
+import { TranslatePipe } from '../../core/i18n/translate.pipe';
+import { FormattingService, formatDuration } from '../formatting.service';
 
 const SPEEDS = [1, 1.25, 1.5, 2];
+
+/**
+ * What the controls are called for the thing being played, as whole sentences in the
+ * active language: "Play podcast v3", "Opname pauzeren". The parent knows what it plays.
+ */
+export interface AudioPlayerLabels {
+  play: string;
+  pause: string;
+  position: string;
+}
 
 /**
  * The player of a recording: a round play button beside a title, a seek bar with
@@ -13,6 +24,7 @@ const SPEEDS = [1, 1.25, 1.5, 2];
  */
 @Component({
   selector: 'app-audio-player',
+  imports: [TranslatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'block @container' },
   template: `
@@ -24,7 +36,7 @@ const SPEEDS = [1, 1.25, 1.5, 2];
             class="qm-medallion qm-medallion-brand qm-play"
             (click)="togglePlay()"
             [disabled]="loadFailed()"
-            [attr.aria-label]="(isPlaying() ? 'Pauzeer ' : 'Speel ') + label()"
+            [attr.aria-label]="isPlaying() ? labels().pause : labels().play"
             [attr.aria-pressed]="isPlaying()"
           >
             @if (isBuffering()) {
@@ -75,25 +87,25 @@ const SPEEDS = [1, 1.25, 1.5, 2];
             [disabled]="!totalSeconds() || loadFailed()"
             [style.--qm-seek-fill]="playedPercent() + '%'"
             (input)="seek($event)"
-            [attr.aria-label]="'Positie in ' + label()"
-            [attr.aria-valuetext]="elapsed() + ' van ' + total()"
+            [attr.aria-label]="labels().position"
+            [attr.aria-valuetext]="'podcast.player.positionValue' | translate: elapsed() : total()"
           />
           <span class="min-w-9 shrink-0 text-right text-xs tabular-nums qm-muted">{{ total() }}</span>
           <button
             type="button"
             class="qm-btn qm-btn-ghost qm-btn-sm -mr-1.5 w-12 shrink-0 !px-0 tabular-nums"
             (click)="cycleSpeed()"
-            title="Afspeelsnelheid"
-            [attr.aria-label]="'Afspeelsnelheid: ' + speedLabel()"
+            [title]="'podcast.player.speed' | translate"
+            [attr.aria-label]="'podcast.player.speedLabel' | translate: speedText()"
           >
-            {{ speedLabel() }}
+            {{ 'podcast.player.speedValue' | translate: speedText() }}
           </button>
         </div>
       }
     </div>
 
     @if (loadFailed()) {
-      <p class="mt-3 text-xs text-wine" role="alert">De audio kon niet worden geladen. Probeer het later opnieuw.</p>
+      <p class="mt-3 text-xs text-wine" role="alert">{{ 'podcast.player.loadFailed' | translate }}</p>
     }
 
     <ng-content />
@@ -102,13 +114,14 @@ const SPEEDS = [1, 1.25, 1.5, 2];
 export class AudioPlayerComponent {
   /** The audio to play; without it the seal is shown and the seek bar is left out. */
   readonly src = input<string | null | undefined>(null);
-  /** What is played, for the labels of the controls: "podcast v3", "opname". */
-  readonly label = input('audio');
+  /** The labels of the controls, naming what is played. */
+  readonly labels = input.required<AudioPlayerLabels>();
   /** Stored length in seconds, shown until (or instead of) the length the browser reads from the file. */
   readonly duration = input(0);
   /** `none` for a file too large to fetch before anyone asks for it. */
   readonly preload = input<'none' | 'metadata'>('metadata');
 
+  private readonly formatting = inject(FormattingService);
   private readonly audio = viewChild<ElementRef<HTMLAudioElement>>('audio');
 
   readonly isPlaying = signal(false);
@@ -126,7 +139,8 @@ export class AudioPlayerComponent {
     const total = this.totalSeconds();
     return total ? Math.min(100, (this.currentTime() / total) * 100) : 0;
   });
-  readonly speedLabel = computed(() => `${this.speed().toLocaleString('nl-NL')}×`);
+  /** The speed as a number in the active notation (`1,5` / `1.5`); the texts add the rest. */
+  readonly speedText = computed(() => this.formatting.formatNumber(this.speed()));
 
   togglePlay(): void {
     const audio = this.audio()?.nativeElement;

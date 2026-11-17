@@ -4,6 +4,8 @@ import { marked } from 'marked';
 import { PodcastVersion } from './services/audio-session.models';
 import { ToastService } from '../shared/services/toast.service';
 import { PodcastVersionItemComponent } from '../shared/components/podcast-version-item.component';
+import { I18nService } from '../core/i18n/i18n.service';
+import { TranslatePipe } from '../core/i18n/translate.pipe';
 
 export interface SessionMetaUpdate {
   title: string;
@@ -12,7 +14,7 @@ export interface SessionMetaUpdate {
 
 @Component({
   selector: 'app-session-story',
-  imports: [PodcastVersionItemComponent],
+  imports: [PodcastVersionItemComponent, TranslatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="qm-panel !p-0 overflow-hidden">
@@ -26,28 +28,28 @@ export interface SessionMetaUpdate {
                 class="qm-input font-display !text-lg font-bold"
                 [value]="titleDraft()"
                 (input)="onTitleDraftInput($event)"
-                placeholder="Session title"
-                aria-label="Session title"
+                [placeholder]="'audio.story.titleLabel' | translate"
+                [attr.aria-label]="'audio.story.titleLabel' | translate"
               />
               <input
                 type="date"
                 class="qm-input !w-48 !text-sm"
                 [value]="dateDraft()"
                 (input)="onDateDraftInput($event)"
-                aria-label="Session date"
+                [attr.aria-label]="'audio.story.dateLabel' | translate"
               />
             </div>
             <div class="flex gap-2 self-start">
               <button type="button" class="qm-btn qm-btn-sm" (click)="cancelMetaEdit()">
-                Cancel
+                {{ 'common.cancel' | translate }}
               </button>
               <button type="button" class="qm-btn qm-btn-sm qm-btn-primary" (click)="saveMetaEdit()">
-                Save
+                {{ 'common.save' | translate }}
               </button>
             </div>
           } @else {
             <div class="min-w-0">
-              <div class="qm-eyebrow">Session</div>
+              <div class="qm-eyebrow">{{ 'audio.story.eyebrow' | translate }}</div>
               <h3 class="qm-display text-xl sm:text-2xl leading-tight break-words">{{ title() }}</h3>
               <p class="text-sm qm-muted mt-0.5">{{ subtitle() }}</p>
             </div>
@@ -58,15 +60,15 @@ export interface SessionMetaUpdate {
                 (click)="startMetaEdit()"
                 [disabled]="isBusy() || !canEditStory()"
               >
-                Edit details
+                {{ 'audio.story.editDetails' | translate }}
               </button>
               <button
                 type="button"
                 class="qm-btn qm-btn-sm qm-btn-danger"
                 (click)="onDeleteClick()"
                 [disabled]="isBusy() || !canEditStory()"
-                title="Sessie verwijderen"
-                aria-label="Sessie verwijderen"
+                [title]="'audio.story.deleteSession' | translate"
+                [attr.aria-label]="'audio.story.deleteSession' | translate"
               >
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
@@ -87,7 +89,7 @@ export interface SessionMetaUpdate {
             (click)="activeTab.set('story')"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
-            <span>Story</span>
+            <span>{{ 'audio.story.tabStory' | translate }}</span>
           </button>
           <button
             type="button"
@@ -98,7 +100,7 @@ export interface SessionMetaUpdate {
             (click)="activeTab.set('podcasts')"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
-            <span>Podcasts</span>
+            <span>{{ 'audio.story.tabPodcasts' | translate }}</span>
             @if (podcasts().length > 0) {
               <span class="qm-badge qm-badge-violet font-sans tracking-normal">
                 {{ podcasts().length }}
@@ -116,14 +118,14 @@ export interface SessionMetaUpdate {
             <div class="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
               <div class="space-y-4 min-w-0">
                 <div class="flex flex-wrap items-center justify-between gap-2">
-                  <h4 class="qm-section-title flex-1 !mb-0">Generated Story</h4>
+                  <h4 class="qm-section-title flex-1 !mb-0">{{ 'audio.story.generatedStory' | translate }}</h4>
                   <button
                     type="button"
                     class="qm-btn qm-btn-sm"
                     (click)="toggleEdit()"
                     [disabled]="isBusy() || !canEditStory()"
                   >
-                    {{ isEditing() ? 'Preview' : 'Edit story' }}
+                    {{ (isEditing() ? 'audio.story.preview' : 'audio.story.editStory') | translate }}
                   </button>
                 </div>
 
@@ -134,7 +136,7 @@ export interface SessionMetaUpdate {
                       [value]="draft()"
                       (input)="onDraftInput($event)"
                       [disabled]="isBusy() || !canEditStory()"
-                      aria-label="Story"
+                      [attr.aria-label]="'audio.story.tabStory' | translate"
                     ></textarea>
                     <div class="mt-3 flex justify-end gap-2">
                       <button
@@ -143,7 +145,7 @@ export interface SessionMetaUpdate {
                         (click)="resetDraft()"
                       [disabled]="isBusy() || !canEditStory()"
                       >
-                        Reset
+                        {{ 'audio.story.reset' | translate }}
                       </button>
                       <button
                         type="button"
@@ -151,7 +153,7 @@ export interface SessionMetaUpdate {
                         (click)="saveDraft()"
                       [disabled]="isBusy() || !canEditStory()"
                       >
-                        Save Story
+                        {{ 'audio.story.saveStory' | translate }}
                       </button>
                     </div>
                   } @else {
@@ -161,17 +163,17 @@ export interface SessionMetaUpdate {
 
                 <div class="flex flex-wrap gap-2 pt-1">
                   <button type="button" class="qm-btn qm-btn-sm" (click)="downloadMarkdown()">
-                    Download Markdown
+                    {{ 'audio.story.downloadMarkdown' | translate }}
                   </button>
                   <button type="button" class="qm-btn qm-btn-sm" (click)="downloadPdf()">
-                    Export PDF
+                    {{ 'audio.story.exportPdf' | translate }}
                   </button>
                 </div>
 
                 @if (transcript()) {
                   <div class="border-t border-dashed border-[#e0d2b6] pt-4">
                     <button type="button" class="qm-link text-sm" (click)="toggleTranscript()">
-                      {{ showTranscript() ? 'Hide transcript' : 'Show transcript preview' }}
+                      {{ (showTranscript() ? 'audio.story.hideTranscript' : 'audio.story.showTranscript') | translate }}
                     </button>
                     @if (showTranscript()) {
                       <pre class="qm-well mt-3 text-xs text-gray-700 whitespace-pre-wrap">
@@ -184,28 +186,28 @@ export interface SessionMetaUpdate {
 
               <div class="space-y-3 min-w-0">
                 <div class="flex items-center justify-between gap-2">
-                  <h4 class="qm-section-title flex-1 !mb-0">Corrections & Guidance</h4>
+                  <h4 class="qm-section-title flex-1 !mb-0">{{ 'audio.corrections.title' | translate }}</h4>
                   @if (correctionsStatus() !== 'idle') {
                     <span class="text-xs qm-muted">
-                      {{ correctionsStatus() === 'saving' ? 'Saving...' : 'Saved ✓' }}
+                      {{ (correctionsStatus() === 'saving' ? 'audio.corrections.saving' : 'audio.corrections.saved') | translate }}
                     </span>
                   }
                 </div>
 
                 <div class="qm-well space-y-3">
                   <p class="text-sm text-gray-700">
-                    Review the story and add corrections below. The AI will apply these when you regenerate the story.
+                    {{ 'audio.corrections.intro' | translate }}
                   </p>
                   <textarea
                     class="qm-input min-h-[240px] !text-sm resize-y font-mono"
                     [value]="corrections()"
                     (input)="onCorrectionsInput($event)"
                     [disabled]="isBusy() || !canEditCorrections()"
-                    aria-label="Corrections"
-                    placeholder="Example: When you hear 'corikan', the correct name is 'Khuri-Khan'. The party is in Waterdeep, not Baldur's Gate."
+                    [attr.aria-label]="'audio.corrections.label' | translate"
+                    [placeholder]="'audio.corrections.placeholder' | translate"
                   ></textarea>
                   <p class="qm-help">
-                    Corrections auto-save as you type. Regenerating replaces the story on the left.
+                    {{ 'audio.corrections.help' | translate }}
                   </p>
                   <button
                     type="button"
@@ -213,14 +215,14 @@ export interface SessionMetaUpdate {
                     (click)="regenerate.emit()"
                     [disabled]="isBusy() || !canRegenerate()"
                   >
-                    Regenerate Story
+                    {{ 'audio.corrections.regenerate' | translate }}
                   </button>
                 </div>
               </div>
             </div>
           } @else {
             <div class="rounded-xl border border-dashed border-[#d9c9a6] p-6 text-center font-prose text-lg text-gray-600">
-              The session story will appear here once generation completes.
+              {{ 'audio.story.empty' | translate }}
             </div>
           }
         }
@@ -230,9 +232,9 @@ export interface SessionMetaUpdate {
           <div class="space-y-4">
             <div class="flex flex-wrap items-center justify-between gap-3">
               <div class="min-w-0">
-                <h4 class="font-display text-base font-bold">Session Podcast</h4>
+                <h4 class="font-display text-base font-bold">{{ 'podcast.session.title' | translate }}</h4>
                 <p class="text-sm qm-muted mt-0.5">
-                  Genereer een boeiende audio recap met twee hosts die de sessie bespreken
+                  {{ 'podcast.session.intro' | translate }}
                 </p>
               </div>
               <button
@@ -245,7 +247,7 @@ export interface SessionMetaUpdate {
                   <span class="qm-spinner qm-spinner-light" aria-hidden="true"></span>
                   <span>{{ podcastGenerationProgress() }}</span>
                 } @else {
-                  Genereer Podcast
+                  {{ 'podcast.session.generate' | translate }}
                 }
               </button>
             </div>
@@ -264,7 +266,7 @@ export interface SessionMetaUpdate {
                   <div class="qm-progress-bar" [style.width.%]="podcastGenerationProgressPercent()"></div>
                 </div>
                 <p class="text-xs mt-2">
-                  Dit kan 2-3 minuten duren. De complete MP3 wordt gegenereerd en opgeslagen.
+                  {{ 'podcast.session.durationHint' | translate }}
                 </p>
               </div>
             }
@@ -272,7 +274,7 @@ export interface SessionMetaUpdate {
             @if (podcasts().length > 0) {
               <div class="space-y-3">
                 <h5 class="qm-eyebrow">
-                  Gegenereerde Podcasts ({{ podcasts().length }})
+                  {{ 'podcast.session.listTitle' | translate: podcasts().length }}
                 </h5>
                 @for (podcast of podcasts(); track podcast.version) {
                   <app-podcast-version-item
@@ -287,10 +289,10 @@ export interface SessionMetaUpdate {
             @if (podcasts().length === 0 && !isGeneratingPodcast()) {
               <div class="rounded-xl border border-dashed border-[#d9c9a6] p-6 text-center">
                 <p class="font-prose text-lg text-gray-700">
-                  Nog geen podcasts gegenereerd. Klik op "Genereer Podcast" om te beginnen.
+                  {{ 'podcast.session.empty' | translate }}
                 </p>
                 <p class="qm-help mt-1">
-                  Podcasts gebruiken AI-stemmen die natuurlijk klinkend Nederlands spreken
+                  {{ 'podcast.session.voicesHint' | translate }}
                 </p>
               </div>
             }
@@ -303,8 +305,10 @@ export interface SessionMetaUpdate {
 export class SessionStoryComponent {
   private readonly sanitizer = inject(DomSanitizer);
   private readonly toastService = inject(ToastService);
+  private readonly i18n = inject(I18nService);
 
-  title = input('Session Story');
+  /** Title of the session; the parent passes a translated default for a session without one. */
+  title = input('');
   subtitle = input('');
   sessionDate = input('');
   story = input('');
@@ -358,7 +362,7 @@ export class SessionStoryComponent {
   }
 
   async onDeleteClick(): Promise<void> {
-    const confirmed = await this.toastService.confirm('Sessie verwijderen?');
+    const confirmed = await this.toastService.confirm(this.i18n.t().audio.story.deleteConfirm);
     if (confirmed) {
       this.deleteSession.emit();
     }

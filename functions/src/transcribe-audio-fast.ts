@@ -7,7 +7,7 @@ import { SHARED_CORS } from './config/cors';
 import { ProgressTrackerService } from './services/progress-tracker.service';
 import { getAiFeatureConfig, getTranscriptionSegmentationConfig } from './utils/ai-settings';
 import { generateText, getGeminiApiKey, getGeminiClient } from './utils/gemini-client';
-import { AIFeatureConfig } from './types/audio-session.types';
+import { AIFeatureConfig, ProgressDetail } from './types/audio-session.types';
 import { TASK_WORKERS, TASK_WORKER_TIMEOUT_SECONDS, enqueueWorkerTask } from './services/task-queue.service';
 import { buildRawStoryPrompt, buildSegmentRawStoryPrompt } from './audio/transcription-prompt';
 import { fetchKankaContext, kankaCampaignIdFrom } from './services/kanka.service';
@@ -388,7 +388,9 @@ async function processTranscriptionAsync(task: TranscriptionTaskPayload): Promis
         70 + Math.round((completedSegments / total) * 8),
         total > 1
           ? `Transcribed ${completedSegments} of ${total} segments...`
-          : 'Transcribing audio...'
+          : 'Transcribing audio...',
+        undefined,
+        segmentDetail(completedSegments, total)
       );
 
       return segmentText.trim();
@@ -493,7 +495,9 @@ async function prepareStoredSegments(
     segmentationConfig,
     (uploaded, total) => ProgressTrackerService.updateProgress(
       campaignId, sessionId, 'transcribing', 70,
-      total > 1 ? `Preparing audio segment ${uploaded} of ${total}...` : 'Preparing stored audio...'
+      total > 1 ? `Preparing audio segment ${uploaded} of ${total}...` : 'Preparing stored audio...',
+      undefined,
+      segmentDetail(uploaded, total)
     )
   );
 
@@ -502,6 +506,11 @@ async function prepareStoredSegments(
   });
 
   return segments;
+}
+
+/** The count the frontend shows as "segment x of y"; a recording in one piece has nothing to count. */
+function segmentDetail(current: number, total: number): ProgressDetail | undefined {
+  return total > 1 ? { current, total } : undefined;
 }
 
 /**

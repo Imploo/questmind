@@ -23,6 +23,8 @@ import { PanelSwitcherComponent } from '../../../../layout/panel-switcher/panel-
 import { PagePanel, PanelSwitcherService } from '../../../../layout/panel-switcher/panel-switcher.service';
 import { trackVisualViewport } from '../../../../shared/utils/visual-viewport';
 import { RulesVersion, rulesConversionRequest, rulesVersionOf } from '../../../../shared/models/rules-version';
+import { I18nService } from '../../../../core/i18n/i18n.service';
+import { TranslatePipe } from '../../../../core/i18n/translate.pipe';
 
 @Component({
   selector: 'app-character-builder-page',
@@ -38,6 +40,7 @@ import { RulesVersion, rulesConversionRequest, rulesVersionOf } from '../../../.
     ChatComponent,
     CharacterVersionHistoryComponent,
     PanelSwitcherComponent,
+    TranslatePipe,
   ],
   template: `
     <!--
@@ -57,12 +60,12 @@ import { RulesVersion, rulesConversionRequest, rulesVersionOf } from '../../../.
         <div class="sheet-column max-w-5xl mx-auto flex flex-col gap-4">
           <!-- Back to the character list. The list is behind sign-in, so a signed-out visitor gets no link. -->
           @if (isAuthenticated()) {
-            <nav aria-label="Breadcrumb" class="-mb-1 flex">
+            <nav [attr.aria-label]="'characters.page.breadcrumb' | translate" class="-mb-1 flex">
               <a routerLink="/characters" class="qm-backlink">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                 </svg>
-                Overzicht
+                {{ 'characters.page.overview' | translate }}
               </a>
             </nav>
           }
@@ -70,13 +73,13 @@ import { RulesVersion, rulesConversionRequest, rulesVersionOf } from '../../../.
             @if (activeVersion()) {
               <div class="relative">
                 @if (isGenerating()) {
-                  <div class="absolute -inset-2 z-10 flex items-start justify-center rounded-2xl bg-[rgba(40,24,90,0.35)] pt-[30vh] backdrop-blur-[2px]" role="status" aria-label="Updating character">
+                  <div class="absolute -inset-2 z-10 flex items-start justify-center rounded-2xl bg-[rgba(40,24,90,0.35)] pt-[30vh] backdrop-blur-[2px]" role="status" [attr.aria-label]="'characters.page.updating' | translate">
                     <span class="qm-medallion qm-medallion-lg"><span class="qm-spinner qm-spinner-lg"></span></span>
                   </div>
                 }
                 <app-character-sheet
                   [character]="activeVersion()!.character"
-                  [characterName]="selectedCharacter()?.name || 'Unknown'"
+                  [characterName]="selectedCharacter()?.name || ('common.unknown' | translate)"
                   [characterId]="selectedCharacterId()"
                   [activeVersionId]="activeVersion()?.id ?? ''"
                   [images]="characterImages()"
@@ -100,14 +103,14 @@ import { RulesVersion, rulesConversionRequest, rulesVersionOf } from '../../../.
                 ></app-character-sheet>
               </div>
             } @else {
-              <div class="qm-panel flex items-center justify-center min-h-[320px]" role="status" aria-label="Loading character">
+              <div class="qm-panel flex items-center justify-center min-h-[320px]" role="status" [attr.aria-label]="'characters.page.loading' | translate">
                 <span class="qm-spinner qm-spinner-lg"></span>
               </div>
             }
           } @else {
             <div class="qm-panel qm-hero qm-empty min-h-[320px] justify-center">
-              <h2 class="qm-empty-title">Select a Character</h2>
-              <p class="qm-empty-text">Choose a character from the list or create a new one.</p>
+              <h2 class="qm-empty-title">{{ 'characters.page.selectTitle' | translate }}</h2>
+              <p class="qm-empty-text">{{ 'characters.page.selectText' | translate }}</p>
             </div>
           }
         </div>
@@ -115,7 +118,7 @@ import { RulesVersion, rulesConversionRequest, rulesVersionOf } from '../../../.
 
       <!-- Chat panel (owner only) -->
       @if (isOwner()) {
-        <aside class="chat-panel" aria-label="Chat" [attr.inert]="panelsMode() && activePanel() !== 'chat' ? '' : null">
+        <aside class="chat-panel" [attr.aria-label]="'nav.chat' | translate" [attr.inert]="panelsMode() && activePanel() !== 'chat' ? '' : null">
           <div class="chat-frame">
             @if (activeVersion()) {
               <app-chat
@@ -127,7 +130,7 @@ import { RulesVersion, rulesConversionRequest, rulesVersionOf } from '../../../.
               ></app-chat>
             } @else {
               <div class="flex h-full items-center justify-center text-sm qm-muted">
-                Select a character to chat
+                {{ 'characters.page.selectToChat' | translate }}
               </div>
             }
           </div>
@@ -280,6 +283,7 @@ export class CharacterBuilderPageComponent {
   private screenWakeLock = inject(ScreenWakeLockService);
   private destroyRef = inject(DestroyRef);
   private panelSwitcher = inject(PanelSwitcherService);
+  private readonly i18n = inject(I18nService);
 
   // State
   characters = signal<Character[]>([]);
@@ -519,8 +523,9 @@ export class CharacterBuilderPageComponent {
     this.router.navigate(['/characters', id]);
   }
 
+  /** The name is written in the language of the moment; class, race and language are game terms. */
   async onCreateCharacter() {
-    const name = `New Character ${this.characters().length + 1}`;
+    const name = this.i18n.t().characters.defaultName(this.characters().length + 1);
     const initialData = {
       name,
       class: 'Fighter',
@@ -578,7 +583,7 @@ export class CharacterBuilderPageComponent {
       await this.characterVersionService.activateVersion(charId, versionId);
     } catch (e) {
       logger.error('Failed to switch character version:', e);
-      this.toastService.show('Wisselen van versie is mislukt. Probeer het opnieuw.', 'error');
+      this.toastService.show(this.i18n.t().characters.page.switchVersionFailed, 'error');
     }
   }
 
@@ -690,11 +695,11 @@ export class CharacterBuilderPageComponent {
     this.cloning.set(true);
     try {
       const cloneId = await this.characterImportService.cloneCharacter(charId);
-      this.toastService.show('Karakter gekloond — dit is nu je eigen kopie.', 'success');
+      this.toastService.show(this.i18n.t().characters.page.cloned, 'success');
       await this.router.navigate(['/characters', cloneId]);
     } catch (e) {
       logger.error('Failed to clone character:', e);
-      this.toastService.showCallableError(e, 'Klonen is mislukt. Probeer het opnieuw.');
+      this.toastService.showCallableError(e, this.i18n.t().characters.page.cloneFailed);
     } finally {
       this.cloning.set(false);
     }
@@ -706,15 +711,12 @@ export class CharacterBuilderPageComponent {
     if (!charId || !this.isOwner()) return;
     try {
       await this.characterService.setArchived(charId, archived);
-      this.toastService.show(
-        archived
-          ? 'Karakter gearchiveerd — je vindt het terug onder "Archived" in je karakterlijst.'
-          : 'Karakter teruggezet in je karakterlijst.',
-        'success'
-      );
+      const texts = this.i18n.t().characters.page;
+      this.toastService.show(archived ? texts.archived : texts.unarchived, 'success');
     } catch (e) {
       logger.error('Failed to archive character:', e);
-      this.toastService.show(archived ? 'Archiveren is mislukt. Probeer het opnieuw.' : 'Terugzetten is mislukt. Probeer het opnieuw.', 'error');
+      const texts = this.i18n.t().characters;
+      this.toastService.show(archived ? texts.page.archiveFailed : texts.unarchiveFailed, 'error');
     }
   }
 
@@ -730,10 +732,10 @@ export class CharacterBuilderPageComponent {
     if (!version || !chat || !this.isOwner() || rulesVersion === rulesVersionOf(version.character)) return;
     // A second update next to a running one would start from the same character and undo the first.
     if (this.isGenerating() || this.chatService.isBusy()) {
-      this.toastService.show('The Sidekick is nog bezig. Probeer het daarna opnieuw.', 'warning');
+      this.toastService.show(this.i18n.t().characters.page.sidekickBusy, 'warning');
       return;
     }
-    chat.startRulesConversion(rulesVersion, rulesConversionRequest(rulesVersion));
+    chat.startRulesConversion(rulesVersion, rulesConversionRequest(rulesVersion, this.i18n.t().characters.rulesConversion));
     // The conversion happens in the chat: show it. Not before the menu has closed, though:
     // closing hands the focus back to its button on the sheet, which stops a scroll to the chat.
     setTimeout(() => this.showPanel('chat'));

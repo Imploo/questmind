@@ -1,4 +1,4 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, untracked } from '@angular/core';
 import {
   collection,
   deleteField,
@@ -15,6 +15,9 @@ import { AuthService } from '../auth/auth.service';
 import { Campaign, CampaignMember, CampaignVoiceIntro } from './campaign.models';
 import { UserService } from '../core/user.service';
 import { FirebaseService } from '../core/firebase.service';
+import { I18nService } from '../core/i18n/i18n.service';
+import type { Translations } from '../core/i18n/translations';
+import { CampaignError } from './campaign-error';
 import * as logger from '../shared/logger';
 
 @Injectable({ providedIn: 'root' })
@@ -22,19 +25,28 @@ export class CampaignService {
   private readonly authService = inject(AuthService);
   private readonly userService = inject(UserService);
   private readonly firebase = inject(FirebaseService);
+  private readonly i18n = inject(I18nService);
   private readonly db: Firestore | null;
 
   constructor() {
     this.db = this.firebase.firestore;
   }
 
+  /**
+   * The texts for the errors thrown here. Read untracked: these methods are also
+   * called from effects, which must not run again when the language switches.
+   */
+  private get texts(): Translations {
+    return untracked(() => this.i18n.t());
+  }
+
   async createCampaign(name: string, description?: string): Promise<string> {
     const user = this.authService.currentUser();
     if (!user) {
-      throw new Error('User not authenticated');
+      throw new CampaignError(this.texts.errors.unauthenticated);
     }
     if (!this.db) {
-      throw new Error('Firestore is not configured');
+      throw new CampaignError(this.texts.campaign.errors.notConfigured);
     }
 
     const campaignId = doc(collection(this.db, 'campaigns')).id;
@@ -110,7 +122,7 @@ export class CampaignService {
    */
   async updateVoiceIntro(campaignId: string, voiceIntro: CampaignVoiceIntro | null): Promise<void> {
     if (!this.db) {
-      throw new Error('Firestore is not configured');
+      throw new CampaignError(this.texts.campaign.errors.notConfigured);
     }
     const campaignRef = doc(this.db, 'campaigns', campaignId);
     await updateDoc(campaignRef, {
@@ -125,7 +137,7 @@ export class CampaignService {
    */
   async updateVoiceIntroRoster(campaignId: string, roster: string): Promise<void> {
     if (!this.db) {
-      throw new Error('Firestore is not configured');
+      throw new CampaignError(this.texts.campaign.errors.notConfigured);
     }
     const trimmed = roster.trim();
     const campaignRef = doc(this.db, 'campaigns', campaignId);
@@ -138,17 +150,17 @@ export class CampaignService {
   async inviteUserByEmail(campaignId: string, email: string): Promise<void> {
     const user = this.authService.currentUser();
     if (!user) {
-      throw new Error('User not authenticated');
+      throw new CampaignError(this.texts.errors.unauthenticated);
     }
     if (!this.db) {
-      throw new Error('Firestore is not configured');
+      throw new CampaignError(this.texts.campaign.errors.notConfigured);
     }
     const campaign = await this.getCampaign(campaignId);
     if (!campaign) {
-      throw new Error('Campaign not found');
+      throw new CampaignError(this.texts.campaign.errors.campaignNotFound);
     }
     if (campaign.ownerId !== user.uid) {
-      throw new Error('Only campaign owner can invite users');
+      throw new CampaignError(this.texts.campaign.errors.onlyOwnerCanInvite);
     }
 
     const normalizedEmail = email.trim().toLowerCase();
@@ -157,7 +169,7 @@ export class CampaignService {
     try {
       targetUser = await this.findUserByEmail(normalizedEmail);
       if (!targetUser) {
-        throw new Error(`No user found with email: ${normalizedEmail}. The user must create an account first.`);
+        throw new CampaignError(this.texts.campaign.errors.userNotFound(normalizedEmail));
       }
     } catch (error: unknown) {
       logger.error('Error during user lookup:', error);
@@ -165,7 +177,7 @@ export class CampaignService {
     }
 
     if (campaign.members?.[targetUser.uid]) {
-      throw new Error('User is already a member of this campaign');
+      throw new CampaignError(this.texts.campaign.errors.alreadyMember);
     }
 
     const now = new Date().toISOString();
@@ -184,21 +196,21 @@ export class CampaignService {
   async removeMember(campaignId: string, memberId: string): Promise<void> {
     const user = this.authService.currentUser();
     if (!user) {
-      throw new Error('User not authenticated');
+      throw new CampaignError(this.texts.errors.unauthenticated);
     }
     if (!this.db) {
-      throw new Error('Firestore is not configured');
+      throw new CampaignError(this.texts.campaign.errors.notConfigured);
     }
 
     const campaign = await this.getCampaign(campaignId);
     if (!campaign) {
-      throw new Error('Campaign not found');
+      throw new CampaignError(this.texts.campaign.errors.campaignNotFound);
     }
     if (memberId === campaign.ownerId) {
-      throw new Error('Cannot remove campaign owner');
+      throw new CampaignError(this.texts.campaign.errors.cannotRemoveOwner);
     }
     if (campaign.ownerId !== user.uid && memberId !== user.uid) {
-      throw new Error('Only campaign owner can remove members');
+      throw new CampaignError(this.texts.campaign.errors.onlyOwnerCanRemove);
     }
 
     const nextMembers = { ...campaign.members };

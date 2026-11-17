@@ -1,6 +1,7 @@
 import type { Timestamp } from 'firebase-admin/firestore';
 import type { DndCharacter } from '../schemas/dnd-character.schema';
 import type { RulesVersion } from '../character/rules-version';
+import type { Language } from '../utils/language';
 
 export interface ChatHistoryMessage {
   role: 'user' | 'assistant';
@@ -43,7 +44,7 @@ export interface ChatMessageDoc {
   versionNumber?: number;
   /** The version that was active before the update: where its undo goes back to. */
   previousVersionId?: string;
-  /** Ability score rule violations the update could not fix. */
+  /** Ability score rule violations the update could not fix, in the language of the turn. */
   abilityScoreWarnings?: string[];
   errorCode?: ChatErrorCode;
   createdAt: Timestamp;
@@ -93,4 +94,10 @@ export interface ChatTurnPayload {
   /** The character as the owner sees it right now (active version + play state), without descriptions. */
   currentCharacter: DndCharacter;
   attachment: StoredChatAttachment | null;
+  /**
+   * The language the user has the app in: The Sidekick answers in it, and the texts
+   * this turn stores (title, summary, warnings) are written in it. Missing in a task
+   * that was queued before this field existed; that means Dutch.
+   */
+  language?: Language;
 }

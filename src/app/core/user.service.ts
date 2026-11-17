@@ -2,6 +2,7 @@ import { Injectable, computed, effect, inject, resource } from '@angular/core';
 import type { User } from 'firebase/auth';
 import { AuthService } from '../auth/auth.service';
 import type { UserProfile } from './models/user.model';
+import type { LanguageCode } from './i18n/language-strategy';
 import { UserProfileRepositoryFactory } from '../shared/repository/user-profile.repository';
 
 type ProfileRecord = UserProfile & Record<string, unknown>;
@@ -142,5 +143,10 @@ export class UserService {
 
   async setDefaultCampaign(userId: string, campaignId: string | null): Promise<void> {
     await this.profileRepoFactory.create(userId).patch({ defaultCampaignId: campaignId, updatedAt: new Date() });
+  }
+
+  /** Store the language the user chose, so it follows them to every device. */
+  async setLanguage(userId: string, language: LanguageCode): Promise<void> {
+    await this.profileRepoFactory.create(userId).patch({ language, updatedAt: new Date() });
   }
 }

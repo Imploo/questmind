@@ -1,5 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
-import { CONDITIONS, MAX_EXHAUSTION } from '../../../../shared/utils/character-play-state';
+import { MAX_EXHAUSTION } from '../../../../shared/utils/character-play-state';
+import { TranslatePipe } from '../../../../core/i18n/translate.pipe';
+import { PLAY_TERMS } from '../../../../shared/dnd-terms';
 
 /**
  * Active conditions, exhaustion and the spell being concentrated on. When `editable`,
@@ -8,17 +10,18 @@ import { CONDITIONS, MAX_EXHAUSTION } from '../../../../shared/utils/character-p
 @Component({
   selector: 'app-conditions-bar',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [TranslatePipe],
   template: `
     <div class="bar">
-      <span class="title">Conditions</span>
+      <span class="title">{{ terms.conditions }}</span>
 
       @if (!conditions().length && !exhaustion()) {
-        <span class="none">None</span>
+        <span class="none">{{ 'common.none' | translate }}</span>
       }
 
       @for (condition of conditions(); track condition) {
         @if (editable()) {
-          <button type="button" class="chip is-active" [attr.aria-label]="'Remove ' + condition" (click)="conditionToggle.emit(condition)">
+          <button type="button" class="chip is-active" [attr.aria-label]="'play.conditions.remove' | translate: condition" (click)="conditionToggle.emit(condition)">
             {{ condition }}
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
           </button>
@@ -28,7 +31,7 @@ import { CONDITIONS, MAX_EXHAUSTION } from '../../../../shared/utils/character-p
       }
 
       @if (exhaustion()) {
-        <span class="chip is-exhaustion is-static">Exhaustion {{ exhaustion() }}</span>
+        <span class="chip is-exhaustion is-static">{{ terms.exhaustion }} {{ exhaustion() }}</span>
       }
 
       @if (editable()) {
@@ -36,21 +39,21 @@ import { CONDITIONS, MAX_EXHAUSTION } from '../../../../shared/utils/character-p
           @if (!pickerOpen()) {
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
           }
-          {{ pickerOpen() ? 'Done' : 'Add' }}
+          {{ (pickerOpen() ? 'common.done' : 'common.add') | translate }}
         </button>
       }
 
       @if (concentration(); as spell) {
         @if (editable()) {
-          <button type="button" class="chip is-concentration" [attr.aria-label]="'Stop concentrating on ' + spell" (click)="concentrationEnd.emit()">
+          <button type="button" class="chip is-concentration" [attr.aria-label]="'play.concentration.stop' | translate: spell" (click)="concentrationEnd.emit()">
             <svg class="conc-ring" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" /><circle class="dot" cx="12" cy="12" r="2.5" /></svg>
-            Concentrating · {{ spell }}
+            {{ 'play.concentration.on' | translate: spell }}
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
           </button>
         } @else {
           <span class="chip is-concentration is-static">
             <svg class="conc-ring" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" /><circle class="dot" cx="12" cy="12" r="2.5" /></svg>
-            Concentrating · {{ spell }}
+            {{ 'play.concentration.on' | translate: spell }}
           </span>
         }
       }
@@ -66,11 +69,11 @@ import { CONDITIONS, MAX_EXHAUSTION } from '../../../../shared/utils/character-p
           }
         </div>
         <div class="exhaustion">
-          <span class="exhaustion-label">Exhaustion</span>
-          <button type="button" class="step" aria-label="Lower exhaustion" [disabled]="exhaustion() <= 0" (click)="exhaustionChange.emit(exhaustion() - 1)">−</button>
+          <span class="exhaustion-label">{{ terms.exhaustion }}</span>
+          <button type="button" class="step" [attr.aria-label]="'play.conditions.lowerExhaustion' | translate" [disabled]="exhaustion() <= 0" (click)="exhaustionChange.emit(exhaustion() - 1)">−</button>
           <span class="exhaustion-value">{{ exhaustion() }}</span>
-          <button type="button" class="step" aria-label="Raise exhaustion" [disabled]="exhaustion() >= maxExhaustion" (click)="exhaustionChange.emit(exhaustion() + 1)">+</button>
-          <span class="hint">Level 0–{{ maxExhaustion }} · a long rest removes one level</span>
+          <button type="button" class="step" [attr.aria-label]="'play.conditions.raiseExhaustion' | translate" [disabled]="exhaustion() >= maxExhaustion" (click)="exhaustionChange.emit(exhaustion() + 1)">+</button>
+          <span class="hint">{{ 'play.conditions.exhaustionHint' | translate: maxExhaustion }}</span>
         </div>
       </div>
     }
@@ -156,9 +159,10 @@ export class ConditionsBarComponent {
 
   pickerOpen = signal(false);
   readonly maxExhaustion = MAX_EXHAUSTION;
+  protected readonly terms = PLAY_TERMS;
 
   options = computed(() => {
     const active = new Set(this.conditions());
-    return CONDITIONS.map(name => ({ name, active: active.has(name) }));
+    return PLAY_TERMS.conditionNames.map(name => ({ name, active: active.has(name) }));
   });
 }

@@ -14,12 +14,14 @@ import {
 } from 'firebase/auth';
 import { FirebaseService } from '../core/firebase.service';
 import { SentryService } from '../core/services/sentry.service';
+import { I18nService } from '../core/i18n/i18n.service';
 import * as logger from '../shared/logger';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private readonly sentryService = inject(SentryService);
   private readonly firebase = inject(FirebaseService);
+  private readonly i18n = inject(I18nService);
   private auth: Auth;
   private user = signal<User | null>(null);
   private loading = signal<boolean>(true);
@@ -172,27 +174,29 @@ export class AuthService {
     }
   }
 
+  /** The text for a Firebase Auth error, in the active language. */
   private getErrorMessage(error: unknown): string {
-    if (!error || typeof error !== 'object') return 'An error occurred';
+    const texts = this.i18n.t().auth.errors;
+    if (!error || typeof error !== 'object') return texts.generic;
     const err = error as { code?: string; message?: string };
-    if (!err.code) return err.message || 'An error occurred';
-    
+    if (!err.code) return err.message || texts.generic;
+
     const errorMessages: Record<string, string> = {
-      'auth/invalid-email': 'Invalid email address',
-      'auth/user-disabled': 'This account has been disabled',
-      'auth/user-not-found': 'No account found with this email',
-      'auth/wrong-password': 'Incorrect password',
-      'auth/email-already-in-use': 'An account with this email already exists',
-      'auth/weak-password': 'Password should be at least 6 characters',
-      'auth/operation-not-allowed': 'This sign-in method is not enabled',
-      'auth/popup-blocked': 'Sign-in popup was blocked. Please allow popups for this site.',
-      'auth/popup-closed-by-user': 'Sign-in was cancelled',
-      'auth/cancelled-popup-request': 'Sign-in was cancelled',
-      'auth/network-request-failed': 'Network error. Please check your connection.',
-      'auth/too-many-requests': 'Too many attempts. Please try again later.',
-      'auth/invalid-credential': 'Invalid credentials provided'
+      'auth/invalid-email': texts.invalidEmail,
+      'auth/user-disabled': texts.userDisabled,
+      'auth/user-not-found': texts.userNotFound,
+      'auth/wrong-password': texts.wrongPassword,
+      'auth/email-already-in-use': texts.emailInUse,
+      'auth/weak-password': texts.weakPassword,
+      'auth/operation-not-allowed': texts.notAllowed,
+      'auth/popup-blocked': texts.popupBlocked,
+      'auth/popup-closed-by-user': texts.cancelled,
+      'auth/cancelled-popup-request': texts.cancelled,
+      'auth/network-request-failed': texts.network,
+      'auth/too-many-requests': texts.tooManyRequests,
+      'auth/invalid-credential': texts.invalidCredential
     };
-    
-    return errorMessages[err.code] || err.message || 'Authentication failed';
+
+    return errorMessages[err.code] || texts.failed;
   }
 }

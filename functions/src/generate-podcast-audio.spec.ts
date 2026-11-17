@@ -59,6 +59,8 @@ vi.mock('firebase-functions/v2/https', async () => {
   };
 });
 
+import { generatePodcastAudioBuffer } from './utils/podcast-tts';
+
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 const CAMPAIGN = 'campaigns/campaign-1';
@@ -125,7 +127,9 @@ describe('generatePodcastAudio', () => {
 
   it('rejects a session without a story', async () => {
     docs[SESSION] = { ...docs[SESSION], content: '' };
-    await expect(generatePodcastHandler(makeRequest())).rejects.toThrow(code('failed-precondition'));
+    await expect(generatePodcastHandler(makeRequest())).rejects.toThrow(
+      expect.objectContaining({ code: 'failed-precondition', details: { reason: 'session-has-no-story' } })
+    );
   });
 
   it('reads the story from the session, allocates the version and ignores client version/story/script', async () => {
@@ -166,5 +170,25 @@ describe('generatePodcastAudio', () => {
       'campaign-1', 'session-1', 'generating-podcast-audio', 50, 'Audio genereren...'
     );
     expect(progress.markCompleted).toHaveBeenCalledWith('campaign-1', 'session-1', 'Podcast klaar');
+  });
+
+  it('stores the audio part on the podcast entry only: the session progress gets no count', async () => {
+    const seen: unknown[] = [];
+    vi.mocked(generatePodcastAudioBuffer).mockImplementationOnce(async (_segments, _voices, onProgress) => {
+      await onProgress?.(65, 'Audio genereren (deel 1/2)...', { current: 1, total: 2 });
+      seen.push({ ...(docs[SESSION]?.podcasts as Record<string, unknown>[])[1] });
+      return Buffer.from('mp3');
+    });
+
+    await generatePodcastHandler(makeRequest());
+
+    expect(seen).toEqual([expect.objectContaining({ progressStep: 'audio', progressDetail: { current: 1, total: 2 } })]);
+    // Exactly these arguments: a seventh one would be the `detail` of the session progress.
+    expect(progress.updateProgress).toHaveBeenCalledWith(
+      'campaign-1', 'session-1', 'generating-podcast-audio', 65, 'Audio genereren (deel 1/2)...'
+    );
+    const entry = (docs[SESSION]?.podcasts as Record<string, unknown>[])[1];
+    expect(entry).toMatchObject({ status: 'completed', progressStep: 'done' });
+    expect(entry).not.toHaveProperty('progressDetail');
   });
 });

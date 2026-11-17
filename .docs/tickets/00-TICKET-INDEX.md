@@ -733,5 +733,48 @@ Start here for immediate impact with minimal risk:
 
 ---
 
-**Last Updated:** 2026-10-27
+## 🌐 Vertalingen
+
+| Ticket | Title | Priority | Status | Effort | Dependencies |
+|--------|-------|----------|--------|--------|--------------|
+| [#72](./done/72-i18n-nl-en-language-choice.md) | Vertalingen — de gebruiker kiest Nederlands of Engels | Medium | Done | 7-10 dagen (9 fases) | — |
+| [#74](./74-i18n-cleanup-after-release.md) | Opruimen na de vertalingen — oude tekstvelden, controles na de deploy en kleine punten | Low | Todo | 1-1,5 dag | #72 live; deel A één release later |
+
+**Key Changes:**
+- **Ticket 72**: (afgerond op de feature-branch; nog niet op `develop`) de mix van Engels en Nederlands (± 1.000 teksten, 77% Engels) vervangen door een taalkeuze per gebruiker
+  - Eigen getypte vertaallaag zonder library: één interface met alleen de keys, één bestand per taal (`nl.ts`, `en.ts`); een ontbrekende vertaling breekt de build
+  - Strategy pattern per taal (vertalingen + locale), aangeboden via een signal en een pipe, zodat de app direct wisselt
+  - Keuze in `users/{uid}.language` (bron) met een lokale kopie in localStorage; standaard de browsertaal
+  - Taalkiezer en uitloggen in een nieuwe profiel-drawer (niet in de nav-rail); voor niet-ingelogde bezoekers in de topbar van de karakterpagina en de gedeelde podcastpagina, en rechtsboven op de inlogpagina
+  - D&D-speltermen blijven Engels; verhalen, podcasts en transcript blijven Nederlands; The Sidekick volgt de taal van de gebruiker
+  - Admin-scherm en PDF-export blijven eentalig Engels; de linkpreview van een gedeelde podcast staat in de taal van de deler
+  - Backendtekst (voortgang, foutmeldingen) wordt een code die de frontend vertaalt
+  - `npm run lint` faalt op harde tekst in templates (`scripts/check-hardcoded-text.mjs`)
+  - Nog open: de backend stopt één release later met het schrijven van `message` / `progressMessage` (zie #74)
+
+- **Ticket 74**: het werk dat na #72 is blijven liggen
+  - Deel A (één release na #72): de backend schrijft `progressMessage` en `progress.message` niet meer; de velden en constanten gaan weg
+  - Deel B (bij de eerste deploy): wat alleen door tests is gedekt nalopen op beta — The Sidekick in het Engels, de voortgangskaart, linkpreviews
+  - Kleine punten uit de reviews, tekstkeuzes die een beslissing vragen, en tests die van elkaars toestand afhangen (`isolate: false`)
+  - Uitzoeken: mogelijk dubbele standaardcampagne voor een nieuwe gebruiker
+
+---
+
+## 🔒 Beveiliging — gebruikersprofielen
+
+| Ticket | Title | Priority | Status | Effort | Dependencies |
+|--------|-------|----------|--------|--------|--------------|
+| [#73](./73-user-profile-rules-admin-and-membership.md) | Rechten op gebruikersprofielen dichtzetten — admin, campagnelidmaatschap en leesbare profielen | Critical | Todo | 2-3 dagen (3 fases) | — |
+
+**Key Changes:**
+- **Ticket 73**: vijf lekken rond `users/{uid}`, gevonden door de regels te lezen (niet uitgeprobeerd)
+  - Een gebruiker kan zichzelf admin maken → admin-rechten naar een aparte collectie `admins/{uid}`, beheerd in de console
+  - Een gebruiker kan zichzelf lid maken van elke campagne via zijn eigen profiel → lidmaatschap alleen nog uit het campagnedocument (`firestore.rules`, `storage.rules`, `access.ts`)
+  - Alle profielen (e-mailadressen, campagne-id's) zijn leesbaar voor elke ingelogde gebruiker → alleen het eigen profiel
+  - Een verwijderd lid houdt toegang → uitnodigen, verwijderen en vertrekken via nieuwe callables
+  - Controlescript vóór het omzetten en regeltests met de emulator
+
+---
+
+**Last Updated:** 2026-11-17
 **Status:** Planning Complete, Ready to Begin

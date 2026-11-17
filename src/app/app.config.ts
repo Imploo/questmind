@@ -7,6 +7,7 @@ import { LucideAngularModule, MessageSquare, Mic, Music, Settings, ChevronLeft, 
 import * as Sentry from '@sentry/angular';
 
 import { routes } from './app.routes';
+import { LanguagePreferenceService } from './core/i18n/language-preference.service';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -39,6 +40,10 @@ export const appConfig: ApplicationConfig = {
     },
     provideAppInitializer(() => {
       inject(Sentry.TraceService);
+    }),
+    // Starts following the language stored in the profile as soon as the app runs.
+    provideAppInitializer(() => {
+      inject(LanguagePreferenceService);
     }),
   ]
 };

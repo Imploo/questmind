@@ -4,6 +4,8 @@ import { AuthService } from '../auth/auth.service';
 import { Campaign, UserProfile } from './campaign.models';
 import { CampaignService } from './campaign.service';
 import { UserService } from '../core/user.service';
+import { I18nService } from '../core/i18n/i18n.service';
+import { campaignErrorMessage } from './campaign-error';
 import * as logger from '../shared/logger';
 
 @Injectable({ providedIn: 'root' })
@@ -11,6 +13,7 @@ export class CampaignContextService {
   private readonly authService = inject(AuthService);
   private readonly campaignService = inject(CampaignService);
   private readonly userService = inject(UserService);
+  private readonly i18n = inject(I18nService);
 
   campaigns = signal<Campaign[]>([]);
   selectedCampaignId = signal<string | null>(null);
@@ -22,6 +25,18 @@ export class CampaignContextService {
     const id = this.selectedCampaignId();
     if (!id) return null;
     return campaigns.find(campaign => campaign.id === id) || null;
+  });
+
+  /**
+   * The part of the profile that decides which campaigns to load. The profile
+   * document changes for other reasons too (the language, a timestamp); those
+   * must not reload the campaigns, which would also reset a settings form
+   * someone is filling in.
+   */
+  private readonly profileCampaigns = computed(() => {
+    const profile = this.userService.storedProfile();
+    if (!profile) return profile;
+    return JSON.stringify([profile.campaigns ?? [], profile.defaultCampaignId ?? null]);
   });
 
   constructor() {
@@ -38,14 +53,14 @@ export class CampaignContextService {
       }
     });
 
-    // React to profile data changes and load campaigns
+    // Load the campaigns when the profile appears, and again when its campaigns change
     effect(() => {
-      const profile = this.userService.storedProfile();
-      if (profile === undefined) return;
+      if (this.profileCampaigns() === undefined) return;
 
       const user = untracked(() => this.authService.currentUser());
       if (!user) return;
 
+      const profile = untracked(() => this.userService.storedProfile());
       if (!profile) {
         void this.loadForUser(user);
         return;
@@ -83,7 +98,7 @@ export class CampaignContextService {
       await this.loadCampaignsFromProfile(user, profile);
     } catch (error: unknown) {
       logger.error('Failed to load campaigns:', error);
-      this.error.set((error as Error)?.message || 'Failed to load campaigns');
+      this.error.set(this.loadErrorMessage(error));
       this.isLoading.set(false);
     }
   }
@@ -95,18 +110,14 @@ export class CampaignContextService {
       let campaignIds = profile.campaigns || [];
 
       if (campaignIds.length === 0) {
-        const campaignId = await this.campaignService.createCampaign(
-          `${user.displayName || user.email || 'My'} Campaign`
-        );
+        const campaignId = await this.campaignService.createCampaign(this.defaultCampaignName(user));
         campaignIds = [campaignId];
       }
 
       let campaigns = await this.campaignService.getCampaignsByIds(campaignIds);
 
       if (campaigns.length === 0) {
-        const campaignId = await this.campaignService.createCampaign(
-          `${user.displayName || user.email || 'My'} Campaign`
-        );
+        const campaignId = await this.campaignService.createCampaign(this.defaultCampaignName(user));
         campaignIds = [campaignId];
         campaigns = await this.campaignService.getCampaignsByIds(campaignIds);
       }
@@ -134,9 +145,23 @@ export class CampaignContextService {
       }
     } catch (error: unknown) {
       logger.error('Failed to load campaigns from profile:', error);
-      this.error.set((error as Error)?.message || 'Failed to load campaigns');
+      this.error.set(this.loadErrorMessage(error));
     } finally {
       this.isLoading.set(false);
     }
+  }
+
+  /**
+   * Name of the campaign every new user starts with, in the language active right now.
+   * Read untracked: loading runs inside an effect, and a language switch must not start it again.
+   */
+  private defaultCampaignName(user: User): string {
+    const texts = untracked(() => this.i18n.t());
+    return texts.campaign.defaultName(user.displayName || user.email || '');
+  }
+
+  private loadErrorMessage(error: unknown): string {
+    const texts = untracked(() => this.i18n.t());
+    return campaignErrorMessage(error, texts.errors, texts.campaign.errors.loadFailed);
   }
 }

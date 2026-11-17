@@ -8,6 +8,8 @@ import { ensureAuthForTesting } from './utils/emulator-helpers';
 import { assertCharacterOwner, assertValidId, requireAuthUid } from './utils/access';
 import { deleteStorageFiles } from './utils/storage-cleanup';
 import * as logger from './utils/logger';
+import { refusal } from './utils/error-reasons';
+import { type Language, parseLanguage } from './utils/language';
 import { TASK_WORKERS, TASK_WORKER_TIMEOUT_SECONDS, enqueueWorkerTask } from './services/task-queue.service';
 import { DndCharacter } from './schemas/dnd-character.schema';
 import { readKnownRulesVersion } from './character/rules-version';
@@ -36,6 +38,8 @@ export interface CharacterChatRequest {
   attachment?: ChatAttachment;
   /** '2014' or '2024': this message asks to rebuild the character under these rules. */
   convertToRules?: string;
+  /** The language the user has the app in; The Sidekick answers in it. Dutch when left out. */
+  language?: Language;
 }
 
 export interface CharacterChatResponse {
@@ -74,7 +78,7 @@ export const characterChat = onCall(
 
       const text = typeof data.text === 'string' ? data.text.trim() : '';
       if (!text || text.length > MAX_MESSAGE_CHARS) {
-        throw new HttpsError('invalid-argument', `A message needs 1 to ${MAX_MESSAGE_CHARS} characters.`);
+        throw refusal('invalid-argument', `A message needs 1 to ${MAX_MESSAGE_CHARS} characters.`, 'message-length');
       }
       if (!currentCharacter || typeof currentCharacter !== 'object'
         || JSON.stringify(currentCharacter).length > MAX_CHARACTER_JSON_CHARS) {
@@ -85,6 +89,7 @@ export const characterChat = onCall(
       // An image request is answered with a portrait; a PDF sent along with it is not used.
       const attachment = mode === 'text' ? validateAttachment(data.attachment) : null;
       const convertToRules = mode === 'text' ? readKnownRulesVersion(data.convertToRules) : null;
+      const language = parseLanguage(data.language);
 
       const db = getFirestore();
       await assertCharacterOwner(db, characterId, uid);
@@ -114,7 +119,7 @@ export const characterChat = onCall(
           } else {
             tx.create(chat, {
               id: chatId,
-              title: makeAutoTitle(text, mode, stored?.fileName),
+              title: makeAutoTitle(text, mode, stored?.fileName, language),
               titleSource: 'auto',
               createdAt: userCreatedAt,
               ...listEntry,
@@ -143,7 +148,7 @@ export const characterChat = onCall(
       } catch (error) {
         if (stored) await deleteStorageFiles([stored.storagePath]);
         if ((error as { code?: unknown })?.code === FIRESTORE_ALREADY_EXISTS) {
-          throw new HttpsError('already-exists', 'This message was already sent.');
+          throw refusal('already-exists', 'This message was already sent.', 'message-already-sent');
         }
         throw error;
       }
@@ -156,6 +161,7 @@ export const characterChat = onCall(
         mode,
         currentCharacter,
         attachment: stored,
+        language,
       };
 
       try {
@@ -241,10 +247,10 @@ function validateAttachment(attachment: unknown): ChatAttachment | null {
     throw new HttpsError('invalid-argument', 'Invalid attachment.');
   }
   if (mimeType !== 'application/pdf') {
-    throw new HttpsError('invalid-argument', 'Only PDF attachments are supported.');
+    throw refusal('invalid-argument', 'Only PDF attachments are supported.', 'attachment-not-pdf');
   }
   if (Buffer.byteLength(data, 'base64') > MAX_ATTACHMENT_SIZE_BYTES) {
-    throw new HttpsError('invalid-argument', `Attachment "${fileName}" exceeds 10 MB limit`);
+    throw refusal('invalid-argument', `Attachment "${fileName}" exceeds 10 MB limit`, 'attachment-too-large');
   }
   return { type: 'pdf', fileName: fileName.trim().slice(0, 200), mimeType, data };
 }

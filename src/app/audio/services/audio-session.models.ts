@@ -47,6 +47,15 @@ export interface PodcastScript {
 
 export type PodcastStatus = 'pending' | 'script_complete' | 'completed' | 'failed';
 
+/** Where a podcast generation is; the app shows a translated text per step. */
+export type PodcastProgressStep = 'starting' | 'script' | 'audio' | 'uploading' | 'done' | 'failed';
+
+/** A count within a step: "segment 3 of 7", "part 2 of 5". */
+export interface ProgressCount {
+  current: number;
+  total: number;
+}
+
 export interface PodcastVersion {
   version: number;
   createdAt: Date;
@@ -67,6 +76,10 @@ export interface PodcastVersion {
   progress?: number; // 0-100
   /** @deprecated Use session.progress.message instead (Ticket #43) */
   progressMessage?: string; // e.g., "Generating audio with text-to-dialogue..."
+  /** Step of the generation; absent on entries written before ticket #72. */
+  progressStep?: PodcastProgressStep;
+  /** The audio part being generated; only set while a step counts parts. */
+  progressDetail?: ProgressCount;
   /** @deprecated Use session.progress.error instead (Ticket #43) */
   error?: string;
 
@@ -96,10 +109,11 @@ export type SessionProgressStage =
 export interface SessionProgress {
   stage: SessionProgressStage;
   progress: number;                    // 0-100 percentage
-  message: string;                     // User-friendly status message
+  message: string;                     // English status text for older clients; not shown (ticket #72)
+  detail?: ProgressCount;              // Set while a step counts things ("segment 3 of 7")
   startedAt: Date;                     // When current operation started
   estimatedCompletionAt?: Date;        // Estimated completion time
-  error?: string;                      // Error message if failed
+  error?: string;                      // Raw error text if failed; shown as technical details only
   updatedAt: Date;                     // Last update timestamp
 }
 

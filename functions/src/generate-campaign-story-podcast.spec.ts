@@ -95,7 +95,9 @@ describe('generateCampaignStoryPodcast', () => {
 
   it('rejects a story version that is not completed', async () => {
     txGet.mockResolvedValue(storySnap({ status: 'generating', podcasts: [] }));
-    await expect(handler(request())).rejects.toThrow(expect.objectContaining({ code: 'failed-precondition' }));
+    await expect(handler(request())).rejects.toThrow(
+      expect.objectContaining({ code: 'failed-precondition', details: { reason: 'story-version-not-ready' } })
+    );
   });
 
   it('generates with the campaign framing and stores the podcast on the version', async () => {

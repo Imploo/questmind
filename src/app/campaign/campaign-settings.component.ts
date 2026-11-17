@@ -8,11 +8,15 @@ import { Campaign, CampaignVoiceIntro } from './campaign.models';
 import { CampaignVoiceIntroService } from './campaign-voice-intro.service';
 import { CampaignVoiceIntroComponent } from './campaign-voice-intro.component';
 import { CampaignVoiceRosterComponent } from './campaign-voice-roster.component';
+import { CampaignError, campaignErrorMessage } from './campaign-error';
+import { I18nService } from '../core/i18n/i18n.service';
+import { TranslatePipe } from '../core/i18n/translate.pipe';
+import { ToastService } from '../shared/services/toast.service';
 import * as logger from '../shared/logger';
 
 @Component({
   selector: 'app-campaign-settings',
-  imports: [FormsModule, CampaignVoiceIntroComponent, CampaignVoiceRosterComponent],
+  imports: [FormsModule, CampaignVoiceIntroComponent, CampaignVoiceRosterComponent, TranslatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="max-w-4xl mx-auto">
@@ -20,10 +24,10 @@ import * as logger from '../shared/logger';
         <header class="mb-5 sm:mb-6">
           <button type="button" (click)="goBack()" class="qm-backlink mb-2">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7" /></svg>
-            Back
+            {{ 'common.back' | translate }}
           </button>
           <div class="min-w-0">
-            <div class="qm-page-eyebrow">Campaign Settings</div>
+            <div class="qm-page-eyebrow">{{ 'campaign.settings.title' | translate }}</div>
             <h2 class="qm-page-title mt-1 break-words">{{ selectedCampaign()!.name }}</h2>
             @if (selectedCampaign()!.description) {
               <p class="qm-page-sub mt-1 max-w-2xl">{{ selectedCampaign()!.description }}</p>
@@ -34,10 +38,10 @@ import * as logger from '../shared/logger';
         <div class="space-y-4 sm:space-y-6">
           <!-- General -->
           <section class="qm-panel sm:!p-6">
-            <h4 class="qm-section-title">General Settings</h4>
+            <h4 class="qm-section-title">{{ 'campaign.settings.general' | translate }}</h4>
 
             <div class="qm-well mb-4">
-              <div class="qm-eyebrow">Campaign Owner</div>
+              <div class="qm-eyebrow">{{ 'campaign.settings.owner' | translate }}</div>
               <div class="font-semibold mt-0.5 break-all">{{ selectedCampaign()!.ownerEmail }}</div>
             </div>
 
@@ -46,20 +50,20 @@ import * as logger from '../shared/logger';
               <div class="qm-well">
                 <label class="flex items-center gap-2.5 text-sm font-semibold cursor-pointer">
                   <input type="checkbox" [(ngModel)]="kankaEnabled" class="h-4 w-4" />
-                  Enable Kanka Integration
+                  {{ 'campaign.settings.kankaEnable' | translate }}
                 </label>
                 @if (kankaEnabled) {
                   <div class="mt-3 ml-6">
-                    <label for="kanka-campaign-id" class="qm-label">Kanka Campaign ID</label>
+                    <label for="kanka-campaign-id" class="qm-label">{{ 'campaign.settings.kankaCampaignId' | translate }}</label>
                     <input
                       id="kanka-campaign-id"
                       type="text"
                       [(ngModel)]="kankaCampaignId"
-                      placeholder="e.g. 123456"
+                      [placeholder]="'campaign.settings.kankaCampaignIdPlaceholder' | translate"
                       class="qm-input max-w-md"
                     />
                     <p class="qm-help mt-1">
-                      Used for Kanka integration when generating stories.
+                      {{ 'campaign.settings.kankaHelp' | translate }}
                     </p>
                   </div>
                 }
@@ -69,7 +73,7 @@ import * as logger from '../shared/logger';
               <div class="qm-well">
                 <label class="flex items-center gap-2.5 text-sm font-semibold cursor-pointer">
                   <input type="checkbox" [(ngModel)]="allowMembersToCreateSessions" class="h-4 w-4" />
-                  Allow members to create sessions
+                  {{ 'campaign.settings.allowMembersToCreateSessions' | translate }}
                 </label>
               </div>
 
@@ -81,11 +85,11 @@ import * as logger from '../shared/logger';
                   [disabled]="isSaving()"
                   class="qm-btn qm-btn-primary"
                 >
-                  {{ isSaving() ? 'Saving...' : 'Save Settings' }}
+                  {{ (isSaving() ? 'campaign.saving' : 'campaign.settings.save') | translate }}
                 </button>
                 @if (saveSuccess()) {
                   <div class="text-sm font-medium text-[#3a652f]" role="status">
-                    Settings saved successfully!
+                    {{ 'campaign.settings.saved' | translate }}
                   </div>
                 }
                 @if (saveError()) {
@@ -99,7 +103,7 @@ import * as logger from '../shared/logger';
 
           <!-- Transcription -->
           <section class="qm-panel sm:!p-6">
-            <h4 class="qm-section-title">Transcription</h4>
+            <h4 class="qm-section-title">{{ 'campaign.settings.transcription' | translate }}</h4>
             <app-campaign-voice-intro
               [voiceIntro]="selectedCampaign()!.settings?.voiceIntro"
               [playbackUrl]="voiceIntroPlaybackUrl()"
@@ -121,7 +125,7 @@ import * as logger from '../shared/logger';
 
           <!-- Members -->
           <section class="qm-panel sm:!p-6">
-            <h4 class="qm-section-title">Members ({{ campaignMembers().length }})</h4>
+            <h4 class="qm-section-title">{{ 'campaign.members.title' | translate: campaignMembers().length }}</h4>
             <ul class="space-y-2">
               @for (member of campaignMembers(); track member.userId) {
                 <li class="qm-well flex items-center justify-between gap-3">
@@ -129,12 +133,12 @@ import * as logger from '../shared/logger';
                     <span class="qm-medallion qm-medallion-sm" aria-hidden="true">{{ member.email.charAt(0).toUpperCase() }}</span>
                     <div class="min-w-0">
                       <div class="font-semibold truncate">{{ member.email }}</div>
-                      <div class="qm-eyebrow">{{ member.role }}</div>
+                      <div class="qm-eyebrow">{{ (member.role === 'owner' ? 'campaign.roles.owner' : 'campaign.roles.member') | translate }}</div>
                     </div>
                   </div>
                   @if (isCampaignOwner(selectedCampaign()!) && member.role !== 'owner') {
                     <button type="button" (click)="removeMember(member.userId)" class="qm-btn qm-btn-sm qm-btn-danger">
-                      Remove
+                      {{ 'common.remove' | translate }}
                     </button>
                   }
                 </li>
@@ -144,13 +148,13 @@ import * as logger from '../shared/logger';
             <!-- Invite Member -->
             @if (isCampaignOwner(selectedCampaign()!)) {
               <div class="mt-6 border-t border-dashed border-[#e0d2b6] pt-5">
-                <label for="invite-email" class="qm-label">Invite Member</label>
+                <label for="invite-email" class="qm-label">{{ 'campaign.members.inviteLabel' | translate }}</label>
                 <div class="flex flex-wrap gap-2">
                   <input
                     id="invite-email"
                     type="email"
                     [(ngModel)]="inviteEmail"
-                    placeholder="user@example.com"
+                    [placeholder]="'campaign.members.invitePlaceholder' | translate"
                     class="qm-input min-w-0 flex-1"
                   />
                   <button
@@ -159,7 +163,7 @@ import * as logger from '../shared/logger';
                     [disabled]="!inviteEmail.trim().length || isInviting()"
                     class="qm-btn qm-btn-gold"
                   >
-                    {{ isInviting() ? 'Inviting...' : 'Invite' }}
+                    {{ (isInviting() ? 'campaign.members.inviting' : 'campaign.members.invite') | translate }}
                   </button>
                 </div>
                 @if (inviteError()) {
@@ -174,7 +178,7 @@ import * as logger from '../shared/logger';
         </div>
       } @else {
         <div class="qm-panel qm-hero qm-empty">
-          <p class="qm-empty-text">No campaign selected</p>
+          <p class="qm-empty-text">{{ 'campaign.settings.noCampaign' | translate }}</p>
         </div>
       }
     </div>
@@ -186,6 +190,8 @@ export class CampaignSettingsComponent {
   private readonly campaignService = inject(CampaignService);
   private readonly campaignContext = inject(CampaignContextService);
   private readonly voiceIntroService = inject(CampaignVoiceIntroService);
+  private readonly toastService = inject(ToastService);
+  private readonly i18n = inject(I18nService);
 
   selectedCampaign = this.campaignContext.selectedCampaign;
   campaignMembers = signal<{ userId: string; role: string; email: string }[]>([]);
@@ -255,8 +261,8 @@ export class CampaignSettingsComponent {
       this.saveSuccess.set(true);
       setTimeout(() => this.saveSuccess.set(false), 3000);
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to save settings';
-      this.saveError.set(errorMessage);
+      if (!(error instanceof CampaignError)) logger.error('[CampaignSettings] Saving settings failed:', error);
+      this.saveError.set(this.errorText(error, this.i18n.t().campaign.errors.saveFailed));
       setTimeout(() => this.saveError.set(''), 5000);
     } finally {
       this.isSaving.set(false);
@@ -285,7 +291,7 @@ export class CampaignSettingsComponent {
       await this.campaignContext.refreshCampaigns();
     } catch (error: unknown) {
       logger.error('[CampaignSettings] Voice intro upload failed:', error);
-      this.voiceIntroError.set(error instanceof Error ? error.message : 'Failed to upload voice introduction');
+      this.voiceIntroError.set(this.errorText(error, this.i18n.t().campaign.voiceIntro.uploadFailed));
     } finally {
       this.voiceIntroBusy.set(false);
       this.voiceIntroProgress.set(null);
@@ -296,7 +302,7 @@ export class CampaignSettingsComponent {
     const campaignId = this.campaignContext.selectedCampaignId();
     const current = this.selectedCampaign()?.settings?.voiceIntro;
     if (!campaignId || !current) return;
-    if (!confirm('Remove the voice introduction? Transcriptions will no longer use it for speaker recognition.')) {
+    if (!(await this.toastService.confirm(this.i18n.t().campaign.voiceIntro.removeConfirm))) {
       return;
     }
 
@@ -307,7 +313,7 @@ export class CampaignSettingsComponent {
       await this.campaignContext.refreshCampaigns();
     } catch (error: unknown) {
       logger.error('[CampaignSettings] Voice intro removal failed:', error);
-      this.voiceIntroError.set(error instanceof Error ? error.message : 'Failed to remove voice introduction');
+      this.voiceIntroError.set(this.errorText(error, this.i18n.t().campaign.voiceIntro.removeFailed));
     } finally {
       this.voiceIntroBusy.set(false);
     }
@@ -324,7 +330,7 @@ export class CampaignSettingsComponent {
       await this.campaignContext.refreshCampaigns();
     } catch (error: unknown) {
       logger.error('[CampaignSettings] Saving voice intro speaking order failed:', error);
-      this.voiceRosterError.set(error instanceof Error ? error.message : 'Failed to save speaking order');
+      this.voiceRosterError.set(this.errorText(error, this.i18n.t().campaign.voiceRoster.saveFailed));
     } finally {
       this.voiceRosterBusy.set(false);
     }
@@ -340,24 +346,24 @@ export class CampaignSettingsComponent {
       if (!campaignId) return;
       
       await this.campaignService.inviteUserByEmail(campaignId, this.inviteEmail);
-      this.inviteSuccess.set('User invited successfully!');
+      this.inviteSuccess.set(this.i18n.t().campaign.members.invited);
       this.inviteEmail = '';
       await this.loadMembers();
       void this.campaignContext.refreshCampaigns();
       setTimeout(() => this.inviteSuccess.set(''), 3000);
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to invite user';
-      this.inviteError.set(errorMessage);
+      if (!(error instanceof CampaignError)) logger.error('[CampaignSettings] Inviting a member failed:', error);
+      this.inviteError.set(this.errorText(error, this.i18n.t().campaign.errors.inviteFailed));
     } finally {
       this.isInviting.set(false);
     }
   }
 
   async removeMember(userId: string): Promise<void> {
-    if (!confirm('Are you sure you want to remove this member?')) {
+    if (!(await this.toastService.confirm(this.i18n.t().campaign.members.removeConfirm))) {
       return;
     }
-    
+
     try {
       const campaignId = this.campaignContext.selectedCampaignId();
       if (!campaignId) return;
@@ -366,14 +372,19 @@ export class CampaignSettingsComponent {
       await this.loadMembers();
       void this.campaignContext.refreshCampaigns();
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to remove member';
-      this.inviteError.set(errorMessage);
+      if (!(error instanceof CampaignError)) logger.error('[CampaignSettings] Removing a member failed:', error);
+      this.inviteError.set(this.errorText(error, this.i18n.t().campaign.errors.removeMemberFailed));
     }
   }
 
   isCampaignOwner(campaign: Campaign): boolean {
     const userId = this.authService.currentUser()?.uid;
     return this.campaignService.isCampaignOwner(campaign, userId);
+  }
+
+  /** A refusal of our own services as it is; anything else gets a translated text, never the raw message. */
+  private errorText(error: unknown, fallback: string): string {
+    return campaignErrorMessage(error, this.i18n.t().errors, fallback);
   }
 
   private async loadVoiceIntroPlaybackUrl(voiceIntro: CampaignVoiceIntro | undefined): Promise<void> {

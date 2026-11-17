@@ -86,10 +86,48 @@ describe('createPodcastShare', () => {
     }));
   });
 
+  it.each([
+    ['the language of the sharer', 'en', 'en'],
+    ['Dutch', 'nl', 'nl'],
+    ['Dutch when the client sends no language', undefined, 'nl'],
+    ['Dutch when the client sends a language it does not know', 'de', 'nl'],
+    ['Dutch when the client sends something that is not a language', { $ne: 'nl' }, 'nl'],
+  ])('stores %s on the share, for its link preview', async (_case, language, stored) => {
+    await handler(request({ campaignId: 'c1', sessionId: 's1', podcastVersion: 2, language }));
+
+    expect(shareCreate).toHaveBeenCalledWith(expect.objectContaining({ language: stored }));
+  });
+
+  it.each([
+    ['nl', 'Sessie', 'Campagneverhaal'],
+    ['en', 'Session', 'Campaign story'],
+    [undefined, 'Sessie', 'Campagneverhaal'],
+  ])('names a share without a title of its own in the language %s', async (language, sessionTitle, storyTitle) => {
+    mockDocs({
+      'campaigns/c1': { name: 'Curse of Strahd', ownerId: 'owner-1', members: { 'member-1': { role: 'player' } } },
+      'campaigns/c1/audioSessions/s1': { podcasts: [completedPodcast] },
+      'campaigns/c1/campaignStories/v3': { podcasts: [{ ...completedPodcast, version: 1 }] },
+    });
+
+    await handler(request({ campaignId: 'c1', sessionId: 's1', podcastVersion: 2, language }));
+    await handler(request({ campaignId: 'c1', storyVersion: 3, podcastVersion: 1, language }));
+
+    expect(shareCreate.mock.calls.map(([share]) => share.title)).toEqual([sessionTitle, storyTitle]);
+  });
+
   it('returns the existing share instead of creating a new one', async () => {
     existingGet.mockResolvedValue({ empty: false, docs: [{ id: 'existing-share' }] });
 
     const result = (await handler(request({ campaignId: 'c1', sessionId: 's1', podcastVersion: 2 }))) as { shareId: string };
+
+    expect(result).toEqual({ shareId: 'existing-share' });
+    expect(shareCreate).not.toHaveBeenCalled();
+  });
+
+  it('keeps the language of whoever shared first when someone shares again in another language', async () => {
+    existingGet.mockResolvedValue({ empty: false, docs: [{ id: 'existing-share' }] });
+
+    const result = await handler(request({ campaignId: 'c1', sessionId: 's1', podcastVersion: 2, language: 'en' }));
 
     expect(result).toEqual({ shareId: 'existing-share' });
     expect(shareCreate).not.toHaveBeenCalled();
@@ -102,7 +140,7 @@ describe('createPodcastShare', () => {
 
   it('rejects a podcast that is not completed', async () => {
     await expect(handler(request({ campaignId: 'c1', sessionId: 's1', podcastVersion: 9 })))
-      .rejects.toThrow(expect.objectContaining({ code: 'failed-precondition' }));
+      .rejects.toThrow(expect.objectContaining({ code: 'failed-precondition', details: { reason: 'podcast-not-ready' } }));
   });
 
   it('requires exactly one of sessionId and storyVersion', async () => {

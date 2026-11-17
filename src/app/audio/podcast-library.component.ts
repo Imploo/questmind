@@ -6,18 +6,21 @@ import { CampaignSelectorComponent } from '../campaign/campaign-selector.compone
 import { AudioSessionStateService } from './services/audio-session-state.service';
 import { PodcastVersionItemComponent } from '../shared/components/podcast-version-item.component';
 import { toMillis } from '../shared/utils/date.utils';
-import { formatDay } from '../shared/formatting.service';
+import { FormattingService } from '../shared/formatting.service';
+import { I18nService } from '../core/i18n/i18n.service';
+import { TranslatePipe } from '../core/i18n/translate.pipe';
 
 interface SessionWithPodcasts {
   sessionId: string;
   sessionTitle: string;
+  /** The stored play day (`2026-11-06`); empty when the session has none. */
   sessionDate: string;
   podcasts: PodcastVersion[];
 }
 
 @Component({
   selector: 'app-podcast-library',
-  imports: [CampaignSelectorComponent, PodcastVersionItemComponent],
+  imports: [CampaignSelectorComponent, PodcastVersionItemComponent, TranslatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="max-w-5xl mx-auto">
@@ -26,26 +29,25 @@ interface SessionWithPodcasts {
       </div>
 
       <header class="mb-6 sm:mb-8">
-        <h1 class="qm-page-title">Podcast Bibliotheek</h1>
+        <h1 class="qm-page-title">{{ 'podcast.library.title' | translate }}</h1>
         <p class="qm-page-sub mt-1 max-w-2xl">
-          Bekijk alle sessie podcasts. Elke speeldag is een audio sessie met zijn eigen verhaal en
-          versioned podcasts.
+          {{ 'podcast.library.intro' | translate }}
         </p>
       </header>
 
       @if (!campaignId()) {
         <div class="qm-panel qm-hero qm-empty">
           <span class="qm-medallion qm-medallion-lg"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-width="1.75" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M15.5 8.5l-2 5-5 2 2-5 5-2z" /></svg></span>
-          <p class="qm-empty-text">Select a campaign to view its podcasts.</p>
+          <p class="qm-empty-text">{{ 'podcast.library.selectCampaign' | translate }}</p>
         </div>
       }
 
       @if (campaignId() && sessions().length === 0) {
         <div class="qm-panel qm-hero qm-empty">
           <span class="qm-medallion qm-medallion-lg"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg></span>
-          <h2 class="qm-empty-title">Nog geen podcasts gegenereerd.</h2>
+          <h2 class="qm-empty-title">{{ 'podcast.library.emptyTitle' | translate }}</h2>
           <p class="qm-empty-text">
-            Genereer een podcast vanuit een sessie verhaal om deze hier te zien.
+            {{ 'podcast.library.emptyText' | translate }}
           </p>
         </div>
       }
@@ -56,11 +58,17 @@ interface SessionWithPodcasts {
             <section class="qm-panel sm:!p-6">
               <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
                 <div class="min-w-0">
-                  <div class="qm-eyebrow">Speeldag: {{ formatDay(session.sessionDate) }}</div>
+                  <div class="qm-eyebrow">
+                    @if (session.sessionDate) {
+                      {{ 'podcast.library.playDay' | translate: formatting.formatDay(session.sessionDate) }}
+                    } @else {
+                      {{ 'podcast.library.playDayUnknown' | translate }}
+                    }
+                  </div>
                   <h2 class="qm-display text-xl leading-tight break-words">{{ session.sessionTitle }}</h2>
                 </div>
                 <span class="qm-badge qm-badge-violet">
-                  {{ session.podcasts.length }} versie{{ session.podcasts.length > 1 ? 's' : '' }}
+                  {{ 'podcast.library.versionCount' | translate: session.podcasts.length }}
                 </span>
               </div>
 
@@ -78,8 +86,7 @@ interface SessionWithPodcasts {
         </div>
 
         <p class="mt-6 text-center text-sm text-white/80">
-          Podcasts worden opgeslagen als MP3 en gebruiken AI-stemmen voor
-          Nederlandse audio met natuurlijke intonatie.
+          {{ 'podcast.library.footer' | translate }}
         </p>
       }
     </div>
@@ -91,18 +98,20 @@ export class PodcastLibraryComponent {
   private readonly sessionStateService = inject(AudioSessionStateService);
 
   readonly campaignId = this.campaignContext.selectedCampaignId;
-  protected readonly formatDay = formatDay;
+  protected readonly formatting = inject(FormattingService);
+  private readonly i18n = inject(I18nService);
 
   /** Sessions with at least one podcast, newest play date first. */
   readonly sessions = computed<SessionWithPodcasts[]>(() => {
     if (!this.campaignId() || !this.authService.currentUser()?.uid) return [];
+    const untitled = this.i18n.t().audio.untitledSession;
 
     return this.sessionStateService.sessions()
       .filter(session => Array.isArray(session.podcasts) && session.podcasts.length > 0)
       .map(session => ({
         sessionId: session.id,
-        sessionTitle: session.title || 'Untitled Session',
-        sessionDate: session.sessionDate || 'Unknown',
+        sessionTitle: session.title || untitled,
+        sessionDate: session.sessionDate || '',
         podcasts: session.podcasts ?? [],
       }))
       .sort((a, b) => toMillis(b.sessionDate) - toMillis(a.sessionDate));

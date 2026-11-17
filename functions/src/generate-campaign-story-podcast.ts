@@ -9,6 +9,7 @@ import { createDocPodcastEntryStore, runPodcastGeneration } from './podcast/run-
 import { campaignStoryDocPath, campaignStoryPodcastStoragePath } from './campaign-story/campaign-story-paths';
 import { CAMPAIGN_STORY_PODCAST_TIMEOUT_SECONDS } from './utils/generation-timeouts';
 import { toDate } from './utils/timestamp';
+import { refusal } from './utils/error-reasons';
 
 interface CampaignStoryPodcastRequest {
   campaignId: string;
@@ -44,7 +45,7 @@ export const generateCampaignStoryPodcast = onCall(
       storyVersion: () => storyVersion,
       readSource: (story) => {
         if (story.status !== 'completed' || !story.content) {
-          throw new HttpsError('failed-precondition', 'Deze versie van het verhaal is nog niet klaar.');
+          throw refusal('failed-precondition', 'This version of the campaign story is not ready yet.', 'story-version-not-ready');
         }
         return {
           kind: 'campaign',
