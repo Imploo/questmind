@@ -743,7 +743,8 @@ Start here for immediate impact with minimal risk:
 - **Ticket 72**: de mix van Engels en Nederlands (± 1.000 teksten, 77% Engels) vervangen door een taalkeuze per gebruiker
   - Eigen getypte vertaallaag zonder library: één interface met alleen de keys, één bestand per taal (`nl.ts`, `en.ts`); een ontbrekende vertaling breekt de build
   - Strategy pattern per taal (vertalingen + locale), aangeboden via een signal en een pipe, zodat de app direct wisselt
-  - Keuze in `users/{uid}.language` en localStorage; standaard de browsertaal
+  - Keuze in `users/{uid}.language` (bron) met een lokale kopie in localStorage; standaard de browsertaal
+  - Taalkiezer in een nieuwe profiel-drawer (niet in de nav-rail) en, voor niet-ingelogde bezoekers, in de topbar van de karakterpagina en de gedeelde podcastpagina
   - D&D-speltermen blijven Engels; verhalen, podcasts en transcript blijven Nederlands; The Sidekick volgt de taal van de gebruiker
   - Backendtekst (voortgang, foutmeldingen) wordt een code die de frontend vertaalt
   - Lint-regel tegen harde tekst in templates

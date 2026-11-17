@@ -61,6 +61,9 @@ Verder:
 | D&D-speltermen | **Blijven Engels** in beide talen (Strength, Saving Throws, Armor Class, skills, conditions, spell-namen). |
 | AI-inhoud | **Alleen The Sidekick** volgt de taal van de gebruiker. Verhalen, podcasts en het transcript blijven Nederlands; dat is inhoud van de hele campagne. |
 | Standaardtaal | **Browsertaal** (Nederlands → Nederlands, al het andere → Engels). |
+| Plek van de taalkiezer | In een nieuwe **profiel-drawer**, niet zichtbaar in de nav-rail. Voor niet-ingelogde bezoekers in de **topbar**, op de karakterpagina én op de gedeelde podcastpagina (zelfde patroon). |
+| Engelse notatie | `en-GB`: 6 Nov 2026, 24-uursklok. |
+| Opslag van de keuze | Het profiel (`users/{uid}.language`) is de bron. localStorage is alleen een lokale kopie: voor bezoekers zonder account en om te voorkomen dat de app bij elke start even in de verkeerde taal staat (zie §6). |
 
 ### Waarom deze techniek
 
@@ -87,6 +90,8 @@ src/app/core/i18n/
   testing.ts                 provideTestLanguage('nl' | 'en')
 src/app/shared/dnd-terms.ts  speltermen die Engels blijven
 src/app/shared/components/language-switcher.component.ts
+src/app/layout/profile-drawer/profile-drawer.component.ts
+src/app/layout/public-topbar/public-topbar.component.ts
 ```
 
 ### 2. De interface: alleen keys
@@ -232,17 +237,42 @@ readonly navItems = computed(() => [{ id: 'story', label: this.i18n.t().nav.stor
 
 Alleen een bewuste keuze komt in het profiel. Wie nooit kiest, blijft de browser volgen.
 
+**Waarom localStorage naast het profiel.** Het profiel is de bron en wint altijd. localStorage is een kopie op dit apparaat, om twee redenen:
+- **Bezoekers zonder account** (gedeelde podcast, publieke karakterpagina, inlogpagina) hebben geen profiel. Zonder localStorage is hun keuze in de topbar weg na herladen of na het openen van een volgende link.
+- **Het profiel is er pas na het opstarten.** Firebase Auth en daarna het profieldocument laden asynchroon. Zonder lokale kopie start de app in de browsertaal en springt hij een moment later naar de profieltaal. Iemand met een Nederlandse browser die Engels koos, ziet dat bij elke start.
+
+Uitloggen wist de lokale kopie niet: de inlogpagina blijft dan in de taal die de gebruiker net gebruikte.
+
 - `UserProfile` (`core/models/user.model.ts`) krijgt `language?: 'nl' | 'en'`.
 - `firestore.rules` hoeft niet aangepast: een gebruiker mag zijn eigen profiel schrijven.
 
 ### 7. Taalkiezer
 
-`LanguageSwitcherComponent` is een dumb component met `language` en `languages` als input en `languageChange` als output. Het toont twee knoppen ("NL" en "EN", met `aria-pressed` en de volledige naam als `aria-label`).
+`LanguageSwitcherComponent` is een dumb component met `language` en `languages` als input en `languageChange` als output. Het toont twee knoppen ("NL" en "EN", met `aria-pressed` en de volledige naam als `aria-label`). Het wordt op drie plekken gebruikt.
 
-Plekken:
-- **Nav-rail**, in het gebruikersblok boven "Uitloggen" (`nav-rail.component.ts:216-232`). Op mobiel zit dat in de hamburger-lade.
-- **Inlogpagina** (`sign-in-page.component.ts`).
-- **Kop van de app-shell voor niet-ingelogde bezoekers**, naast "Sign in" (`app-shell.component.ts:31`), voor publieke karakterpagina's.
+**a. Ingelogd: de profiel-drawer (nieuw)**
+
+Er is nog geen profielscherm; het enige gebruikersdeel is het blok onderaan de nav-rail (`nav-rail.component.ts:216-232`: avatar, naam, "Uitloggen").
+
+- Nieuw: `ProfileDrawerComponent` in `layout/profile-drawer/`. Het volgt het bestaande drawer-patroon van `campaign-story-versions-drawer.component.ts`: `qm-scrim` + `qm-drawer`, `role="dialog"`, `aria-modal`, sluiten met Escape, met de sluitknop en met een klik op de scrim.
+- Inhoud: avatar, naam, e-mailadres en de taalkeuze met het label "Taal" / "Language".
+- De drawer is dumb: `open`, `user`, `language` en `languages` als input; `languageChange` en `closed` als output. De nav-rail (smart) beheert het open-signal en roept `LanguagePreferenceService` aan.
+- Openen: de rij met avatar en naam in de nav-rail wordt een knop (`aria-label` "Profiel openen", `aria-haspopup="dialog"`). Op mobiel sluit de hamburger-lade als de drawer opent.
+- De taalkiezer staat **niet** in de nav-rail zelf.
+- "Uitloggen" blijft in de nav-rail (zie Open vragen).
+
+**b. Niet ingelogd: de topbar**
+
+De kop voor niet-ingelogde bezoekers staat nu inline in `app-shell.component.ts:24-32` (logo en "Questmind" links, "Sign in" rechts) en verschijnt op de publieke karakterpagina. De gedeelde podcastpagina (`podcast-share-page.component.ts:15-21`) valt buiten de shell en heeft een eigen, gecentreerde kop zonder knoppen.
+
+- Nieuw: `PublicTopbarComponent` in `layout/public-topbar/`: logo en "Questmind" links; rechts de taalkiezer en de knop "Inloggen" / "Sign in".
+- `app-shell.component.ts` gebruikt dit component in plaats van de inline kop.
+- `podcast-share-page.component.ts` toont dezelfde topbar als de bezoeker niet is ingelogd. De gecentreerde kop vervalt; de eyebrow "Podcast" verhuist naar de kaart.
+- Een ingelogde gebruiker die een gedeelde podcast opent, ziet geen topbar met taalkiezer: de taal komt uit het profiel.
+
+**c. Inlogpagina**
+
+`sign-in-page.component.ts` heeft geen topbar. De taalkiezer staat daar rechtsboven op de pagina.
 
 ### 8. Datums en getallen
 
@@ -323,10 +353,10 @@ Beide talen zitten in de eerste bundel: ± 850 teksten per taal, geschat 40-50 k
 
 Elke fase is los te mergen. Tot een gebied aan de beurt is, blijft het in zijn huidige taal. Een fase is klaar als: alle zichtbare tekst van die map via het woordenboek loopt, de lint-regel voor die map aan staat, de specs zijn bijgewerkt, en build, lint en test slagen.
 
-### Fase 0 — Fundament (1-1,5 dag)
+### Fase 0 — Fundament (1,5-2 dagen)
 - [ ] `core/i18n/`: interface, `nl.ts`, `en.ts`, strategies, `I18nService`, `TranslatePipe`, `TranslationKey`, `testing.ts`.
 - [ ] `LanguagePreferenceService`, `UserProfile.language`, `<html lang>`.
-- [ ] `LanguageSwitcherComponent` op de drie plekken uit §7.
+- [ ] `LanguageSwitcherComponent`, `ProfileDrawerComponent` en `PublicTopbarComponent` (§7); de topbar ook op de gedeelde podcastpagina.
 - [ ] Datums en getallen via de actieve locale (§8).
 - [ ] `shared/dnd-terms.ts` aanmaken (nog leeg op de eerste termen na).
 - [ ] Lint-regel uitproberen en beslissen: bestaande regel of eigen script (§11).
@@ -371,6 +401,9 @@ Backenddeel van §10: `progress.detail`, `progressStep`, `reason` in `HttpsError
 - **Wisselen in de praktijk:** een `OnPush`-testcomponent in een zoneless TestBed toont één tekst via de pipe en één via het signal. Na `use('en')` en `fixture.detectChanges()` tonen beide de Engelse tekst. Slaagt de pipe-variant niet, dan krijgt de pipe een `effect` met `ChangeDetectorRef.markForCheck()`.
 - `LanguagePreferenceService`: volgorde profiel → localStorage → browser; een keuze schrijft naar localStorage en naar het profiel; zonder login alleen localStorage; `navigator.languages = ['de', 'nl']` geeft Nederlands, `['fr']` geeft Engels.
 - Woordenboeken: geen lege teksten in `nl` of `en`; elke functie geeft een niet-lege tekst voor 0, 1 en 2.
+- `ProfileDrawerComponent`: toont naam en e-mailadres; een klik op "EN" geeft `languageChange` met `'en'`; Escape en de scrim geven `closed`.
+- Nav-rail: bevat geen taalkiezer; de rij met avatar en naam opent de drawer.
+- `PublicTopbarComponent`: toont de taalkiezer en de inlogknop. De gedeelde podcastpagina toont de topbar zonder login en niet met login.
 - `callableErrorMessage`: `reason` wint van de code, onbekende reden valt terug op de code, onbekende code op de algemene melding.
 - Backend: `characterChat` met `language: 'en'` geeft de Engelse taalregel in de prompt; zonder `language` de Nederlandse.
 
@@ -395,11 +428,13 @@ Handmatig, per fase voor het gebied van die fase en in fase 8 voor de hele app:
 2. Wissel naar Engels op een open scherm: alles verandert direct, ook datums, open dialogen en toasts die daarna verschijnen.
 3. Herlaad: de taal blijft. Log in op een ander apparaat of in een privévenster: de taal uit het profiel wordt gebruikt.
 4. Wis localStorage en log uit: de inlogpagina volgt de browsertaal.
-5. Open een gedeelde podcastlink en een publieke karakterpagina zonder login, met de browser op Engels en op Nederlands.
-6. Start een upload en een podcast: de voortgangsteksten staan in de gekozen taal.
-7. Forceer een fout (bijvoorbeeld een tweede verhaal starten terwijl er één loopt): de melding staat in de gekozen taal.
-8. Stel The Sidekick een vraag in beide talen: het antwoord volgt de gekozen taal, speltermen blijven Engels.
-9. Verwijder tijdelijk één key uit `en.ts`: `npm run build` faalt. Zet een losse tekst in een template: `npm run lint` faalt.
+5. Open een gedeelde podcastlink en een publieke karakterpagina zonder login, met de browser op Engels en op Nederlands. Beide tonen dezelfde topbar met taalkiezer; een keuze daar blijft na herladen.
+6. Ingelogd: de nav-rail toont geen taalkiezer. Een klik op de avatar opent de profiel-drawer; wisselen daar verandert de app direct, ook op mobiel vanuit de hamburger-lade.
+7. Zet de browser op Nederlands, kies Engels en herlaad: de app start meteen in het Engels, zonder een moment Nederlands.
+8. Start een upload en een podcast: de voortgangsteksten staan in de gekozen taal.
+9. Forceer een fout (bijvoorbeeld een tweede verhaal starten terwijl er één loopt): de melding staat in de gekozen taal.
+10. Stel The Sidekick een vraag in beide talen: het antwoord volgt de gekozen taal, speltermen blijven Engels.
+11. Verwijder tijdelijk één key uit `en.ts`: `npm run build` faalt. Zet een losse tekst in een template: `npm run lint` faalt.
 
 ## Buiten scope
 
@@ -423,9 +458,9 @@ Handmatig, per fase voor het gebied van die fase en in fase 8 voor de hele app:
 
 ## Open vragen (aannames in dit ticket; bevestigen of aanpassen)
 
-1. **Engelse notatie:** `en-GB` (6 Nov 2026, 24-uursklok). Liever `en-US` (Nov 6, 2026, AM/PM)?
+1. **"Uitloggen":** blijft in de nav-rail. Moet die knop mee naar de profiel-drawer?
 2. **Admin-scherm:** wordt ook vertaald, als laatste (fase 6). Alleen jij ziet dit scherm; het mag ook eentalig Engels blijven en van de lint-regel worden uitgezonderd. Dat scheelt een halve dag.
 3. **PDF-export:** blijft volledig Engels.
-4. **Plek van de taalkiezer:** nav-rail, inlogpagina en de kop voor niet-ingelogde bezoekers. Geen aparte instellingenpagina.
+4. **Inlogpagina:** krijgt ook een taalkiezer, rechtsboven.
 5. **Previewtekst van gedeelde podcasts:** blijft Nederlands.
 6. **Speltermen in Nederlandse zinnen:** "Long rest nemen?", "Level 2 slot gebruikt". Goed zo, of liever volledig Engelse zinnen op de sheet?
