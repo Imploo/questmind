@@ -2,7 +2,7 @@
 
 **Created:** 2026-11-17
 **Priority:** Medium
-**Status:** Todo
+**Status:** Done (2026-11-17) — twee punten staan nog open, zie "Uitvoering"
 **Effort:** 7-10 dagen, verdeeld over 9 fases die elk los te mergen zijn
 **Dependencies:** Geen harde. Raakt wel bijna elk component; plan de fases zo dat er weinig andere branches tegelijk open staan op dezelfde map. Fase 7 raakt `create-podcast-share.ts`, net als #71: bouw die twee niet tegelijk.
 **Bron:** Inventarisatie van alle zichtbare teksten in `src/` en `functions/src/` op 2026-11-17.
@@ -364,14 +364,14 @@ Beide talen zitten in de eerste bundel: ± 850 teksten per taal, geschat 40-50 k
 Elke fase is los te mergen. Tot een gebied aan de beurt is, blijft het in zijn huidige taal. Een fase is klaar als: alle zichtbare tekst van die map via het woordenboek loopt, de lint-regel voor die map aan staat, de specs zijn bijgewerkt, en build, lint en test slagen.
 
 ### Fase 0 — Fundament (1,5-2 dagen)
-- [ ] `core/i18n/`: interface, `nl.ts`, `en.ts`, strategies, `I18nService`, `TranslatePipe`, `TranslationKey`, `testing.ts`.
-- [ ] `LanguagePreferenceService`, `UserProfile.language`, `<html lang>`.
-- [ ] `LanguageSwitcherComponent`, `ProfileDrawerComponent` en `PublicTopbarComponent` (§7); de topbar ook op de gedeelde podcastpagina.
-- [ ] Datums en getallen via de actieve locale (§8).
-- [ ] `shared/dnd-terms.ts` aanmaken (nog leeg op de eerste termen na).
-- [ ] Lint-regel uitproberen en beslissen: bestaande regel of eigen script (§11).
-- [ ] Bewijs dat wisselen werkt in een zoneless `OnPush`-component, via de pipe én via het signal (zie Tests).
-- [ ] Bundelgrootte controleren.
+- [x] `core/i18n/`: interface, `nl.ts`, `en.ts`, strategies, `I18nService`, `TranslatePipe`, `TranslationKey`, `testing.ts`.
+- [x] `LanguagePreferenceService`, `UserProfile.language`, `<html lang>`.
+- [x] `LanguageSwitcherComponent`, `ProfileDrawerComponent` en `PublicTopbarComponent` (§7); de topbar ook op de gedeelde podcastpagina.
+- [x] Datums en getallen via de actieve locale (§8).
+- [x] `shared/dnd-terms.ts` aanmaken (nog leeg op de eerste termen na).
+- [x] Lint-regel uitproberen en beslissen: bestaande regel of eigen script (§11).
+- [x] Bewijs dat wisselen werkt in een zoneless `OnPush`-component, via de pipe én via het signal (zie Tests).
+- [x] Bundelgrootte controleren.
 
 ### Fase 1 — Shell en inloggen (0,5-1 dag)
 `layout/` (inclusief de nieuwe profiel-drawer en publieke topbar), `app-shell.component.ts`, `app.html`, `loading.component.ts`, `auth/` (inclusief de Firebase-foutcodes in `auth.service.ts:180-196` en de taalkiezer rechtsboven op de inlogpagina), `toast.service.ts`, `toast-container`, `callable-error.ts`.
@@ -396,12 +396,46 @@ Ook: de beschrijving in `src/index.html:8` en `public/manifest.webmanifest` gaat
 Backenddeel van §10: `progress.detail`, `progressStep`, `reason` in `HttpsError`, `language` in de chat, `language` op de podcast-share, deelpagina's. De frontend uit fase 3 en 4 werkt al met terugval; na deze fase vervalt de terugval nog niet (zie fase 8).
 
 ### Fase 8 — Afronden (0,5 dag)
-- [ ] Lint-regel aan voor heel `src/app`, behalve `src/app/admin/`.
-- [ ] Sectie "Vertalingen" in `.claude/claude.md`: geen harde UI-tekst; nieuwe tekst = key in `translations.ts` + `nl.ts` + `en.ts`; pipe in templates, signal in code; speltermen in `dnd-terms.ts`.
-- [ ] Eén release na fase 7: de backend stopt met het schrijven van `message` en `progressMessage`, en de frontend verwijdert de terugval.
-- [ ] Hele app in beide talen doorlopen (zie Verificatie).
+- [x] Lint-regel aan voor heel `src/app`, behalve `src/app/admin/`.
+- [x] Sectie "Vertalingen" in `.claude/claude.md`: geen harde UI-tekst; nieuwe tekst = key in `translations.ts` + `nl.ts` + `en.ts`; pipe in templates, signal in code; speltermen in `dnd-terms.ts`.
+- [ ] Eén release na fase 7: de backend stopt met het schrijven van `message` en `progressMessage`, en de frontend verwijdert de terugval. *Bewust nog niet gedaan: dit kan pas na de eerste release.*
+- [ ] Hele app in beide talen doorlopen (zie Verificatie). *Deels gedaan, zie "Uitvoering".*
 
 ---
+
+## Uitvoering (2026-11-17)
+
+Alle fases zijn gebouwd op branch `ccr-4965b8a9-jm2bnm`. Nog niet op `develop`; dat volgt met een PR.
+
+### Wat anders is dan het plan
+- **Lint:** de bestaande regel `@angular-eslint/template/i18n` bleek onbruikbaar: hij meldt ook elk statisch attribuut (`d`, `stroke-linecap`, `data-testid`). In plaats daarvan draait `npm run lint` het eigen script `scripts/check-hardcoded-text.mjs`. Dat leest elke template met de Angular-compiler en meldt losse tekst, zichtbare attributen en tekst in expressies.
+- **Extra bestand:** `core/i18n/initial-language.ts` bepaalt de starttaal (localStorage, dan de browser).
+- **Speltermen:** `shared/dnd-terms.ts` bevat twee objecten, `DND_TERMS` (sheet) en `PLAY_TERMS` (spelen), plus de conditions.
+- **Keuze vóór het inloggen:** wie op de inlogpagina of een gedeelde link een taal kiest en daarna inlogt, krijgt die keuze in zijn profiel als daar nog geen taal staat.
+- **Gedeelde podcastpagina:** een ingelogde gebruiker houdt de oude gecentreerde kop met het logo; alleen bezoekers zien de topbar.
+- **Linkpreview van een karakter:** alleen de Nederlandse terugvalzin is weg. Een stukje van de backstory, tekst van de eigenaar zelf, blijft in de preview staan.
+- **`progress.detail`:** wordt alleen geschreven als een opname uit meer dan één segment bestaat.
+- **Engelse afbeeldingstrigger in de chat:** telt alleen aan het begin van een bericht ("generate image of ..."), omdat de Engelse woorden ook in gewone zinnen voorkomen. "maak afbeelding" werkt zoals voorheen overal in het bericht.
+- **Campagnes herladen:** het profiel wijzigt nu ook bij een taalkeuze. De campagnes worden daarom alleen nog herladen als de campagnelijst of de standaardcampagne verandert; anders zette een taalwissel een half ingevuld instellingenformulier terug.
+
+### Nog open
+- De backend schrijft `message` en `progressMessage` nog (fase 8). Dat kan weg, samen met de terugval in de frontend, één release nadat dit live staat.
+- De app is niet volledig met echte data doorgelopen (zie hieronder).
+
+### Wat is gecontroleerd
+- `npm run build`, `npm run build:backend`, `npm run lint` en `npm run test` slagen: 646 frontendtests (was 367) en 566 backendtests (was 458). De eerste bundel is 1,27 MB (was 1,22 MB; de waarschuwing staat op 1,8 MB).
+- Lokaal met de auth- en Firestore-emulator, in beide talen: inloggen en registreren, de profiel-drawer, de karakterlijst, de character sheet (met een cast, de melding daarna en de long-rest-dialoog) en de lege campagnepagina's (sessies, upload, verhaal, podcasts, instellingen). De taal wisselt direct en blijft na herladen en opnieuw inloggen.
+
+### Wat niet is gecontroleerd
+- Schermen die echte sessies, verhalen of podcasts nodig hebben: de voortgangskaart tijdens een upload, een podcast die wordt gegenereerd, een mislukte verhaalversie. Die zijn alleen door tests gedekt.
+- De Cloud Functions zijn niet gedeployed of in de emulator gedraaid. Of The Sidekick met de nieuwe taalregel echt in het Engels antwoordt, is niet tegen het model getest.
+- De linkpreviews in WhatsApp.
+
+### Bekende kleine punten
+- De eenregelige samenvatting van een chatwijziging in de versiegeschiedenis volgt de taal van het gesprek (dat staat zo in de prompt), niet de taalkeuze.
+- Een gesprek dat eindigt met een app-melding scrolt bij een taalwissel naar beneden.
+- Een foutmelding of melding die al op het scherm staat, blijft in de taal van het moment dat hij verscheen.
+- `public/manifest.webmanifest` noemt de app nog "QuestMind - AI-Powered Audio Journal"; alleen de beschrijving is gecorrigeerd.
 
 ## Tests
 
@@ -467,7 +501,7 @@ Handmatig, per fase voor het gebied van die fase en in fase 8 voor de hele app:
 
 ## Verwant
 
-De rechten op `users/{uid}` (onder meer: een gebruiker kan zichzelf admin maken) zijn uitgewerkt in **ticket #73**. Dit ticket voegt het veld `language` toe aan het profiel; #73 beperkt welke velden een gebruiker zelf mag schrijven en moet `language` daarbij toelaten. Wie als tweede wordt gebouwd, controleert dat.
+De rechten op `users/{uid}` (onder meer: een gebruiker kan zichzelf admin maken) zijn uitgewerkt in **ticket #73** (`../73-user-profile-rules-admin-and-membership.md`). Dit ticket voegt het veld `language` toe aan het profiel; #73 beperkt welke velden een gebruiker zelf mag schrijven en moet `language` daarbij toelaten. Wie als tweede wordt gebouwd, controleert dat.
 
 ## Open vragen
 

@@ -737,10 +737,10 @@ Start here for immediate impact with minimal risk:
 
 | Ticket | Title | Priority | Status | Effort | Dependencies |
 |--------|-------|----------|--------|--------|--------------|
-| [#72](./72-i18n-nl-en-language-choice.md) | Vertalingen — de gebruiker kiest Nederlands of Engels | Medium | Todo | 7-10 dagen (9 fases) | — |
+| [#72](./done/72-i18n-nl-en-language-choice.md) | Vertalingen — de gebruiker kiest Nederlands of Engels | Medium | Done | 7-10 dagen (9 fases) | — |
 
 **Key Changes:**
-- **Ticket 72**: de mix van Engels en Nederlands (± 1.000 teksten, 77% Engels) vervangen door een taalkeuze per gebruiker
+- **Ticket 72**: (afgerond op de feature-branch; nog niet op `develop`) de mix van Engels en Nederlands (± 1.000 teksten, 77% Engels) vervangen door een taalkeuze per gebruiker
   - Eigen getypte vertaallaag zonder library: één interface met alleen de keys, één bestand per taal (`nl.ts`, `en.ts`); een ontbrekende vertaling breekt de build
   - Strategy pattern per taal (vertalingen + locale), aangeboden via een signal en een pipe, zodat de app direct wisselt
   - Keuze in `users/{uid}.language` (bron) met een lokale kopie in localStorage; standaard de browsertaal
@@ -748,7 +748,8 @@ Start here for immediate impact with minimal risk:
   - D&D-speltermen blijven Engels; verhalen, podcasts en transcript blijven Nederlands; The Sidekick volgt de taal van de gebruiker
   - Admin-scherm en PDF-export blijven eentalig Engels; de linkpreview van een gedeelde podcast staat in de taal van de deler
   - Backendtekst (voortgang, foutmeldingen) wordt een code die de frontend vertaalt
-  - Lint-regel tegen harde tekst in templates
+  - `npm run lint` faalt op harde tekst in templates (`scripts/check-hardcoded-text.mjs`)
+  - Nog open: de backend stopt één release later met het schrijven van `message` / `progressMessage`
 
 ---
 
