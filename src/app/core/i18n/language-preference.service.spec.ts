@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { AuthService } from '../../auth/auth.service';
@@ -34,6 +34,10 @@ describe('LanguagePreferenceService', () => {
     currentUser.set(null);
     setLanguage.mockReset().mockResolvedValue(undefined);
   });
+
+  // Spec files share a browser context: a language left behind here would become
+  // the starting language of whatever spec runs next.
+  afterEach(() => localStorage.clear());
 
   it('follows the language of the profile and keeps a copy on this device', () => {
     const { i18n } = setup();
