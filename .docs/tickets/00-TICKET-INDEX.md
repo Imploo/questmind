@@ -733,5 +733,22 @@ Start here for immediate impact with minimal risk:
 
 ---
 
-**Last Updated:** 2026-10-27
+## 🌐 Vertalingen
+
+| Ticket | Title | Priority | Status | Effort | Dependencies |
+|--------|-------|----------|--------|--------|--------------|
+| [#72](./72-i18n-nl-en-language-choice.md) | Vertalingen — de gebruiker kiest Nederlands of Engels | Medium | Todo | 7-10 dagen (9 fases) | — |
+
+**Key Changes:**
+- **Ticket 72**: de mix van Engels en Nederlands (± 1.000 teksten, 77% Engels) vervangen door een taalkeuze per gebruiker
+  - Eigen getypte vertaallaag zonder library: één interface met alleen de keys, één bestand per taal (`nl.ts`, `en.ts`); een ontbrekende vertaling breekt de build
+  - Strategy pattern per taal (vertalingen + locale), aangeboden via een signal en een pipe, zodat de app direct wisselt
+  - Keuze in `users/{uid}.language` en localStorage; standaard de browsertaal
+  - D&D-speltermen blijven Engels; verhalen, podcasts en transcript blijven Nederlands; The Sidekick volgt de taal van de gebruiker
+  - Backendtekst (voortgang, foutmeldingen) wordt een code die de frontend vertaalt
+  - Lint-regel tegen harde tekst in templates
+
+---
+
+**Last Updated:** 2026-11-17
 **Status:** Planning Complete, Ready to Begin
