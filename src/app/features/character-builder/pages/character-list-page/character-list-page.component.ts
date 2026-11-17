@@ -9,31 +9,28 @@ import { CharacterImportService } from '../../services/character-import.service'
 import { ImportCharacterDialogComponent } from '../../components/import-character-dialog/import-character-dialog.component';
 import { CharacterTileComponent } from '../../components/character-tile/character-tile.component';
 import { ToastService } from '../../../../shared/services/toast.service';
-import { readPdfAttachment } from '../../../../chat/pdf-attachment';
+import { MAX_PDF_SIZE_BYTES, readPdfAttachment } from '../../../../chat/pdf-attachment';
+import { callableErrorMessage } from '../../../../shared/utils/callable-error';
+import { I18nService } from '../../../../core/i18n/i18n.service';
+import { TranslatePipe } from '../../../../core/i18n/translate.pipe';
 import * as logger from '../../../../shared/logger';
 
 interface CharacterSummary {
   id: string;
   name: string;
-  class: string;
-  race: string;
+  /** Null when the character's active version could not be read. */
+  class: string | null;
+  race: string | null;
   level: number;
   mainWeapon: string | null;
   imageUrl: string | null;
   archived: boolean;
 }
 
-/** Errors the backend raises on purpose carry a message for the user; anything else gets a general one. */
-function importErrorMessage(error: unknown): string {
-  const { code, message } = (error ?? {}) as { code?: string; message?: string };
-  const expected = ['functions/invalid-argument', 'functions/not-found', 'functions/failed-precondition'];
-  return code && expected.includes(code) && message ? message : 'The character could not be imported. Try again.';
-}
-
 @Component({
   selector: 'app-character-list-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ImportCharacterDialogComponent, CharacterTileComponent],
+  imports: [ImportCharacterDialogComponent, CharacterTileComponent, TranslatePipe],
   template: `
     @if (showImport()) {
       <app-import-character-dialog
@@ -48,15 +45,15 @@ function importErrorMessage(error: unknown): string {
     <div class="max-w-6xl mx-auto sm:py-4">
       <header class="flex flex-wrap items-end justify-between gap-4 mb-6 sm:mb-8">
         <div>
-          <h1 class="qm-page-title">Your Characters</h1>
-          <p class="qm-page-sub mt-1">Select a character to view or edit</p>
+          <h1 class="qm-page-title">{{ 'characters.list.title' | translate }}</h1>
+          <p class="qm-page-sub mt-1">{{ 'characters.list.subtitle' | translate }}</p>
         </div>
         <div class="flex gap-2">
           <button type="button" class="qm-btn" [disabled]="creating()" (click)="openImport()">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v12m0 0l-4-4m4 4l4-4" />
             </svg>
-            Import
+            {{ 'characters.list.import' | translate }}
           </button>
           <button type="button" class="qm-btn qm-btn-gold" [disabled]="creating()" (click)="onCreateCharacter()">
             @if (creating()) {
@@ -66,13 +63,13 @@ function importErrorMessage(error: unknown): string {
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
               </svg>
             }
-            Create
+            {{ 'common.create' | translate }}
           </button>
         </div>
       </header>
 
       @if (loading()) {
-        <div class="flex items-center justify-center py-24" role="status" aria-label="Loading characters">
+        <div class="flex items-center justify-center py-24" role="status" [attr.aria-label]="'characters.list.loading' | translate">
           <span class="qm-spinner qm-spinner-lg qm-spinner-light"></span>
         </div>
       } @else {
@@ -81,7 +78,7 @@ function importErrorMessage(error: unknown): string {
             @for (char of activeCharacters(); track char.id) {
               <app-character-tile
                 [name]="char.name"
-                [subtitle]="char.race + ' ' + char.class"
+                [subtitle]="subtitle(char)"
                 [imageUrl]="char.imageUrl"
                 [level]="char.level"
                 (opened)="onSelectCharacter(char.id)"
@@ -96,20 +93,20 @@ function importErrorMessage(error: unknown): string {
               </svg>
             </span>
             @if (archivedCharacters().length > 0) {
-              <h2 class="qm-empty-title">All your characters are archived</h2>
-              <p class="qm-empty-text">Create a new one, or bring one back from the archive below.</p>
+              <h2 class="qm-empty-title">{{ 'characters.list.allArchivedTitle' | translate }}</h2>
+              <p class="qm-empty-text">{{ 'characters.list.allArchivedText' | translate }}</p>
             } @else {
-              <h2 class="qm-empty-title">No characters yet</h2>
-              <p class="qm-empty-text">Create your first character to get started!</p>
+              <h2 class="qm-empty-title">{{ 'characters.list.emptyTitle' | translate }}</h2>
+              <p class="qm-empty-text">{{ 'characters.list.emptyText' | translate }}</p>
             }
             <button type="button" class="qm-btn qm-btn-primary qm-btn-lg mt-6" (click)="onCreateCharacter()">
               <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
               </svg>
-              Create Character
+              {{ 'characters.list.createCharacter' | translate }}
             </button>
             <button type="button" class="qm-link mt-4 text-sm" (click)="openImport()">
-              Or import one from a PDF or a link
+              {{ 'characters.list.importInstead' | translate }}
             </button>
           </div>
         }
@@ -125,7 +122,7 @@ function importErrorMessage(error: unknown): string {
               (click)="showArchived.set(!showArchived())"
             >
               <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
-              Archived ({{ archivedCharacters().length }})
+              {{ 'characters.list.archivedCount' | translate: archivedCharacters().length }}
               <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 transition-transform" [class.rotate-180]="showArchived()" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7" /></svg>
             </button>
             @if (showArchived()) {
@@ -133,7 +130,7 @@ function importErrorMessage(error: unknown): string {
                 @for (char of archivedCharacters(); track char.id) {
                   <app-character-tile
                     [name]="char.name"
-                    [subtitle]="char.race + ' ' + char.class"
+                    [subtitle]="subtitle(char)"
                     [imageUrl]="char.imageUrl"
                     [level]="char.level"
                     [archived]="true"
@@ -173,6 +170,7 @@ export class CharacterListPageComponent {
   private readonly characterImageService = inject(CharacterImageService);
   private readonly characterImportService = inject(CharacterImportService);
   private readonly toastService = inject(ToastService);
+  private readonly i18n = inject(I18nService);
 
   loading = signal(true);
   creating = signal(false);
@@ -208,7 +206,7 @@ export class CharacterListPageComponent {
       this.characterSummaries.update(list => list.map(char => (char.id === id ? { ...char, archived: false } : char)));
     } catch (e) {
       logger.error('Failed to unarchive character:', e);
-      this.toastService.show('Terugzetten is mislukt. Probeer het opnieuw.', 'error');
+      this.toastService.show(this.i18n.t().characters.unarchiveFailed, 'error');
     }
   }
 
@@ -219,7 +217,9 @@ export class CharacterListPageComponent {
 
   /** A PDF goes to the chat of a new character, which reads it in. */
   async onImportPdf(file: File): Promise<void> {
-    this.importError.set('');
+    const refusal = this.pdfRefusal(file);
+    this.importError.set(refusal ?? '');
+    if (refusal) return;
     this.importing.set(true);
     try {
       const attachment = await readPdfAttachment(file);
@@ -227,7 +227,8 @@ export class CharacterListPageComponent {
       this.characterImportService.queuePdf(id, attachment);
       this.router.navigate(['/characters', id]);
     } catch (e) {
-      this.importError.set(e instanceof Error && e.message ? e.message : 'The PDF could not be imported. Try again.');
+      logger.error('Failed to import character from PDF:', e);
+      this.importError.set(this.i18n.t().characters.importDialog.pdfFailed);
     } finally {
       this.importing.set(false);
     }
@@ -242,15 +243,33 @@ export class CharacterListPageComponent {
       this.router.navigate(['/characters', id]);
     } catch (e) {
       logger.error('Failed to import character from link:', e);
-      this.importError.set(importErrorMessage(e));
+      this.importError.set(callableErrorMessage(e, this.i18n.t().errors, this.i18n.t().characters.importDialog.failed));
     } finally {
       this.importing.set(false);
     }
   }
 
+  /** Race and class of a character, as the line below its name. */
+  protected subtitle(char: CharacterSummary): string {
+    const unknown = this.i18n.t().common.unknown;
+    return `${char.race ?? unknown} ${char.class ?? unknown}`;
+  }
+
+  /**
+   * Why a picked file cannot be imported, or null when it can. The reader of the chat
+   * refuses the same files, but with a message of its own that is not translated.
+   */
+  private pdfRefusal(file: File): string | null {
+    const reasons = this.i18n.t().errors.reasons;
+    if (file.type !== 'application/pdf') return reasons.attachmentNotPdf;
+    if (file.size > MAX_PDF_SIZE_BYTES) return reasons.attachmentTooLarge;
+    return null;
+  }
+
+  /** The name is written in the language of the moment; class, race and language are game terms. */
   private async createBlankCharacter(): Promise<string> {
     const chars = this.characterSummaries();
-    const name = `New Character ${chars.length + 1}`;
+    const name = this.i18n.t().characters.defaultName(chars.length + 1);
     const initialData: DndCharacter = {
       name,
       class: 'Fighter',
@@ -329,8 +348,8 @@ export class CharacterListPageComponent {
     return {
       id: character.id,
       name: dndData?.name ?? character.name,
-      class: dndData?.class ?? 'Unknown',
-      race: dndData?.race ?? 'Unknown',
+      class: dndData?.class ?? null,
+      race: dndData?.race ?? null,
       level: dndData?.level ?? 1,
       mainWeapon: dndData?.attacks?.[0]?.name ?? null,
       imageUrl,

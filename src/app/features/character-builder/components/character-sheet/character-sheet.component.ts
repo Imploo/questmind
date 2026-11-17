@@ -1,10 +1,9 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, input, output, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { CharacterAction, CharacterFeature, Coins, DndCharacter, LimitedUses, Spell, SpellSlot } from '../../../../shared/models/dnd-character.model';
+import { CharacterAction, CharacterFeature, Coins, DndCharacter, LimitedUses, Spell, SpellSlot, WeaponAttack } from '../../../../shared/models/dnd-character.model';
 import { CharacterPlayState } from '../../../../shared/models/character-play-state.model';
 import {
   PlayStateResult,
-  RECHARGE_LABELS,
   ResolvedPlayState,
   UsesOwner,
   addCustomFeat,
@@ -62,6 +61,9 @@ import { SheetSection, SheetSectionTabsComponent } from './sheet-section-tabs.co
 import { characterShareUrl } from '../../../../shared/utils/character-share-url';
 import * as logger from '../../../../shared/logger';
 import { I18nService } from '../../../../core/i18n/i18n.service';
+import { TranslatePipe } from '../../../../core/i18n/translate.pipe';
+import { FormattingService } from '../../../../shared/formatting.service';
+import { DND_TERMS } from '../../../../shared/dnd-terms';
 
 export interface SpellResolvedEvent {
   spellName: string;
@@ -76,37 +78,16 @@ export interface FeatureResolvedEvent {
   resolvedFor: string;
 }
 
-type AbilityKey = 'strength' | 'dexterity' | 'constitution' | 'intelligence' | 'wisdom' | 'charisma';
+type AbilityKey = (typeof DND_TERMS.abilities)[number]['key'];
 
-const ABILITY_LABELS: { key: AbilityKey; label: string; name: string }[] = [
-  { key: 'strength', label: 'STR', name: 'Strength' },
-  { key: 'dexterity', label: 'DEX', name: 'Dexterity' },
-  { key: 'constitution', label: 'CON', name: 'Constitution' },
-  { key: 'intelligence', label: 'INT', name: 'Intelligence' },
-  { key: 'wisdom', label: 'WIS', name: 'Wisdom' },
-  { key: 'charisma', label: 'CHA', name: 'Charisma' },
-];
+// Abilities and skills are game terms: English in every language, and a skill's name is its key on a character.
+const ABILITY_LABELS: readonly { key: AbilityKey; label: string; name: string }[] = DND_TERMS.abilities.map(ability => ({
+  key: ability.key,
+  label: ability.abbreviation,
+  name: ability.name,
+}));
 
-const DND_SKILLS: { name: string; ability: AbilityKey }[] = [
-  { name: 'Acrobatics', ability: 'dexterity' },
-  { name: 'Animal Handling', ability: 'wisdom' },
-  { name: 'Arcana', ability: 'intelligence' },
-  { name: 'Athletics', ability: 'strength' },
-  { name: 'Deception', ability: 'charisma' },
-  { name: 'History', ability: 'intelligence' },
-  { name: 'Insight', ability: 'wisdom' },
-  { name: 'Intimidation', ability: 'charisma' },
-  { name: 'Investigation', ability: 'intelligence' },
-  { name: 'Medicine', ability: 'wisdom' },
-  { name: 'Nature', ability: 'intelligence' },
-  { name: 'Perception', ability: 'wisdom' },
-  { name: 'Performance', ability: 'charisma' },
-  { name: 'Persuasion', ability: 'charisma' },
-  { name: 'Religion', ability: 'intelligence' },
-  { name: 'Sleight of Hand', ability: 'dexterity' },
-  { name: 'Stealth', ability: 'dexterity' },
-  { name: 'Survival', ability: 'wisdom' },
-];
+const DND_SKILLS: readonly { name: string; ability: AbilityKey }[] = DND_TERMS.skills;
 
 /** A uses tracker was added, changed or (uses: null) removed on a feature or spell. */
 export interface UsesChangeEvent {
@@ -168,13 +149,16 @@ interface PlayToast {
 
 const TOAST_DURATION_MS = 12_000;
 
-/** The sections the tabs along the edge of the sheet jump to, from top to bottom. */
+/**
+ * The sections the tabs along the edge of the sheet jump to, from top to bottom.
+ * Their labels are game terms, so they read the same in every language.
+ */
 const SHEET_SECTIONS: SheetSection[] = [
-  { id: 'abilities', label: 'Abilities' },
-  { id: 'attacks', label: 'Attacks' },
-  { id: 'spells', label: 'Spells' },
-  { id: 'traits', label: 'Traits' },
-  { id: 'inventory', label: 'Inventory' },
+  { id: 'abilities', label: DND_TERMS.sections.abilities },
+  { id: 'attacks', label: DND_TERMS.sections.attacks },
+  { id: 'spells', label: DND_TERMS.sections.spells },
+  { id: 'traits', label: DND_TERMS.sections.traits },
+  { id: 'inventory', label: DND_TERMS.sections.inventory },
 ];
 
 /** Matches the usage text of a resolved spell, e.g. "Duration: Concentration, up to 1 minute". */
@@ -203,6 +187,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
     CustomFeatsComponent,
     MarkdownComponent,
     SheetSectionTabsComponent,
+    TranslatePipe,
   ],
   template: `
     @if (portraitLightbox()) {
@@ -223,20 +208,20 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
             class="portrait shrink-0"
             [class.cursor-zoom-in]="!!portraitUrl()"
             [disabled]="!portraitUrl()"
-            [attr.aria-label]="portraitUrl() ? 'Portret vergroten' : null"
+            [attr.aria-label]="portraitUrl() ? ('sheet.enlargePortrait' | translate) : null"
             (click)="portraitUrl() && portraitLightbox.set(portraitUrl())"
           >
             @if (portraitUrl()) {
-              <img [src]="portraitUrl()" [alt]="'Portret van ' + character().name" class="w-full h-full object-cover" />
+              <img [src]="portraitUrl()" [alt]="'sheet.portraitOf' | translate: character().name" class="w-full h-full object-cover" />
             } @else {
               <span class="portrait-initial">{{ initial() }}</span>
             }
-            <span class="level-badge" [attr.aria-label]="'Level ' + character().level">{{ character().level }}</span>
+            <span class="level-badge" [attr.aria-label]="'sheet.level' | translate: character().level">{{ character().level }}</span>
           </button>
 
           <!-- Identity -->
           <div class="flex-1 min-w-0 text-center @2xl:text-left">
-            <div class="qm-eyebrow">Level {{ character().level }} · {{ character().race }} {{ character().class }}</div>
+            <div class="qm-eyebrow">{{ 'sheet.level' | translate: character().level }} · {{ character().race }} {{ character().class }}</div>
             <h1 class="qm-display text-2xl @2xl:text-3xl leading-tight mt-1 break-words">{{ character().name }}</h1>
 
             <div class="flex flex-wrap justify-center @2xl:justify-start gap-2 mt-3">
@@ -247,14 +232,14 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
                 <span class="qm-tag">{{ character().alignment }}</span>
               }
               @if (character().experiencePoints) {
-                <span class="qm-tag">{{ character().experiencePoints | number }} XP</span>
+                <span class="qm-tag">{{ formatting.formatNumber(character().experiencePoints) }} {{ terms.xp }}</span>
               }
               @if (character().playerName) {
-                <span class="qm-tag qm-tag-quiet">Player: {{ character().playerName }}</span>
+                <span class="qm-tag qm-tag-quiet">{{ 'sheet.player' | translate: character().playerName! }}</span>
               }
-              <span class="qm-tag qm-tag-quiet" [title]="'Built with the 5e rules of ' + rulesVersion()">{{ rulesVersion() }} rules</span>
+              <span class="qm-tag qm-tag-quiet" [title]="'sheet.rulesTitle' | translate: rulesVersion()">{{ 'sheet.rulesTag' | translate: rulesVersion() }}</span>
               @if (editable() && archived()) {
-                <span class="qm-tag tag-archived">Archived</span>
+                <span class="qm-tag tag-archived">{{ 'sheet.archived' | translate }}</span>
               }
               <app-inspiration-toggle [inspired]="play().inspiration" [editable]="editable()" (inspiredChange)="onInspiration($event)" />
             </div>
@@ -265,11 +250,11 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
             <div class="hero-actions shrink-0">
               <button type="button" class="action action-rest" (click)="takeShortRest()">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3c1 3-2 4-2 7a2 2 0 004 0c2 1.5 3 3.5 3 5.5a5 5 0 01-10 0C7 11 10 8 12 3z" /></svg>
-                Short rest
+                {{ terms.shortRest }}
               </button>
               <button type="button" class="action action-rest is-long" (click)="showLongRest.set(true)">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 14.5A8 8 0 019.5 4a8 8 0 1010.5 10.5z" /></svg>
-                Long rest
+                {{ terms.longRest }}
               </button>
             </div>
           }
@@ -312,35 +297,35 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
               <svg viewBox="0 0 40 46" class="absolute inset-0 w-full h-full" aria-hidden="true"><path d="M20 2 L37 8 V22 C37 33 29.5 40.5 20 44 C10.5 40.5 3 33 3 22 V8 Z" /></svg>
               <span class="relative">{{ character().armorClass }}</span>
             </div>
-            <span class="vital-label">Armor Class</span>
+            <span class="vital-label">{{ terms.armorClass }}</span>
           </div>
 
           <div class="vital">
             <span class="vital-value">{{ signed(character().initiative) }}</span>
-            <span class="vital-label">Initiative</span>
+            <span class="vital-label">{{ terms.initiative }}</span>
           </div>
 
           <div class="vital">
-            <span class="vital-value">{{ character().speed }}<span class="text-sm qm-muted ml-0.5">ft</span></span>
-            <span class="vital-label">Speed</span>
+            <span class="vital-value">{{ character().speed }}<span class="text-sm qm-muted ml-0.5">{{ terms.feet }}</span></span>
+            <span class="vital-label">{{ terms.speed }}</span>
           </div>
 
           <div class="vital" [class.vital-stepper]="editable()">
             <div class="flex items-center gap-1">
               @if (editable()) {
-                <button type="button" class="mini-step" aria-label="Spend a hit die" [disabled]="play().hitDice.current <= 0" (click)="onHitDice(play().hitDice.current - 1)">−</button>
+                <button type="button" class="mini-step" [attr.aria-label]="'sheet.spendHitDie' | translate" [disabled]="play().hitDice.current <= 0" (click)="onHitDice(play().hitDice.current - 1)">−</button>
               }
               <span class="vital-value">{{ play().hitDice.current }}<span class="text-sm qm-muted">/{{ play().hitDice.total }}{{ play().hitDice.die }}</span></span>
               @if (editable()) {
-                <button type="button" class="mini-step" aria-label="Regain a hit die" [disabled]="play().hitDice.current >= play().hitDice.total" (click)="onHitDice(play().hitDice.current + 1)">+</button>
+                <button type="button" class="mini-step" [attr.aria-label]="'sheet.regainHitDie' | translate" [disabled]="play().hitDice.current >= play().hitDice.total" (click)="onHitDice(play().hitDice.current + 1)">+</button>
               }
             </div>
-            <span class="vital-label">Hit Dice</span>
+            <span class="vital-label">{{ terms.hitDice }}</span>
           </div>
 
           <div class="vital">
             <span class="vital-value">{{ character().passiveWisdom }}</span>
-            <span class="vital-label">Passive Perception</span>
+            <span class="vital-label">{{ terms.passivePerception }}</span>
           </div>
         </div>
 
@@ -369,7 +354,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
       </header>
 
       <!-- ═══ Ability scores ═══ -->
-      <section class="grid grid-cols-3 @lg:grid-cols-6 gap-3" aria-label="Ability scores" data-section="abilities">
+      <section class="grid grid-cols-3 @lg:grid-cols-6 gap-3" [attr.aria-label]="terms.abilityScores" data-section="abilities">
         @for (ability of abilities; track ability.key) {
           <div class="ability" [title]="ability.name">
             <span class="ability-label">{{ ability.label }}</span>
@@ -385,7 +370,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
         <!-- Left column -->
         <div class="space-y-6">
           <section class="qm-panel">
-            <h3 class="qm-section-title">Saving Throws</h3>
+            <h3 class="qm-section-title">{{ terms.savingThrows }}</h3>
             <ul class="grid grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))] gap-x-4">
               @for (st of savingThrowsList; track st.key) {
                 <li class="row">
@@ -400,7 +385,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
           </section>
 
           <section class="qm-panel">
-            <h3 class="qm-section-title">Skills</h3>
+            <h3 class="qm-section-title">{{ terms.skillsTitle }}</h3>
             <ul>
               @for (skill of allSkills; track skill.name) {
                 <li class="row">
@@ -409,9 +394,9 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
                     <span class="truncate" [class.font-semibold]="skill.proficient">{{ skill.name }}</span>
                     <span class="ability-hint">{{ skill.abilityLabel }}</span>
                     @if (skill.expertise) {
-                      <span class="sr-only">(expertise)</span>
+                      <span class="sr-only">({{ terms.expertise }})</span>
                     } @else if (skill.proficient) {
-                      <span class="sr-only">(proficient)</span>
+                      <span class="sr-only">({{ terms.proficient }})</span>
                     }
                   </span>
                   <span class="mod">{{ signed(skill.modifier) }}</span>
@@ -421,7 +406,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
           </section>
 
           <section class="qm-panel">
-            <h3 class="qm-section-title">Proficiencies & Languages</h3>
+            <h3 class="qm-section-title">{{ terms.proficienciesAndLanguages }}</h3>
             @if (character().proficiencies.length) {
               <ul class="space-y-1.5 text-sm mb-4">
                 @for (prof of character().proficiencies; track prof) {
@@ -440,7 +425,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
         <!-- Right column -->
         <div class="space-y-6">
           <section class="qm-panel" data-section="attacks">
-            <h3 class="qm-section-title">Attacks</h3>
+            <h3 class="qm-section-title">{{ terms.attacks }}</h3>
             @if (character().attacks.length) {
               <ul class="space-y-2">
                 @for (attack of character().attacks; track $index) {
@@ -455,7 +440,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
                 }
               </ul>
             } @else {
-              <p class="empty">No attacks configured</p>
+              <p class="empty">{{ 'sheet.noAttacks' | translate }}</p>
             }
           </section>
 
@@ -485,17 +470,17 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
           @let spellcasting = character().spellcasting;
           @if (spellcasting) {
             <section class="qm-panel" data-section="spells">
-              <h3 class="qm-section-title">Spellcasting</h3>
+              <h3 class="qm-section-title">{{ terms.spellcasting }}</h3>
 
               <div class="flex flex-wrap gap-3 mb-4">
                 @if (spellcasting.ability) {
-                  <div class="stat-chip"><span class="qm-muted">Ability</span><strong class="capitalize">{{ spellcasting.ability }}</strong></div>
+                  <div class="stat-chip"><span class="qm-muted">{{ terms.spellcastingAbility }}</span><strong class="capitalize">{{ spellcasting.ability }}</strong></div>
                 }
                 @if (spellcasting.spellSaveDc) {
-                  <div class="stat-chip"><span class="qm-muted">Save DC</span><strong>{{ spellcasting.spellSaveDc }}</strong></div>
+                  <div class="stat-chip"><span class="qm-muted">{{ terms.spellSaveDc }}</span><strong>{{ spellcasting.spellSaveDc }}</strong></div>
                 }
                 @if (spellcasting.spellAttackBonus !== undefined) {
-                  <div class="stat-chip"><span class="qm-muted">Spell Attack</span><strong>{{ signed(spellcasting.spellAttackBonus) }}</strong></div>
+                  <div class="stat-chip"><span class="qm-muted">{{ terms.spellAttack }}</span><strong>{{ signed(spellcasting.spellAttackBonus) }}</strong></div>
                 }
               </div>
 
@@ -508,7 +493,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
                         <app-use-pips
                           [total]="slot.total"
                           [spent]="slot.expended"
-                          [label]="'Level ' + slot.level + ' slot'"
+                          [label]="'sheet.slotLabel' | translate: slot.level"
                           [editable]="editable()"
                           (spentChange)="onSlotsExpended(slot.level, $event)"
                         />
@@ -545,7 +530,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
                         <app-use-pips
                           [total]="tracker.max"
                           [spent]="tracker.spent"
-                          [label]="entry.name + ' use'"
+                          [label]="'sheet.useLabel' | translate: entry.name"
                           [editable]="editable()"
                           (spentChange)="onUsesSpent(tracker.key, $event)"
                         />
@@ -556,11 +541,11 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
                           type="button"
                           class="cast"
                           [disabled]="entry.noSlots"
-                          [attr.aria-label]="'Cast ' + entry.name"
+                          [attr.aria-label]="'sheet.cast.spell' | translate: entry.name"
                           [attr.aria-expanded]="castingSpell() === entry.index"
                           (click)="castingSpell.set(entry.index)"
                         >
-                          <span class="cast-pill">{{ entry.noSlots ? 'No slots' : 'Cast' }}</span>
+                          <span class="cast-pill">{{ (entry.noSlots ? 'sheet.cast.noSlots' : 'sheet.cast.button') | translate }}</span>
                         </button>
                       }
 
@@ -583,14 +568,14 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
                             <div class="qm-eyebrow mb-1">{{ spell.school }}</div>
                           }
                           @if (loadingSpells().has(entry.index)) {
-                            <div class="qm-progress is-indeterminate h-1" role="progressbar" aria-label="Loading"><div class="qm-progress-bar"></div></div>
+                            <div class="qm-progress is-indeterminate h-1" role="progressbar" [attr.aria-label]="'common.loading' | translate"><div class="qm-progress-bar"></div></div>
                           } @else if (spell.description) {
                             <app-markdown [text]="spell.description" />
                             @if (spell.usage) {
                               <div class="usage">{{ spell.usage }}</div>
                             }
                           } @else {
-                            <span class="italic qm-muted">Geen beschrijving beschikbaar</span>
+                            <span class="italic qm-muted">{{ 'sheet.noDescription' | translate }}</span>
                           }
                           @if (editable()) {
                             <app-tracker-editor [uses]="spell.uses ?? null" (usesChange)="usesChange.emit({ owner: 'spell', name: entry.name, uses: $event })" />
@@ -604,15 +589,15 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
 
               @if (orphanSlots().length) {
                 <div class="spell-group">
-                  <span class="qm-eyebrow block mb-1">Spell Slots</span>
+                  <span class="qm-eyebrow block mb-1">{{ terms.spellSlots }}</span>
                   @for (slot of orphanSlots(); track slot.level) {
                     <div class="row">
-                      <span class="text-sm">Level {{ slot.level }}</span>
+                      <span class="text-sm">{{ 'sheet.level' | translate: slot.level }}</span>
                       <span class="slot-row">
                         <app-use-pips
                           [total]="slot.total"
                           [spent]="slot.expended"
-                          [label]="'Level ' + slot.level + ' slot'"
+                          [label]="'sheet.slotLabel' | translate: slot.level"
                           [editable]="editable()"
                           (spentChange)="onSlotsExpended(slot.level, $event)"
                         />
@@ -626,7 +611,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
           }
 
           <section class="qm-panel" data-section="traits">
-            <h3 class="qm-section-title">Features & Traits</h3>
+            <h3 class="qm-section-title">{{ terms.featuresAndTraits }}</h3>
             @for (entry of features(); track entry.index) {
               <div class="entry-row">
                 @if (entry.details; as feature) {
@@ -649,7 +634,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
                     <app-use-pips
                       [total]="tracker.max"
                       [spent]="tracker.spent"
-                      [label]="entry.name + ' use'"
+                      [label]="'sheet.useLabel' | translate: entry.name"
                       [editable]="editable()"
                       (spentChange)="onUsesSpent(tracker.key, $event)"
                     />
@@ -664,11 +649,11 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
                       <div class="qm-eyebrow mb-1">{{ feature.source }}</div>
                     }
                     @if (loadingFeatures().has(entry.index)) {
-                      <div class="qm-progress is-indeterminate h-1" role="progressbar" aria-label="Loading"><div class="qm-progress-bar"></div></div>
+                      <div class="qm-progress is-indeterminate h-1" role="progressbar" [attr.aria-label]="'common.loading' | translate"><div class="qm-progress-bar"></div></div>
                     } @else if (feature.description) {
                       <app-markdown [text]="feature.description" />
                     } @else {
-                      <span class="italic qm-muted">No description available</span>
+                      <span class="italic qm-muted">{{ 'sheet.noDescription' | translate }}</span>
                     }
                     @if (editable()) {
                       <app-tracker-editor [uses]="feature.uses ?? null" (usesChange)="usesChange.emit({ owner: 'feature', name: entry.name, uses: $event })" />
@@ -678,7 +663,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
               }
             } @empty {
               @if (!editable() && !play().feats.length) {
-                <p class="empty">No features yet</p>
+                <p class="empty">{{ 'sheet.noFeatures' | translate }}</p>
               }
             }
 
@@ -697,7 +682,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
           </section>
 
           <section class="qm-panel" data-section="inventory">
-            <h3 class="qm-section-title">Inventory</h3>
+            <h3 class="qm-section-title">{{ terms.inventory }}</h3>
             <app-coin-purse class="mb-4" [coins]="play().coins" [editable]="editable()" (coinsChange)="onCoinsChange($event)" />
 
             @if (editable() || play().inventory.length) {
@@ -718,7 +703,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
                 }
               </ul>
             } @else if (!editable() && !play().inventory.length) {
-              <p class="empty">No equipment</p>
+              <p class="empty">{{ 'sheet.noEquipment' | translate }}</p>
             }
           </section>
 
@@ -731,7 +716,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
       <!-- ═══ Story ═══ -->
       @if (personality().length) {
         <section class="qm-panel" data-section="story">
-          <h3 class="qm-section-title">Personality</h3>
+          <h3 class="qm-section-title">{{ terms.personality }}</h3>
           <div class="grid @xl:grid-cols-2 gap-4">
             @for (p of personality(); track p.label) {
               <div class="trait">
@@ -745,7 +730,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
 
       @if (character().appearance; as appearance) {
         <section class="qm-panel" data-section="story">
-          <h3 class="qm-section-title">Appearance</h3>
+          <h3 class="qm-section-title">{{ terms.appearance }}</h3>
           @if (appearanceDetails().length) {
             <dl class="grid grid-cols-3 @xl:grid-cols-6 gap-3 mb-4">
               @for (d of appearanceDetails(); track d.label) {
@@ -764,7 +749,7 @@ const CONCENTRATION_USAGE = /concentration:\s*yes|duration:\s*concentration/i;
 
       @if (character().backstory) {
         <section class="qm-panel" data-section="story">
-          <h3 class="qm-section-title">Backstory</h3>
+          <h3 class="qm-section-title">{{ terms.backstory }}</h3>
           <p class="prose-text backstory whitespace-pre-line">{{ character().backstory }}</p>
         </section>
       }
@@ -1178,6 +1163,8 @@ export class CharacterSheetComponent {
   private readonly resolver = inject(CharacterEntryResolverService);
   private readonly toastService = inject(ToastService);
   protected readonly i18n = inject(I18nService);
+  protected readonly formatting = inject(FormattingService);
+  protected readonly terms = DND_TERMS;
   private toastTimer: ReturnType<typeof setTimeout> | null = null;
   /** Lower-cased names of the character's spells that need concentration, from the bundled spell data. */
   private readonly concentrationSpells = signal<ReadonlySet<string>>(new Set());
@@ -1221,10 +1208,10 @@ export class CharacterSheetComponent {
     const id = this.characterId();
     const url = id ? characterShareUrl(id) : `${window.location.origin}${window.location.pathname}`;
     if (await copyText(url)) {
-      this.toastService.show('Link gekopieerd — iedereen met deze link kan dit karakter bekijken.', 'success');
+      this.toastService.show(this.i18n.t().sheet.share.copied, 'success');
     } else {
       // Clipboard blocked (permissions/browser): let the user copy it by hand.
-      window.prompt('Kopieer de link naar dit karakter:', url);
+      window.prompt(this.i18n.t().sheet.share.copyPrompt, url);
     }
   }
 
@@ -1462,25 +1449,27 @@ export class CharacterSheetComponent {
 
   personality = computed(() => {
     const c = this.character();
-    return [
-      { label: 'Personality Traits', text: c.personalityTraits },
-      { label: 'Ideals', text: c.ideals },
-      { label: 'Bonds', text: c.bonds },
-      { label: 'Flaws', text: c.flaws },
-    ].filter((p): p is { label: string; text: string } => !!p.text);
+    const parts: { label: string; text?: string }[] = [
+      { label: DND_TERMS.personalityTraits, text: c.personalityTraits },
+      { label: DND_TERMS.ideals, text: c.ideals },
+      { label: DND_TERMS.bonds, text: c.bonds },
+      { label: DND_TERMS.flaws, text: c.flaws },
+    ];
+    return parts.filter((p): p is { label: string; text: string } => !!p.text);
   });
 
   appearanceDetails = computed(() => {
     const a = this.character().appearance;
     if (!a) return [];
-    return [
-      { label: 'Age', value: a.age },
-      { label: 'Height', value: a.height },
-      { label: 'Weight', value: a.weight },
-      { label: 'Eyes', value: a.eyes },
-      { label: 'Skin', value: a.skin },
-      { label: 'Hair', value: a.hair },
-    ].filter((d): d is { label: string; value: string } => !!d.value);
+    const details: { label: string; value?: string }[] = [
+      { label: DND_TERMS.age, value: a.age },
+      { label: DND_TERMS.height, value: a.height },
+      { label: DND_TERMS.weight, value: a.weight },
+      { label: DND_TERMS.eyes, value: a.eyes },
+      { label: DND_TERMS.skin, value: a.skin },
+      { label: DND_TERMS.hair, value: a.hair },
+    ];
+    return details.filter((d): d is { label: string; value: string } => !!d.value);
   });
 
   hasAppearanceDetails = computed(() => this.appearanceDetails().length > 0);
@@ -1491,9 +1480,10 @@ export class CharacterSheetComponent {
    */
   actionCards = computed<ActionCard[]>(() => {
     const { bonusActions, reactions } = this.character();
+    const texts = this.i18n.t().sheet;
     const cards: ActionCard[] = [];
-    if (bonusActions) cards.push({ title: 'Bonus Actions', empty: 'No bonus actions', actions: bonusActions });
-    if (reactions?.length) cards.push({ title: 'Reactions', empty: 'No reactions', actions: reactions });
+    if (bonusActions) cards.push({ title: DND_TERMS.bonusActions, empty: texts.noBonusActions, actions: bonusActions });
+    if (reactions?.length) cards.push({ title: DND_TERMS.reactions, empty: texts.noReactions, actions: reactions });
     return cards;
   });
 
@@ -1501,6 +1491,7 @@ export class CharacterSheetComponent {
   spellGroups = computed<SpellGroup[]>(() => {
     const spells = this.character().spellcasting?.spells ?? [];
     const play = this.play();
+    const texts = this.i18n.t().sheet;
     const groups = new Map<string, SpellGroup>();
 
     spells.forEach((spell, index) => {
@@ -1511,7 +1502,7 @@ export class CharacterSheetComponent {
       if (!groups.has(key)) {
         groups.set(key, {
           key,
-          label: level === undefined ? 'Spells' : level === 0 ? 'Cantrips' : `Level ${level}`,
+          label: level === undefined ? DND_TERMS.spells : level === 0 ? DND_TERMS.cantrips : texts.level(level),
           slot: level ? play.slots.find(s => s.level === level) : undefined,
           entries: [],
         });
@@ -1565,21 +1556,29 @@ export class CharacterSheetComponent {
       key,
       max: Math.trunc(uses.max),
       spent: play.usesSpent[key],
-      rechargeLabel: RECHARGE_LABELS[uses.recharge] ?? RECHARGE_LABELS.manual,
+      rechargeLabel: this.rechargeLabel(uses.recharge),
     };
+  }
+
+  /** The rests are game terms; a tracker that is reset by hand says so in the active language. */
+  private rechargeLabel(recharge: LimitedUses['recharge']): string {
+    if (recharge === 'shortRest') return DND_TERMS.shortRest;
+    if (recharge === 'longRest') return DND_TERMS.longRest;
+    return this.i18n.t().sheet.rechargeManual;
   }
 
   /** The ways to pay for a cast: the spell's own uses first, then every slot level from its own level up. */
   private castOptions(level: number | undefined, tracker: TrackerView | null, play: ResolvedPlayState): CastOption[] {
     const options: CastOption[] = [];
-    const left = (count: number, unit: string) => (count > 0 ? `${count} ${unit}${count === 1 ? '' : 's'} left` : 'None left');
+    const sheet = this.i18n.t().sheet;
+    const texts = sheet.cast;
 
     if (tracker) {
       const uses = tracker.max - tracker.spent;
-      options.push({ id: 'uses', label: 'Without a slot', detail: left(uses, 'use'), disabled: uses <= 0, primary: false, usesKey: tracker.key });
+      options.push({ id: 'uses', label: texts.withoutSlot, detail: texts.usesLeft(uses), disabled: uses <= 0, primary: false, usesKey: tracker.key });
     }
     if (level === 0) {
-      if (!tracker) options.push({ id: 'free', label: 'Cantrip', detail: 'No slot needed', disabled: false, primary: true });
+      if (!tracker) options.push({ id: 'free', label: DND_TERMS.cantrip, detail: texts.noSlotNeeded, disabled: false, primary: true });
       return options;
     }
 
@@ -1588,21 +1587,24 @@ export class CharacterSheetComponent {
       const slots = slot.total - slot.expended;
       options.push({
         id: `slot-${slot.level}`,
-        label: level !== undefined && slot.level > level ? `Level ${slot.level} · upcast` : `Level ${slot.level}`,
-        detail: left(slots, 'slot'),
+        label: level !== undefined && slot.level > level ? texts.upcast(slot.level) : sheet.level(slot.level),
+        detail: texts.slotsLeft(slots),
         disabled: slots <= 0,
         primary: slot.level === level,
         slotLevel: slot.level,
       });
     }
     if (!options.length) {
-      options.push({ id: 'free', label: 'Without a slot', detail: 'No slots at this level', disabled: false, primary: true });
+      options.push({ id: 'free', label: texts.withoutSlot, detail: texts.noSlotsAtLevel, disabled: false, primary: true });
     }
     return options;
   }
 
   readonly attackRollLabel = attackRollLabel;
-  readonly attackRollTitle = attackRollTitle;
+
+  attackRollTitle(attack: WeaponAttack): string {
+    return attackRollTitle(attack, this.i18n.t().sheet.attackRoll);
+  }
 
   signed(value: number): string {
     return `${value >= 0 ? '+' : ''}${value}`;

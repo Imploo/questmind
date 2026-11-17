@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, afterNextRender, inject, input, signal } from '@angular/core';
+import { TranslatePipe } from '../../../../core/i18n/translate.pipe';
 
 /** A part of the sheet a tab jumps to: the element marked `data-section="<id>"`. */
 export interface SheetSection {
@@ -53,9 +54,10 @@ function scrollParentOf(element: HTMLElement): HTMLElement | null {
 @Component({
   selector: 'app-sheet-section-tabs',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [TranslatePipe],
   host: { '[class.is-lifted]': 'lifted()' },
   template: `
-    <nav class="rail" aria-label="Sections of the sheet">
+    <nav class="rail" [attr.aria-label]="'sheet.sectionsLabel' | translate">
       @for (section of sections(); track section.id) {
         <button
           type="button"

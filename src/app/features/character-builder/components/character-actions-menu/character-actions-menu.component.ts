@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, input, output } from '@an
 import { ConnectedPosition } from '@angular/cdk/overlay';
 import { CdkMenu, CdkMenuItem, CdkMenuTrigger } from '@angular/cdk/menu';
 import { DEFAULT_RULES_VERSION, otherRulesVersion, RulesVersion } from '../../../../shared/models/rules-version';
+import { TranslatePipe } from '../../../../core/i18n/translate.pipe';
 
 /** Opens below the button, right edges aligned; above it when there is no room below. */
 const MENU_POSITIONS: ConnectedPosition[] = [
@@ -17,13 +18,13 @@ const MENU_POSITIONS: ConnectedPosition[] = [
 @Component({
   selector: 'app-character-actions-menu',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CdkMenuTrigger, CdkMenu, CdkMenuItem],
+  imports: [CdkMenuTrigger, CdkMenu, CdkMenuItem, TranslatePipe],
   template: `
     <button
       type="button"
       class="trigger"
-      aria-label="Character actions"
-      title="More actions"
+      [attr.aria-label]="'characters.actions.menuLabel' | translate"
+      [title]="'characters.actions.more' | translate"
       [attr.aria-busy]="busy()"
       [cdkMenuTriggerFor]="menu"
       [cdkMenuPosition]="positions"
@@ -41,39 +42,39 @@ const MENU_POSITIONS: ConnectedPosition[] = [
       <div class="qm-menu menu" cdkMenu>
         <button type="button" class="qm-menu-item item" cdkMenuItem [cdkMenuItemDisabled]="exportingPdf()" (cdkMenuItemTriggered)="exportPdf.emit()">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-          {{ exportingPdf() ? 'Preparing PDF…' : 'Download PDF' }}
+          {{ (exportingPdf() ? 'characters.actions.preparingPdf' : 'characters.actions.downloadPdf') | translate }}
         </button>
         @if (canViewHistory()) {
           <button type="button" class="qm-menu-item item" cdkMenuItem (cdkMenuItemTriggered)="viewHistory.emit()">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-            History
+            {{ 'characters.actions.history' | translate }}
           </button>
         }
         @if (canConvertRules()) {
-          <button type="button" class="qm-menu-item item" cdkMenuItem [title]="'Rebuild this character under the ' + otherRules() + ' rules'" (cdkMenuItemTriggered)="rulesVersionChange.emit(otherRules())">
+          <button type="button" class="qm-menu-item item" cdkMenuItem [title]="'characters.actions.convertRulesTitle' | translate: otherRules()" (cdkMenuItemTriggered)="rulesVersionChange.emit(otherRules())">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
-            Convert to {{ otherRules() }} rules
+            {{ 'characters.actions.convertRules' | translate: otherRules() }}
           </button>
         }
         @if (canClone()) {
-          <button type="button" class="qm-menu-item item" cdkMenuItem title="Copy this character to your own account" [cdkMenuItemDisabled]="cloning()" (cdkMenuItemTriggered)="cloneCharacter.emit()">
+          <button type="button" class="qm-menu-item item" cdkMenuItem [title]="'characters.actions.cloneTitle' | translate" [cdkMenuItemDisabled]="cloning()" (cdkMenuItemTriggered)="cloneCharacter.emit()">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-            {{ cloning() ? 'Cloning…' : 'Clone' }}
+            {{ (cloning() ? 'characters.actions.cloning' : 'characters.actions.clone') | translate }}
           </button>
         }
-        <button type="button" class="qm-menu-item item" cdkMenuItem title="Copy a link to this character" (cdkMenuItemTriggered)="share.emit()">
+        <button type="button" class="qm-menu-item item" cdkMenuItem [title]="'characters.actions.shareTitle' | translate" (cdkMenuItemTriggered)="share.emit()">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-          Share
+          {{ 'common.share' | translate }}
         </button>
         @if (canArchive()) {
           <div class="divider" role="separator"></div>
           <button type="button" class="qm-menu-item item" cdkMenuItem (cdkMenuItemTriggered)="archivedChange.emit(!archived())">
             @if (archived()) {
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-7 9v-5m0 0l-2 2m2-2l2 2" /></svg>
-              Unarchive
+              {{ 'characters.unarchive' | translate }}
             } @else {
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
-              Archive
+              {{ 'characters.archive' | translate }}
             }
           </button>
         }
