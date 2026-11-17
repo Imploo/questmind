@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import { TranslatePipe } from '../../../../core/i18n/translate.pipe';
 
 /**
  * Feedback after a play action, with an optional undo. It sticks to the bottom of the
@@ -7,14 +8,15 @@ import { ChangeDetectionStrategy, Component, input, output } from '@angular/core
 @Component({
   selector: 'app-play-toast',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [TranslatePipe],
   host: { role: 'status' },
   template: `
     <span class="text">{{ message() }}</span>
     <span class="buttons">
       @if (canUndo()) {
-        <button type="button" class="btn is-undo" (click)="undo.emit()">Undo</button>
+        <button type="button" class="btn is-undo" (click)="undo.emit()">{{ 'common.undo' | translate }}</button>
       }
-      <button type="button" class="btn" (click)="dismissed.emit()">Dismiss</button>
+      <button type="button" class="btn" (click)="dismissed.emit()">{{ 'play.toast.dismiss' | translate }}</button>
     </span>
   `,
   styles: [`

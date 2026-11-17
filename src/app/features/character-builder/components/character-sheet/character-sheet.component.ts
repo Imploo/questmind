@@ -1343,7 +1343,7 @@ export class CharacterSheetComponent {
   private commit(result: PlayStateResult, announce = false): void {
     if (announce) {
       this.clearToastTimer();
-      this.toast.set({ message: result.message, undo: currentPlayState(this.character(), this.playState()) });
+      this.toast.set({ message: result.message(this.i18n.t().play), undo: currentPlayState(this.character(), this.playState()) });
       this.toastTimer = setTimeout(() => this.toast.set(null), TOAST_DURATION_MS);
     }
     this.playStateChange.emit(result.state);

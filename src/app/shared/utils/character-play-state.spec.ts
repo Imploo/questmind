@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Coins, DndCharacter } from '../models/dnd-character.model';
+import { en } from '../../core/i18n/en';
+import { nl } from '../../core/i18n/nl';
 import {
   addCustomFeat,
   addInventoryItem,
@@ -113,21 +115,29 @@ describe('hit points', () => {
   it('takes damage from temporary hit points first', () => {
     const { state, message } = applyDamage(character(), { hp: { current: 30, temp: 5 } }, 8);
     expect(state.hp).toEqual({ current: 27, temp: 0 });
-    expect(message).toBe('Took 8 damage.');
+    expect(message(en.play)).toBe('Took 8 damage.');
+    expect(message(nl.play)).toBe('8 damage gekregen.');
   });
 
   it('asks for a concentration save with DC 10 or half the damage', () => {
     const base = { hp: { current: 40, temp: 0 }, concentration: 'Bless' };
-    expect(applyDamage(character(), base, 6).message).toContain('DC 10 Constitution save');
-    expect(applyDamage(character(), base, 27).message).toContain('DC 13 Constitution save');
+    expect(applyDamage(character(), base, 6).message(en.play)).toContain('DC 10 Constitution save');
+    expect(applyDamage(character(), base, 27).message(en.play)).toContain('DC 13 Constitution save');
     expect(applyDamage(character(), base, 6).state.concentration).toBe('Bless');
+  });
+
+  it('writes the concentration save as one sentence per language', () => {
+    const { message } = applyDamage(character(), { hp: { current: 40, temp: 0 }, concentration: 'Bless' }, 27);
+    expect(message(en.play)).toBe('Took 27 damage. Concentrating on Bless — make a DC 13 Constitution save.');
+    expect(message(nl.play)).toBe('27 damage gekregen. Je concentreert op Bless — maak een DC 13 Constitution save.');
   });
 
   it('stops at 0 and ends concentration', () => {
     const { state, message } = applyDamage(character(), { hp: { current: 5, temp: 0 }, concentration: 'Bless' }, 20);
     expect(state.hp?.current).toBe(0);
     expect(state.concentration).toBeNull();
-    expect(message).toContain('death saves');
+    expect(message(en.play)).toContain('death saves');
+    expect(message(nl.play)).toContain('death saves');
   });
 
   it('heals up to the maximum and clears death saves', () => {
@@ -138,11 +148,19 @@ describe('hit points', () => {
     );
     expect(state.hp?.current).toBe(44);
     expect(state.deathSaves).toEqual({ successes: 0, failures: 0 });
-    expect(message).toBe('Healed 44 hit points.');
+    expect(message(en.play)).toBe('Healed 44 hit points.');
+    expect(message(nl.play)).toBe('44 hit points hersteld.');
+  });
+
+  it('says nothing after an action that needs no announcement', () => {
+    expect(toggleCondition(character(), null, 'Poisoned').message(en.play)).toBe('');
+    expect(removeInventoryItem(character(), null, 'missing').message(nl.play)).toBe('');
   });
 
   it('replaces temporary hit points instead of stacking them', () => {
-    expect(setTempHp(character(), { hp: { current: 30, temp: 5 } }, 3).state.hp).toEqual({ current: 30, temp: 3 });
+    const { state, message } = setTempHp(character(), { hp: { current: 30, temp: 5 } }, 3);
+    expect(state.hp).toEqual({ current: 30, temp: 3 });
+    expect(message(en.play)).toBe('Temporary hit points set to 3.');
   });
 
   it('ignores negative and invalid amounts', () => {
@@ -176,7 +194,8 @@ describe('castSpell', () => {
     const { state, message } = castSpell(character(), null, { spellName: 'Bless', slotLevel: 2, concentrate: true });
     expect(state.slotsExpended).toEqual({ '1': 1, '2': 1 });
     expect(state.concentration).toBe('Bless');
-    expect(message).toBe('Cast Bless — level 2 slot used, concentrating.');
+    expect(message(en.play)).toBe('Cast Bless — level 2 slot used, concentrating.');
+    expect(message(nl.play)).toBe('Bless gecast — level 2 slot gebruikt, concentratie loopt.');
   });
 
   it('reports which spell loses concentration', () => {
@@ -186,19 +205,29 @@ describe('castSpell', () => {
       { spellName: 'Shield of Faith', slotLevel: 1, concentrate: true }
     );
     expect(state.concentration).toBe('Shield of Faith');
-    expect(message).toContain('concentration moves from Bless');
+    expect(message(en.play)).toBe('Cast Shield of Faith — level 1 slot used, concentration moves from Bless.');
+    expect(message(nl.play)).toBe('Shield of Faith gecast — level 1 slot gebruikt, concentratie gaat over van Bless.');
   });
 
   it('spends a use of the spell tracker instead of a slot', () => {
     const { state, message } = castSpell(character(), null, { spellName: 'Misty Step', usesKey: MISTY, concentrate: false });
     expect(state.usesSpent?.[MISTY]).toBe(1);
     expect(state.slotsExpended).toEqual({ '1': 1, '2': 0 });
-    expect(message).toBe('Cast Misty Step — one use spent.');
+    expect(message(en.play)).toBe('Cast Misty Step — one use spent.');
+    expect(message(nl.play)).toBe('Misty Step gecast — één keer gebruikt.');
   });
 
   it('leaves concentration alone for a spell that needs none', () => {
-    const { state } = castSpell(character(), { concentration: 'Bless' }, { spellName: 'Cure Wounds', slotLevel: 1, concentrate: false });
+    const { state, message } = castSpell(character(), { concentration: 'Bless' }, { spellName: 'Cure Wounds', slotLevel: 1, concentrate: false });
     expect(state.concentration).toBe('Bless');
+    expect(message(en.play)).toBe('Cast Cure Wounds — level 1 slot used.');
+    expect(message(nl.play)).toBe('Cure Wounds gecast — level 1 slot gebruikt.');
+  });
+
+  it('casts a spell that costs nothing', () => {
+    const { message } = castSpell(character(), null, { spellName: 'Guidance', concentrate: true });
+    expect(message(en.play)).toBe('Cast Guidance, concentrating.');
+    expect(message(nl.play)).toBe('Guidance gecast, concentratie loopt.');
   });
 });
 
@@ -220,7 +249,22 @@ describe('rests', () => {
     expect(state.usesSpent).toEqual({ [REBUKE]: 1, [CHANNEL]: 0, [MISTY]: 1 });
     expect(state.slotsExpended).toEqual({ '1': 4, '2': 1 });
     expect(state.hp).toEqual({ current: 12, temp: 5 });
-    expect(message).toContain('Channel Divinity recharged');
+    expect(message(en.play)).toBe('Short rest — Channel Divinity recharged. Spend hit dice to heal.');
+    expect(message(nl.play)).toBe('Short rest — Channel Divinity opgeladen. Besteed hit dice om te herstellen.');
+  });
+
+  it('sums up a short rest in one sentence per language', () => {
+    const warlock = shortRest(character({ class: 'Warlock' }), worn).message;
+    expect(warlock(en.play)).toBe('Short rest — Channel Divinity recharged, 5 pact slots restored. Spend hit dice to heal.');
+    expect(warlock(nl.play)).toBe('Short rest — Channel Divinity opgeladen, 5 pact slots hersteld. Besteed hit dice om te herstellen.');
+
+    const oneSlot = shortRest(character({ class: 'Warlock' }), { slotsExpended: { '1': 0, '2': 1 } }).message;
+    expect(oneSlot(en.play)).toBe('Short rest — 1 pact slot restored. Spend hit dice to heal.');
+    expect(oneSlot(nl.play)).toBe('Short rest — 1 pact slot hersteld. Besteed hit dice om te herstellen.');
+
+    const fresh = shortRest(character(), null).message;
+    expect(fresh(en.play)).toBe('Short rest — nothing to recharge. Spend hit dice to heal.');
+    expect(fresh(nl.play)).toBe('Short rest — niets om op te laden. Besteed hit dice om te herstellen.');
   });
 
   it('restores pact slots on a short rest for a warlock', () => {
@@ -231,7 +275,9 @@ describe('rests', () => {
   });
 
   it('restores everything on a long rest but keeps conditions', () => {
-    const { state } = longRest(character(), worn);
+    const { state, message } = longRest(character(), worn);
+    expect(message(en.play)).toBe(en.play.messages.longRest);
+    expect(message(nl.play)).toBe(nl.play.messages.longRest);
     expect(state.hp).toEqual({ current: 44, temp: 0 });
     expect(state.hitDice).toBe(3);
     expect(state.deathSaves).toEqual({ successes: 0, failures: 0 });
@@ -250,13 +296,13 @@ describe('rests', () => {
 
   it('previews only what a long rest changes', () => {
     expect(longRestPreview(character(), worn)).toEqual([
-      { label: 'Hit points', value: '12 → 44' },
-      { label: 'Temporary hit points', value: '5 → 0' },
-      { label: 'Spell slots', value: '5 restored' },
-      { label: 'Features', value: 'Hellish Rebuke, Channel Divinity, Misty Step' },
-      { label: 'Hit dice', value: '1 → 3' },
-      { label: 'Exhaustion', value: '2 → 1' },
-      { label: 'Concentration', value: 'Bless ends' },
+      { kind: 'hitPoints', before: 12, after: 44 },
+      { kind: 'temporaryHitPoints', before: 5, after: 0 },
+      { kind: 'spellSlots', restored: 5 },
+      { kind: 'features', recharged: ['Hellish Rebuke', 'Channel Divinity', 'Misty Step'] },
+      { kind: 'hitDice', before: 1, after: 3 },
+      { kind: 'exhaustion', before: 2, after: 1 },
+      { kind: 'concentration', spell: 'Bless' },
     ]);
     expect(longRestPreview(character({ spellcasting: undefined }), null)).toEqual([]);
   });
@@ -329,7 +375,8 @@ describe('inventory', () => {
   it('removes an item and says which one', () => {
     const { state, message } = removeInventoryItem(character(), { inventory: [rope] }, 'a');
     expect(state.inventory).toEqual([]);
-    expect(message).toBe('Removed Rope from the inventory.');
+    expect(message(en.play)).toBe('Removed Rope from the inventory.');
+    expect(message(nl.play)).toBe('Rope uit de inventaris verwijderd.');
   });
 
   it('keeps the inventory through a long rest and other play actions', () => {
@@ -390,17 +437,18 @@ describe('custom feats', () => {
 
     const rested = shortRest(character(), spent);
     expect(rested.state.usesSpent).toMatchObject({ [BOON]: 2, [customFeatUsesKey('short')]: 0, [customFeatUsesKey('manual')]: 3 });
-    expect(rested.message).toContain('Second Skin recharged');
+    expect(rested.message(en.play)).toContain('Second Skin recharged');
 
     expect(longRest(character(), spent).state.usesSpent).toMatchObject({ [BOON]: 0, [customFeatUsesKey('short')]: 0, [customFeatUsesKey('manual')]: 3 });
-    expect(longRestPreview(character(), spent)).toContainEqual({ label: 'Features', value: "Stormcaller's Boon, Second Skin" });
+    expect(longRestPreview(character(), spent)).toContainEqual({ kind: 'features', recharged: ["Stormcaller's Boon", 'Second Skin'] });
   });
 
   it('removes a feat with its spent uses and says which one', () => {
     const { state, message } = removeCustomFeat(character(), { feats: [tracked], usesSpent: { [BOON]: 1 } }, 'boon');
     expect(state.feats).toEqual([]);
     expect(state.usesSpent).not.toHaveProperty(BOON);
-    expect(message).toBe("Removed the feat Stormcaller's Boon.");
+    expect(message(en.play)).toBe("Removed the feat Stormcaller's Boon.");
+    expect(message(nl.play)).toBe("Feat Stormcaller's Boon verwijderd.");
   });
 
   it('keeps the feats through another play action', () => {

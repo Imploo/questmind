@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+import { TranslatePipe } from '../../../../core/i18n/translate.pipe';
 
 /** Above this many uses the diamonds make way for a counter (Lay on Hands, Sorcery Points). */
 const POOL_THRESHOLD = 6;
@@ -10,16 +11,17 @@ const POOL_THRESHOLD = 6;
 @Component({
   selector: 'app-use-pips',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [TranslatePipe],
   host: { '[class.is-pool]': 'isPool()' },
   template: `
     @if (isPool()) {
       <span class="pool">
         @if (editable()) {
-          <button type="button" class="step" [disabled]="left() <= 0" [attr.aria-label]="'Spend 1 of ' + label()" (click)="spentChange.emit(spent() + 1)">−</button>
+          <button type="button" class="step" [disabled]="left() <= 0" [attr.aria-label]="'play.pips.spend' | translate: label()" (click)="spentChange.emit(spent() + 1)">−</button>
         }
         <span class="count"><strong>{{ left() }}</strong> / {{ total() }}</span>
         @if (editable()) {
-          <button type="button" class="step" [disabled]="spent() <= 0" [attr.aria-label]="'Restore 1 of ' + label()" (click)="spentChange.emit(spent() - 1)">+</button>
+          <button type="button" class="step" [disabled]="spent() <= 0" [attr.aria-label]="'play.pips.restore' | translate: label()" (click)="spentChange.emit(spent() - 1)">+</button>
         }
       </span>
     } @else if (editable()) {
@@ -28,7 +30,7 @@ const POOL_THRESHOLD = 6;
           <button
             type="button"
             class="pip-button"
-            [attr.aria-label]="label() + ' ' + (pip.index + 1) + (pip.spent ? ', spent' : ', available')"
+            [attr.aria-label]="'play.pips.pip' | translate: label() : pip.index + 1 : pip.spent"
             [attr.aria-pressed]="pip.spent"
             (click)="spentChange.emit(pip.spent ? spent() - 1 : spent() + 1)"
           >
@@ -37,7 +39,7 @@ const POOL_THRESHOLD = 6;
         }
       </span>
     } @else {
-      <span class="pips is-static" role="img" [attr.aria-label]="left() + ' of ' + total() + ' ' + label() + ' available'">
+      <span class="pips is-static" role="img" [attr.aria-label]="'play.pips.left' | translate: left() : total() : label()">
         @for (pip of pips(); track pip.index) {
           <span class="pip" [class.is-spent]="pip.spent"></span>
         }

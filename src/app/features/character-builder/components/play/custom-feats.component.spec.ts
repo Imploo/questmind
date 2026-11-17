@@ -1,12 +1,20 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { CustomFeat } from '../../../../shared/models/character-play-state.model';
 import { customFeatUsesKey } from '../../../../shared/utils/character-play-state';
+import { I18nService } from '../../../../core/i18n/i18n.service';
+import { en } from '../../../../core/i18n/en';
+import { nl } from '../../../../core/i18n/nl';
+import { provideTestLanguage } from '../../../../core/i18n/testing';
 import { CustomFeatChange, CustomFeatSpentChange, CustomFeatsComponent } from './custom-feats.component';
+import { PLAY_TERMS } from './play-terms';
 
 const boon: CustomFeat = { id: 'boon', name: "Stormcaller's Boon", description: 'Call **lightning**.', uses: { max: 2, recharge: 'longRest' } };
 
 describe('CustomFeatsComponent', () => {
+  // English on purpose rather than by default: a language another spec left in localStorage would decide otherwise.
+  beforeEach(() => TestBed.configureTestingModule({ providers: [provideTestLanguage('en')] }));
+
   function render(feats: CustomFeat[], editable = true, usesSpent: Record<string, number> = {}) {
     const fixture = TestBed.createComponent(CustomFeatsComponent);
     fixture.componentRef.setInput('feats', feats);
@@ -50,7 +58,7 @@ describe('CustomFeatsComponent', () => {
 
     (host.querySelector('.head') as HTMLButtonElement).click();
     fixture.detectChanges();
-    button('Edit feat')!.click();
+    button(en.play.feats.edit)!.click();
     fixture.detectChanges();
     type('.form input', 'Storm Boon');
     type('.form textarea', 'Thunder. ');
@@ -65,7 +73,7 @@ describe('CustomFeatsComponent', () => {
     const spent: CustomFeatSpentChange[] = [];
     component.spentChange.subscribe(change => spent.push(change));
 
-    expect(host.querySelector('.recharge')!.textContent).toBe('Long rest');
+    expect(host.querySelector('.recharge')!.textContent).toBe(PLAY_TERMS.recharge.longRest);
     const pips = Array.from(host.querySelectorAll('app-use-pips button')) as HTMLButtonElement[];
     expect(pips.map(pip => pip.getAttribute('aria-pressed'))).toEqual(['true', 'false']);
 
@@ -80,8 +88,29 @@ describe('CustomFeatsComponent', () => {
     fixture.detectChanges();
 
     expect(host.querySelector('.add')).toBeNull();
-    expect(button('Edit feat')).toBeUndefined();
+    expect(button(en.play.feats.edit)).toBeUndefined();
     expect(host.querySelector('app-tracker-editor')).toBeNull();
     expect(host.querySelector('app-markdown strong')!.textContent).toBe('lightning');
+  });
+
+  it('switches language at once and keeps the game terms English', () => {
+    TestBed.configureTestingModule({ providers: [provideTestLanguage('nl')] });
+    const { fixture, host, button } = render([boon]);
+
+    (host.querySelector('.head') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(button(nl.play.feats.edit)).toBeDefined();
+    expect((host.querySelector('.add input') as HTMLInputElement).placeholder).toBe(nl.play.feats.addPlaceholder);
+    expect(host.querySelector('.summary span')!.textContent).toBe('Tracker: 2 keer · laadt op bij een long rest');
+    expect(host.querySelector('.recharge')!.textContent).toBe('Long rest');
+    expect(host.querySelector('.name')!.textContent).toBe("Stormcaller's Boon");
+
+    TestBed.inject(I18nService).use('en');
+    fixture.detectChanges();
+
+    expect(button(en.play.feats.edit)).toBeDefined();
+    expect(host.querySelector('.summary span')!.textContent).toBe('Tracker: 2 uses · recharges on a long rest');
+    expect(host.querySelector('.recharge')!.textContent).toBe('Long rest');
   });
 });

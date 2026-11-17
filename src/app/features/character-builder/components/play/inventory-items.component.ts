@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core';
 import { InventoryItem } from '../../../../shared/models/character-play-state.model';
 import { MarkdownComponent } from '../../../../shared/components/markdown.component';
+import { TranslatePipe } from '../../../../core/i18n/translate.pipe';
 
 export interface InventoryItemChange {
   id: string;
@@ -15,7 +16,7 @@ export interface InventoryItemChange {
 @Component({
   selector: 'app-inventory-items',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MarkdownComponent],
+  imports: [MarkdownComponent, TranslatePipe],
   template: `
     @for (item of items(); track item.id) {
       <div class="item">
@@ -31,31 +32,31 @@ export interface InventoryItemChange {
           <div class="body">
             @if (editable()) {
               <label class="field">
-                <span>Value</span>
+                <span>{{ 'play.inventory.value' | translate }}</span>
                 <input
                   type="text"
                   maxlength="60"
-                  placeholder="20, 50 gp, 3 charges…"
+                  [placeholder]="'play.inventory.valuePlaceholder' | translate"
                   [value]="item.value"
                   (change)="updated.emit({ id: item.id, changes: { value: $any($event.target).value.trim() } })"
                   (keydown.enter)="$any($event.target).blur()"
                 />
               </label>
               <label class="field">
-                <span>Description</span>
+                <span>{{ 'common.description' | translate }}</span>
                 <textarea
                   rows="3"
                   maxlength="2000"
-                  placeholder="What it is, what it does…"
+                  [placeholder]="'play.inventory.descriptionPlaceholder' | translate"
                   [value]="item.description"
                   (change)="updated.emit({ id: item.id, changes: { description: $any($event.target).value.trim() } })"
                 ></textarea>
               </label>
-              <button type="button" class="remove" (click)="removed.emit(item.id)">Remove item</button>
+              <button type="button" class="remove" (click)="removed.emit(item.id)">{{ 'play.inventory.removeItem' | translate }}</button>
             } @else if (item.description) {
               <app-markdown class="description" [text]="item.description" />
             } @else {
-              <p class="description is-empty">No description</p>
+              <p class="description is-empty">{{ 'play.inventory.noDescription' | translate }}</p>
             }
           </div>
         }
@@ -67,12 +68,12 @@ export interface InventoryItemChange {
         <input
           type="text"
           maxlength="80"
-          placeholder="Add an item…"
-          aria-label="Name of the new item"
+          [placeholder]="'play.inventory.addPlaceholder' | translate"
+          [attr.aria-label]="'play.inventory.newItemName' | translate"
           [value]="newName()"
           (input)="newName.set($any($event.target).value)"
         />
-        <button type="submit" [disabled]="!newName().trim()">Add</button>
+        <button type="submit" [disabled]="!newName().trim()">{{ 'common.add' | translate }}</button>
       </form>
     }
   `,
