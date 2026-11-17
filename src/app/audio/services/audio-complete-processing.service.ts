@@ -150,7 +150,8 @@ export class AudioCompleteProcessingService {
   }
 
   /**
-   * Write a failure to Firestore progress field.
+   * Write a failure to Firestore progress field. `error` is the raw (English)
+   * error text: the app shows it as technical details only.
    */
   async writeFailure(campaignId: string, sessionId: string, error: string): Promise<void> {
     await this.sessionState.patchSessionDoc(campaignId, sessionId, {

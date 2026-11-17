@@ -1,16 +1,16 @@
 import { Component, computed, inject, ChangeDetectionStrategy } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, RouterLink, RouterOutlet } from '@angular/router';
+import { ActivatedRoute, RouterOutlet } from '@angular/router';
 import { CampaignContextService } from './campaign/campaign-context.service';
 import { NavRailComponent } from './layout/nav-rail/nav-rail.component';
 import { MobileTopbarComponent } from './layout/mobile-topbar/mobile-topbar.component';
 import { AuthService } from './auth/auth.service';
-import { LogoComponent } from './shared/components/logo.component';
+import { PublicTopbarComponent } from './layout/public-topbar/public-topbar.component';
 import { PanelSwitcherService } from './layout/panel-switcher/panel-switcher.service';
 
 @Component({
   selector: 'app-shell',
-  imports: [RouterOutlet, RouterLink, NavRailComponent, MobileTopbarComponent, LogoComponent],
+  imports: [RouterOutlet, NavRailComponent, MobileTopbarComponent, PublicTopbarComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <main class="w-full min-h-dvh">
@@ -23,13 +23,7 @@ import { PanelSwitcherService } from './layout/panel-switcher/panel-switcher.ser
       <div [class]="contentClass()">
         @if (!authService.isAuthenticated()) {
           <!-- A shared character is the first thing a visitor sees of the app: say where they are. -->
-          <header class="max-w-5xl mx-auto mb-4 flex items-center justify-between gap-3">
-            <a routerLink="/" class="flex items-center gap-3 no-underline">
-              <app-logo [size]="40" />
-              <span class="font-display text-lg font-bold tracking-[0.08em] text-white">Questmind</span>
-            </a>
-            <a routerLink="/sign-in" class="qm-btn qm-btn-gold">Sign in</a>
-          </header>
+          <app-public-topbar />
         }
         <section>
           <router-outlet />

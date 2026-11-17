@@ -3,9 +3,10 @@ import { getStorage } from 'firebase-admin/storage';
 import { HttpsError } from 'firebase-functions/v2/https';
 import * as logger from '../utils/logger';
 import { captureFunctionError } from '../utils/sentry-error-handler';
+import { refusal } from '../utils/error-reasons';
 import { getAiFeatureConfig, getPodcastVoiceConfig } from '../utils/ai-settings';
 import { generatePodcastAudioBuffer } from '../utils/podcast-tts';
-import { PodcastEntry } from '../types/audio-session.types';
+import { PodcastEntry, PodcastProgressStep, ProgressDetail } from '../types/audio-session.types';
 import { isActiveGeneration } from '../utils/generation-timeouts';
 import { PodcastScriptSource, generatePodcastScript, upsertPodcast, uploadPodcastMp3 } from './podcast-pipeline';
 
@@ -24,7 +25,10 @@ export interface PodcastEntryStore {
    * isn't ready or a generation is already running.
    */
   allocate(): Promise<{ version: number; source: PodcastScriptSource; storyVersion: number }>;
-  /** Merge `patch` into the entry of `version` (transactional, so other entries aren't lost). */
+  /**
+   * Merge `patch` into the entry of `version` (transactional, so other entries aren't lost).
+   * A field that is `undefined` in `patch` is removed from the entry.
+   */
   patch(version: number, patch: Partial<PodcastEntry>): Promise<void>;
 }
 
@@ -46,7 +50,10 @@ export interface RunPodcastGenerationOptions {
   listener?: PodcastProgressListener;
 }
 
-/** User-facing progress messages (Dutch, like the rest of the UI). */
+/**
+ * Dutch text per progress step, written as `progressMessage` for clients that
+ * have not refreshed yet. The app itself shows its own text for `progressStep`.
+ */
 export const PODCAST_MESSAGES = {
   starting: 'Podcast generatie starten...',
   script: 'Podcast script schrijven...',
@@ -54,7 +61,7 @@ export const PODCAST_MESSAGES = {
   uploading: 'Podcast opslaan...',
   done: 'Klaar',
   failed: 'Mislukt',
-} as const;
+} as const satisfies Record<PodcastProgressStep, string>;
 
 /**
  * Run a full podcast generation. Never throws after allocation: a failure is
@@ -65,8 +72,21 @@ export async function runPodcastGeneration(opts: RunPodcastGenerationOptions): P
   const { store, listener } = opts;
   const { version, source } = await store.allocate();
 
-  const report = async (progress: number, message: string, patch: Partial<PodcastEntry> = {}) => {
-    await store.patch(version, { ...patch, progress, progressMessage: message });
+  // `progressDetail` is always part of the patch: without a count it is `undefined`,
+  // which removes the count of an earlier update from the entry.
+  const report = async (
+    progress: number,
+    step: PodcastProgressStep,
+    update: { message?: string; detail?: ProgressDetail; patch?: Partial<PodcastEntry> } = {}
+  ) => {
+    const message = update.message ?? PODCAST_MESSAGES[step];
+    await store.patch(version, {
+      ...update.patch,
+      progress,
+      progressStep: step,
+      progressDetail: update.detail,
+      progressMessage: message,
+    });
     await listener?.onProgress(progress, message);
   };
 
@@ -74,23 +94,25 @@ export async function runPodcastGeneration(opts: RunPodcastGenerationOptions): P
     const voiceConfig = await getPodcastVoiceConfig();
     const scriptConfig = await getAiFeatureConfig('podcastScript');
 
-    await report(10, PODCAST_MESSAGES.script);
+    await report(10, 'script');
     const script = await generatePodcastScript(source, scriptConfig, voiceConfig.maxCharacters);
     logger.debug(`Podcast script: ${script.segments.length} segments, ~${script.estimatedDuration}s`);
 
-    await report(50, PODCAST_MESSAGES.audio, {
-      status: 'script_complete',
-      script,
-      scriptGeneratedAt: new Date(),
-      duration: script.estimatedDuration,
-      modelUsed: scriptConfig.model,
+    await report(50, 'audio', {
+      patch: {
+        status: 'script_complete',
+        script,
+        scriptGeneratedAt: new Date(),
+        duration: script.estimatedDuration,
+        modelUsed: scriptConfig.model,
+      },
     });
 
-    const audioBuffer = await generatePodcastAudioBuffer(script.segments, voiceConfig, (progress, message) =>
-      report(progress, message)
+    const audioBuffer = await generatePodcastAudioBuffer(script.segments, voiceConfig, (progress, message, detail) =>
+      report(progress, 'audio', { message, detail })
     );
 
-    await report(85, PODCAST_MESSAGES.uploading);
+    await report(85, 'uploading');
     const storagePath = opts.storagePath(version);
     const { audioUrl, fileSize } = await uploadPodcastMp3(
       getStorage().bucket(),
@@ -105,6 +127,8 @@ export async function runPodcastGeneration(opts: RunPodcastGenerationOptions): P
       fileSize,
       audioGeneratedAt: new Date(),
       progress: 100,
+      progressStep: 'done',
+      progressDetail: undefined,
       progressMessage: PODCAST_MESSAGES.done,
       error: null,
     });
@@ -114,7 +138,13 @@ export async function runPodcastGeneration(opts: RunPodcastGenerationOptions): P
     const err = error instanceof Error ? error : new Error(String(error));
     // The single Sentry event for this failure.
     captureFunctionError(opts.functionName, err, { ...opts.context, version });
-    await store.patch(version, { status: 'failed', error: err.message, progressMessage: PODCAST_MESSAGES.failed });
+    await store.patch(version, {
+      status: 'failed',
+      error: err.message,
+      progressStep: 'failed',
+      progressDetail: undefined,
+      progressMessage: PODCAST_MESSAGES.failed,
+    });
     await listener?.onFailed(err);
   }
 
@@ -155,7 +185,7 @@ export function createDocPodcastEntryStore(
         (p?.status === 'pending' || p?.status === 'script_complete') && isActiveGeneration(p.createdAt)
       );
       if (inProgress) {
-        throw new HttpsError('failed-precondition', 'Er wordt al een podcast gegenereerd.');
+        throw refusal('failed-precondition', 'A podcast is already being generated.', 'podcast-already-generating');
       }
 
       const version = nextPodcastVersion(data, podcasts);
@@ -167,6 +197,7 @@ export function createDocPodcastEntryStore(
           storyVersion,
           status: 'pending',
           progress: 0,
+          progressStep: 'starting',
           progressMessage: PODCAST_MESSAGES.starting,
         }),
         latestPodcastVersion: version,

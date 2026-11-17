@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { CampaignStoryVersionsDrawerComponent } from './campaign-story-versions-drawer.component';
 import { CampaignStoryVersion } from './campaign-story.models';
+import { provideTestLanguage } from '../core/i18n/testing';
+import { en } from '../core/i18n/en';
 
 const version = (n: number, status: CampaignStoryVersion['status'] = 'completed'): CampaignStoryVersion => ({
   id: `v${n}`,
@@ -19,6 +21,7 @@ describe('CampaignStoryVersionsDrawerComponent', () => {
   let element: HTMLElement;
 
   beforeEach(() => {
+    TestBed.configureTestingModule({ providers: [provideTestLanguage('en')] });
     fixture = TestBed.createComponent(CampaignStoryVersionsDrawerComponent);
     element = fixture.nativeElement as HTMLElement;
     fixture.componentRef.setInput('versions', [version(2, 'generating'), version(1)]);
@@ -52,5 +55,41 @@ describe('CampaignStoryVersionsDrawerComponent', () => {
 
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(closed).toBe(1);
+  });
+
+  it('labels each version with its number, status and session count', () => {
+    fixture.componentRef.setInput('open', true);
+    fixture.detectChanges();
+
+    expect(element.querySelector('aside')?.getAttribute('aria-label')).toBe(en.campaignStory.drawer.label);
+    expect(versionButtons()[0].textContent).toContain(en.common.version(2));
+    expect(versionButtons()[0].textContent).toContain(en.common.busy);
+    expect(versionButtons()[1].textContent).toContain(en.campaignStory.sessionCount(0));
+  });
+
+  it('shows a translated message for a failed version, with the raw error collapsed below it', () => {
+    fixture.componentRef.setInput('versions', [{ ...version(3, 'failed'), error: 'Vertex AI: quota exceeded' }]);
+    fixture.componentRef.setInput('open', true);
+    fixture.detectChanges();
+
+    const button = versionButtons()[0];
+    expect(button.textContent).toContain(en.common.failed);
+    expect(button.textContent).toContain(en.campaignStory.generationFailed);
+    expect(button.textContent).not.toContain('quota exceeded');
+
+    // Next to the disabled button, not inside it, so it can still be opened.
+    const details = element.querySelector('li > details') as HTMLDetailsElement;
+    expect(details.open).toBe(false);
+    expect(details.querySelector('summary')?.textContent).toContain(en.errors.technicalDetails);
+    expect(details.textContent).toContain('Vertex AI: quota exceeded');
+  });
+
+  it('shows no technical details when a failed version stored no error', () => {
+    fixture.componentRef.setInput('versions', [version(3, 'failed')]);
+    fixture.componentRef.setInput('open', true);
+    fixture.detectChanges();
+
+    expect(versionButtons()[0].textContent).toContain(en.campaignStory.generationFailed);
+    expect(element.querySelector('details')).toBeNull();
   });
 });

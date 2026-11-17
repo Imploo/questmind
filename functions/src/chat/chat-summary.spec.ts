@@ -4,7 +4,9 @@ import { FakeFirestore } from './testing/fake-firestore';
 
 const mockGenerateText = vi.fn();
 vi.mock('../utils/gemini-client', () => ({ generateText: (...args: unknown[]) => mockGenerateText(...args) }));
-vi.mock('../prompts/chat-summary.prompt', () => ({ CHAT_SUMMARY_PROMPT: 'summary prompt' }));
+vi.mock('../prompts/chat-summary.prompt', () => ({
+  chatSummaryPrompt: (language: string) => (language === 'nl' ? 'summary prompt' : `summary prompt (${language})`),
+}));
 vi.mock('../utils/logger', () => ({ error: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn() }));
 
 import { updateChatSummary } from './chat-summary';
@@ -58,6 +60,15 @@ describe('updateChatSummary', () => {
     expect(request.contents[0].text).toContain('The Sidekick: bericht 13');
     expect(request.contents[0].text).not.toContain('bericht 14');
     expect(db.data(CHAT)).toMatchObject({ summary: 'Mira koos Hypnotic Pattern.', summarizedUntil: at(13) });
+  });
+
+  it('has the summary written in the language of the conversation', async () => {
+    seedTurns(db, 34);
+
+    await updateChatSummary(chat(), config, 'en');
+
+    const request = mockGenerateText.mock.calls[0][0] as { systemInstruction: string };
+    expect(request.systemInstruction).toBe('summary prompt (en)');
   });
 
   it('builds on the earlier summary and only reads what came after it', async () => {

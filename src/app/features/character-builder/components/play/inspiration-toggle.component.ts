@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import { PLAY_TERMS } from '../../../../shared/dnd-terms';
 
 /** Heroic inspiration: a toggle for the player, a plain badge for everyone else. */
 @Component({
@@ -8,12 +9,12 @@ import { ChangeDetectionStrategy, Component, input, output } from '@angular/core
     @if (editable()) {
       <button type="button" class="chip" [class.is-on]="inspired()" [attr.aria-pressed]="inspired()" (click)="inspiredChange.emit(!inspired())">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.7 5.6 6.1.8-4.5 4.3 1.1 6.1L12 16.9 6.6 19.8l1.1-6.1L3.2 9.4l6.1-.8z" /></svg>
-        Inspiration
+        {{ terms.inspiration }}
       </button>
     } @else if (inspired()) {
       <span class="chip is-on">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.7 5.6 6.1.8-4.5 4.3 1.1 6.1L12 16.9 6.6 19.8l1.1-6.1L3.2 9.4l6.1-.8z" /></svg>
-        Inspiration
+        {{ terms.inspiration }}
       </span>
     }
   `,
@@ -43,4 +44,6 @@ export class InspirationToggleComponent {
   inspired = input(false);
   editable = input(false);
   inspiredChange = output<boolean>();
+
+  protected readonly terms = PLAY_TERMS;
 }

@@ -5,9 +5,11 @@ import { readRulesVersion, RulesVersion } from './character/rules-version';
 import { getAiFeatureConfig } from './utils/ai-settings';
 import { GeminiEmptyResponseError, generateJson, getGeminiClient } from './utils/gemini-client';
 import * as logger from './utils/logger';
+import { type Language, parseLanguage } from './utils/language';
 import { ChatHistoryMessage } from './types/chat.types';
 import {
   AbilityScoreIssue,
+  abilityScoreWarning,
   abilityScoresChanged,
   fixAbilityModifiers,
   formatAbilityFeedback,
@@ -33,6 +35,8 @@ export interface GenerateCharacterDraftPayload {
    * rules of the current character.
    */
   rulesVersion?: RulesVersion;
+  /** The language of the conversation: the stored ability score warnings are written in it. Dutch when left out. */
+  language?: Language;
   chatHistory: ChatHistoryMessage[];
   ai1Response: string;
   pdfAttachment?: { mimeType: string; data: string };
@@ -44,7 +48,7 @@ export interface SavedVersion {
   versionNumber: number;
   /** The version that was active until now: where an undo goes back to. Null when there was none. */
   previousVersionId: string | null;
-  /** Ability score rule violations the generator could not fix. */
+  /** Ability score rule violations the generator could not fix, in the language of the conversation. */
   abilityScoreWarnings: string[];
 }
 
@@ -67,6 +71,7 @@ export async function executeGenerateCharacterDraft(
 ): Promise<SavedVersion | null> {
   const { characterId, currentCharacter, chatHistory, ai1Response, pdfAttachment } = payload;
   const rulesVersion = payload.rulesVersion ?? readRulesVersion(currentCharacter?.rulesVersion);
+  const language = parseLanguage(payload.language);
 
   if (!characterId || !currentCharacter || !chatHistory || !ai1Response) {
     throw new Error('generateCharacterDraft: missing required payload fields');
@@ -169,7 +174,7 @@ export async function executeGenerateCharacterDraft(
 
   logger.info('generateCharacterDraft: saving the new version');
   return saveVersion(characterId, result.character, result.summary ?? FALLBACK_COMMIT_MESSAGE, {
-    abilityScoreWarnings: result.issues.map(issue => issue.message),
+    abilityScoreWarnings: result.issues.map(issue => abilityScoreWarning(issue, language)),
     derivedStatCorrections: result.corrections,
   });
 }

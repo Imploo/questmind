@@ -87,7 +87,9 @@ describe('processVoiceIntro', () => {
     mockGet.mockResolvedValue(campaign({ ownerId: 'owner-1' }));
     mockProcess.mockResolvedValue({ sizeBytes: 1000, durationSec: 301 });
 
-    await expect(handler(request())).rejects.toThrow(expect.objectContaining({ code: 'invalid-argument' }));
+    await expect(handler(request())).rejects.toThrow(
+      expect.objectContaining({ code: 'invalid-argument', details: { reason: 'voice-intro-too-long' } })
+    );
     expect(mockDelete).toHaveBeenCalledWith(['campaigns/c1/voice-intro/123-intro.mp3']);
     expect(mockUpdate).not.toHaveBeenCalled();
   });

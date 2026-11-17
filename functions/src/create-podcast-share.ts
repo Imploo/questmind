@@ -8,6 +8,8 @@ import { ensureAuthForTesting } from './utils/emulator-helpers';
 import { wrapCallable } from './utils/sentry-error-handler';
 import { PodcastEntry } from './types/audio-session.types';
 import { campaignStoryDocPath } from './campaign-story/campaign-story-paths';
+import { refusal } from './utils/error-reasons';
+import { type Language, parseLanguage } from './utils/language';
 
 export const PODCAST_SHARES_COLLECTION = 'podcastShares';
 
@@ -17,6 +19,8 @@ export interface CreatePodcastShareRequest {
   sessionId?: string;
   storyVersion?: number;
   podcastVersion: number;
+  /** The language the sharer has the app in: the link preview is written in it. Dutch when left out. */
+  language?: Language;
 }
 
 export interface CreatePodcastShareResponse {
@@ -37,12 +41,23 @@ export interface PodcastShare {
   campaignId: string;
   createdBy: string;
   createdAt: string;
+  /**
+   * Language of the link preview: that of whoever shared first. Missing on shares
+   * made before this field existed; those are Dutch.
+   */
+  language?: Language;
 }
 
 interface PodcastSource {
   docPath: string;
   title: string;
 }
+
+/** Title of a share whose source has no title of its own. */
+const FALLBACK_TITLES: Record<Language, { session: string; campaignStory: string }> = {
+  nl: { session: 'Sessie', campaignStory: 'Campagneverhaal' },
+  en: { session: 'Session', campaignStory: 'Campaign story' },
+};
 
 /**
  * Create (or return the existing) public share link for a podcast. Any campaign
@@ -61,6 +76,7 @@ export const createPodcastShare = onCall(
     if (typeof podcastVersion !== 'number') {
       throw new HttpsError('invalid-argument', 'Missing podcastVersion.');
     }
+    const language = parseLanguage(request.data?.language);
     const hasSession = typeof sessionId === 'string' && sessionId.length > 0;
     const hasStoryVersion = typeof storyVersion === 'number';
     if (hasSession === hasStoryVersion) {
@@ -75,8 +91,8 @@ export const createPodcastShare = onCall(
     const campaign = await assertCampaignMember(db, campaignId, uid);
 
     const source: PodcastSource = hasSession
-      ? { docPath: sessionDocPath(campaignId, sessionId as string), title: 'Sessie' }
-      : { docPath: campaignStoryDocPath(campaignId, storyVersion as number), title: 'Campagneverhaal' };
+      ? { docPath: sessionDocPath(campaignId, sessionId as string), title: FALLBACK_TITLES[language].session }
+      : { docPath: campaignStoryDocPath(campaignId, storyVersion as number), title: FALLBACK_TITLES[language].campaignStory };
 
     const sourceSnap = await db.doc(source.docPath).get();
     if (!sourceSnap.exists) {
@@ -86,11 +102,12 @@ export const createPodcastShare = onCall(
     const podcasts: PodcastEntry[] = Array.isArray(sourceData.podcasts) ? sourceData.podcasts : [];
     const podcast = podcasts.find(p => p.version === podcastVersion);
     if (!podcast?.audioUrl || podcast.status !== 'completed') {
-      throw new HttpsError('failed-precondition', 'Deze podcast is nog niet klaar om te delen.');
+      throw refusal('failed-precondition', 'This podcast is not ready to be shared yet.', 'podcast-not-ready');
     }
 
     const shares = db.collection(PODCAST_SHARES_COLLECTION);
     const sourceKey = `${source.docPath}#p${podcastVersion}`;
+    // One share per podcast version: a second sharer gets the same link, in the language of the first.
     const existing = await shares.where('sourceKey', '==', sourceKey).limit(1).get();
     if (!existing.empty) {
       return { shareId: existing.docs[0].id };
@@ -105,6 +122,7 @@ export const createPodcastShare = onCall(
       campaignId,
       createdBy: uid,
       createdAt: new Date().toISOString(),
+      language,
     };
     const shareId = randomBytes(16).toString('base64url');
     await shares.doc(shareId).create(share);

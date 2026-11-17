@@ -2,7 +2,11 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { PodcastVersionItemComponent } from './podcast-version-item.component';
 import { PodcastShareService } from '../../audio/services/podcast-share.service';
-import { PodcastStatus, PodcastVersion } from '../../audio/services/audio-session.models';
+import { PodcastProgressStep, PodcastStatus, PodcastVersion } from '../../audio/services/audio-session.models';
+import { I18nService } from '../../core/i18n/i18n.service';
+import { en } from '../../core/i18n/en';
+import { nl } from '../../core/i18n/nl';
+import { provideTestLanguage } from '../../core/i18n/testing';
 
 const podcast = (overrides: Partial<PodcastVersion> = {}): PodcastVersion => ({
   version: 3,
@@ -20,7 +24,10 @@ describe('PodcastVersionItemComponent', () => {
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [{ provide: PodcastShareService, useValue: { createShareUrl: () => Promise.resolve('') } }],
+      providers: [
+        provideTestLanguage('en'),
+        { provide: PodcastShareService, useValue: { createShareUrl: () => Promise.resolve('') } },
+      ],
     });
     fixture = TestBed.createComponent(PodcastVersionItemComponent);
     element = fixture.nativeElement as HTMLElement;
@@ -35,15 +42,56 @@ describe('PodcastVersionItemComponent', () => {
   }
 
   const status = () => element.querySelector('[data-testid="podcast-status"]')?.textContent?.trim();
+  const part = () => element.querySelector('[data-testid="podcast-part"]')?.textContent?.trim();
 
   it.each<[PodcastStatus, string]>([
-    ['pending', 'Bezig...'],
-    ['script_complete', 'Audio genereren...'],
-    ['completed', 'Klaar'],
-    ['failed', 'Mislukt'],
+    ['pending', en.common.busy],
+    ['script_complete', en.podcast.status.generatingAudio],
+    ['completed', en.podcast.status.ready],
+    ['failed', en.common.failed],
   ])('shows a badge for status %s', (value, label) => {
     render(podcast({ status: value }));
     expect(status()).toBe(label);
+  });
+
+  it.each<[PodcastProgressStep, string]>([
+    ['starting', en.podcast.steps.starting],
+    ['script', en.podcast.steps.script],
+    ['audio', en.podcast.steps.audio],
+    ['uploading', en.podcast.steps.uploading],
+  ])('translates the step %s of a podcast in the making', (step, label) => {
+    render(podcast({ status: 'pending', audioUrl: undefined, progressStep: step }));
+    expect(status()).toBe(label);
+  });
+
+  it('never shows the stored progress message', () => {
+    render(podcast({ status: 'pending', audioUrl: undefined, progressMessage: 'Audio genereren (deel 2/5)...' }));
+    expect(status()).toBe(en.common.busy);
+    expect(element.textContent).not.toContain('deel 2/5');
+
+    render(podcast({ status: 'pending', audioUrl: undefined, progressStep: 'audio', progressMessage: 'Audio genereren (deel 2/5)...' }));
+    expect(status()).toBe(en.podcast.steps.audio);
+    expect(element.textContent).not.toContain('deel 2/5');
+  });
+
+  it('falls back on the status for a step it does not know', () => {
+    render(podcast({ status: 'script_complete', audioUrl: undefined, progressStep: 'mixing' as PodcastProgressStep }));
+    expect(status()).toBe(en.podcast.status.generatingAudio);
+  });
+
+  it('shows which part of the audio is being generated', () => {
+    render(podcast({ status: 'script_complete', audioUrl: undefined, progressStep: 'audio', progressDetail: { current: 2, total: 5 } }));
+    expect(status()).toBe(en.podcast.steps.audio);
+    expect(part()).toBe(en.progress.partCount(2, 5));
+
+    render(podcast({ status: 'script_complete', audioUrl: undefined, progressStep: 'uploading' }));
+    expect(part()).toBeUndefined();
+  });
+
+  it('keeps the status of a finished podcast, whatever step is still stored', () => {
+    render(podcast({ status: 'completed', progressStep: 'audio', progressDetail: { current: 5, total: 5 } }));
+    expect(status()).toBe(en.podcast.status.ready);
+    expect(part()).toBeUndefined();
   });
 
   it('shows duration, size, download link and player for a finished podcast', () => {
@@ -57,12 +105,17 @@ describe('PodcastVersionItemComponent', () => {
     expect(element.querySelector('audio')).not.toBeNull();
   });
 
-  it('hides download and player without audio, and shows the error of a failed podcast', () => {
+  it('hides download and player without audio, and folds the raw error of a failed podcast away', () => {
     render(podcast({ status: 'failed', audioUrl: undefined, error: 'TTS quota' }));
 
     expect(element.querySelector('a[download]')).toBeNull();
     expect(element.querySelector('audio')).toBeNull();
-    expect(element.textContent).toContain('TTS quota');
+    expect(element.textContent).toContain(en.podcast.generationFailed);
+
+    const details = element.querySelector('[data-testid="podcast-error"]')?.closest('details') as HTMLDetailsElement;
+    expect(details.open).toBe(false);
+    expect(details.querySelector('summary')?.textContent?.trim()).toBe(en.errors.technicalDetails);
+    expect(details.textContent).toContain('TTS quota');
   });
 
   it('shows the share button only for a podcast with audio and a share target', () => {
@@ -84,18 +137,37 @@ describe('PodcastVersionItemComponent', () => {
     const audio = element.querySelector('audio') as HTMLAudioElement;
     const play = element.querySelector('button.qm-play') as HTMLButtonElement;
     const seek = element.querySelector('input[type="range"]') as HTMLInputElement;
-    expect(play.getAttribute('aria-label')).toBe('Speel podcast v3');
+    expect(play.getAttribute('aria-label')).toBe(en.podcast.player.play(3));
     expect(seek.max).toBe('125');
+    expect(seek.getAttribute('aria-label')).toBe(en.podcast.player.position(3));
 
     audio.dispatchEvent(new Event('play'));
     fixture.detectChanges();
-    expect(play.getAttribute('aria-label')).toBe('Pauzeer podcast v3');
+    expect(play.getAttribute('aria-label')).toBe(en.podcast.player.pause(3));
 
     seek.value = '65';
     seek.dispatchEvent(new Event('input'));
     fixture.detectChanges();
     expect(audio.currentTime).toBe(65);
     expect(element.textContent).toContain('1:05');
+    expect(seek.getAttribute('aria-valuetext')).toBe(en.podcast.player.positionValue('1:05', '2:05'));
+  });
+
+  it('names the playback speed in the notation of the language', () => {
+    render(podcast());
+    const speed = Array.from(element.querySelectorAll('button')).find(button => button.textContent?.includes('×')) as HTMLButtonElement;
+    expect(speed.textContent?.trim()).toBe('1×');
+
+    speed.click();
+    speed.click();
+    fixture.detectChanges();
+    expect(speed.textContent?.trim()).toBe('1.5×');
+    expect(speed.getAttribute('aria-label')).toBe(en.podcast.player.speedLabel('1.5'));
+
+    TestBed.inject(I18nService).use('nl');
+    fixture.detectChanges();
+    expect(speed.textContent?.trim()).toBe('1,5×');
+    expect(speed.getAttribute('aria-label')).toBe(nl.podcast.player.speedLabel('1,5'));
   });
 
   it('disables the player when the audio cannot be loaded', () => {
@@ -104,7 +176,7 @@ describe('PodcastVersionItemComponent', () => {
     fixture.detectChanges();
 
     expect((element.querySelector('button.qm-play') as HTMLButtonElement).disabled).toBe(true);
-    expect(element.textContent).toContain('De audio kon niet worden geladen');
+    expect(element.textContent).toContain(en.podcast.player.loadFailed);
   });
 
   it('shows the script only when asked', () => {
@@ -114,5 +186,15 @@ describe('PodcastVersionItemComponent', () => {
 
     render(withScript, { showScript: true });
     expect(element.textContent).toContain('Welkom terug!');
+    expect(element.textContent).toContain(`${en.podcast.host1}:`);
+  });
+
+  it('switches every text when the language changes', () => {
+    render(podcast({ status: 'pending', audioUrl: undefined, progressStep: 'script' }));
+    expect(status()).toBe(en.podcast.steps.script);
+
+    TestBed.inject(I18nService).use('nl');
+    fixture.detectChanges();
+    expect(status()).toBe(nl.podcast.steps.script);
   });
 });

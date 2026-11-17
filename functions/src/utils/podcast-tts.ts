@@ -1,5 +1,5 @@
 import * as logger from './logger';
-import { PodcastSegment, PodcastVoiceSettings } from '../types/audio-session.types';
+import { PodcastSegment, PodcastVoiceSettings, ProgressDetail } from '../types/audio-session.types';
 import { pcmToMp3, DEFAULT_PCM_SAMPLE_RATE } from './pcm-to-mp3';
 import { getGeminiClient } from './gemini-client';
 
@@ -27,8 +27,11 @@ const GEMINI_CHUNK_CHAR_LIMIT = 3000;
 
 const DEFAULT_GEMINI_TTS_MODEL = 'gemini-3.8-flash-tts';
 
-/** Reports audio-generation progress (0-100) with a user-facing message. */
-export type ProgressFn = (progress: number, message: string) => Promise<void> | void;
+/**
+ * Reports audio-generation progress (0-100) with a Dutch message and, while the
+ * parts are generated, which part it is.
+ */
+export type ProgressFn = (progress: number, message: string, detail?: ProgressDetail) => Promise<void> | void;
 
 /**
  * Group segments into chunks no larger than `maxChars`, never splitting a
@@ -90,7 +93,8 @@ export async function generatePodcastAudioBuffer(
   for (let i = 0; i < chunks.length; i++) {
     await onProgress?.(
       65 + Math.round((i / chunks.length) * 10),
-      `Audio genereren (deel ${i + 1}/${chunks.length})...`
+      `Audio genereren (deel ${i + 1}/${chunks.length})...`,
+      { current: i + 1, total: chunks.length }
     );
 
     // Request headerless PCM (l16): unary default is WAV, and concatenating WAV

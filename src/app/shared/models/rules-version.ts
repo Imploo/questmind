@@ -1,3 +1,5 @@
+import type { Translations } from '../../core/i18n/translations';
+
 /**
  * The edition of the D&D 5e rules a character is built with: the 2014 Player's
  * Handbook or the revised one of 2024. Stored as `rulesVersion` in the character of
@@ -21,11 +23,8 @@ export function otherRulesVersion(current: RulesVersion): RulesVersion {
 /**
  * The message that opens the conversation in which the rules of a character are
  * switched: it asks The Sidekick to rebuild the character under the chosen rules.
+ * It is sent, and stored, as a message of the user, so it is written in their language.
  */
-export function rulesConversionRequest(rulesVersion: RulesVersion): string {
-  return [
-    `Zet dit karakter om naar de D&D 5e regels van ${rulesVersion}.`,
-    `Loop het hele karakter na (race/species, background, ability scores, class en subclass features, feats, proficiencies, spells en beperkt gebruik) en werk alles bij naar de ${rulesVersion}-versie.`,
-    'Maak zelf de best passende keuze waar de regels om een keuze vragen en benoem die, zodat ik kan bijsturen.',
-  ].join(' ');
+export function rulesConversionRequest(rulesVersion: RulesVersion, texts: Translations['characters']['rulesConversion']): string {
+  return [texts.convert(rulesVersion), texts.review(rulesVersion), texts.choices].join(' ');
 }

@@ -1,4 +1,4 @@
-import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { onCall } from 'firebase-functions/v2/https';
 import { getFirestore } from 'firebase-admin/firestore';
 import { SHARED_CORS } from './config/cors';
 import { ensureAuthForTesting } from './utils/emulator-helpers';
@@ -7,6 +7,7 @@ import { wrapCallable } from './utils/sentry-error-handler';
 import { assertSessionOwner, assertValidId, requireAuthUid } from './utils/access';
 import { sessionRef } from './utils/session-ref';
 import { getGeminiApiKey } from './utils/gemini-client';
+import { refusal } from './utils/error-reasons';
 import { SESSION_PODCAST_TIMEOUT_SECONDS } from './utils/generation-timeouts';
 import {
   PodcastProgressListener,
@@ -61,7 +62,7 @@ export const generatePodcastAudio = onCall(
       readSource: (data) => {
         const body = typeof data.content === 'string' ? data.content.trim() : '';
         if (!body) {
-          throw new HttpsError('failed-precondition', 'Deze sessie heeft nog geen verhaal.');
+          throw refusal('failed-precondition', 'This session has no story yet.', 'session-has-no-story');
         }
         return {
           kind: 'session',

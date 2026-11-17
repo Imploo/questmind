@@ -2,6 +2,10 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { CampaignVoiceIntroComponent } from './campaign-voice-intro.component';
 import { CampaignVoiceIntro } from './campaign.models';
+import { I18nService } from '../core/i18n/i18n.service';
+import { provideTestLanguage } from '../core/i18n/testing';
+import { en } from '../core/i18n/en';
+import { nl } from '../core/i18n/nl';
 
 const voiceIntro: CampaignVoiceIntro = {
   storagePath: 'campaigns/campaign-1/voice-intro/1-intro.mp3',
@@ -18,6 +22,7 @@ describe('CampaignVoiceIntroComponent', () => {
   let element: HTMLElement;
 
   beforeEach(() => {
+    TestBed.configureTestingModule({ providers: [provideTestLanguage('en')] });
     fixture = TestBed.createComponent(CampaignVoiceIntroComponent);
     element = fixture.nativeElement as HTMLElement;
   });
@@ -26,8 +31,8 @@ describe('CampaignVoiceIntroComponent', () => {
     fixture.componentRef.setInput('canEdit', true);
     fixture.detectChanges();
 
-    expect(element.textContent).toContain('No voice introduction uploaded yet.');
-    expect(element.textContent).toContain('Upload recording');
+    expect(element.textContent).toContain(en.campaign.voiceIntro.empty);
+    expect(element.textContent).toContain(en.campaign.voiceIntro.upload);
     expect(element.querySelector('input[type="file"]')).not.toBeNull();
   });
 
@@ -39,7 +44,7 @@ describe('CampaignVoiceIntroComponent', () => {
 
     expect(element.textContent).toContain('intro.mp3');
     expect(element.textContent).toContain('1:35');
-    expect(element.textContent).toContain('Replace recording');
+    expect(element.textContent).toContain(en.campaign.voiceIntro.replace);
     expect(element.querySelector('audio')).not.toBeNull();
   });
 
@@ -48,7 +53,7 @@ describe('CampaignVoiceIntroComponent', () => {
     fixture.detectChanges();
 
     expect(element.querySelector('input[type="file"]')).toBeNull();
-    expect(element.textContent).not.toContain('Remove');
+    expect(element.textContent).not.toContain(en.common.remove);
   });
 
   it('emits the selected file', () => {
@@ -73,7 +78,7 @@ describe('CampaignVoiceIntroComponent', () => {
     fixture.componentInstance.removeRequested.subscribe(() => (removed = true));
 
     const removeButton = Array.from(element.querySelectorAll('button')).find((b) =>
-      b.textContent?.includes('Remove')
+      b.textContent?.includes(en.common.remove)
     );
     removeButton?.click();
 
@@ -87,5 +92,28 @@ describe('CampaignVoiceIntroComponent', () => {
 
     expect(element.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow')).toBe('40');
     expect(element.textContent).toContain('Upload failed');
+  });
+
+  it('explains the recording in three parts, with the example emphasised', () => {
+    fixture.detectChanges();
+
+    const help = element.querySelector('.qm-help');
+    expect(help?.textContent).toContain(en.campaign.voiceIntro.helpBefore);
+    expect(help?.querySelector('em')?.textContent).toBe(en.campaign.voiceIntro.helpExample);
+    expect(help?.textContent).toContain(en.campaign.voiceIntro.helpAfter);
+  });
+
+  it('switches to Dutch without a reload', () => {
+    fixture.componentRef.setInput('canEdit', true);
+    fixture.detectChanges();
+    expect(element.textContent).toContain(en.campaign.voiceIntro.title);
+
+    TestBed.inject(I18nService).use('nl');
+    fixture.detectChanges();
+
+    expect(element.textContent).toContain(nl.campaign.voiceIntro.title);
+    expect(element.textContent).toContain(nl.campaign.voiceIntro.upload);
+    expect(element.querySelector('em')?.textContent).toBe(nl.campaign.voiceIntro.helpExample);
+    expect(element.textContent).not.toContain(en.campaign.voiceIntro.title);
   });
 });

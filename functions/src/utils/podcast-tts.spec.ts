@@ -172,6 +172,24 @@ describe('generatePodcastAudioBuffer', () => {
     expect(pcmArg.length).toBe(2); // one byte of PCM per chunk
   });
 
+  it('reports which part is being generated, and no part while the audio is converted', async () => {
+    mockCreateInteraction.mockResolvedValue(geminiResponse([7]));
+    mockPcmToMp3.mockResolvedValue(Buffer.from([0xff, 0xfb]));
+    const onProgress = vi.fn();
+    const segments: PodcastSegment[] = [
+      { speaker: 'host1', text: 'a'.repeat(2500) },
+      { speaker: 'host2', text: 'b'.repeat(2500) },
+    ];
+
+    await generatePodcastAudioBuffer(segments, voiceConfig(), onProgress);
+
+    expect(onProgress.mock.calls).toEqual([
+      [65, 'Audio genereren (deel 1/2)...', { current: 1, total: 2 }],
+      [70, 'Audio genereren (deel 2/2)...', { current: 2, total: 2 }],
+      [78, 'Audio omzetten naar MP3...'],
+    ]);
+  });
+
   it('throws when Gemini returns no audio data', async () => {
     mockCreateInteraction.mockResolvedValue({ id: 'interaction-1' });
 

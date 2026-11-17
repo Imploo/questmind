@@ -168,8 +168,8 @@ interface FeatureDefinition {
                     @if (selectedFeature().key === 'campaignStory') {
                       <div>
                         <label class="qm-label">
-                          Doel (woorden)
-                          <span class="font-sans font-normal normal-case tracking-normal">(~500-600 per A4, 500-1800)</span>
+                          Target (words)
+                          <span class="font-sans font-normal normal-case tracking-normal">(~500-600 per A4 page, 500-1800)</span>
                         </label>
                         <input
                           type="number"
@@ -188,7 +188,7 @@ interface FeatureDefinition {
                       <div class="md:col-span-2">
                         <label class="qm-label">
                           Thinking Level
-                          <span class="font-sans font-normal normal-case tracking-normal">(Gemini 3.x — reasoning effort, vervangt thinking budget)</span>
+                          <span class="font-sans font-normal normal-case tracking-normal">(Gemini 3.x — reasoning effort, replaces thinking budget)</span>
                         </label>
                         <select
                           [ngModel]="getFeatureValue('thinkingLevel')"
@@ -206,31 +206,31 @@ interface FeatureDefinition {
                     }
                     @if (selectedFeature().key === 'transcription') {
                       <div class="md:col-span-2 mt-2 pt-3 border-t border-dashed border-[#e0d2b6]">
-                        <h4 class="font-display text-sm font-bold tracking-wide">Audio-normalisatie</h4>
+                        <h4 class="font-display text-sm font-bold tracking-wide">Audio normalisation</h4>
                         <p class="qm-help">
-                          Trekt zachte en luide sprekers (bv. spelers verder van de microfoon) gelijk vóór upload.
-                          Geldt voor sessie-audio en de voice intro.
+                          Evens out quiet and loud speakers (e.g. players further from the microphone) before upload.
+                          Applies to session audio and the voice intro.
                         </p>
                       </div>
                       <div>
-                        <label class="qm-label">Normalisatie</label>
+                        <label class="qm-label">Normalisation</label>
                         <div class="flex items-center gap-2 h-[42px]">
                           <button
                             type="button"
                             role="switch"
-                            aria-label="Normalisatie"
+                            aria-label="Normalisation"
                             [attr.aria-checked]="audioNormalization().enabled"
                             (click)="toggleAudioNormalization()"
                             class="qm-switch"
                             [class.is-on]="audioNormalization().enabled"
                           ></button>
-                          <span class="text-xs qm-muted">{{ audioNormalization().enabled ? 'Aan' : 'Uit' }}</span>
+                          <span class="text-xs qm-muted">{{ audioNormalization().enabled ? 'On' : 'Off' }}</span>
                         </div>
                       </div>
                       <div>
                         <label class="qm-label">
-                          Max. versterking (dB)
-                          <span class="font-sans font-normal normal-case tracking-normal">(0-40, lager = minder ruis)</span>
+                          Max. gain (dB)
+                          <span class="font-sans font-normal normal-case tracking-normal">(0-40, lower = less noise)</span>
                         </label>
                         <input
                           type="number"
@@ -348,12 +348,12 @@ export class AdminComponent implements OnInit {
   readonly featureDefinitions: readonly FeatureDefinition[] = [
     {
       key: 'characterChatText',
-      label: 'Character Chat (Tekst)',
+      label: 'Character Chat (Text)',
       icon: '💬',
       provider: 'Gemini',
       providerColor: 'qm-badge-info',
       formType: 'standard',
-      description: 'AI 1 — Reageert als D&D Sidekick op chatberichten'
+      description: 'AI 1 — Replies to chat messages as the D&D Sidekick'
     },
     {
       key: 'characterDraft',
@@ -362,7 +362,7 @@ export class AdminComponent implements OnInit {
       provider: 'Gemini',
       providerColor: 'qm-badge-info',
       formType: 'standard',
-      description: 'AI 2 — Genereert character JSON object uit chatcontext'
+      description: 'AI 2 — Generates the character JSON object from the chat context'
     },
     {
       key: 'spellResolution',
@@ -371,7 +371,7 @@ export class AdminComponent implements OnInit {
       provider: 'Gemini',
       providerColor: 'qm-badge-info',
       formType: 'standard',
-      description: 'Spell beschrijvingen en mechanische details'
+      description: 'Spell descriptions and mechanical details'
     },
     {
       key: 'featureResolution',
@@ -380,7 +380,7 @@ export class AdminComponent implements OnInit {
       provider: 'Gemini',
       providerColor: 'qm-badge-info',
       formType: 'standard',
-      description: 'Feature/trait beschrijvingen met mechanische effecten'
+      description: 'Feature/trait descriptions with mechanical effects'
     },
     {
       key: 'imagePromptGeneration',
@@ -389,7 +389,7 @@ export class AdminComponent implements OnInit {
       provider: 'Gemini',
       providerColor: 'qm-badge-info',
       formType: 'standard',
-      description: 'Genereert beschrijvende image prompt uit karakter context'
+      description: 'Generates a descriptive image prompt from the character context'
     },
     {
       key: 'imageGeneration',
@@ -402,12 +402,12 @@ export class AdminComponent implements OnInit {
     },
     {
       key: 'transcription',
-      label: 'Audio Transcriptie',
+      label: 'Audio Transcription',
       icon: '🎤',
       provider: 'Gemini',
       providerColor: 'qm-badge-info',
       formType: 'standard',
-      description: 'Transcribeert D&D sessie-audio naar raw story'
+      description: 'Transcribes D&D session audio into a raw story'
     },
     {
       key: 'storyGeneration',
@@ -416,7 +416,7 @@ export class AdminComponent implements OnInit {
       provider: 'Gemini',
       providerColor: 'qm-badge-info',
       formType: 'standard',
-      description: 'Transformeert raw transcriptie naar sessie-verhaal'
+      description: 'Turns the raw transcription into a session story'
     },
     {
       key: 'podcastScript',
@@ -425,16 +425,16 @@ export class AdminComponent implements OnInit {
       provider: 'Gemini',
       providerColor: 'qm-badge-info',
       formType: 'standard',
-      description: 'Converteert verhaal naar twee-host podcast dialoog'
+      description: 'Converts the story into a two-host podcast dialogue'
     },
     {
       key: 'campaignStory',
-      label: 'Campaign-verhaal',
+      label: 'Campaign Story',
       icon: '📚',
       provider: 'Gemini',
       providerColor: 'qm-badge-info',
       formType: 'standard',
-      description: 'Vat alle sessieverhalen samen tot één campagneverhaal (~1-3 A4)'
+      description: 'Summarises all session stories into one campaign story (~1-3 A4 pages)'
     },
     {
       key: 'podcastVoices',
@@ -443,7 +443,7 @@ export class AdminComponent implements OnInit {
       provider: 'Gemini',
       providerColor: 'qm-badge-violet',
       formType: 'voicesOnly',
-      description: 'Text-to-speech voor dual-voice podcast audio'
+      description: 'Text-to-speech for dual-voice podcast audio'
     },
   ];
 
@@ -582,7 +582,7 @@ export class AdminComponent implements OnInit {
    */
   async resetToDefaults(): Promise<void> {
     const confirmed = await this.toastService.confirm(
-      'Alle custom AI settings verwijderen en terugzetten naar de defaults?'
+      'Delete all custom AI settings and reset to the defaults?'
     );
     if (!confirmed) return;
 

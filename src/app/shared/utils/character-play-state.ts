@@ -1,11 +1,10 @@
 import { Coins, DndCharacter, LimitedUses, SpellSlot, UsesRecharge } from '../models/dnd-character.model';
 import { CharacterPlayState, CustomFeat, InventoryItem } from '../models/character-play-state.model';
 import { normalizeSpellSlots } from '../pdf/character-sheet-field-values';
+import type { Translations } from '../../core/i18n/translations';
+import { CONDITIONS } from '../dnd-terms';
 
-export const CONDITIONS = [
-  'Blinded', 'Charmed', 'Deafened', 'Frightened', 'Grappled', 'Incapacitated', 'Invisible',
-  'Paralyzed', 'Petrified', 'Poisoned', 'Prone', 'Restrained', 'Stunned', 'Unconscious',
-] as const;
+export { CONDITIONS };
 
 export const MAX_EXHAUSTION = 6;
 
@@ -47,10 +46,13 @@ export interface ResolvedPlayState {
   coins: Coins;
 }
 
+/** One line describing what happened, written in the language of the texts it is given. */
+export type PlayMessage = (t: Translations['play']) => string;
+
 export interface PlayStateResult {
   state: CharacterPlayState;
-  /** One line describing what happened, shown to the player. */
-  message: string;
+  /** What happened, shown to the player. Empty for an action that needs no announcement. */
+  message: PlayMessage;
 }
 
 export interface CastRequest {
@@ -62,12 +64,16 @@ export interface CastRequest {
   concentrate: boolean;
 }
 
-export interface RestPreviewRow {
-  label: string;
-  value: string;
-}
+/** One thing a long rest would change. The dialog gives it its label and its text. */
+export type RestPreviewRow =
+  | { kind: 'hitPoints' | 'temporaryHitPoints' | 'hitDice' | 'exhaustion'; before: number; after: number }
+  | { kind: 'spellSlots'; restored: number }
+  | { kind: 'features'; recharged: string[] }
+  | { kind: 'concentration'; spell: string };
 
 type State = CharacterPlayState | null | undefined;
+
+const NO_MESSAGE: PlayMessage = () => '';
 
 export function usesKey(owner: UsesOwner, name: string): string {
   return `${owner}:${name.trim().toLowerCase()}`;
@@ -201,7 +207,7 @@ export function currentPlayState(character: DndCharacter, state: State): Charact
 function update(
   character: DndCharacter,
   state: State,
-  change: (resolved: ResolvedPlayState) => string
+  change: (resolved: ResolvedPlayState) => PlayMessage
 ): PlayStateResult {
   const resolved = resolvePlayState(character, state);
   const message = change(resolved);
@@ -223,13 +229,14 @@ export function applyDamage(character: DndCharacter, state: State, amount: numbe
 
     if (r.hp.current === 0 && r.hp.max > 0) {
       r.concentration = null;
-      return 'Down to 0 HP — roll death saves at the start of each turn.';
+      return t => t.messages.downToZero;
     }
     if (r.concentration && damage > 0) {
+      const spell = r.concentration;
       const dc = Math.max(10, Math.floor(damage / 2));
-      return `Took ${damage} damage. Concentrating on ${r.concentration} — make a DC ${dc} Constitution save.`;
+      return t => t.messages.damageTakenConcentrating(damage, spell, dc);
     }
-    return `Took ${damage} damage.`;
+    return t => t.messages.damageTaken(damage);
   });
 }
 
@@ -240,7 +247,8 @@ export function applyHealing(character: DndCharacter, state: State, amount: numb
     const before = r.hp.current;
     r.hp.current = Math.min(r.hp.max, r.hp.current + healing);
     if (r.hp.current > 0) r.deathSaves = { successes: 0, failures: 0 };
-    return `Healed ${r.hp.current - before} hit points.`;
+    const healed = r.hp.current - before;
+    return t => t.messages.healed(healed);
   });
 }
 
@@ -248,21 +256,21 @@ export function setTempHp(character: DndCharacter, state: State, amount: number)
   const temp = positive(amount);
   return update(character, state, r => {
     r.hp.temp = temp;
-    return `Temporary hit points set to ${temp}.`;
+    return t => t.messages.tempHpSet(temp);
   });
 }
 
 export function setHitDice(character: DndCharacter, state: State, current: number): PlayStateResult {
   return update(character, state, r => {
     r.hitDice.current = current;
-    return '';
+    return NO_MESSAGE;
   });
 }
 
 export function setDeathSaves(character: DndCharacter, state: State, successes: number, failures: number): PlayStateResult {
   return update(character, state, r => {
     r.deathSaves = { successes, failures };
-    return '';
+    return NO_MESSAGE;
   });
 }
 
@@ -270,14 +278,14 @@ export function setSlotsExpended(character: DndCharacter, state: State, level: n
   return update(character, state, r => {
     const slot = r.slots.find(s => s.level === level);
     if (slot) slot.expended = expended;
-    return '';
+    return NO_MESSAGE;
   });
 }
 
 export function setUsesSpent(character: DndCharacter, state: State, key: string, spent: number): PlayStateResult {
   return update(character, state, r => {
     if (key in r.usesSpent) r.usesSpent[key] = spent;
-    return '';
+    return NO_MESSAGE;
   });
 }
 
@@ -286,28 +294,28 @@ export function toggleCondition(character: DndCharacter, state: State, condition
     r.conditions = r.conditions.includes(condition)
       ? r.conditions.filter(c => c !== condition)
       : [...r.conditions, condition];
-    return '';
+    return NO_MESSAGE;
   });
 }
 
 export function setExhaustion(character: DndCharacter, state: State, level: number): PlayStateResult {
   return update(character, state, r => {
     r.exhaustion = level;
-    return '';
+    return NO_MESSAGE;
   });
 }
 
 export function setConcentration(character: DndCharacter, state: State, spellName: string | null): PlayStateResult {
   return update(character, state, r => {
     r.concentration = spellName;
-    return '';
+    return NO_MESSAGE;
   });
 }
 
 export function setInspiration(character: DndCharacter, state: State, inspired: boolean): PlayStateResult {
   return update(character, state, r => {
     r.inspiration = inspired;
-    return '';
+    return NO_MESSAGE;
   });
 }
 
@@ -318,7 +326,7 @@ export function addInventoryItem(character: DndCharacter, state: State, id: stri
     if (trimmed && !r.inventory.some(item => item.id === id)) {
       r.inventory.push({ id, name: trimmed, value: '', description: '' });
     }
-    return '';
+    return NO_MESSAGE;
   });
 }
 
@@ -330,7 +338,7 @@ export function updateInventoryItem(
 ): PlayStateResult {
   return update(character, state, r => {
     r.inventory = r.inventory.map(item => (item.id === id ? { ...item, ...changes } : item));
-    return '';
+    return NO_MESSAGE;
   });
 }
 
@@ -338,7 +346,7 @@ export function removeInventoryItem(character: DndCharacter, state: State, id: s
   return update(character, state, r => {
     const removed = r.inventory.find(item => item.id === id);
     r.inventory = r.inventory.filter(item => item.id !== id);
-    return removed ? `Removed ${removed.name} from the inventory.` : '';
+    return removed ? t => t.messages.itemRemoved(removed.name) : NO_MESSAGE;
   });
 }
 
@@ -349,7 +357,7 @@ export function addCustomFeat(character: DndCharacter, state: State, id: string,
     if (trimmed && !r.feats.some(feat => feat.id === id)) {
       r.feats.push({ id, name: trimmed, description: '' });
     }
-    return '';
+    return NO_MESSAGE;
   });
 }
 
@@ -366,7 +374,7 @@ export function updateCustomFeat(
       if (feat.id !== id) return feat;
       return { ...feat, name: name || feat.name, description: changes.description?.trim() ?? feat.description };
     });
-    return '';
+    return NO_MESSAGE;
   });
 }
 
@@ -379,7 +387,7 @@ export function setCustomFeatUses(character: DndCharacter, state: State, id: str
       const { uses: _previous, ...rest } = feat;
       return uses ? { ...rest, uses } : rest;
     });
-    return '';
+    return NO_MESSAGE;
   });
 }
 
@@ -387,41 +395,41 @@ export function removeCustomFeat(character: DndCharacter, state: State, id: stri
   return update(character, state, r => {
     const removed = r.feats.find(feat => feat.id === id);
     r.feats = r.feats.filter(feat => feat.id !== id);
-    return removed ? `Removed the feat ${removed.name}.` : '';
+    return removed ? t => t.messages.featRemoved(removed.name) : NO_MESSAGE;
   });
 }
 
 export function setCoins(character: DndCharacter, state: State, coins: Coins): PlayStateResult {
   return update(character, state, r => {
     r.coins = coins;
-    return '';
+    return NO_MESSAGE;
   });
 }
 
 /** Spend a slot (or a use of the spell's own tracker) and start concentrating when asked. */
 export function castSpell(character: DndCharacter, state: State, request: CastRequest): PlayStateResult {
   return update(character, state, r => {
-    let cost = '';
+    let useSpent = false;
+    let slotLevel: number | undefined;
     if (request.usesKey && request.usesKey in r.usesSpent) {
       r.usesSpent[request.usesKey] += 1;
-      cost = ' — one use spent';
+      useSpent = true;
     } else if (request.slotLevel !== undefined) {
       const slot = r.slots.find(s => s.level === request.slotLevel);
       if (slot) {
         slot.expended += 1;
-        cost = ` — level ${slot.level} slot used`;
+        slotLevel = slot.level;
       }
     }
 
-    let concentration = '';
+    let movedFrom: string | undefined;
     if (request.concentrate) {
       const previous = r.concentration;
       r.concentration = request.spellName;
-      concentration = previous && previous !== request.spellName
-        ? `, concentration moves from ${previous}`
-        : ', concentrating';
+      if (previous && previous !== request.spellName) movedFrom = previous;
     }
-    return `Cast ${request.spellName}${cost}${concentration}.`;
+    // Each language builds its own sentence from what the cast cost and did.
+    return t => t.messages.cast({ spell: request.spellName, slotLevel, useSpent, concentrating: request.concentrate, movedFrom });
   });
 }
 
@@ -452,12 +460,7 @@ export function shortRest(character: DndCharacter, state: State): PlayStateResul
   return update(character, state, r => {
     const recharged = rechargeUses(character, r, ['shortRest']);
     const slots = hasPactMagic(character) ? restoreSlots(r) : 0;
-
-    const parts: string[] = [];
-    if (recharged.length) parts.push(`${recharged.join(', ')} recharged`);
-    if (slots) parts.push(`${slots} pact ${slots === 1 ? 'slot' : 'slots'} restored`);
-    const summary = parts.length ? parts.join(', ') : 'nothing to recharge';
-    return `Short rest — ${summary}. Spend hit dice to heal.`;
+    return t => t.messages.shortRest(recharged, slots);
   });
 }
 
@@ -483,7 +486,7 @@ function applyLongRest(character: DndCharacter, r: ResolvedPlayState): { slots: 
 export function longRest(character: DndCharacter, state: State): PlayStateResult {
   return update(character, state, r => {
     applyLongRest(character, r);
-    return 'Long rest — hit points, spell slots and features restored.';
+    return t => t.messages.longRest;
   });
 }
 
@@ -495,16 +498,16 @@ export function longRestPreview(character: DndCharacter, state: State): RestPrev
 
   const rows: RestPreviewRow[] = [];
   if (after.hp.current !== before.hp.current) {
-    rows.push({ label: 'Hit points', value: `${before.hp.current} → ${after.hp.current}` });
+    rows.push({ kind: 'hitPoints', before: before.hp.current, after: after.hp.current });
   }
-  if (before.hp.temp > 0) rows.push({ label: 'Temporary hit points', value: `${before.hp.temp} → 0` });
-  if (slots > 0) rows.push({ label: 'Spell slots', value: `${slots} restored` });
-  if (recharged.length) rows.push({ label: 'Features', value: recharged.join(', ') });
+  if (before.hp.temp > 0) rows.push({ kind: 'temporaryHitPoints', before: before.hp.temp, after: 0 });
+  if (slots > 0) rows.push({ kind: 'spellSlots', restored: slots });
+  if (recharged.length) rows.push({ kind: 'features', recharged });
   if (after.hitDice.current !== before.hitDice.current) {
-    rows.push({ label: 'Hit dice', value: `${before.hitDice.current} → ${after.hitDice.current}` });
+    rows.push({ kind: 'hitDice', before: before.hitDice.current, after: after.hitDice.current });
   }
-  if (before.exhaustion > 0) rows.push({ label: 'Exhaustion', value: `${before.exhaustion} → ${after.exhaustion}` });
-  if (before.concentration) rows.push({ label: 'Concentration', value: `${before.concentration} ends` });
+  if (before.exhaustion > 0) rows.push({ kind: 'exhaustion', before: before.exhaustion, after: after.exhaustion });
+  if (before.concentration) rows.push({ kind: 'concentration', spell: before.concentration });
   return rows;
 }
 

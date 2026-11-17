@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+import { PLAY_TERMS } from '../../../../shared/dnd-terms';
 
 export interface DeathSaves {
   successes: number;
@@ -10,7 +11,7 @@ export interface DeathSaves {
   selector: 'app-death-saves',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <span class="title">Death Saves</span>
+    <span class="title">{{ terms.deathSaves }}</span>
     @for (row of rows(); track row.key) {
       <div class="row">
         <span class="row-label" [class.is-fail]="row.key === 'failures'">{{ row.label }}</span>
@@ -83,14 +84,16 @@ export class DeathSavesComponent {
   editable = input(false);
   savesChange = output<DeathSaves>();
 
+  protected readonly terms = PLAY_TERMS;
+
   rows = computed(() => [
-    { key: 'successes' as const, label: 'Successes', marks: this.marks(this.successes()) },
-    { key: 'failures' as const, label: 'Failures', marks: this.marks(this.failures()) },
+    { key: 'successes' as const, label: PLAY_TERMS.successes, marks: this.marks(this.successes()) },
+    { key: 'failures' as const, label: PLAY_TERMS.failures, marks: this.marks(this.failures()) },
   ]);
 
   outcome = computed(() => {
-    if (this.failures() >= 3) return 'Dead';
-    if (this.successes() >= 3) return 'Stable';
+    if (this.failures() >= 3) return PLAY_TERMS.dead;
+    if (this.successes() >= 3) return PLAY_TERMS.stable;
     return '';
   });
 

@@ -1,7 +1,7 @@
 @if (updateAvailable()) {
   <div class="update-bar" role="status">
-    <span>A new version of the app is available.</span>
-    <button type="button" class="qm-btn qm-btn-gold qm-btn-sm" (click)="reload()">Refresh</button>
+    <span>{{ 'app.updateAvailable' | translate }}</span>
+    <button type="button" class="qm-btn qm-btn-gold qm-btn-sm" (click)="reload()">{{ 'app.refresh' | translate }}</button>
   </div>
 }
 @if (isLoading()) {

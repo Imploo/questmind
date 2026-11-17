@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, effect, inject, input, output } from '@angular/core';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { TranslatePipe } from '../core/i18n/translate.pipe';
 
 export type EmailAuthMode = 'signin' | 'signup' | 'reset';
 
@@ -16,7 +17,7 @@ export const MIN_PASSWORD_LENGTH = 6;
  */
 @Component({
   selector: 'app-email-auth-form',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, TranslatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (error()) {
@@ -33,25 +34,25 @@ export const MIN_PASSWORD_LENGTH = 6;
 
     <form [formGroup]="form" (ngSubmit)="submit()" class="space-y-4" novalidate>
       <div>
-        <label for="email" class="qm-label">Email</label>
+        <label for="email" class="qm-label">{{ 'common.email' | translate }}</label>
         <input
           id="email"
           type="email"
           formControlName="email"
           autocomplete="email"
-          placeholder="you@example.com"
+          [placeholder]="'auth.emailPlaceholder' | translate"
           class="qm-input"
         />
         @if (form.controls.email.touched && form.controls.email.invalid) {
           <p class="mt-1 text-xs text-wine" data-testid="email-error">
-            {{ form.controls.email.hasError('required') ? 'Email is required' : 'Enter a valid email address' }}
+            {{ (form.controls.email.hasError('required') ? 'auth.emailRequired' : 'auth.emailInvalid') | translate }}
           </p>
         }
       </div>
 
       @if (mode() !== 'reset') {
         <div>
-          <label for="password" class="qm-label">Password</label>
+          <label for="password" class="qm-label">{{ 'auth.passwordLabel' | translate }}</label>
           <input
             id="password"
             type="password"
@@ -62,10 +63,14 @@ export const MIN_PASSWORD_LENGTH = 6;
           />
           @if (form.controls.password.touched && form.controls.password.invalid) {
             <p class="mt-1 text-xs text-wine" data-testid="password-error">
-              {{ form.controls.password.hasError('required') ? 'Password is required' : 'Password must be at least ' + minPasswordLength + ' characters' }}
+              @if (form.controls.password.hasError('required')) {
+                {{ 'auth.passwordRequired' | translate }}
+              } @else {
+                {{ 'auth.passwordTooShort' | translate: minPasswordLength }}
+              }
             </p>
           } @else if (mode() === 'signup') {
-            <p class="qm-help mt-1">Must be at least {{ minPasswordLength }} characters</p>
+            <p class="qm-help mt-1">{{ 'auth.passwordHint' | translate: minPasswordLength }}</p>
           }
         </div>
       }
@@ -74,13 +79,13 @@ export const MIN_PASSWORD_LENGTH = 6;
         @if (loading()) {
           <span class="flex items-center justify-center gap-2">
             <span class="qm-spinner qm-spinner-light" aria-hidden="true"></span>
-            <span>{{ mode() === 'reset' ? 'Sending...' : 'Processing...' }}</span>
+            <span>{{ (mode() === 'reset' ? 'auth.sending' : 'auth.processing') | translate }}</span>
           </span>
         } @else {
           @switch (mode()) {
-            @case ('signup') { <span>Create Account</span> }
-            @case ('reset') { <span>Send Reset Link</span> }
-            @default { <span>Sign In</span> }
+            @case ('signup') { <span>{{ 'auth.createAccount' | translate }}</span> }
+            @case ('reset') { <span>{{ 'auth.sendResetLink' | translate }}</span> }
+            @default { <span>{{ 'auth.signIn' | translate }}</span> }
           }
         }
       </button>
@@ -89,25 +94,25 @@ export const MIN_PASSWORD_LENGTH = 6;
     <div class="mt-6 text-center text-sm">
       @switch (mode()) {
         @case ('signup') {
-          <span class="qm-muted">Already have an account? </span>
+          <span class="qm-muted">{{ 'auth.haveAccount' | translate }} </span>
           <button type="button" class="qm-link" (click)="modeChange.emit('signin')">
-            Sign in
+            {{ 'auth.signInLink' | translate }}
           </button>
         }
         @case ('reset') {
           <button type="button" class="qm-link" (click)="modeChange.emit('signin')">
-            Back to sign in
+            {{ 'auth.backToSignIn' | translate }}
           </button>
         }
         @default {
           <div class="space-y-2">
             <button type="button" class="qm-link !font-medium" (click)="modeChange.emit('reset')">
-              Forgot password?
+              {{ 'auth.forgotPassword' | translate }}
             </button>
             <div>
-              <span class="qm-muted">Don't have an account? </span>
+              <span class="qm-muted">{{ 'auth.noAccount' | translate }} </span>
               <button type="button" class="qm-link" (click)="modeChange.emit('signup')">
-                Sign up
+                {{ 'auth.signUpLink' | translate }}
               </button>
             </div>
           </div>

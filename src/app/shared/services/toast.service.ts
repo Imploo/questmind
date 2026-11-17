@@ -1,5 +1,6 @@
-import { Injectable, signal } from '@angular/core';
-import { isPermissionDenied, PERMISSION_DENIED_MESSAGE } from '../utils/callable-error';
+import { inject, Injectable, signal } from '@angular/core';
+import { I18nService } from '../../core/i18n/i18n.service';
+import { isPermissionDenied } from '../utils/callable-error';
 
 export type ToastType = 'info' | 'success' | 'error' | 'warning';
 
@@ -18,6 +19,7 @@ export interface Toast {
 
 @Injectable({ providedIn: 'root' })
 export class ToastService {
+  private readonly i18n = inject(I18nService);
   private nextId = 0;
   toasts = signal<Toast[]>([]);
 
@@ -33,7 +35,7 @@ export class ToastService {
    * `fallback` message is given. Returns whether a toast was shown.
    */
   showCallableError(error: unknown, fallback?: string): boolean {
-    const message = isPermissionDenied(error) ? PERMISSION_DENIED_MESSAGE : fallback;
+    const message = isPermissionDenied(error) ? this.i18n.t().errors.permissionDenied : fallback;
     if (!message) return false;
     this.show(message, 'error', 6000);
     return true;
@@ -42,9 +44,10 @@ export class ToastService {
   confirm(message: string): Promise<boolean> {
     return new Promise(resolve => {
       const id = this.nextId++;
+      const common = this.i18n.t().common;
       const actions: ToastAction[] = [
-        { label: 'Annuleren', resolve: (v) => { this.dismiss(id); resolve(v); } },
-        { label: 'Bevestigen', resolve: (v) => { this.dismiss(id); resolve(v); } },
+        { label: common.cancel, resolve: (v) => { this.dismiss(id); resolve(v); } },
+        { label: common.confirm, resolve: (v) => { this.dismiss(id); resolve(v); } },
       ];
       this.toasts.update(list => [...list, { id, message, type: 'warning', actions }]);
     });

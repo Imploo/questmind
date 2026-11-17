@@ -1,7 +1,10 @@
-import { ChangeDetectionStrategy, Component, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { PodcastShareService, PodcastShareTarget } from './services/podcast-share.service';
 import { ToastService } from '../shared/services/toast.service';
 import * as logger from '../shared/logger';
+import { I18nService } from '../core/i18n/i18n.service';
+import { TranslatePipe } from '../core/i18n/translate.pipe';
+import { callableErrorMessage } from '../shared/utils/callable-error';
 
 /**
  * Creates a public share link for a podcast and copies it to the clipboard.
@@ -9,6 +12,7 @@ import * as logger from '../shared/logger';
  */
 @Component({
   selector: 'app-podcast-share-button',
+  imports: [TranslatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   // The button fills its host, so a parent can stretch the host to size it.
   host: { class: 'inline-flex' },
@@ -18,7 +22,7 @@ import * as logger from '../shared/logger';
       (click)="share()"
       [disabled]="disabled() || busy()"
       class="qm-btn qm-btn-sm w-full"
-      title="Deelbare link kopiëren"
+      [title]="'podcast.share.copyLinkTitle' | translate"
     >
       @if (busy()) {
         <span class="qm-spinner" aria-hidden="true"></span>
@@ -27,13 +31,14 @@ import * as logger from '../shared/logger';
       } @else {
         <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
       }
-      {{ busy() ? 'Link maken...' : copied() ? 'Link gekopieerd' : 'Delen' }}
+      {{ label() }}
     </button>
   `
 })
 export class PodcastShareButtonComponent {
   private readonly shareService = inject(PodcastShareService);
   private readonly toastService = inject(ToastService);
+  private readonly i18n = inject(I18nService);
 
   readonly target = input.required<PodcastShareTarget>();
   readonly disabled = input(false);
@@ -41,14 +46,21 @@ export class PodcastShareButtonComponent {
   readonly busy = signal(false);
   readonly copied = signal(false);
 
+  /** What the button says: making the link, just copied, or simply "Share". */
+  readonly label = computed(() => {
+    const texts = this.i18n.t();
+    if (this.busy()) return texts.podcast.share.creating;
+    return this.copied() ? texts.podcast.share.copied : texts.common.share;
+  });
+
   async share(): Promise<void> {
     this.busy.set(true);
-    const url = this.shareService.createShareUrl(this.target());
+    const url = this.shareService.createShareUrl(this.target(), this.i18n.language());
     try {
       await copyToClipboard(url);
       this.copied.set(true);
       setTimeout(() => this.copied.set(false), 3000);
-      this.toastService.show('Link gekopieerd — iedereen met deze link kan de podcast beluisteren.', 'success');
+      this.toastService.show(this.i18n.t().podcast.share.copiedToast, 'success');
     } catch {
       let shareError: unknown = null;
       const shareUrl = await url.catch((error: unknown) => {
@@ -58,9 +70,14 @@ export class PodcastShareButtonComponent {
       });
       if (shareUrl) {
         // Clipboard blocked (permissions/browser): let the user copy it by hand.
-        window.prompt('Kopieer de deelbare link:', shareUrl);
+        window.prompt(this.i18n.t().podcast.share.copyPrompt, shareUrl);
       } else {
-        this.toastService.showCallableError(shareError, 'Deelbare link maken is mislukt. Probeer het opnieuw.');
+        // A refusal with a reason ("not ready to share yet") says so; anything else is the general text.
+        const texts = this.i18n.t();
+        this.toastService.showCallableError(
+          shareError,
+          callableErrorMessage(shareError, texts.errors, texts.podcast.share.failed)
+        );
       }
     } finally {
       this.busy.set(false);

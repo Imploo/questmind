@@ -1,4 +1,5 @@
 import type { DndCharacter } from '../schemas/dnd-character.schema';
+import type { Language } from '../utils/language';
 
 /**
  * Deterministic checks of a character's ability scores (D&D 5e, PHB 2014 + Tasha's).
@@ -26,10 +27,20 @@ export type AbilityScoreIssueCode =
   | 'standardArray'
   | 'bonusMismatch';
 
+/** What is wrong, as data: the texts in both languages are built from it. */
+export type AbilityScoreIssueFacts =
+  | { code: 'bonusMismatch'; ability: AbilityKey; base: number; bonuses: { amount: number; source: string }[]; expected: number; score: number }
+  | { code: 'missingBase'; method: 'pointBuy' | 'standardArray'; missing: AbilityKey[] }
+  | { code: 'baseOutOfRange'; ability: AbilityKey; base: number }
+  | { code: 'pointBuyBudget'; cost: number; bases: { ability: AbilityKey; base: number }[] }
+  | { code: 'standardArray'; bases: number[] };
+
 export interface AbilityScoreIssue {
   code: AbilityScoreIssueCode;
   ability?: AbilityKey;
+  /** English: the feedback the generator gets when it is asked for a correction. */
   message: string;
+  facts: AbilityScoreIssueFacts;
 }
 
 type Abilities = DndCharacter['abilities'];
@@ -38,6 +49,57 @@ type AbilityEntry = Abilities[AbilityKey];
 const LABEL: Record<AbilityKey, string> = {
   strength: 'STR', dexterity: 'DEX', constitution: 'CON', intelligence: 'INT', wisdom: 'WIS', charisma: 'CHA',
 };
+
+/**
+ * One issue as a sentence. Ability abbreviations, "point buy", "standard array" and
+ * "base" are game terms and stay English in both languages; the source of a bonus is
+ * text from the character itself.
+ */
+function describeIssue(facts: AbilityScoreIssueFacts, language: Language): string {
+  const nl = language === 'nl';
+  switch (facts.code) {
+    case 'bonusMismatch': {
+      const parts = [`base ${facts.base}`, ...facts.bonuses.map(b => `${b.amount >= 0 ? '+' : ''}${b.amount} (${b.source})`)];
+      const sum = `${LABEL[facts.ability]}: ${parts.join(' ')} = ${facts.expected}`;
+      return nl ? `${sum}, maar de score is ${facts.score}.` : `${sum}, but the score is ${facts.score}.`;
+    }
+    case 'missingBase': {
+      const method = facts.method === 'pointBuy' ? 'Point buy' : 'Standard array';
+      const missing = facts.missing.map(key => LABEL[key]).join(', ');
+      return nl
+        ? `${method} heeft voor alle zes abilities een base score nodig; ontbreekt: ${missing || 'een of meer abilities'}.`
+        : `${method} needs a base score for all six abilities; missing: ${missing || 'one or more abilities'}.`;
+    }
+    case 'baseOutOfRange':
+      return nl
+        ? `${LABEL[facts.ability]}: point buy base ${facts.base} valt buiten ${POINT_BUY_MIN}-${POINT_BUY_MAX}.`
+        : `${LABEL[facts.ability]}: point buy base ${facts.base} is outside ${POINT_BUY_MIN}-${POINT_BUY_MAX}.`;
+    case 'pointBuyBudget': {
+      const breakdown = facts.bases.map(({ ability, base }) => `${LABEL[ability]} ${base} (${POINT_BUY_COST[base]})`).join(', ');
+      return nl
+        ? `Point buy kost ${facts.cost} punten, het maximum is ${POINT_BUY_BUDGET}: ${breakdown}.`
+        : `Point buy costs ${facts.cost} points, the maximum is ${POINT_BUY_BUDGET}: ${breakdown}.`;
+    }
+    case 'standardArray':
+      return nl
+        ? `De base scores van de standard array moeten precies ${STANDARD_ARRAY.join(', ')} zijn (elk één keer); nu: ${facts.bases.join(', ')}.`
+        : `Standard array base scores must be exactly ${STANDARD_ARRAY.join(', ')} (each once); got ${facts.bases.join(', ')}.`;
+  }
+}
+
+function issue(facts: AbilityScoreIssueFacts): AbilityScoreIssue {
+  return {
+    code: facts.code,
+    ...('ability' in facts ? { ability: facts.ability } : {}),
+    message: describeIssue(facts, 'en'),
+    facts,
+  };
+}
+
+/** The warning that is stored with a version and shown to the owner, in their language. */
+export function abilityScoreWarning(issue: AbilityScoreIssue, language: Language): string {
+  return language === 'en' ? issue.message : describeIssue(issue.facts, language);
+}
 
 export function abilityModifier(score: number): number {
   return Math.floor((score - 10) / 2);
@@ -92,23 +154,22 @@ export function validateAbilityScores(character: Pick<DndCharacter, 'abilities' 
     if (entry.base === undefined) continue;
     const expected = entry.base + bonusTotal(entry);
     if (expected !== entry.score) {
-      const parts = [`base ${entry.base}`, ...(entry.bonuses ?? []).map(b => `${b.amount >= 0 ? '+' : ''}${b.amount} (${b.source})`)];
-      issues.push({
+      issues.push(issue({
         code: 'bonusMismatch',
         ability: key,
-        message: `${LABEL[key]}: ${parts.join(' ')} = ${expected}, but the score is ${entry.score}.`,
-      });
+        base: entry.base,
+        bonuses: (entry.bonuses ?? []).map(b => ({ amount: b.amount, source: b.source })),
+        expected,
+        score: entry.score,
+      }));
     }
   }
 
   if (method !== 'pointBuy' && method !== 'standardArray') return issues;
 
-  const missing = list.filter(([, entry]) => entry.base === undefined).map(([key]) => LABEL[key]);
+  const missing = list.filter(([, entry]) => entry.base === undefined).map(([key]) => key);
   if (missing.length || list.length < ABILITY_KEYS.length) {
-    issues.push({
-      code: 'missingBase',
-      message: `${method === 'pointBuy' ? 'Point buy' : 'Standard array'} needs a base score for all six abilities; missing: ${missing.join(', ') || 'one or more abilities'}.`,
-    });
+    issues.push(issue({ code: 'missingBase', method, missing }));
     return issues;
   }
 
@@ -117,28 +178,21 @@ export function validateAbilityScores(character: Pick<DndCharacter, 'abilities' 
   if (method === 'pointBuy') {
     for (const [key, entry] of list) {
       if (entry.base! < POINT_BUY_MIN || entry.base! > POINT_BUY_MAX) {
-        issues.push({
-          code: 'baseOutOfRange',
-          ability: key,
-          message: `${LABEL[key]}: point buy base ${entry.base} is outside ${POINT_BUY_MIN}-${POINT_BUY_MAX}.`,
-        });
+        issues.push(issue({ code: 'baseOutOfRange', ability: key, base: entry.base! }));
       }
     }
     const cost = pointBuyCost(bases);
     if (cost !== null && cost > POINT_BUY_BUDGET) {
-      const breakdown = list.map(([key, entry]) => `${LABEL[key]} ${entry.base} (${POINT_BUY_COST[entry.base!]})`).join(', ');
-      issues.push({
+      issues.push(issue({
         code: 'pointBuyBudget',
-        message: `Point buy costs ${cost} points, the maximum is ${POINT_BUY_BUDGET}: ${breakdown}.`,
-      });
+        cost,
+        bases: list.map(([key, entry]) => ({ ability: key, base: entry.base! })),
+      }));
     }
   } else {
     const sorted = [...bases].sort((a, b) => b - a);
     if (sorted.some((base, i) => base !== STANDARD_ARRAY[i])) {
-      issues.push({
-        code: 'standardArray',
-        message: `Standard array base scores must be exactly ${STANDARD_ARRAY.join(', ')} (each once); got ${sorted.join(', ')}.`,
-      });
+      issues.push(issue({ code: 'standardArray', bases: sorted }));
     }
   }
 
@@ -156,8 +210,8 @@ export function abilityScoresChanged(
   return ABILITY_KEYS.some(ability => key(before.abilities[ability]) !== key(after.abilities?.[ability]));
 }
 
-/** Correction instructions for the JSON generator. */
-export function formatAbilityFeedback(issues: AbilityScoreIssue[]): string {
+/** Correction instructions for the JSON generator; always English, whatever the user's language. */
+export function formatAbilityFeedback(issues: Pick<AbilityScoreIssue, 'code' | 'ability' | 'message'>[]): string {
   return [
     'Your previous JSON breaks the D&D 5e ability score rules:',
     ...issues.map(issue => `- ${issue.message}`),

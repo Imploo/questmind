@@ -111,6 +111,24 @@ This applies whether you just finished the ticket or the user tells you to mark 
 - Use `providedIn: 'root'` for singleton services
 - Use the `inject()` function instead of constructor injection
 
+## Translations
+
+The app speaks Dutch and English; the user chooses (profile drawer, or the top bar when not signed in). **Never write user-visible text in a template or in TypeScript.**
+
+- Every text has a key in `src/app/core/i18n/translations.ts` (the `Translations` interface: keys only) and a text in both `nl.ts` and `en.ts`. A missing translation or a mistyped key fails `npm run build`.
+- A text without values is a `string`. A text with values or a plural is a function with typed parameters. One key is one complete sentence: never build a sentence from fragments in code, never append "s" for a plural.
+- Templates use the pipe: `{{ 'nav.signOut' | translate }}`, `{{ 'campaignStory.sessionCount' | translate: count }}`, `[attr.aria-label]="'common.close' | translate"`.
+- TypeScript reads the signal when the text is needed: `inject(I18nService).t().chat.renameFailed`. Labels live in a `computed()`; a module-level constant or a plain field with text does not follow a language switch.
+- Pure functions outside Angular take the texts they need as a parameter (`t: Translations['play']`); their specs pass `en.play` / `nl.play`.
+- Dates and numbers go through `FormattingService` or `I18nService.locale()`. No hardcoded locale, no `DatePipe`, no `number` pipe.
+- Errors from Cloud Functions: never show `error.message`. Use `callableErrorMessage(error, i18n.t().errors, fallback)`. A refusal the user can act on carries a `reason` (`functions/src/utils/error-reasons.ts`) with a text under `errors.reasons`.
+- The backend sends codes (a progress `stage` or `progressStep`, a `reason`), not sentences; the frontend picks the text.
+- **D&D game terms stay English** in both languages and live in `src/app/shared/dnd-terms.ts`. In Dutch the sentence is Dutch and the term English ("Long rest nemen?").
+- Not translated: user-written text, AI-generated campaign content (stories, podcasts, transcripts), spell and feature descriptions, the PDF export, and the admin screen (English only).
+- A text that is the same in every language (the brand name) gets `data-no-i18n` on its element.
+- `npm run lint` runs `scripts/check-hardcoded-text.mjs`, which fails on untranslated text in templates. Text built in TypeScript is not checked by it: watch for it in review.
+- Specs run in English unless they provide `provideTestLanguage('nl')`; assert against the texts (`en.auth.emailRequired`) rather than a literal sentence.
+
 ## Code Architecture Principles
 
 All code must comply with established software design patterns:

@@ -89,6 +89,7 @@ describe('runPodcastGeneration', () => {
       status: 'completed',
       audioUrl: 'https://audio',
       progress: 100,
+      progressStep: 'done',
       progressMessage: 'Klaar',
       storyVersion: 1,
       script: { segments: [{ speaker: 'host1', text: 'Hoi' }], estimatedDuration: 60 },
@@ -113,7 +114,9 @@ describe('runPodcastGeneration', () => {
   it('refuses to start while another generation is active', async () => {
     const doc = fakeDoc({ title: 'T', content: 'V', podcasts: [{ version: 1, status: 'pending', createdAt: new Date() }] });
 
-    await expect(run(doc)).rejects.toThrow(expect.objectContaining({ code: 'failed-precondition' }));
+    await expect(run(doc)).rejects.toThrow(
+      expect.objectContaining({ code: 'failed-precondition', details: { reason: 'podcast-already-generating' } })
+    );
     expect(generateScript).not.toHaveBeenCalled();
   });
 
@@ -140,6 +143,90 @@ describe('runPodcastGeneration', () => {
     expect(listener.onFailed).not.toHaveBeenCalled();
   });
 
+  describe('progress as codes', () => {
+    /** The entry of the running generation as it is stored right now. */
+    const entryOf = (doc: ReturnType<typeof fakeDoc>) => ({ ...(doc.current().podcasts as Record<string, unknown>[])[0] });
+    type AudioProgress = (progress: number, message: string, detail?: { current: number; total: number }) => Promise<void>;
+
+    it('registers the new entry with the step "starting"', async () => {
+      const doc = fakeDoc({ title: 'T', content: 'V' });
+
+      await sessionStore(doc).allocate();
+
+      expect(entryOf(doc)).toMatchObject({
+        status: 'pending',
+        progressStep: 'starting',
+        progressMessage: 'Podcast generatie starten...',
+      });
+      expect(entryOf(doc)).not.toHaveProperty('progressDetail');
+    });
+
+    it('stores the step with every update, and the audio part only while the parts are generated', async () => {
+      const doc = fakeDoc({ title: 'T', content: 'V' });
+      const seen: Record<string, unknown>[] = [];
+      generateScript.mockImplementation(async () => {
+        seen.push(entryOf(doc));
+        return { segments: [{ speaker: 'host1', text: 'Hoi' }], estimatedDuration: 60 };
+      });
+      generateAudio.mockImplementation(async (_segments: unknown, _voices: unknown, onProgress: AudioProgress) => {
+        seen.push(entryOf(doc));
+        await onProgress(65, 'Audio genereren (deel 1/2)...', { current: 1, total: 2 });
+        seen.push(entryOf(doc));
+        await onProgress(70, 'Audio genereren (deel 2/2)...', { current: 2, total: 2 });
+        seen.push(entryOf(doc));
+        await onProgress(78, 'Audio omzetten naar MP3...');
+        seen.push(entryOf(doc));
+        return Buffer.from('mp3');
+      });
+      uploadMp3.mockImplementation(async () => {
+        seen.push(entryOf(doc));
+        return { audioUrl: 'https://audio', fileSize: 3 };
+      });
+
+      await run(doc);
+      seen.push(entryOf(doc));
+
+      expect(seen.map(entry => [entry.progressStep, entry.progressDetail, entry.progressMessage])).toEqual([
+        ['script', undefined, 'Podcast script schrijven...'],
+        ['audio', undefined, 'Audio genereren...'],
+        ['audio', { current: 1, total: 2 }, 'Audio genereren (deel 1/2)...'],
+        ['audio', { current: 2, total: 2 }, 'Audio genereren (deel 2/2)...'],
+        ['audio', undefined, 'Audio omzetten naar MP3...'],
+        ['uploading', undefined, 'Podcast opslaan...'],
+        ['done', undefined, 'Klaar'],
+      ]);
+      // Absent, not stored as an empty value: Firestore refuses `undefined` in an array.
+      for (const entry of [seen[0], seen[1], seen[4], seen[5], seen[6]]) {
+        expect(entry).not.toHaveProperty('progressDetail');
+      }
+    });
+
+    it('drops the audio part when the generation fails halfway', async () => {
+      const doc = fakeDoc({ title: 'T', content: 'V' });
+      generateAudio.mockImplementation(async (_segments: unknown, _voices: unknown, onProgress: AudioProgress) => {
+        await onProgress(65, 'Audio genereren (deel 1/2)...', { current: 1, total: 2 });
+        throw new Error('TTS down');
+      });
+
+      await run(doc);
+
+      expect(entryOf(doc)).toMatchObject({ status: 'failed', progressStep: 'failed', progressMessage: 'Mislukt' });
+      expect(entryOf(doc)).not.toHaveProperty('progressDetail');
+    });
+
+    it('keeps the side channel as it was: a percentage and the Dutch text, without the count', async () => {
+      const listener = { onProgress: vi.fn(), onCompleted: vi.fn(), onFailed: vi.fn() };
+      generateAudio.mockImplementation(async (_segments: unknown, _voices: unknown, onProgress: AudioProgress) => {
+        await onProgress(65, 'Audio genereren (deel 1/2)...', { current: 1, total: 2 });
+        return Buffer.from('mp3');
+      });
+
+      await run(fakeDoc({ title: 'T', content: 'V' }), listener);
+
+      expect(listener.onProgress).toHaveBeenCalledWith(65, 'Audio genereren (deel 1/2)...');
+    });
+  });
+
   it('stores a failure on the entry and reports it to Sentry once, without throwing', async () => {
     const listener = { onProgress: vi.fn(), onCompleted: vi.fn(), onFailed: vi.fn() };
     const doc = fakeDoc({ title: 'T', content: 'V' });
@@ -150,7 +237,7 @@ describe('runPodcastGeneration', () => {
     expect(captureFunctionError).toHaveBeenCalledTimes(1);
     expect(listener.onFailed).toHaveBeenCalledWith(expect.objectContaining({ message: 'TTS down' }));
     const entry = (doc.current().podcasts as Record<string, unknown>[])[0];
-    expect(entry).toMatchObject({ status: 'failed', error: 'TTS down', progressMessage: 'Mislukt' });
+    expect(entry).toMatchObject({ status: 'failed', error: 'TTS down', progressStep: 'failed', progressMessage: 'Mislukt' });
   });
 });
 

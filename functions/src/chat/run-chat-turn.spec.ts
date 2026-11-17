@@ -42,10 +42,15 @@ vi.mock('@google/genai', () => ({
 vi.mock('../utils/ai-settings', () => ({
   getAiFeatureConfig: vi.fn(() => Promise.resolve({ model: 'gemini-test', maxOutputTokens: 4096 })),
 }));
+// The prompts name the language they were built for, unless it is Dutch (the default).
+const inLanguage = (language: string) => (language === 'nl' ? '' : ` (${language})`);
 vi.mock('../prompts/character-responder.prompt', () => ({
-  characterResponderPrompt: (rulesVersion: string) => `responder prompt ${rulesVersion}`,
+  characterResponderPrompt: (rulesVersion: string, language: string) => `responder prompt ${rulesVersion}${inLanguage(language)}`,
 }));
-vi.mock('../prompts/chat-summary.prompt', () => ({ CHAT_TITLE_INSTRUCTION: ' +title', CHAT_SUMMARY_PROMPT: 'summary prompt' }));
+vi.mock('../prompts/chat-summary.prompt', () => ({
+  chatTitleInstruction: (language: string) => ` +title${inLanguage(language)}`,
+  chatSummaryPrompt: (language: string) => `summary prompt${inLanguage(language)}`,
+}));
 vi.mock('../utils/logger', () => ({ error: vi.fn(), debug: vi.fn(), info: vi.fn(), warn: vi.fn() }));
 
 const mockCaptureFunctionError = vi.fn();
@@ -207,6 +212,38 @@ describe('runChatTurn', () => {
       expect(fake.db.data(CHAT)).toMatchObject({ pendingRulesVersion: '2024' });
     });
 
+    it('answers, titles and summarizes in Dutch when the turn names no language', async () => {
+      seedTurn();
+      mockGenerateContent.mockResolvedValueOnce(answer({ text: 'Antwoord', shouldUpdateCharacter: false, title: 'Titel' }));
+
+      await runChatTurn(payload());
+
+      const request = mockGenerateContent.mock.calls[0][0] as { config: { systemInstruction: string } };
+      expect(request.config.systemInstruction).toBe('responder prompt 2014 +title');
+      expect(mockUpdateSummary).toHaveBeenCalledWith(expect.anything(), expect.anything(), 'nl');
+    });
+
+    it('answers, titles and summarizes in the language of the user', async () => {
+      seedTurn('Which spells do you recommend?');
+      mockGenerateContent.mockResolvedValueOnce(answer({ text: 'Pick Hypnotic Pattern.', shouldUpdateCharacter: false, title: 'Spells' }));
+
+      await runChatTurn(payload({ language: 'en' }));
+
+      const request = mockGenerateContent.mock.calls[0][0] as { config: { systemInstruction: string } };
+      expect(request.config.systemInstruction).toBe('responder prompt 2014 (en) +title (en)');
+      expect(mockUpdateSummary).toHaveBeenCalledWith(expect.anything(), expect.anything(), 'en');
+    });
+
+    it('falls back to Dutch for a language it does not know', async () => {
+      seedTurn();
+      mockGenerateContent.mockResolvedValueOnce(answer({ text: 'Antwoord', shouldUpdateCharacter: false, title: 'Titel' }));
+
+      await runChatTurn(payload({ language: 'de' as unknown as ChatTurnPayload['language'] }));
+
+      const request = mockGenerateContent.mock.calls[0][0] as { config: { systemInstruction: string } };
+      expect(request.config.systemInstruction).toBe('responder prompt 2014 +title');
+    });
+
     it('keeps a title the owner chose while the answer was being written', async () => {
       seedTurn();
       mockGenerateContent.mockImplementationOnce(async () => {
@@ -339,6 +376,7 @@ describe('runChatTurn', () => {
           characterId: 'char-1',
           currentCharacter: character,
           rulesVersion: '2014',
+          language: 'nl',
           chatHistory: [{ role: 'user', content: 'Doe Hypnotic Pattern.' }],
           ai1Response: 'Ik voeg Hypnotic Pattern toe.',
         },
@@ -401,6 +439,22 @@ describe('runChatTurn', () => {
 
       expect(fake.db.data(UPDATE)).toMatchObject({ status: 'cancelled' });
       expect(fake.db.data(CHAT)?.updatedCharacter).toBeUndefined();
+    });
+
+    it('has the version built in the language of the user, so its warnings are stored in it', async () => {
+      seedTurn('Add Hypnotic Pattern.');
+      mockGenerateContent.mockResolvedValueOnce(updateAnswer);
+      mockGenerateDraft.mockResolvedValueOnce(
+        savedVersion(7, { abilityScoreWarnings: ['Point buy costs 36 points, the maximum is 27.'] })
+      );
+
+      await runChatTurn(payload({ language: 'en' }));
+
+      expect(mockGenerateDraft).toHaveBeenCalledWith(expect.objectContaining({ language: 'en' }), expect.anything());
+      expect(fake.db.data(UPDATE)).toMatchObject({
+        status: 'done',
+        abilityScoreWarnings: ['Point buy costs 36 points, the maximum is 27.'],
+      });
     });
 
     it('builds the version of a conversion under the new rules, and then follows the character again', async () => {
@@ -487,6 +541,19 @@ describe('runChatTurn', () => {
       });
       expect(fake.db.data(CHAT)).toMatchObject({ hasImages: true, lastMessagePreview: 'Afbeelding' });
       expect(mockGenerateContent).not.toHaveBeenCalled();
+    });
+
+    it('describes the image in the list of chats in the language of the user', async () => {
+      seedTurn('create image Mira by a campfire', {}, 'image');
+      mockLatestImagePath.mockResolvedValueOnce(null);
+      mockGenerateImage.mockResolvedValueOnce({ imageUrl: 'https://storage/new.png', mimeType: 'image/png' });
+
+      await runChatTurn(payload({ mode: 'image', language: 'en' }));
+
+      expect(mockGenerateImage).toHaveBeenCalledWith(expect.objectContaining({
+        chatHistory: expect.arrayContaining([{ role: 'user', content: 'Mira by a campfire' }]),
+      }));
+      expect(fake.db.data(CHAT)).toMatchObject({ hasImages: true, lastMessagePreview: 'Image' });
     });
 
     it('records a failed image on the reply', async () => {

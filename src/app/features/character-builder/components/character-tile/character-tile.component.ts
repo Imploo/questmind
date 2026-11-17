@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+import { TranslatePipe } from '../../../../core/i18n/translate.pipe';
 
 /**
  * One character in the character list: a framed portrait with a name plate, like a
@@ -7,6 +8,7 @@ import { ChangeDetectionStrategy, Component, computed, input, output } from '@an
 @Component({
   selector: 'app-character-tile',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [TranslatePipe],
   host: {
     role: 'link',
     tabindex: '0',
@@ -22,7 +24,7 @@ import { ChangeDetectionStrategy, Component, computed, input, output } from '@an
         <span class="initial" aria-hidden="true">{{ initial() }}</span>
       }
       @if (level(); as level) {
-        <span class="level" [attr.aria-label]="'Level ' + level">{{ level }}</span>
+        <span class="level" [attr.aria-label]="'sheet.level' | translate: level">{{ level }}</span>
       }
 
       @if (archived()) {
@@ -30,12 +32,12 @@ import { ChangeDetectionStrategy, Component, computed, input, output } from '@an
         <button
           type="button"
           class="qm-btn qm-btn-sm absolute top-2 right-2"
-          [attr.aria-label]="'Unarchive ' + name()"
+          [attr.aria-label]="'characters.tile.unarchiveNamed' | translate: name()"
           (click)="$event.stopPropagation(); restored.emit()"
           (keydown.enter)="$event.stopPropagation()"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-7 9v-5m0 0l-2 2m2-2l2 2" /></svg>
-          Unarchive
+          {{ 'characters.unarchive' | translate }}
         </button>
       }
     </span>

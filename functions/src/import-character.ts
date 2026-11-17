@@ -12,6 +12,7 @@ import { environmentForHost, environmentForProject, QuestmindEnvironment } from 
 import { DndCharacterSchema, DndCharacter } from './schemas/dnd-character.schema';
 import { characterImagePrefix } from './generate-image';
 import * as logger from './utils/logger';
+import { refusal } from './utils/error-reasons';
 
 const CHARACTER_ID_PATTERN = /^[\w-]{8,64}$/;
 const CHARACTER_PATH_PATTERN = /^\/(?:share\/character|characters)\/([\w-]{8,64})\/?$/;
@@ -43,23 +44,23 @@ export interface CharacterSource {
  */
 export function parseCharacterLink(link: unknown): CharacterSource {
   if (typeof link !== 'string' || !link.trim()) {
-    throw new HttpsError('invalid-argument', 'Paste a link to a character.');
+    throw refusal('invalid-argument', 'Paste a link to a character.', 'import-link-missing');
   }
   const text = link.trim();
   let url: URL;
   try {
     url = new URL(/^https?:\/\//i.test(text) ? text : `https://${text}`);
   } catch {
-    throw new HttpsError('invalid-argument', 'That does not look like a link.');
+    throw refusal('invalid-argument', 'That does not look like a link.', 'import-link-invalid');
   }
 
   const environment = environmentForHost(url.hostname);
   if (url.protocol !== 'https:' || !environment) {
-    throw new HttpsError('invalid-argument', 'Only links to a QuestMind character can be imported.');
+    throw refusal('invalid-argument', 'Only links to a QuestMind character can be imported.', 'import-link-not-questmind');
   }
   const characterId = CHARACTER_PATH_PATTERN.exec(url.pathname)?.[1];
   if (!characterId) {
-    throw new HttpsError('invalid-argument', 'That link does not point to a character.');
+    throw refusal('invalid-argument', 'That link does not point to a character.', 'import-link-not-character');
   }
   return { environment, characterId, origin: `Imported from ${url.hostname.toLowerCase()}` };
 }
@@ -91,7 +92,7 @@ export async function executeImportCharacter(uid: string, source: CharacterSourc
 
   const sourceDoc = await fetchPublicDocument(projectId, sourcePath);
   if (!sourceDoc) {
-    throw new HttpsError('not-found', 'No character was found at that link.');
+    throw refusal('not-found', 'No character was found at that link.', 'import-character-not-found');
   }
 
   const character = await loadCharacter(projectId, sourcePath, sourceDoc);
@@ -140,7 +141,7 @@ async function loadCharacter(projectId: string, sourcePath: string, sourceDoc: P
 
   const parsed = DndCharacterSchema.safeParse(version?.data['character']);
   if (!parsed.success) {
-    throw new HttpsError('failed-precondition', 'The character at that link could not be read.');
+    throw refusal('failed-precondition', 'The character at that link could not be read.', 'import-character-unreadable');
   }
   return parsed.data;
 }

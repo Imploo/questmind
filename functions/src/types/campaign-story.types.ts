@@ -3,6 +3,9 @@ import { AIFeatureConfig, PodcastEntry } from './audio-session.types';
 /** Campaign story (ticket #69): a versioned summary of all session stories. */
 export type CampaignStoryStatus = 'generating' | 'completed' | 'failed';
 
+/** Where a campaign story generation is; the frontend shows a text per step, in the user's language. */
+export type CampaignStoryProgressStep = 'collecting' | 'writing' | 'done' | 'failed';
+
 export interface CampaignStorySourceSession {
   sessionId: string;
   title: string;
@@ -33,6 +36,8 @@ export interface CampaignStoryVersion {
   completedAt?: Date;
   modelUsed?: string;
   progress?: number;
+  progressStep?: CampaignStoryProgressStep;
+  /** Dutch text of the step; no longer shown, kept for clients that have not refreshed. */
   progressMessage?: string;
   error?: string | null;
   podcasts: PodcastEntry[];

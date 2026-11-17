@@ -29,7 +29,19 @@ describe('toDisplayProgress (stale detection)', () => {
   ])('marks a stale active stage as failed (%s)', (_label, updatedAt) => {
     const result = toDisplayProgress(session(updatedAt), NOW);
     expect(result?.stage).toBe('failed');
+    expect(result?.timedOut).toBe(true);
     expect(result?.error).toContain('transcribing');
+  });
+
+  it('writes the time of the last update in the raw error without a locale', () => {
+    const result = toDisplayProgress(session(new Date(stale)), NOW);
+    expect(result?.error).toContain(new Date(stale).toISOString());
+  });
+
+  it('drops a count that belonged to the stalled step', () => {
+    const stalled = session(new Date(stale));
+    const result = toDisplayProgress({ ...stalled, progress: { ...stalled.progress, detail: { current: 2, total: 5 } } }, NOW);
+    expect(result?.detail).toBeUndefined();
   });
 
   it.each([
@@ -37,7 +49,9 @@ describe('toDisplayProgress (stale detection)', () => {
     ['ISO string', new Date(fresh).toISOString()],
     ['Date', new Date(fresh)],
   ])('keeps a recently updated active stage (%s)', (_label, updatedAt) => {
-    expect(toDisplayProgress(session(updatedAt), NOW)?.stage).toBe('transcribing');
+    const result = toDisplayProgress(session(updatedAt), NOW);
+    expect(result?.stage).toBe('transcribing');
+    expect(result?.timedOut).toBeUndefined();
   });
 
   it('never marks completed or failed stages as stale', () => {

@@ -1,8 +1,11 @@
-import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
-import { LimitedUses } from '../../../../shared/models/dnd-character.model';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core';
+import { LimitedUses, UsesRecharge } from '../../../../shared/models/dnd-character.model';
 import { CustomFeat } from '../../../../shared/models/character-play-state.model';
-import { RECHARGE_LABELS, customFeatUsesKey } from '../../../../shared/utils/character-play-state';
+import { customFeatUsesKey } from '../../../../shared/utils/character-play-state';
 import { MarkdownComponent } from '../../../../shared/components/markdown.component';
+import { I18nService } from '../../../../core/i18n/i18n.service';
+import { TranslatePipe } from '../../../../core/i18n/translate.pipe';
+import { PLAY_TERMS } from '../../../../shared/dnd-terms';
 import { TrackerEditorComponent } from './tracker-editor.component';
 import { UsePipsComponent } from './use-pips.component';
 
@@ -36,7 +39,7 @@ interface FeatView {
 @Component({
   selector: 'app-custom-feats',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MarkdownComponent, TrackerEditorComponent, UsePipsComponent],
+  imports: [MarkdownComponent, TrackerEditorComponent, UsePipsComponent, TranslatePipe],
   template: `
     @for (view of views(); track view.feat.id) {
       @let feat = view.feat;
@@ -52,7 +55,7 @@ interface FeatView {
             <app-use-pips
               [total]="tracker.max"
               [spent]="tracker.spent"
-              [label]="feat.name + ' use'"
+              [label]="'play.feats.usesLabel' | translate: feat.name"
               [editable]="editable()"
               (spentChange)="spentChange.emit({ key: tracker.key, spent: $event })"
             />
@@ -65,37 +68,37 @@ interface FeatView {
           @if (editing() === feat.id) {
             <form class="form" (submit)="save($event, feat.id)">
               <label class="field">
-                <span>Name</span>
+                <span>{{ 'common.name' | translate }}</span>
                 <input type="text" maxlength="80" [value]="draftName()" (input)="draftName.set($any($event.target).value)" />
               </label>
               <label class="field">
-                <span>Description</span>
+                <span>{{ 'common.description' | translate }}</span>
                 <textarea
                   rows="5"
                   maxlength="4000"
-                  placeholder="What the feat does…"
+                  [placeholder]="'play.feats.descriptionPlaceholder' | translate"
                   [value]="draftDescription()"
                   (input)="draftDescription.set($any($event.target).value)"
                 ></textarea>
               </label>
               <div class="actions">
-                <button type="button" class="btn is-remove" (click)="remove(feat.id)">Remove feat</button>
+                <button type="button" class="btn is-remove" (click)="remove(feat.id)">{{ 'play.feats.remove' | translate }}</button>
                 <span class="spacer"></span>
-                <button type="button" class="btn" (click)="editing.set(null)">Cancel</button>
-                <button type="submit" class="btn is-primary" [disabled]="!draftName().trim()">Save</button>
+                <button type="button" class="btn" (click)="editing.set(null)">{{ 'common.cancel' | translate }}</button>
+                <button type="submit" class="btn is-primary" [disabled]="!draftName().trim()">{{ 'common.save' | translate }}</button>
               </div>
             </form>
           } @else {
             <div class="body-head">
-              <span class="qm-eyebrow">Custom feat</span>
+              <span class="qm-eyebrow">{{ 'play.feats.custom' | translate }}</span>
               @if (editable()) {
-                <button type="button" class="btn is-small" (click)="edit(feat)">Edit feat</button>
+                <button type="button" class="btn is-small" (click)="edit(feat)">{{ 'play.feats.edit' | translate }}</button>
               }
             </div>
             @if (feat.description) {
               <app-markdown [text]="feat.description" />
             } @else {
-              <span class="is-empty">No description yet</span>
+              <span class="is-empty">{{ 'play.feats.noDescription' | translate }}</span>
             }
             @if (editable()) {
               <app-tracker-editor [uses]="feat.uses ?? null" (usesChange)="usesChange.emit({ id: feat.id, uses: $event })" />
@@ -110,12 +113,12 @@ interface FeatView {
         <input
           type="text"
           maxlength="80"
-          placeholder="Add a feat…"
-          aria-label="Name of the new feat"
+          [placeholder]="'play.feats.addPlaceholder' | translate"
+          [attr.aria-label]="'play.feats.newFeatName' | translate"
           [value]="newName()"
           (input)="newName.set($any($event.target).value)"
         />
-        <button type="submit" [disabled]="!newName().trim()">Add</button>
+        <button type="submit" [disabled]="!newName().trim()">{{ 'common.add' | translate }}</button>
       </form>
     }
   `,
@@ -228,6 +231,8 @@ export class CustomFeatsComponent {
   spentChange = output<CustomFeatSpentChange>();
   removed = output<string>();
 
+  private readonly i18n = inject(I18nService);
+
   newName = signal('');
   expanded = signal<ReadonlySet<string>>(new Set());
   /** Id of the feat whose name and text are being edited. */
@@ -240,11 +245,16 @@ export class CustomFeatsComponent {
     return this.feats().map(feat => {
       const key = customFeatUsesKey(feat.id);
       const tracker = feat.uses
-        ? { key, max: feat.uses.max, spent: spent[key] ?? 0, rechargeLabel: RECHARGE_LABELS[feat.uses.recharge] ?? RECHARGE_LABELS.manual }
+        ? { key, max: feat.uses.max, spent: spent[key] ?? 0, rechargeLabel: this.rechargeLabel(feat.uses.recharge) }
         : null;
       return { feat, tracker };
     });
   });
+
+  /** The rests are game terms; resetting by hand is said in the active language. */
+  private rechargeLabel(recharge: UsesRecharge): string {
+    return recharge === 'shortRest' || recharge === 'longRest' ? PLAY_TERMS.recharge[recharge] : this.i18n.t().play.tracker.manual;
+  }
 
   toggle(id: string): void {
     this.expanded.update(open => {

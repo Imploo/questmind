@@ -7,6 +7,7 @@ import {
   AudioUpload
 } from './audio-session.models';
 import { AudioSessionRepositoryFactory } from '../../shared/repository/audio-session.repository';
+import { I18nService } from '../../core/i18n/i18n.service';
 import * as logger from '../../shared/logger';
 
 type SessionRecord = AudioSessionRecord & Record<string, unknown>;
@@ -18,6 +19,7 @@ export class AudioSessionStateService {
   private readonly authService = inject(AuthService);
   private readonly campaignContext = inject(CampaignContextService);
   private readonly sessionRepoFactory = inject(AudioSessionRepositoryFactory);
+  private readonly i18n = inject(I18nService);
 
   private readonly sessionRepo = resource({
     params: () => {
@@ -120,9 +122,10 @@ export class AudioSessionStateService {
     await this.sessionRepoFactory.create(campaignId).patch(sessionId, patch);
   }
 
+  /** Title for a session without a name, stored in the language active right now. */
   private defaultTitle(fileName: string): string {
     const base = fileName.replace(/\.[^/.]+$/, '');
-    return `Session: ${base}`;
+    return this.i18n.t().audio.defaultSessionTitle(base);
   }
 
   private writeSession(record: AudioSessionRecord): void {

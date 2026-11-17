@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, effect, input, output } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
+import { TranslatePipe } from '../core/i18n/translate.pipe';
 
 /** Maximum length of the speaking order — mirrors the backend prompt cap. */
 export const VOICE_ROSTER_MAX_LENGTH = 2000;
@@ -13,15 +14,14 @@ export const VOICE_ROSTER_MAX_LENGTH = 2000;
 @Component({
   selector: 'app-campaign-voice-roster',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, TranslatePipe],
   template: `
     <div class="qm-well mt-3">
       <label for="voice-roster" class="qm-label">
-        Speaking order of the introduction
+        {{ 'campaign.voiceRoster.label' | translate }}
       </label>
       <p id="voice-roster-help" class="qm-help mb-2">
-        Describe who speaks in which order in the recording above, one person per line.
-        The AI uses this to link each voice in the introduction to the right character.
+        {{ 'campaign.voiceRoster.help' | translate }}
       </p>
 
       @if (canEdit()) {
@@ -31,7 +31,7 @@ export const VOICE_ROSTER_MAX_LENGTH = 2000;
           aria-describedby="voice-roster-help"
           [attr.maxlength]="maxLength"
           [formControl]="rosterControl"
-          [placeholder]="placeholder"
+          [placeholder]="'campaign.voiceRoster.placeholder' | translate"
           class="qm-input !text-sm"
         ></textarea>
         <div class="mt-2 flex items-center gap-3">
@@ -41,14 +41,14 @@ export const VOICE_ROSTER_MAX_LENGTH = 2000;
             [disabled]="!isDirty() || isBusy()"
             class="qm-btn qm-btn-gold"
           >
-            {{ isBusy() ? 'Saving...' : 'Save speaking order' }}
+            {{ (isBusy() ? 'campaign.saving' : 'campaign.voiceRoster.save') | translate }}
           </button>
           <span class="text-xs qm-muted tabular-nums">{{ length() }} / {{ maxLength }}</span>
         </div>
       } @else if (roster()) {
         <p id="voice-roster" class="text-sm whitespace-pre-line">{{ roster() }}</p>
       } @else {
-        <p id="voice-roster" class="text-sm qm-muted">No speaking order provided.</p>
+        <p id="voice-roster" class="text-sm qm-muted">{{ 'campaign.voiceRoster.empty' | translate }}</p>
       }
 
       <div aria-live="polite">
@@ -68,7 +68,6 @@ export class CampaignVoiceRosterComponent {
   readonly rosterSaved = output<string>();
 
   readonly maxLength = VOICE_ROSTER_MAX_LENGTH;
-  readonly placeholder = '1. DM (Matt)\n2. Thorin, dwarven fighter (Jan)\n3. Lyra, elven wizard (Sanne)';
 
   readonly rosterControl = new FormControl('', { nonNullable: true });
   private readonly draft = toSignal(this.rosterControl.valueChanges, { initialValue: '' });

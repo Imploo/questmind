@@ -23,6 +23,12 @@ function stripUndefined(obj: unknown): unknown {
 
 type VersionRecord = CharacterVersion & Record<string, unknown>;
 
+/**
+ * The commit message of a character's first version. Stored in English whatever the
+ * language of the app; the version history translates it when it shows it.
+ */
+export const INITIAL_COMMIT_MESSAGE = 'Initial character creation';
+
 /** A looked-up text and the key of the class, race and level it was looked up for. */
 export interface ResolvedFeatureText {
   description: string;
@@ -81,7 +87,7 @@ export class CharacterVersionService {
       id: versionId,
       versionNumber: 1,
       character: characterData,
-      commitMessage: 'Initial character creation',
+      commitMessage: INITIAL_COMMIT_MESSAGE,
       source: 'manual',
       createdAt: now,
     };

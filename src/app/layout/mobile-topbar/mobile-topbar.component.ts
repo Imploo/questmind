@@ -64,7 +64,7 @@ import { PanelSwitcherService } from '../panel-switcher/panel-switcher.service';
         <app-campaign-selector [isCollapsed]="false" />
       </div>
     } @else {
-      <span class="wordmark"><app-logo [size]="32" />Questmind</span>
+      <span class="wordmark" data-no-i18n><app-logo [size]="32" />Questmind</span>
     }
   `
 })

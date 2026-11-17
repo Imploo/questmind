@@ -61,10 +61,10 @@ describe('loadSources', () => {
 
   it('rejects a missing or empty source list', () => {
     expect(() => loadSources('c1', 's1', undefined)).toThrow(
-      expect.objectContaining({ code: 'failed-precondition' })
+      expect.objectContaining({ code: 'failed-precondition', details: { reason: 'no-uploaded-audio' } })
     );
     expect(() => loadSources('c1', 's1', [])).toThrow(
-      expect.objectContaining({ code: 'failed-precondition' })
+      expect.objectContaining({ code: 'failed-precondition', details: { reason: 'no-uploaded-audio' } })
     );
   });
 
