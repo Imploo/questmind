@@ -50,7 +50,7 @@ describe('UsePipsComponent', () => {
   it('names every pip, the counter buttons and the read-only row for screen readers', () => {
     expect(labels(render(2, 1).host, 'button')).toEqual(['Level 1 slot 1, spent', 'Level 1 slot 2, available']);
     expect(labels(render(8, 3).host, 'button')).toEqual(['Spend 1 of Level 1 slot', 'Restore 1 of Level 1 slot']);
-    expect(labels(render(4, 1, false).host, '.pips')).toEqual(['3 of 4 Level 1 slot available']);
+    expect(labels(render(4, 1, false).host, '.pips')).toEqual(['Level 1 slot: 3 of 4 available']);
   });
 
   it('names them in Dutch around the English label', () => {

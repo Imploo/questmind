@@ -19,8 +19,11 @@ export const SUMMARY_SLACK = 10;
 
 const TITLE_MAX_CHARS = 48;
 const PREVIEW_MAX_CHARS = 120;
-/** The words that ask for a portrait, in either language, and the scene after them. */
-const IMAGE_TRIGGER = /(?:maak\s+afbeelding|(?:make|create|generate)\s+(?:an?\s+)?image)\s*(.*)/is;
+/**
+ * The words that ask for a portrait, in either language, and the scene after them. The
+ * English words only count as the opening of a message, as in the frontend (`chat-view.ts`).
+ */
+const IMAGE_TRIGGER = /(?:maak\s+afbeelding|^\s*(?:please[,\s]+)?(?:make|create|generate)\s+(?:an?\s+)?image\b)\s*(.*)/is;
 
 /** How the automatic title of an image request starts. */
 const IMAGE_TITLE_PREFIX: Record<Language, string> = { nl: 'Afbeelding', en: 'Image' };

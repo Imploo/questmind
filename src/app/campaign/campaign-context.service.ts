@@ -27,6 +27,18 @@ export class CampaignContextService {
     return campaigns.find(campaign => campaign.id === id) || null;
   });
 
+  /**
+   * The part of the profile that decides which campaigns to load. The profile
+   * document changes for other reasons too (the language, a timestamp); those
+   * must not reload the campaigns, which would also reset a settings form
+   * someone is filling in.
+   */
+  private readonly profileCampaigns = computed(() => {
+    const profile = this.userService.storedProfile();
+    if (!profile) return profile;
+    return JSON.stringify([profile.campaigns ?? [], profile.defaultCampaignId ?? null]);
+  });
+
   constructor() {
     // Clear state when user logs out
     effect(() => {
@@ -41,14 +53,14 @@ export class CampaignContextService {
       }
     });
 
-    // React to profile data changes and load campaigns
+    // Load the campaigns when the profile appears, and again when its campaigns change
     effect(() => {
-      const profile = this.userService.storedProfile();
-      if (profile === undefined) return;
+      if (this.profileCampaigns() === undefined) return;
 
       const user = untracked(() => this.authService.currentUser());
       if (!user) return;
 
+      const profile = untracked(() => this.userService.storedProfile());
       if (!profile) {
         void this.loadForUser(user);
         return;

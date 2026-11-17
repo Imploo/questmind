@@ -60,6 +60,42 @@ describe('LanguagePreferenceService', () => {
     expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBeNull();
   });
 
+  it('moves a choice made before signing in into a profile that has none', async () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'nl');
+    const { i18n } = setup();
+    currentUser.set({ uid: 'u1' });
+
+    storedProfile.set(profile());
+    TestBed.tick();
+    await Promise.resolve();
+
+    expect(setLanguage).toHaveBeenCalledWith('u1', 'nl');
+    expect(i18n.language()).toBe('en');
+  });
+
+  it('leaves a profile alone when no language was chosen on this device', () => {
+    setup();
+    currentUser.set({ uid: 'u1' });
+
+    storedProfile.set(profile());
+    TestBed.tick();
+
+    expect(setLanguage).not.toHaveBeenCalled();
+  });
+
+  it('lets the profile win from a choice made on this device before signing in', () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    const { i18n } = setup();
+    currentUser.set({ uid: 'u1' });
+
+    storedProfile.set(profile('nl'));
+    TestBed.tick();
+
+    expect(i18n.language()).toBe('nl');
+    expect(setLanguage).not.toHaveBeenCalled();
+    expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe('nl');
+  });
+
   it('does not undo a fresh choice when the profile changes for another reason', async () => {
     const { preference, i18n } = setup();
     storedProfile.set(profile('nl'));

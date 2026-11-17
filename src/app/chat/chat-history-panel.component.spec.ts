@@ -99,7 +99,7 @@ describe('ChatHistoryPanelComponent', () => {
     buttonWithText(nl.common.delete)?.click();
     await fixture.whenStable();
 
-    expect(text()).toContain('“Multiclass?” verwijderen? Dit kan niet ongedaan worden gemaakt.');
+    expect(text()).toContain('"Multiclass?" verwijderen? Dit kan niet ongedaan worden gemaakt.');
     expect(buttonWithText(nl.common.cancel)).toBeDefined();
   });
 

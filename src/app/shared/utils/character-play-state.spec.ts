@@ -129,7 +129,7 @@ describe('hit points', () => {
   it('writes the concentration save as one sentence per language', () => {
     const { message } = applyDamage(character(), { hp: { current: 40, temp: 0 }, concentration: 'Bless' }, 27);
     expect(message(en.play)).toBe('Took 27 damage. Concentrating on Bless — make a DC 13 Constitution save.');
-    expect(message(nl.play)).toBe('27 damage gekregen. Je concentreert op Bless — maak een DC 13 Constitution save.');
+    expect(message(nl.play)).toBe('27 damage gekregen. Je concentreert je op Bless — maak een DC 13 Constitution save.');
   });
 
   it('stops at 0 and ends concentration', () => {

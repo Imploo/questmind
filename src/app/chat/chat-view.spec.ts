@@ -52,6 +52,13 @@ describe('isImageRequest', () => {
     expect(isImageRequest('Create a level 5 Rogue')).toBe(false);
   });
 
+  it('takes the English words only as the opening of a message', () => {
+    expect(isImageRequest("Don't generate an image yet, first add the Shield spell")).toBe(false);
+    expect(isImageRequest('Can you make images of her later? First fix my AC')).toBe(false);
+    expect(isImageRequest('Please create imagery-rich backstory')).toBe(false);
+    expect(isImageRequest('  generate an image of Mira')).toBe(true);
+  });
+
   it('recognises the words the action menu inserts, in both languages', () => {
     expect(isImageRequest(nl.chat.composer.imageTrigger)).toBe(true);
     expect(isImageRequest(en.chat.composer.imageTrigger)).toBe(true);

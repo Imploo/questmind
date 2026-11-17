@@ -94,6 +94,8 @@ describe('imagePromptFrom', () => {
     expect(imagePromptFrom('make an image of Mira')).toBe('of Mira');
     expect(imagePromptFrom('Generate  image  by a campfire')).toBe('by a campfire');
     expect(imagePromptFrom('a portrait')).toBe('a portrait');
+    expect(imagePromptFrom('Please create an image of Mira')).toBe('of Mira');
+    expect(imagePromptFrom('First fix my AC, then generate an image later')).toBe('First fix my AC, then generate an image later');
   });
 });
 

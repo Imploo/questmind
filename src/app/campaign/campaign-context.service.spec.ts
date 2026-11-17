@@ -96,6 +96,34 @@ describe('CampaignContextService', () => {
       expect(campaignService.createCampaign).toHaveBeenCalledTimes(1);
     });
 
+    it('are not loaded again when the profile changes for another reason, such as the language', async () => {
+      currentUser.set(user({ displayName: 'Matt' }));
+      storedProfile.set(profile(['c1', 'c2']));
+      const service = setup();
+      await settle();
+      const loaded = service.campaigns();
+      expect(campaignService.getCampaignsByIds).toHaveBeenCalledTimes(1);
+
+      storedProfile.set({ ...profile(['c1', 'c2']), language: 'nl', updatedAt: new Date() });
+      await settle();
+
+      expect(campaignService.getCampaignsByIds).toHaveBeenCalledTimes(1);
+      expect(service.campaigns()).toBe(loaded);
+    });
+
+    it('are loaded again when the profile gets another campaign', async () => {
+      currentUser.set(user({ displayName: 'Matt' }));
+      storedProfile.set(profile(['c1']));
+      const service = setup();
+      await settle();
+
+      storedProfile.set(profile(['c1', 'c2']));
+      await settle();
+
+      expect(campaignService.getCampaignsByIds).toHaveBeenCalledTimes(2);
+      expect(service.campaigns().map(c => c.id)).toEqual(['c1', 'c2']);
+    });
+
     it('replaces campaigns that can no longer be loaded', async () => {
       currentUser.set(user({ displayName: 'Matt' }));
       storedProfile.set(profile(['gone']));

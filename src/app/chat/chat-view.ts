@@ -6,9 +6,11 @@ type ChatTexts = Translations['chat'];
 
 /**
  * "maak afbeelding ..." or "generate (an) image ..." asks for a portrait instead of an
- * answer. Both are recognised whatever language the app is in.
+ * answer. Both are recognised whatever language the app is in. The English words are
+ * ordinary ones, so they only count as the opening of a message: "Don't generate an
+ * image yet, first add Shield" is a question, not a request for a picture.
  */
-const IMAGE_TRIGGER = /maak\s+afbeelding|\b(?:make|create|generate)\s+(?:an?\s+)?image/i;
+const IMAGE_TRIGGER = /maak\s+afbeelding|^\s*(?:please[,\s]+)?(?:make|create|generate)\s+(?:an?\s+)?image\b/i;
 
 /** After this long without a sign of life the backend is not going to finish any more. */
 const REPLY_STALE_AFTER_MS = 10 * 60 * 1000;

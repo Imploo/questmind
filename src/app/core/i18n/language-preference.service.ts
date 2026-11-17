@@ -3,7 +3,7 @@ import { AuthService } from '../../auth/auth.service';
 import * as logger from '../../shared/logger';
 import { UserService } from '../user.service';
 import { I18nService } from './i18n.service';
-import { writeStoredLanguage } from './initial-language';
+import { readStoredLanguage, writeStoredLanguage } from './initial-language';
 import { isLanguageCode, type LanguageCode } from './language-strategy';
 
 /**
@@ -11,6 +11,8 @@ import { isLanguageCode, type LanguageCode } from './language-strategy';
  * source and always wins. The copy in localStorage serves visitors without an
  * account and lets the app start in the right language before the profile has
  * loaded. Only a deliberate choice is stored; without one the browser decides.
+ * A choice made before signing in (on the sign-in page, on a shared link) moves
+ * into the profile once the user is signed in, unless the profile already has one.
  */
 @Injectable({ providedIn: 'root' })
 export class LanguagePreferenceService {
@@ -18,16 +20,29 @@ export class LanguagePreferenceService {
   private readonly authService = inject(AuthService);
   private readonly userService = inject(UserService);
 
-  /** A computed, so the effect only runs when the stored language itself changes. */
-  private readonly profileLanguage = computed(() => this.userService.storedProfile()?.language);
+  /**
+   * The language in the profile; `null` for a loaded profile without one and
+   * `undefined` while there is no profile to read. A computed, so the effect
+   * only runs when this changes and not on every other change to the profile.
+   */
+  private readonly profileLanguage = computed(() => {
+    const profile = this.userService.storedProfile();
+    if (!profile) return undefined;
+    return isLanguageCode(profile.language) ? profile.language : null;
+  });
 
   constructor() {
     effect(() => {
       const language = this.profileLanguage();
-      if (!isLanguageCode(language)) return;
+      if (language === undefined) return;
       untracked(() => {
-        this.i18n.use(language);
-        writeStoredLanguage(language);
+        if (language) {
+          this.i18n.use(language);
+          writeStoredLanguage(language);
+          return;
+        }
+        const chosenHere = readStoredLanguage();
+        if (chosenHere) void this.storeInProfile(chosenHere);
       });
     });
   }
@@ -37,6 +52,10 @@ export class LanguagePreferenceService {
     this.i18n.use(language);
     writeStoredLanguage(language);
 
+    await this.storeInProfile(language);
+  }
+
+  private async storeInProfile(language: LanguageCode): Promise<void> {
     const userId = this.authService.currentUser()?.uid;
     if (!userId) return;
     try {
