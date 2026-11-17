@@ -61,6 +61,7 @@ import { MarkdownComponent } from '../../../../shared/components/markdown.compon
 import { SheetSection, SheetSectionTabsComponent } from './sheet-section-tabs.component';
 import { characterShareUrl } from '../../../../shared/utils/character-share-url';
 import * as logger from '../../../../shared/logger';
+import { I18nService } from '../../../../core/i18n/i18n.service';
 
 export interface SpellResolvedEvent {
   spellName: string;
@@ -1176,6 +1177,7 @@ export class CharacterSheetComponent {
 
   private readonly resolver = inject(CharacterEntryResolverService);
   private readonly toastService = inject(ToastService);
+  protected readonly i18n = inject(I18nService);
   private toastTimer: ReturnType<typeof setTimeout> | null = null;
   /** Lower-cased names of the character's spells that need concentration, from the bundled spell data. */
   private readonly concentrationSpells = signal<ReadonlySet<string>>(new Set());
