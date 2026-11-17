@@ -5,9 +5,11 @@ import { RulesVersion } from '../shared/models/rules-version';
 import { stripCharacterDetails, type ChatAttachment } from '../shared/utils/build-character-context';
 import { ChatRepositoryFactory } from '../shared/repository/chat.repository';
 import { FirebaseService } from '../core/firebase.service';
+import { I18nService } from '../core/i18n/i18n.service';
+import type { LanguageCode } from '../core/i18n/language-strategy';
 import * as logger from '../shared/logger';
 import { ToastService } from '../shared/services/toast.service';
-import { callableErrorCode, isPermissionDenied, PERMISSION_DENIED_MESSAGE } from '../shared/utils/callable-error';
+import { callableErrorMessage, isPermissionDenied } from '../shared/utils/callable-error';
 import { ChatConversation, ChatTurnMode, Message, StoredChatMessage } from './chat.models';
 import { isImageRequest, toViewMessage } from './chat-view';
 
@@ -34,6 +36,8 @@ interface CharacterChatRequest {
   currentCharacter: DndCharacter;
   attachment?: ChatAttachment;
   convertToRules?: RulesVersion;
+  /** The language The Sidekick answers in: the one the app is in when the message is sent. */
+  language: LanguageCode;
 }
 
 interface LiveSource<T> {
@@ -114,6 +118,7 @@ export class ChatService {
   private readonly firebase = inject(FirebaseService);
   private readonly repositories = inject(ChatRepositoryFactory);
   private readonly toastService = inject(ToastService);
+  private readonly i18n = inject(I18nService);
 
   private readonly characterId = signal<string | null>(null);
   private currentCharacter: DndCharacter | null = null;
@@ -144,8 +149,10 @@ export class ChatService {
     const storedIds = new Set(stored.map(message => message.id));
     const chatId = this.activeChatId();
     const now = this.now();
+    // Read here, so what the app itself says in an open conversation follows the language.
+    const texts = this.i18n.t().chat;
     return [
-      ...stored.map(message => toViewMessage(message, now)),
+      ...stored.map(message => toViewMessage(message, now, texts)),
       ...this.localMessages()
         .filter(local => local.chatId === chatId && !storedIds.has(local.message.id))
         .map(local => local.message),
@@ -305,6 +312,7 @@ export class ChatService {
         currentCharacter: stripCharacterDetails(character),
         ...(sendsAttachment ? { attachment: sendsAttachment } : {}),
         ...(convertToRules ? { convertToRules } : {}),
+        language: this.i18n.language(),
       });
     } catch (error) {
       const message = this.describeSendError(error);
@@ -324,7 +332,7 @@ export class ChatService {
       await this.repositories.chats(characterId, 1).patch(chatId, { title: cleaned, titleSource: 'user' });
     } catch (error) {
       logger.error('ChatService: could not rename the conversation', error);
-      this.toastService.show('Hernoemen is niet gelukt.', 'error');
+      this.toastService.show(this.i18n.t().chat.history.renameFailed, 'error');
     }
   }
 
@@ -341,7 +349,7 @@ export class ChatService {
         this.newChat();
       }
     } catch (error) {
-      this.toastService.showCallableError(error, 'Gesprek verwijderen is niet gelukt.');
+      this.toastService.showCallableError(error, this.i18n.t().chat.history.deleteFailed);
       if (!isPermissionDenied(error)) {
         logger.error('ChatService: could not delete the conversation', error);
       }
@@ -365,22 +373,10 @@ export class ChatService {
     if (isPermissionDenied(error)) {
       logger.warn('ChatService: permission denied by the backend');
       this.toastService.showCallableError(error);
-      return PERMISSION_DENIED_MESSAGE;
+    } else {
+      logger.error('ChatService: could not send the message', error);
     }
-
-    logger.error('ChatService: could not send the message', error);
-    switch (callableErrorCode(error)) {
-      case 'unauthenticated':
-        return 'Je bent niet ingelogd. Log opnieuw in en probeer het nog eens.';
-      case 'invalid-argument':
-        return 'Dit bericht kon niet worden verstuurd. Maak het korter of formuleer het anders.';
-      case 'resource-exhausted':
-        return 'Te veel verzoeken op dit moment. Wacht even en probeer het opnieuw.';
-      case 'unavailable':
-      case 'deadline-exceeded':
-        return 'Geen verbinding met de server. Controleer je internetverbinding en probeer het opnieuw.';
-      default:
-        return 'Het bericht kon niet worden verstuurd. Probeer het opnieuw.';
-    }
+    const texts = this.i18n.t();
+    return callableErrorMessage(error, texts.errors, texts.chat.reply.sendFailed);
   }
 }

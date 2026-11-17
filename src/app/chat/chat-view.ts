@@ -1,33 +1,45 @@
+import type { Translations } from '../core/i18n/translations';
 import { toDate } from '../shared/utils/date.utils';
 import { ChatConversation, ConversationGroup, Message, StoredChatMessage } from './chat.models';
 
-/** "maak afbeelding ..." asks for a portrait instead of an answer. */
-const IMAGE_TRIGGER = /maak\s+afbeelding/i;
+type ChatTexts = Translations['chat'];
+
+/**
+ * "maak afbeelding ..." or "generate (an) image ..." asks for a portrait instead of an
+ * answer. Both are recognised whatever language the app is in.
+ */
+const IMAGE_TRIGGER = /maak\s+afbeelding|\b(?:make|create|generate)\s+(?:an?\s+)?image/i;
 
 /** After this long without a sign of life the backend is not going to finish any more. */
 const REPLY_STALE_AFTER_MS = 10 * 60 * 1000;
 const CHARACTER_UPDATE_STALE_AFTER_MS = 30 * 60 * 1000;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const LOCALE = 'nl-NL';
 
 export function isImageRequest(text: string): boolean {
   return IMAGE_TRIGGER.test(text);
 }
 
-const REPLY_ERRORS: Record<string, string> = {
-  'resource-exhausted': 'Te veel verzoeken op dit moment. Wacht even en probeer het opnieuw.',
-};
-const REPLY_ERROR_FALLBACK = 'Het antwoord is niet gelukt. Probeer het opnieuw.';
-const REPLY_STALE = 'Er kwam geen antwoord. Probeer het opnieuw.';
+/** The text for a stored failure of an answer, by its `errorCode`. */
+function replyErrorText(errorCode: string | undefined, t: ChatTexts): string {
+  return errorCode === 'resource-exhausted' ? t.reply.tooManyRequests : t.reply.failed;
+}
 
-const CHARACTER_UPDATE_TEXT: Record<string, string> = {
-  pending: 'Karakter wordt aangepast...',
-  streaming: 'Karakter wordt aangepast...',
-  done: 'Karakter is aangepast!',
-  error: 'Karakter aanpassen mislukt.',
-  cancelled: 'Karakter aanpassen geannuleerd.',
-};
+function characterUpdateText(status: StoredChatMessage['status'], t: ChatTexts): string {
+  switch (status) {
+    case 'pending':
+    case 'streaming':
+      return t.characterUpdate.running;
+    case 'done':
+      return t.characterUpdate.done;
+    case 'error':
+      return t.characterUpdate.failed;
+    case 'cancelled':
+      return t.characterUpdate.cancelled;
+    default:
+      return '';
+  }
+}
 
 /** What a finished character update tells about the version it was saved as. */
 function savedVersionOf(stored: StoredChatMessage): Partial<Message> {
@@ -39,8 +51,11 @@ function savedVersionOf(stored: StoredChatMessage): Partial<Message> {
   };
 }
 
-/** A stored message as the chat panel shows it. `now` decides when unfinished work counts as lost. */
-export function toViewMessage(stored: StoredChatMessage, now: number): Message {
+/**
+ * A stored message as the chat panel shows it. `now` decides when unfinished work counts
+ * as lost; `t` gives the texts for what the app itself says (failures, character updates).
+ */
+export function toViewMessage(stored: StoredChatMessage, now: number, t: ChatTexts): Message {
   const timestamp = toDate(stored.createdAt) ?? new Date(now);
   const working = stored.status === 'pending' || stored.status === 'streaming';
   const idleFor = now - (toDate(stored.updatedAt) ?? timestamp).getTime();
@@ -51,7 +66,7 @@ export function toViewMessage(stored: StoredChatMessage, now: number): Message {
     return {
       id: stored.id,
       sender: status === 'error' ? 'error' : 'system',
-      text: CHARACTER_UPDATE_TEXT[status] ?? '',
+      text: characterUpdateText(status, t),
       timestamp,
       ...(working && !lost ? { isUpdatingCharacter: true } : {}),
       ...(status === 'done' ? savedVersionOf(stored) : {}),
@@ -69,10 +84,10 @@ export function toViewMessage(stored: StoredChatMessage, now: number): Message {
   }
 
   if (stored.status === 'error') {
-    return { id: stored.id, sender: 'error', text: REPLY_ERRORS[stored.errorCode ?? ''] ?? REPLY_ERROR_FALLBACK, timestamp };
+    return { id: stored.id, sender: 'error', text: replyErrorText(stored.errorCode, t), timestamp };
   }
   if (working && idleFor > REPLY_STALE_AFTER_MS) {
-    return { id: stored.id, sender: 'error', text: REPLY_STALE, timestamp };
+    return { id: stored.id, sender: 'error', text: t.reply.stale, timestamp };
   }
   return {
     id: stored.id,
@@ -95,12 +110,12 @@ export function isSameDay(a: Date, b: Date): boolean {
   return startOfDay(a) === startOfDay(b);
 }
 
-/** Label of the line that separates the days in a conversation: "Vandaag", "Gisteren", "dinsdag 10 november". */
-export function dayLabel(date: Date, now: Date): string {
+/** Label of the line that separates the days in a conversation: "Today", "Yesterday", "Tuesday 10 November". */
+export function dayLabel(date: Date, now: Date, t: ChatTexts, locale: string): string {
   const days = daysAgo(date, now);
-  if (days === 0) return 'Vandaag';
-  if (days === 1) return 'Gisteren';
-  return new Intl.DateTimeFormat(LOCALE, {
+  if (days === 0) return t.today;
+  if (days === 1) return t.yesterday;
+  return new Intl.DateTimeFormat(locale, {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
@@ -108,17 +123,17 @@ export function dayLabel(date: Date, now: Date): string {
   }).format(date);
 }
 
-export function formatTime(date: Date): string {
-  return new Intl.DateTimeFormat(LOCALE, { hour: '2-digit', minute: '2-digit' }).format(date);
+export function formatTime(date: Date, locale: string): string {
+  return new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(date);
 }
 
-/** When a conversation was last used, as short as the list needs it: "20:14", "ma 9 nov", "28 okt 2025". */
-export function conversationTime(conversation: ChatConversation, now: Date): string {
+/** When a conversation was last used, as short as the list needs it: "20:14", "Mon 9 Nov", "28 Oct 2025". */
+export function conversationTime(conversation: ChatConversation, now: Date, locale: string): string {
   const date = toDate(conversation.updatedAt);
   if (!date) return '';
   const days = daysAgo(date, now);
-  if (days === 0) return formatTime(date);
-  return new Intl.DateTimeFormat(LOCALE, {
+  if (days === 0) return formatTime(date, locale);
+  return new Intl.DateTimeFormat(locale, {
     ...(days < 7 ? { weekday: 'short' } : {}),
     day: 'numeric',
     month: 'short',
@@ -126,11 +141,10 @@ export function conversationTime(conversation: ChatConversation, now: Date): str
   }).format(date);
 }
 
-const GROUP_LABELS = ['Vandaag', 'Gisteren', 'Afgelopen 7 dagen', 'Ouder'] as const;
-
 /** Conversations (most recent first) under the headings of the history list; empty headings are left out. */
-export function groupConversations(conversations: ChatConversation[], now: Date): ConversationGroup[] {
-  const groups: ConversationGroup[] = GROUP_LABELS.map(label => ({ label, conversations: [] }));
+export function groupConversations(conversations: ChatConversation[], now: Date, t: ChatTexts): ConversationGroup[] {
+  const labels = [t.today, t.yesterday, t.history.lastSevenDays, t.history.older];
+  const groups: ConversationGroup[] = labels.map(label => ({ label, conversations: [] }));
   for (const conversation of conversations) {
     const date = toDate(conversation.updatedAt);
     const days = date ? daysAgo(date, now) : Number.POSITIVE_INFINITY;
