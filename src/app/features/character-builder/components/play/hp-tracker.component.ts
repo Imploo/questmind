@@ -1,4 +1,6 @@
 import { ChangeDetectionStrategy, Component, ElementRef, computed, input, output, signal, viewChild } from '@angular/core';
+import { TranslatePipe } from '../../../../core/i18n/translate.pipe';
+import { PLAY_TERMS } from './play-terms';
 
 /**
  * The hit point tile: current / max, temporary hit points and the bar. When
@@ -7,22 +9,23 @@ import { ChangeDetectionStrategy, Component, ElementRef, computed, input, output
 @Component({
   selector: 'app-hp-tracker',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [TranslatePipe],
   template: `
     <div class="head">
       <div class="value">
         <span class="current" [class.is-down]="current() <= 0">{{ current() }}</span>
         <span class="max">/ {{ max() }}</span>
         @if (temp() > 0) {
-          <span class="temp" title="Temporary hit points">
+          <span class="temp" [title]="terms.temporaryHitPoints">
             <svg viewBox="0 0 40 46" aria-hidden="true"><path d="M20 3 L36 9 V22 C36 32 29 39 20 43 C11 39 4 32 4 22 V9 Z" /></svg>
-            +{{ temp() }} temp
+            +{{ temp() }} {{ terms.tempAmount }}
           </span>
         }
       </div>
-      <span class="label">Hit Points</span>
+      <span class="label">{{ terms.hitPoints }}</span>
     </div>
 
-    <div class="track" role="progressbar" aria-label="Hit points" [attr.aria-valuenow]="current()" aria-valuemin="0" [attr.aria-valuemax]="max()">
+    <div class="track" role="progressbar" [attr.aria-label]="terms.hitPoints" [attr.aria-valuenow]="current()" aria-valuemin="0" [attr.aria-valuemax]="max()">
       <div class="fill" [class.is-low]="isLow()" [style.width.%]="hpPercent()"></div>
       <div class="fill-temp" [style.width.%]="tempPercent()"></div>
     </div>
@@ -35,21 +38,21 @@ import { ChangeDetectionStrategy, Component, ElementRef, computed, input, output
           type="number"
           min="0"
           inputmode="numeric"
-          placeholder="Amount"
-          aria-label="Amount"
+          [placeholder]="'play.hp.amount' | translate"
+          [attr.aria-label]="'play.hp.amount' | translate"
           [value]="amount()"
           (input)="amount.set($any($event.target).value)"
         />
         <button type="button" class="btn heal" (click)="apply('heal')">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z" /></svg>
-          Heal
+          {{ 'play.hp.heal' | translate }}
         </button>
         <button type="button" class="btn temp-btn" (click)="apply('temp')">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 2.6v5.9c0 4.4-3 7.6-7 9.5-4-1.9-7-5.1-7-9.5V5.6z" /></svg>
-          Temp
+          {{ terms.temp }}
         </button>
       </div>
-      <button type="button" class="btn damage" (click)="apply('damage')">Damage</button>
+      <button type="button" class="btn damage" (click)="apply('damage')">{{ 'play.hp.damage' | translate }}</button>
     }
   `,
   styles: [`
@@ -160,6 +163,7 @@ export class HpTrackerComponent {
   tempChange = output<number>();
 
   amount = signal('');
+  protected readonly terms = PLAY_TERMS;
   private readonly amountInput = viewChild<ElementRef<HTMLInputElement>>('amountInput');
 
   /** The amount as a whole number, 0 when empty or invalid. */

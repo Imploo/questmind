@@ -1,4 +1,5 @@
-import { afterNextRender, ChangeDetectionStrategy, Component, ElementRef, inject, input, linkedSignal, output } from '@angular/core';
+import { afterNextRender, ChangeDetectionStrategy, Component, ElementRef, computed, inject, input, linkedSignal, output } from '@angular/core';
+import { TranslatePipe } from '../../../../core/i18n/translate.pipe';
 
 /** One way to pay for a cast: a slot level, a use of the spell's own tracker, or nothing. */
 export interface CastOption {
@@ -25,12 +26,13 @@ export interface CastChoice {
 @Component({
   selector: 'app-cast-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [TranslatePipe],
   host: { '(document:keydown.escape)': 'closed.emit()' },
   template: `
     <div class="backdrop" (click)="closed.emit()"></div>
-    <div class="dialog" role="dialog" aria-modal="true" [attr.aria-label]="'Cast ' + spellName()">
-      <div class="title">Cast {{ spellName() }}</div>
-      <div class="hint">Choose the slot level to cast at.</div>
+    <div class="dialog" role="dialog" aria-modal="true" [attr.aria-label]="'play.cast.title' | translate: spellName()">
+      <div class="title">{{ 'play.cast.title' | translate: spellName() }}</div>
+      <div class="hint">{{ 'play.cast.hint' | translate }}</div>
 
       @for (option of options(); track option.id) {
         <button
@@ -48,14 +50,15 @@ export interface CastChoice {
       <label class="concentrate">
         <input type="checkbox" [checked]="concentrate()" (change)="concentrate.set($any($event.target).checked)" />
         <span>
-          Starts concentration
-          @if (concentrate() && currentConcentration() && currentConcentration() !== spellName()) {
-            — {{ currentConcentration() }} ends
+          @if (endingConcentration(); as ending) {
+            {{ 'play.cast.startsConcentrationEnding' | translate: ending }}
+          } @else {
+            {{ 'play.cast.startsConcentration' | translate }}
           }
         </span>
       </label>
 
-      <button type="button" class="cancel" (click)="closed.emit()">Cancel</button>
+      <button type="button" class="cancel" (click)="closed.emit()">{{ 'common.cancel' | translate }}</button>
     </div>
   `,
   styles: [`
@@ -128,6 +131,11 @@ export class CastDialogComponent {
   closed = output<void>();
 
   concentrate = linkedSignal(() => this.needsConcentration());
+  /** The other spell that loses concentration when this one is cast with it. */
+  endingConcentration = computed(() => {
+    const current = this.currentConcentration();
+    return this.concentrate() && current && current !== this.spellName() ? current : null;
+  });
 
   private readonly host: ElementRef<HTMLElement> = inject(ElementRef);
 

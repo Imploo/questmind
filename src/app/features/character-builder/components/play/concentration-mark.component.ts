@@ -1,17 +1,19 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { TranslatePipe } from '../../../../core/i18n/translate.pipe';
 
 /** A small ring on a concentration spell; a filled pill while concentrating on it. */
 @Component({
   selector: 'app-concentration-mark',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [TranslatePipe],
   template: `
     @if (active()) {
       <span class="pill">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" /><circle class="dot" cx="12" cy="12" r="2.5" /></svg>
-        Concentrating
+        {{ 'play.concentration.active' | translate }}
       </span>
     } @else {
-      <svg viewBox="0 0 24 24" role="img" aria-label="Concentration spell"><circle cx="12" cy="12" r="8" /><circle class="dot" cx="12" cy="12" r="2.5" /></svg>
+      <svg viewBox="0 0 24 24" role="img" [attr.aria-label]="'play.concentration.spellMark' | translate"><circle cx="12" cy="12" r="8" /><circle class="dot" cx="12" cy="12" r="2.5" /></svg>
     }
   `,
   styles: [`
