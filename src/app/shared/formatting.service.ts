@@ -1,12 +1,15 @@
 import { Injectable } from '@angular/core';
 import { toDate } from './utils/date.utils';
 
-/** Duration in seconds as `m:ss`. */
-export function formatDuration(seconds?: number): string {
-  if (!seconds) return '0:00';
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = Math.floor(seconds % 60);
-  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+/** Duration in seconds as `m:ss`, or `h:mm:ss` from an hour on (or always, with `withHours`). */
+export function formatDuration(seconds?: number, withHours = false): string {
+  const total = Math.floor(seconds || 0);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const rest = (total % 60).toString().padStart(2, '0');
+  return hours || withHours
+    ? `${hours}:${minutes.toString().padStart(2, '0')}:${rest}`
+    : `${minutes}:${rest}`;
 }
 
 /** File size in MB (or KB below 1 MB). */
