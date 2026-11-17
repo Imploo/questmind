@@ -744,10 +744,27 @@ Start here for immediate impact with minimal risk:
   - Eigen getypte vertaallaag zonder library: één interface met alleen de keys, één bestand per taal (`nl.ts`, `en.ts`); een ontbrekende vertaling breekt de build
   - Strategy pattern per taal (vertalingen + locale), aangeboden via een signal en een pipe, zodat de app direct wisselt
   - Keuze in `users/{uid}.language` (bron) met een lokale kopie in localStorage; standaard de browsertaal
-  - Taalkiezer in een nieuwe profiel-drawer (niet in de nav-rail) en, voor niet-ingelogde bezoekers, in de topbar van de karakterpagina en de gedeelde podcastpagina
+  - Taalkiezer en uitloggen in een nieuwe profiel-drawer (niet in de nav-rail); voor niet-ingelogde bezoekers in de topbar van de karakterpagina en de gedeelde podcastpagina, en rechtsboven op de inlogpagina
   - D&D-speltermen blijven Engels; verhalen, podcasts en transcript blijven Nederlands; The Sidekick volgt de taal van de gebruiker
+  - Admin-scherm en PDF-export blijven eentalig Engels; de linkpreview van een gedeelde podcast staat in de taal van de deler
   - Backendtekst (voortgang, foutmeldingen) wordt een code die de frontend vertaalt
   - Lint-regel tegen harde tekst in templates
+
+---
+
+## 🔒 Beveiliging — gebruikersprofielen
+
+| Ticket | Title | Priority | Status | Effort | Dependencies |
+|--------|-------|----------|--------|--------|--------------|
+| [#73](./73-user-profile-rules-admin-and-membership.md) | Rechten op gebruikersprofielen dichtzetten — admin, campagnelidmaatschap en leesbare profielen | Critical | Todo | 2-3 dagen (3 fases) | — |
+
+**Key Changes:**
+- **Ticket 73**: vijf lekken rond `users/{uid}`, gevonden door de regels te lezen (niet uitgeprobeerd)
+  - Een gebruiker kan zichzelf admin maken → admin-rechten naar een aparte collectie `admins/{uid}`, beheerd in de console
+  - Een gebruiker kan zichzelf lid maken van elke campagne via zijn eigen profiel → lidmaatschap alleen nog uit het campagnedocument (`firestore.rules`, `storage.rules`, `access.ts`)
+  - Alle profielen (e-mailadressen, campagne-id's) zijn leesbaar voor elke ingelogde gebruiker → alleen het eigen profiel
+  - Een verwijderd lid houdt toegang → uitnodigen, verwijderen en vertrekken via nieuwe callables
+  - Controlescript vóór het omzetten en regeltests met de emulator
 
 ---
 

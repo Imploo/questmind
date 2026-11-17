@@ -4,7 +4,7 @@
 **Priority:** Medium
 **Status:** Todo
 **Effort:** 7-10 dagen, verdeeld over 9 fases die elk los te mergen zijn
-**Dependencies:** Geen. Raakt wel bijna elk component; plan de fases zo dat er weinig andere branches tegelijk open staan op dezelfde map.
+**Dependencies:** Geen harde. Raakt wel bijna elk component; plan de fases zo dat er weinig andere branches tegelijk open staan op dezelfde map. Fase 7 raakt `create-podcast-share.ts`, net als #71: bouw die twee niet tegelijk.
 **Bron:** Inventarisatie van alle zichtbare teksten in `src/` en `functions/src/` op 2026-11-17.
 
 ---
@@ -31,7 +31,7 @@ Dit ticket voert een vertaalsysteem in met twee talen (Nederlands en Engels). De
 | `core/` | 5 | 0 / 100% |
 | **Totaal frontend** | **± 1.000** | **± 23 / 77%** |
 
-Daarvan zijn ± 100 teksten D&D-speltermen en ± 30 teksten staan in de PDF-export. Die vallen buiten de vertaling (zie Beslissingen), dus er zijn **± 850 teksten te vertalen**.
+Daarvan zijn ± 100 teksten D&D-speltermen, ± 30 teksten staan in de PDF-export en ± 75 in het admin-scherm. Die vallen buiten de vertaling (zie Beslissingen), dus er zijn **± 775 teksten te vertalen**.
 
 Verder:
 - Bijna alle templates zijn inline (`template:` in de `.ts`); er zijn maar 2 `.html`-bestanden.
@@ -46,7 +46,7 @@ Verder:
 - De gebruiker kiest Nederlands of Engels. De keuze staat in het profiel en geldt op elk apparaat.
 - Wisselen werkt direct: alle zichtbare tekst, datums en getallen veranderen zonder herladen.
 - Wie nog niets koos, krijgt de taal van de browser: Nederlands als de browser op Nederlands staat, anders Engels.
-- In één taal staat geen tekst meer in de andere taal. Uitzonderingen: D&D-speltermen, inhoud die bij de campagne hoort (verhalen, podcasts, transcript) en door gebruikers ingevoerde tekst.
+- In één taal staat geen tekst meer in de andere taal. Uitzonderingen: D&D-speltermen, inhoud die bij de campagne hoort (verhalen, podcasts, transcript), door gebruikers ingevoerde tekst, het admin-scherm en de PDF-export (beide altijd Engels).
 - Een ontbrekende vertaling of een key die niet bestaat breekt `npm run build`.
 - Nieuwe harde tekst in een template breekt `npm run lint`.
 - The Sidekick antwoordt in de gekozen taal.
@@ -61,7 +61,12 @@ Verder:
 | D&D-speltermen | **Blijven Engels** in beide talen (Strength, Saving Throws, Armor Class, skills, conditions, spell-namen). |
 | AI-inhoud | **Alleen The Sidekick** volgt de taal van de gebruiker. Verhalen, podcasts en het transcript blijven Nederlands; dat is inhoud van de hele campagne. |
 | Standaardtaal | **Browsertaal** (Nederlands → Nederlands, al het andere → Engels). |
-| Plek van de taalkiezer | In een nieuwe **profiel-drawer**, niet zichtbaar in de nav-rail. Voor niet-ingelogde bezoekers in de **topbar**, op de karakterpagina én op de gedeelde podcastpagina (zelfde patroon). |
+| Plek van de taalkiezer | In een nieuwe **profiel-drawer**, niet zichtbaar in de nav-rail. Voor niet-ingelogde bezoekers in de **topbar**, op de karakterpagina én op de gedeelde podcastpagina (zelfde patroon). De **inlogpagina** krijgt hem rechtsboven. |
+| Uitloggen | Verhuist van de nav-rail naar de profiel-drawer. |
+| Zinnen met een spelterm | **Nederlandse zin, Engelse term**: "Long rest nemen?", "Bless gecast — level 2 slot gebruikt". |
+| Admin-scherm | **Eentalig Engels.** Valt buiten het woordenboek en buiten de lint-regel. |
+| PDF-export | **Volledig Engels**, ongeacht de gekozen taal. |
+| Linkpreview van een gedeelde podcast | In de **taal van de deler**; die wordt bij de share opgeslagen. |
 | Engelse notatie | `en-GB`: 6 Nov 2026, 24-uursklok. |
 | Opslag van de keuze | Het profiel (`users/{uid}.language`) is de bron. localStorage is alleen een lokale kopie: voor bezoekers zonder account en om te voorkomen dat de app bij elke start even in de verkeerde taal staat (zie §6). |
 
@@ -126,7 +131,7 @@ export interface Translations {
     sessionCount: (count: number) => string;
     versionFailed: (version: number, error: string) => string;
   };
-  // ... auth, campaign, audio, chat, characters, play, errors, progress, admin
+  // ... auth, campaign, audio, chat, characters, play, errors, progress
 }
 ```
 
@@ -222,7 +227,7 @@ readonly navItems = computed(() => [{ id: 'story', label: this.i18n.t().nav.stor
 ```
 
 - Labels in `computed()` wisselen automatisch mee, omdat ze het signal lezen.
-- Constanten op moduleniveau met tekst (bijvoorbeeld `REPLY_ERRORS` in `chat-view.ts`, de feature-lijst in `admin.component.ts:351-446`) worden een `computed` of slaan een key op in plaats van tekst.
+- Constanten op moduleniveau met tekst (bijvoorbeeld `REPLY_ERRORS` en `CHARACTER_UPDATE_TEXT` in `chat-view.ts:19-30`) worden een `computed` of slaan een key op in plaats van tekst.
 - Het signal mag ook in een template (`{{ t().nav.story }}`), maar de afspraak is: pipe in templates, signal in code.
 
 **Pure functies buiten Angular** (`shared/utils/character-play-state.ts`, `chat/chat-view.ts`, `attack-roll.ts`, `spell-lookup.ts`, `session-progress.utils.ts`): die krijgen het stuk woordenboek dat ze nodig hebben als parameter, bijvoorbeeld `castMessage(request, t: Translations['play'])`. Ze blijven puur en de tests geven `en.play` of `nl.play` mee. Functies die nu een zin uit losse stukken bouwen (`character-play-state.ts:407-424`, `:456-460`) geven gestructureerde gegevens aan één vertaalfunctie.
@@ -255,11 +260,11 @@ Uitloggen wist de lokale kopie niet: de inlogpagina blijft dan in de taal die de
 Er is nog geen profielscherm; het enige gebruikersdeel is het blok onderaan de nav-rail (`nav-rail.component.ts:216-232`: avatar, naam, "Uitloggen").
 
 - Nieuw: `ProfileDrawerComponent` in `layout/profile-drawer/`. Het volgt het bestaande drawer-patroon van `campaign-story-versions-drawer.component.ts`: `qm-scrim` + `qm-drawer`, `role="dialog"`, `aria-modal`, sluiten met Escape, met de sluitknop en met een klik op de scrim.
-- Inhoud: avatar, naam, e-mailadres en de taalkeuze met het label "Taal" / "Language".
-- De drawer is dumb: `open`, `user`, `language` en `languages` als input; `languageChange` en `closed` als output. De nav-rail (smart) beheert het open-signal en roept `LanguagePreferenceService` aan.
+- Inhoud: avatar, naam, e-mailadres, de taalkeuze met het label "Taal" / "Language", en onderaan de knop "Uitloggen" / "Sign out".
+- De drawer is dumb: `open`, `user`, `language` en `languages` als input; `languageChange`, `signOut` en `closed` als output. De nav-rail (smart) beheert het open-signal, roept `LanguagePreferenceService` aan en handelt het uitloggen af met de bestaande `signOut()`.
 - Openen: de rij met avatar en naam in de nav-rail wordt een knop (`aria-label` "Profiel openen", `aria-haspopup="dialog"`). Op mobiel sluit de hamburger-lade als de drawer opent.
 - De taalkiezer staat **niet** in de nav-rail zelf.
-- "Uitloggen" blijft in de nav-rail (zie Open vragen).
+- De knop "Uitloggen" verdwijnt uit de nav-rail (`nav-rail.component.ts:226-231`). Het gebruikersblok is daarna alleen nog de avatar met naam, die de drawer opent.
 
 **b. Niet ingelogd: de topbar**
 
@@ -325,8 +330,13 @@ Regel: **de frontend toont geen backendtekst meer letterlijk.** De backend lever
 - Tekst die de app namens de gebruiker stuurt ('Import this character' in `chat.component.ts:709`, de regelconversie in `rules-version.ts:25-30`) gaat in de actieve taal.
 
 **f. Deelpagina's met linkpreview**
-- De Angular-pagina `podcast-share-page.component.ts` volgt de browsertaal van de bezoeker, zoals de rest van de app.
-- De previewtekst van een podcast (`podcast-share-page.ts:48`) blijft Nederlands: de podcast zelf is Nederlands.
+- De Angular-pagina `podcast-share-page.component.ts` volgt de taal van de bezoeker (topbar, zie §7b).
+- **Podcastpreview in de taal van de deler.** De server weet niet welke taal de ontvanger heeft, dus de deler bepaalt het:
+  - `createPodcastShare` krijgt `language: 'nl' | 'en'` in het verzoek; de frontend stuurt de actieve taal mee. Een ontbrekende of onbekende waarde wordt `'nl'`.
+  - `PodcastShare` krijgt het veld `language`. `buildMetaTags` (`podcast-share-page.ts:47-48`) kiest daarmee de zin: "luister naar de podcast" of "listen to the podcast". Shares zonder `language` (alle bestaande) blijven Nederlands.
+  - De terugvaltitels `'Sessie'` en `'Campagneverhaal'` (`create-podcast-share.ts:79-80`) volgen dezelfde taal.
+  - Per podcastversie bestaat één share (`create-podcast-share.ts:93-97` geeft een bestaande share terug). De taal van de eerste deler blijft dus staan; een tweede deler met een andere taal krijgt dezelfde link met de eerste taal.
+  - `share.subtitle` bevat de ruwe `sessionDate` (`2026-11-06`); dat blijft zo.
 - De previewtekst van een karakter (`character-share-page.ts:115-124`) mengt nu Engels en Nederlands. Die wordt taalneutraal: alleen `Level 5 Human Fighter` (speltermen), zonder de Nederlandse terugvaltekst.
 - De nood-HTML van beide functies kiest de taal uit `Accept-Language` (nl → Nederlands, anders Engels) en zet `lang` daarop.
 
@@ -340,7 +350,7 @@ Regel: **de frontend toont geen backendtekst meer letterlijk.** De backend lever
 - **Compiler:** ontbrekende keys, tikfouten in keys en verkeerde parameters breken `npm run build`.
 - **Lint op harde tekst in templates:** zet `@angular-eslint/template/i18n` aan met `checkId: false`, `checkText: true`, `checkAttributes: true`. Omdat wij nooit `i18n`-attributen zetten, meldt de regel elke losse tekst en elk hard `placeholder`, `title`, `aria-label` of `alt`. De inline templates worden al gelint via `processInlineTemplates`.
   - **Eerst uitproberen in fase 0:** meldt de regel alleen losse tekst, en accepteert hij `{{ 'key' | translate }}` en leestekens? Zo niet, schrijf dan een klein eigen script (`scripts/check-hardcoded-text.js`) dat hetzelfde controleert en draai dat in `npm run lint`.
-  - De regel gaat per map aan zodra die map klaar is (een `files`-blok per fase in `eslint.config.js`), en in fase 8 voor heel `src/app`.
+  - De regel gaat per map aan zodra die map klaar is (een `files`-blok per fase in `eslint.config.js`), en in fase 8 voor heel `src/app`, met `src/app/admin/` als enige uitzondering.
 - **Harde tekst in TypeScript** (toasts, `confirm`, `error.set('...')`) vangt de linter niet. Dat blijft een punt voor de review, en komt als regel in `.claude/claude.md`.
 
 ### 12. Bundelgrootte
@@ -364,7 +374,7 @@ Elke fase is los te mergen. Tot een gebied aan de beurt is, blijft het in zijn h
 - [ ] Bundelgrootte controleren.
 
 ### Fase 1 — Shell en inloggen (0,5-1 dag)
-`layout/`, `app-shell.component.ts`, `app.html`, `loading.component.ts`, `auth/` (inclusief de Firebase-foutcodes in `auth.service.ts:180-196`), `toast.service.ts`, `toast-container`, `callable-error.ts`.
+`layout/` (inclusief de nieuwe profiel-drawer en publieke topbar), `app-shell.component.ts`, `app.html`, `loading.component.ts`, `auth/` (inclusief de Firebase-foutcodes in `auth.service.ts:180-196` en de taalkiezer rechtsboven op de inlogpagina), `toast.service.ts`, `toast-container`, `callable-error.ts`.
 Ook: de beschrijving in `src/index.html:8` en `public/manifest.webmanifest` gaat over "audio journaling" en klopt niet met de app. Die tekst is statisch; zet er één juiste Engelse beschrijving neer.
 
 ### Fase 2 — Campaign en campagneverhaal (1 dag)
@@ -379,14 +389,14 @@ Ook: de beschrijving in `src/index.html:8` en `public/manifest.webmanifest` gaat
 ### Fase 5 — Character builder (2 dagen)
 `features/character-builder/` (± 310, waarvan een groot deel speltermen) en de hulpfuncties `shared/utils/character-play-state.ts`, `attack-roll.ts`, `spell-lookup.ts`, `shared/models/rules-version.ts`. Eerst de speltermen naar `dnd-terms.ts`, daarna de rest naar het woordenboek. De twee `window.prompt()`-aanroepen voor het kopiëren van een link (`character-sheet.component.ts:1225`, `podcast-share-button.component.ts:61`) krijgen vertaalde tekst.
 
-### Fase 6 — Admin (0,5 dag)
-`admin/admin.component.ts` (± 75). De 30 stemnamen zijn eigennamen en blijven zoals ze zijn.
+### Fase 6 — Admin eentalig Engels (0,25 dag)
+`admin/admin.component.ts` blijft buiten het woordenboek. De ± 25 Nederlandse teksten worden Engels (onder meer `:171`, `:191`, `:356`, de bevestiging op `:585`), zodat het scherm in één taal staat. De map is uitgezonderd van de lint-regel. De 30 stemnamen zijn eigennamen en blijven zoals ze zijn.
 
 ### Fase 7 — Backend (1,5-2 dagen)
-Backenddeel van §10: `progress.detail`, `progressStep`, `reason` in `HttpsError`, `language` in de chat, deelpagina's. De frontend uit fase 3 en 4 werkt al met terugval; na deze fase vervalt de terugval nog niet (zie fase 8).
+Backenddeel van §10: `progress.detail`, `progressStep`, `reason` in `HttpsError`, `language` in de chat, `language` op de podcast-share, deelpagina's. De frontend uit fase 3 en 4 werkt al met terugval; na deze fase vervalt de terugval nog niet (zie fase 8).
 
 ### Fase 8 — Afronden (0,5 dag)
-- [ ] Lint-regel aan voor heel `src/app`.
+- [ ] Lint-regel aan voor heel `src/app`, behalve `src/app/admin/`.
 - [ ] Sectie "Vertalingen" in `.claude/claude.md`: geen harde UI-tekst; nieuwe tekst = key in `translations.ts` + `nl.ts` + `en.ts`; pipe in templates, signal in code; speltermen in `dnd-terms.ts`.
 - [ ] Eén release na fase 7: de backend stopt met het schrijven van `message` en `progressMessage`, en de frontend verwijdert de terugval.
 - [ ] Hele app in beide talen doorlopen (zie Verificatie).
@@ -401,11 +411,12 @@ Backenddeel van §10: `progress.detail`, `progressStep`, `reason` in `HttpsError
 - **Wisselen in de praktijk:** een `OnPush`-testcomponent in een zoneless TestBed toont één tekst via de pipe en één via het signal. Na `use('en')` en `fixture.detectChanges()` tonen beide de Engelse tekst. Slaagt de pipe-variant niet, dan krijgt de pipe een `effect` met `ChangeDetectorRef.markForCheck()`.
 - `LanguagePreferenceService`: volgorde profiel → localStorage → browser; een keuze schrijft naar localStorage en naar het profiel; zonder login alleen localStorage; `navigator.languages = ['de', 'nl']` geeft Nederlands, `['fr']` geeft Engels.
 - Woordenboeken: geen lege teksten in `nl` of `en`; elke functie geeft een niet-lege tekst voor 0, 1 en 2.
-- `ProfileDrawerComponent`: toont naam en e-mailadres; een klik op "EN" geeft `languageChange` met `'en'`; Escape en de scrim geven `closed`.
-- Nav-rail: bevat geen taalkiezer; de rij met avatar en naam opent de drawer.
+- `ProfileDrawerComponent`: toont naam en e-mailadres; een klik op "EN" geeft `languageChange` met `'en'`; de uitlogknop geeft `signOut`; Escape en de scrim geven `closed`.
+- Nav-rail: bevat geen taalkiezer en geen uitlogknop; de rij met avatar en naam opent de drawer; `signOut` van de drawer logt uit.
 - `PublicTopbarComponent`: toont de taalkiezer en de inlogknop. De gedeelde podcastpagina toont de topbar zonder login en niet met login.
 - `callableErrorMessage`: `reason` wint van de code, onbekende reden valt terug op de code, onbekende code op de algemene melding.
 - Backend: `characterChat` met `language: 'en'` geeft de Engelse taalregel in de prompt; zonder `language` de Nederlandse.
+- Backend: `createPodcastShare` slaat `language` op (onbekende waarde → `'nl'`); `buildMetaTags` geeft de Engelse zin bij `'en'` en de Nederlandse bij `'nl'` of een share zonder `language`.
 
 **Bestaande specs (16 controleren letterlijke tekst):**
 - `testing.ts` levert `provideTestLanguage('nl' | 'en')`. Zonder die provider is de testtaal vast Engels, zodat de uitkomst niet van jsdom afhangt.
@@ -429,18 +440,20 @@ Handmatig, per fase voor het gebied van die fase en in fase 8 voor de hele app:
 3. Herlaad: de taal blijft. Log in op een ander apparaat of in een privévenster: de taal uit het profiel wordt gebruikt.
 4. Wis localStorage en log uit: de inlogpagina volgt de browsertaal.
 5. Open een gedeelde podcastlink en een publieke karakterpagina zonder login, met de browser op Engels en op Nederlands. Beide tonen dezelfde topbar met taalkiezer; een keuze daar blijft na herladen.
-6. Ingelogd: de nav-rail toont geen taalkiezer. Een klik op de avatar opent de profiel-drawer; wisselen daar verandert de app direct, ook op mobiel vanuit de hamburger-lade.
+6. Ingelogd: de nav-rail toont geen taalkiezer en geen uitlogknop. Een klik op de avatar opent de profiel-drawer; wisselen daar verandert de app direct, ook op mobiel vanuit de hamburger-lade. Uitloggen werkt vanuit de drawer.
 7. Zet de browser op Nederlands, kies Engels en herlaad: de app start meteen in het Engels, zonder een moment Nederlands.
 8. Start een upload en een podcast: de voortgangsteksten staan in de gekozen taal.
 9. Forceer een fout (bijvoorbeeld een tweede verhaal starten terwijl er één loopt): de melding staat in de gekozen taal.
 10. Stel The Sidekick een vraag in beide talen: het antwoord volgt de gekozen taal, speltermen blijven Engels.
-11. Verwijder tijdelijk één key uit `en.ts`: `npm run build` faalt. Zet een losse tekst in een template: `npm run lint` faalt.
+11. Deel een podcast met de app op Engels en plak de link in WhatsApp: de preview is Engels. Een link die vóór deze wijziging is gemaakt, blijft Nederlands.
+12. Verwijder tijdelijk één key uit `en.ts`: `npm run build` faalt. Zet een losse tekst in een template: `npm run lint` faalt.
 
 ## Buiten scope
 
 - **Taal van campagne-inhoud:** sessieverhaal, campagneverhaal, podcast (script en stemmen) en transcript blijven Nederlands. De opmaak van het transcript en de filters hangen aan Nederlandse labels (`Speler (onbekend)`, `Groep`, `OOC` in `audio/session-log-sanitizer.ts:12-28`). Een taal per campagne is een eigen ticket.
 - **D&D-speltermen en SRD-data** vertalen.
 - **PDF-export** van de character sheet: het sjabloon (`public/templates/dnd-5e-character-sheet.pdf`) is Engels en bestaat vooral uit speltermen. De PDF blijft volledig Engels.
+- **Het admin-scherm vertalen.** Het wordt eentalig Engels (fase 6).
 - **De taal van de AI-prompts zelf.** Alleen de taal van het antwoord van The Sidekick verandert.
 - **Logmeldingen** (`logger.*`, Sentry).
 - **Bestaande opgeslagen tekst migreren.**
@@ -452,15 +465,10 @@ Handmatig, per fase voor het gebied van die fase en in fase 8 voor de hele app:
 - **De pipe is niet puur** en wordt bij elke change-detection van zijn view opnieuw aangeroepen. De kosten zijn een paar property-lookups per aanroep. Meet het op de character sheet (het grootste scherm); is het merkbaar, onthoud dan het resultaat per taal en key.
 - **Keys als string in de pipe** hebben geen "ga naar definitie" in de editor. Het signal (`t().nav.story`) heeft dat wel.
 
-## Bijvangst (niet in dit ticket oplossen)
+## Verwant
 
-`firestore.rules:54` laat een gebruiker elk veld van zijn eigen profiel schrijven, ook `admin`. `isAdmin()` (`:44-48`) leest precies dat veld en geeft schrijfrechten op `settings/*`. Elke ingelogde gebruiker kan zichzelf dus admin maken. Dit staat los van vertalingen en verdient een eigen ticket met hoge prioriteit; `language` toevoegen maakt het niet erger.
+De rechten op `users/{uid}` (onder meer: een gebruiker kan zichzelf admin maken) zijn uitgewerkt in **ticket #73**. Dit ticket voegt het veld `language` toe aan het profiel; #73 beperkt welke velden een gebruiker zelf mag schrijven en moet `language` daarbij toelaten. Wie als tweede wordt gebouwd, controleert dat.
 
-## Open vragen (aannames in dit ticket; bevestigen of aanpassen)
+## Open vragen
 
-1. **"Uitloggen":** blijft in de nav-rail. Moet die knop mee naar de profiel-drawer?
-2. **Admin-scherm:** wordt ook vertaald, als laatste (fase 6). Alleen jij ziet dit scherm; het mag ook eentalig Engels blijven en van de lint-regel worden uitgezonderd. Dat scheelt een halve dag.
-3. **PDF-export:** blijft volledig Engels.
-4. **Inlogpagina:** krijgt ook een taalkiezer, rechtsboven.
-5. **Previewtekst van gedeelde podcasts:** blijft Nederlands.
-6. **Speltermen in Nederlandse zinnen:** "Long rest nemen?", "Level 2 slot gebruikt". Goed zo, of liever volledig Engelse zinnen op de sheet?
+Geen. Alle keuzes zijn op 2026-11-17 met de gebruiker afgestemd en staan onder "Genomen beslissingen".
