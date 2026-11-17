@@ -45,6 +45,7 @@ export class PodcastAudioService {
     try {
       const result = await generateAudio({ campaignId, sessionId, sessionTitle, sessionDate });
       if (!result.data?.success) {
+        // The server's message is for the log only; the caller shows a translated text.
         throw new Error(result.data?.message || 'Failed to start podcast generation');
       }
       return result.data.version ?? null;

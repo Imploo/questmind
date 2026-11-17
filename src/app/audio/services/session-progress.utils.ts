@@ -14,6 +14,15 @@ export const STALE_PROGRESS_MS = 45 * 60 * 1000;
 
 const INACTIVE_STAGES: SessionProgressStage[] = ['idle', 'completed', 'failed'];
 
+/**
+ * The progress as the app shows it. `message` and `error` are never translated:
+ * the progress card picks its texts from `stage`, `detail` and `timedOut`.
+ */
+export interface DisplayProgress extends SessionProgress {
+  /** The app itself marked a stale stage as failed; nothing was stored. */
+  timedOut?: boolean;
+}
+
 export function isActiveStage(stage: SessionProgressStage | undefined): boolean {
   return !!stage && !INACTIVE_STAGES.includes(stage);
 }
@@ -26,7 +35,7 @@ export function isActiveStage(stage: SessionProgressStage | undefined): boolean 
 export function toDisplayProgress(
   session: Pick<AudioSessionRecord, 'progress' | 'status' | 'createdAt' | 'updatedAt'>,
   now = Date.now()
-): SessionProgress | null {
+): DisplayProgress | null {
   const progress = session.progress;
   if (progress) {
     if (isActiveStage(progress.stage)) {
@@ -36,8 +45,11 @@ export function toDisplayProgress(
           ...progress,
           stage: 'failed',
           progress: 0,
+          detail: undefined,
+          timedOut: true,
           message: 'Operation timed out. Click retry to try again.',
-          error: `Operation stalled at "${progress.stage}" (last update: ${updatedAt.toLocaleString()})`,
+          // Raw detail like any other stored error, so no notation of one language.
+          error: `Operation stalled at "${progress.stage}" (last update: ${updatedAt.toISOString()})`,
         };
       }
     }
