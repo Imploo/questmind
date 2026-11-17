@@ -738,6 +738,7 @@ Start here for immediate impact with minimal risk:
 | Ticket | Title | Priority | Status | Effort | Dependencies |
 |--------|-------|----------|--------|--------|--------------|
 | [#72](./done/72-i18n-nl-en-language-choice.md) | Vertalingen — de gebruiker kiest Nederlands of Engels | Medium | Done | 7-10 dagen (9 fases) | — |
+| [#74](./74-i18n-cleanup-after-release.md) | Opruimen na de vertalingen — oude tekstvelden, controles na de deploy en kleine punten | Low | Todo | 1-1,5 dag | #72 live; deel A één release later |
 
 **Key Changes:**
 - **Ticket 72**: (afgerond op de feature-branch; nog niet op `develop`) de mix van Engels en Nederlands (± 1.000 teksten, 77% Engels) vervangen door een taalkeuze per gebruiker
@@ -749,7 +750,13 @@ Start here for immediate impact with minimal risk:
   - Admin-scherm en PDF-export blijven eentalig Engels; de linkpreview van een gedeelde podcast staat in de taal van de deler
   - Backendtekst (voortgang, foutmeldingen) wordt een code die de frontend vertaalt
   - `npm run lint` faalt op harde tekst in templates (`scripts/check-hardcoded-text.mjs`)
-  - Nog open: de backend stopt één release later met het schrijven van `message` / `progressMessage`
+  - Nog open: de backend stopt één release later met het schrijven van `message` / `progressMessage` (zie #74)
+
+- **Ticket 74**: het werk dat na #72 is blijven liggen
+  - Deel A (één release na #72): de backend schrijft `progressMessage` en `progress.message` niet meer; de velden en constanten gaan weg
+  - Deel B (bij de eerste deploy): wat alleen door tests is gedekt nalopen op beta — The Sidekick in het Engels, de voortgangskaart, linkpreviews
+  - Kleine punten uit de reviews, tekstkeuzes die een beslissing vragen, en tests die van elkaars toestand afhangen (`isolate: false`)
+  - Uitzoeken: mogelijk dubbele standaardcampagne voor een nieuwe gebruiker
 
 ---
 

@@ -419,6 +419,7 @@ Alle fases zijn gebouwd op branch `ccr-4965b8a9-jm2bnm`. Nog niet op `develop`; 
 - **Campagnes herladen:** het profiel wijzigt nu ook bij een taalkeuze. De campagnes worden daarom alleen nog herladen als de campagnelijst of de standaardcampagne verandert; anders zette een taalwissel een half ingevuld instellingenformulier terug.
 
 ### Nog open
+Alles hieronder, en de kleine punten verderop, is uitgewerkt in **ticket #74** (`../74-i18n-cleanup-after-release.md`).
 - De backend schrijft `message` en `progressMessage` nog (fase 8). Dat kan weg, samen met de terugval in de frontend, één release nadat dit live staat.
 - De app is niet volledig met echte data doorgelopen (zie hieronder).
 
