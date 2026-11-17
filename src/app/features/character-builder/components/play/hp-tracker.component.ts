@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, ElementRef, computed, input, output, signal, viewChild } from '@angular/core';
 import { TranslatePipe } from '../../../../core/i18n/translate.pipe';
-import { PLAY_TERMS } from './play-terms';
+import { PLAY_TERMS } from '../../../../shared/dnd-terms';
 
 /**
  * The hit point tile: current / max, temporary hit points and the bar. When

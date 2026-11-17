@@ -1,10 +1,11 @@
-import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
-import { LimitedUses } from '../../../../shared/models/dnd-character.model';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core';
+import { LimitedUses, UsesRecharge } from '../../../../shared/models/dnd-character.model';
 import { CustomFeat } from '../../../../shared/models/character-play-state.model';
 import { customFeatUsesKey } from '../../../../shared/utils/character-play-state';
 import { MarkdownComponent } from '../../../../shared/components/markdown.component';
+import { I18nService } from '../../../../core/i18n/i18n.service';
 import { TranslatePipe } from '../../../../core/i18n/translate.pipe';
-import { PLAY_TERMS } from './play-terms';
+import { PLAY_TERMS } from '../../../../shared/dnd-terms';
 import { TrackerEditorComponent } from './tracker-editor.component';
 import { UsePipsComponent } from './use-pips.component';
 
@@ -230,6 +231,8 @@ export class CustomFeatsComponent {
   spentChange = output<CustomFeatSpentChange>();
   removed = output<string>();
 
+  private readonly i18n = inject(I18nService);
+
   newName = signal('');
   expanded = signal<ReadonlySet<string>>(new Set());
   /** Id of the feat whose name and text are being edited. */
@@ -242,11 +245,16 @@ export class CustomFeatsComponent {
     return this.feats().map(feat => {
       const key = customFeatUsesKey(feat.id);
       const tracker = feat.uses
-        ? { key, max: feat.uses.max, spent: spent[key] ?? 0, rechargeLabel: PLAY_TERMS.recharge[feat.uses.recharge] ?? PLAY_TERMS.recharge.manual }
+        ? { key, max: feat.uses.max, spent: spent[key] ?? 0, rechargeLabel: this.rechargeLabel(feat.uses.recharge) }
         : null;
       return { feat, tracker };
     });
   });
+
+  /** The rests are game terms; resetting by hand is said in the active language. */
+  private rechargeLabel(recharge: UsesRecharge): string {
+    return recharge === 'shortRest' || recharge === 'longRest' ? PLAY_TERMS.recharge[recharge] : this.i18n.t().play.tracker.manual;
+  }
 
   toggle(id: string): void {
     this.expanded.update(open => {

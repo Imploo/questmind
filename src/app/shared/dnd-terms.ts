@@ -114,3 +114,44 @@ export const DND_TERMS = {
 } as const;
 
 export type DndTerms = typeof DND_TERMS;
+
+/** The conditions a character can have. Stored in the play state and matched by name: these values never change. */
+export const CONDITIONS = [
+  'Blinded', 'Charmed', 'Deafened', 'Frightened', 'Grappled', 'Incapacitated', 'Invisible',
+  'Paralyzed', 'Petrified', 'Poisoned', 'Prone', 'Restrained', 'Stunned', 'Unconscious',
+] as const;
+
+/**
+ * The game terms of playing a character: hit points, rests, conditions, coins.
+ * English in every language, like the terms above.
+ */
+export const PLAY_TERMS = {
+  hitPoints: 'Hit Points',
+  temporaryHitPoints: 'Temporary Hit Points',
+  temp: 'Temp',
+  /** As it follows an amount: "+5 temp". */
+  tempAmount: 'temp',
+  hitDice: DND_TERMS.hitDice,
+  spellSlots: DND_TERMS.spellSlots,
+  features: 'Features',
+  deathSaves: 'Death Saves',
+  successes: 'Successes',
+  failures: 'Failures',
+  dead: 'Dead',
+  stable: 'Stable',
+  inspiration: 'Inspiration',
+  concentration: 'Concentration',
+  conditions: 'Conditions',
+  exhaustion: 'Exhaustion',
+  /** Also stored in the play state and matched by name: these values never change. */
+  conditionNames: CONDITIONS,
+  /** A tracker can also be reset by hand; that is app text and comes from the translations. */
+  recharge: { shortRest: DND_TERMS.shortRest, longRest: DND_TERMS.longRest },
+  coins: {
+    pp: 'Platinum',
+    gp: 'Gold',
+    ep: 'Electrum',
+    sp: 'Silver',
+    cp: 'Copper',
+  },
+} as const;

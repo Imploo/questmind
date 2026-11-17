@@ -3,7 +3,7 @@ import { RestPreviewRow } from '../../../../shared/utils/character-play-state';
 import { I18nService } from '../../../../core/i18n/i18n.service';
 import { TranslatePipe } from '../../../../core/i18n/translate.pipe';
 import type { Translations } from '../../../../core/i18n/translations';
-import { PLAY_TERMS } from './play-terms';
+import { PLAY_TERMS } from '../../../../shared/dnd-terms';
 
 const ROW_LABELS: Record<RestPreviewRow['kind'], string> = {
   hitPoints: PLAY_TERMS.hitPoints,

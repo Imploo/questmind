@@ -2,11 +2,9 @@ import { Coins, DndCharacter, LimitedUses, SpellSlot, UsesRecharge } from '../mo
 import { CharacterPlayState, CustomFeat, InventoryItem } from '../models/character-play-state.model';
 import { normalizeSpellSlots } from '../pdf/character-sheet-field-values';
 import type { Translations } from '../../core/i18n/translations';
+import { CONDITIONS } from '../dnd-terms';
 
-export const CONDITIONS = [
-  'Blinded', 'Charmed', 'Deafened', 'Frightened', 'Grappled', 'Incapacitated', 'Invisible',
-  'Paralyzed', 'Petrified', 'Poisoned', 'Prone', 'Restrained', 'Stunned', 'Unconscious',
-] as const;
+export { CONDITIONS };
 
 export const MAX_EXHAUSTION = 6;
 

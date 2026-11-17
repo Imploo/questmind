@@ -1,14 +1,9 @@
-import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core';
 import { LimitedUses, UsesRecharge } from '../../../../shared/models/dnd-character.model';
 import { MAX_USES } from '../../../../shared/utils/character-play-state';
+import { I18nService } from '../../../../core/i18n/i18n.service';
 import { TranslatePipe } from '../../../../core/i18n/translate.pipe';
-import { PLAY_TERMS } from './play-terms';
-
-const RECHARGE_OPTIONS: { value: UsesRecharge; label: string }[] = [
-  { value: 'shortRest', label: PLAY_TERMS.recharge.shortRest },
-  { value: 'longRest', label: PLAY_TERMS.recharge.longRest },
-  { value: 'manual', label: PLAY_TERMS.recharge.manual },
-];
+import { PLAY_TERMS } from '../../../../shared/dnd-terms';
 
 /**
  * Shown under the text of a feature, spell or custom feat: says what its uses tracker is, and
@@ -30,7 +25,7 @@ const RECHARGE_OPTIONS: { value: UsesRecharge; label: string }[] = [
 
         <div class="field">
           <span class="field-label">{{ 'play.tracker.rechargesOn' | translate }}</span>
-          @for (option of rechargeOptions; track option.value) {
+          @for (option of rechargeOptions(); track option.value) {
             <button type="button" class="choice" [class.is-selected]="recharge() === option.value" [attr.aria-pressed]="recharge() === option.value" (click)="recharge.set(option.value)">
               {{ option.label }}
             </button>
@@ -133,7 +128,14 @@ export class TrackerEditorComponent {
   max = signal(1);
   recharge = signal<UsesRecharge>('longRest');
 
-  readonly rechargeOptions = RECHARGE_OPTIONS;
+  private readonly i18n = inject(I18nService);
+
+  /** The rests are game terms; resetting by hand is said in the active language. */
+  readonly rechargeOptions = computed((): { value: UsesRecharge; label: string }[] => [
+    { value: 'shortRest', label: PLAY_TERMS.recharge.shortRest },
+    { value: 'longRest', label: PLAY_TERMS.recharge.longRest },
+    { value: 'manual', label: this.i18n.t().play.tracker.manual },
+  ]);
   readonly maxUses = MAX_USES;
 
   open(): void {

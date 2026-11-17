@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import { PLAY_TERMS } from './play-terms';
+import { PLAY_TERMS } from '../../../../shared/dnd-terms';
 
 export interface DeathSaves {
   successes: number;

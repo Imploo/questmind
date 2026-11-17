@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, ElementRef, computed, effect, input
 import { Coins } from '../../../../shared/models/dnd-character.model';
 import { MAX_COINS } from '../../../../shared/utils/character-play-state';
 import { TranslatePipe } from '../../../../core/i18n/translate.pipe';
-import { PLAY_TERMS } from './play-terms';
+import { PLAY_TERMS } from '../../../../shared/dnd-terms';
 
 type CoinKey = keyof Coins;
 

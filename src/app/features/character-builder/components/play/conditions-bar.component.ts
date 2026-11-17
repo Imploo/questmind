@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
 import { MAX_EXHAUSTION } from '../../../../shared/utils/character-play-state';
 import { TranslatePipe } from '../../../../core/i18n/translate.pipe';
-import { PLAY_TERMS } from './play-terms';
+import { PLAY_TERMS } from '../../../../shared/dnd-terms';
 
 /**
  * Active conditions, exhaustion and the spell being concentrated on. When `editable`,

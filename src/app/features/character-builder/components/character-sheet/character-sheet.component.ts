@@ -1564,7 +1564,7 @@ export class CharacterSheetComponent {
   private rechargeLabel(recharge: LimitedUses['recharge']): string {
     if (recharge === 'shortRest') return DND_TERMS.shortRest;
     if (recharge === 'longRest') return DND_TERMS.longRest;
-    return this.i18n.t().sheet.rechargeManual;
+    return this.i18n.t().play.tracker.manual;
   }
 
   /** The ways to pay for a cast: the spell's own uses first, then every slot level from its own level up. */

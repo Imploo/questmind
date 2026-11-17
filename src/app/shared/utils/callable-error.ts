@@ -2,10 +2,6 @@ import type { Translations } from '../../core/i18n/translations';
 
 type ErrorTexts = Translations['errors'];
 
-/** @deprecated Use `errors.permissionDenied` from the translations. */
-export const PERMISSION_DENIED_MESSAGE =
-  'Je hebt geen rechten voor deze actie. Alleen leden of de eigenaar van de campagne (of het personage) mogen dit.';
-
 /** Error code of a failed callable (`functions/permission-denied` → `permission-denied`), or null. */
 export function callableErrorCode(error: unknown): string | null {
   const code = (error as { code?: unknown } | null)?.code;

@@ -41,15 +41,7 @@ import {
 const ROOT = resolve(fileURLToPath(import.meta.url), '../..');
 
 /** Checked on every `npm run lint`. */
-const ENFORCED = [
-  'src/app/app.html',
-  'src/app/app-shell.component.ts',
-  'src/app/loading.component.ts',
-  'src/app/auth',
-  'src/app/layout',
-  'src/app/shared/components/language-switcher.component.ts',
-  'src/app/shared/components/toast-container',
-];
+const ENFORCED = ['src/app'];
 
 /** Left alone: the admin screen is English only, by decision (ticket #72). */
 const EXCLUDED = ['src/app/admin/'];

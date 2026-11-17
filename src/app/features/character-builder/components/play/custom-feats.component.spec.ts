@@ -7,7 +7,7 @@ import { en } from '../../../../core/i18n/en';
 import { nl } from '../../../../core/i18n/nl';
 import { provideTestLanguage } from '../../../../core/i18n/testing';
 import { CustomFeatChange, CustomFeatSpentChange, CustomFeatsComponent } from './custom-feats.component';
-import { PLAY_TERMS } from './play-terms';
+import { PLAY_TERMS } from '../../../../shared/dnd-terms';
 
 const boon: CustomFeat = { id: 'boon', name: "Stormcaller's Boon", description: 'Call **lightning**.', uses: { max: 2, recharge: 'longRest' } };
 
