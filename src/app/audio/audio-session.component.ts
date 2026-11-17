@@ -22,7 +22,7 @@ import { SessionProgressCardComponent } from './session-progress-card.component'
 import { SessionRecordingComponent } from './session-recording.component';
 import { SessionListSidebarComponent } from './session-list-sidebar.component';
 import { CampaignSelectorComponent } from '../campaign/campaign-selector.component';
-import { formatDay } from '../shared/formatting.service';
+import { FormattingService } from '../shared/formatting.service';
 import { ToastService } from '../shared/services/toast.service';
 import { isPermissionDenied, PERMISSION_DENIED_MESSAGE } from '../shared/utils/callable-error';
 
@@ -155,6 +155,7 @@ export class AudioSessionComponent {
   private readonly campaignContext = inject(CampaignContextService);
   private readonly campaignService = inject(CampaignService);
   private readonly router = inject(Router);
+  private readonly formatting = inject(FormattingService);
   private readonly route = inject(ActivatedRoute);
   private readonly sessionStateService = inject(AudioSessionStateService);
   private readonly backendOperations = inject(AudioBackendOperationsService);
@@ -291,7 +292,7 @@ export class AudioSessionComponent {
 
   formatSubtitle(session: AudioSessionRecord | null): string {
     if (!session) return '';
-    return `${formatDay(session.sessionDate) || 'No date'} · ${session.audioFileName || 'Unknown'}`;
+    return `${this.formatting.formatDay(session.sessionDate) || 'No date'} · ${session.audioFileName || 'Unknown'}`;
   }
 
   // --- Story operations ---

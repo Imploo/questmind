@@ -4,10 +4,11 @@ import { AuthService } from './auth/auth.service';
 import { LoadingComponent } from './loading.component';
 import { UpdateService } from './core/update.service';
 import { ToastContainerComponent } from './shared/components/toast-container/toast-container.component';
+import { TranslatePipe } from './core/i18n/translate.pipe';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, LoadingComponent, ToastContainerComponent],
+  imports: [RouterOutlet, LoadingComponent, ToastContainerComponent, TranslatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './app.html',
   styleUrl: './app.css'

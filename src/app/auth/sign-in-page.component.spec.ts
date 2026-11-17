@@ -6,6 +6,7 @@ import { SignInPageComponent } from './sign-in-page.component';
 import { AuthService } from './auth.service';
 import { EmailAuthFormComponent } from './email-auth-form.component';
 import { By } from '@angular/platform-browser';
+import { I18nService, LanguagePreferenceService } from '../core/i18n';
 
 describe('SignInPageComponent', () => {
   let fixture: ComponentFixture<SignInPageComponent>;
@@ -21,6 +22,7 @@ describe('SignInPageComponent', () => {
     sendPasswordReset: vi.fn(),
   };
   const router = { navigate: vi.fn() };
+  const preference = { choose: vi.fn() };
 
   const form = () =>
     fixture.debugElement.query(By.directive(EmailAuthFormComponent)).componentInstance as EmailAuthFormComponent;
@@ -44,6 +46,7 @@ describe('SignInPageComponent', () => {
       providers: [
         { provide: AuthService, useValue: authService },
         { provide: Router, useValue: router },
+        { provide: LanguagePreferenceService, useValue: preference },
       ],
     });
     fixture = TestBed.createComponent(SignInPageComponent);
@@ -116,5 +119,26 @@ describe('SignInPageComponent', () => {
 
     expect(authService.signInWithGoogle).toHaveBeenCalled();
     expect(router.navigate).toHaveBeenCalledWith(['/']);
+  });
+
+  it('offers the language choice and passes a pick on', () => {
+    const options = Array.from(element.querySelectorAll<HTMLButtonElement>('app-language-switcher button'));
+    expect(options.map(option => option.textContent?.trim())).toEqual(['nl', 'en']);
+    expect(options[1].getAttribute('aria-pressed')).toBe('true');
+
+    options[0].click();
+
+    expect(preference.choose).toHaveBeenCalledWith('nl');
+  });
+
+  it('shows the page in Dutch once the language switches', async () => {
+    TestBed.inject(I18nService).use('nl');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const text = element.textContent ?? '';
+    expect(text).toContain('Inloggen met Google');
+    expect(text).toContain('Log in om verder te gaan');
+    expect(text).not.toContain('Sign in with Google');
   });
 });

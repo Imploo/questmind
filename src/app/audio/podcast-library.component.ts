@@ -6,7 +6,7 @@ import { CampaignSelectorComponent } from '../campaign/campaign-selector.compone
 import { AudioSessionStateService } from './services/audio-session-state.service';
 import { PodcastVersionItemComponent } from '../shared/components/podcast-version-item.component';
 import { toMillis } from '../shared/utils/date.utils';
-import { formatDay } from '../shared/formatting.service';
+import { FormattingService } from '../shared/formatting.service';
 
 interface SessionWithPodcasts {
   sessionId: string;
@@ -56,7 +56,7 @@ interface SessionWithPodcasts {
             <section class="qm-panel sm:!p-6">
               <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
                 <div class="min-w-0">
-                  <div class="qm-eyebrow">Speeldag: {{ formatDay(session.sessionDate) }}</div>
+                  <div class="qm-eyebrow">Speeldag: {{ formatting.formatDay(session.sessionDate) }}</div>
                   <h2 class="qm-display text-xl leading-tight break-words">{{ session.sessionTitle }}</h2>
                 </div>
                 <span class="qm-badge qm-badge-violet">
@@ -91,7 +91,7 @@ export class PodcastLibraryComponent {
   private readonly sessionStateService = inject(AudioSessionStateService);
 
   readonly campaignId = this.campaignContext.selectedCampaignId;
-  protected readonly formatDay = formatDay;
+  protected readonly formatting = inject(FormattingService);
 
   /** Sessions with at least one podcast, newest play date first. */
   readonly sessions = computed<SessionWithPodcasts[]>(() => {

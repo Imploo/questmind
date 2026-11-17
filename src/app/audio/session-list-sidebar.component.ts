@@ -1,6 +1,6 @@
-import { Component, ChangeDetectionStrategy, input, output, signal } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, input, output, signal } from '@angular/core';
 import { AudioSessionRecord } from './services/audio-session.models';
-import { formatDay } from '../shared/formatting.service';
+import { FormattingService } from '../shared/formatting.service';
 
 @Component({
   selector: 'app-session-list-sidebar',
@@ -111,7 +111,7 @@ import { formatDay } from '../shared/formatting.service';
                 >
                   <span class="block text-sm font-semibold truncate">{{ session.title }}</span>
                   <span class="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
-                    <span class="text-xs qm-muted">{{ formatDay(session.sessionDate) || 'No date' }}</span>
+                    <span class="text-xs qm-muted">{{ formatting.formatDay(session.sessionDate) || 'No date' }}</span>
                     <!-- A finished session is the normal case: only the others say so. -->
                     @if (session.status === 'failed') {
                       <span class="qm-badge qm-badge-danger">Failed</span>
@@ -142,5 +142,5 @@ export class SessionListSidebarComponent {
   newRequested = output<void>();
 
   mobileDrawerOpen = signal(false);
-  protected readonly formatDay = formatDay;
+  protected readonly formatting = inject(FormattingService);
 }

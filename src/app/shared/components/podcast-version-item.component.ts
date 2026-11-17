@@ -1,8 +1,8 @@
-import { ChangeDetectionStrategy, Component, ElementRef, computed, input, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, computed, inject, input, signal, viewChild } from '@angular/core';
 import { PodcastVersion } from '../../audio/services/audio-session.models';
 import { PodcastShareTarget } from '../../audio/services/podcast-share.service';
 import { PodcastShareButtonComponent } from '../../audio/podcast-share-button.component';
-import { formatDate, formatDuration, formatFileSize } from '../formatting.service';
+import { FormattingService, formatDuration, formatFileSize } from '../formatting.service';
 
 /**
  * One podcast version: play button, status badge, date/size, the seek bar with
@@ -187,6 +187,7 @@ export class PodcastVersionItemComponent {
   readonly loadFailed = signal(false);
   readonly currentTime = signal(0);
   /** Length as the browser reads it from the file; the stored duration can be missing. */
+  private readonly formatting = inject(FormattingService);
   private readonly mediaDuration = signal(0);
   private readonly speed = signal(1);
 
@@ -201,13 +202,13 @@ export class PodcastVersionItemComponent {
     const total = this.totalSeconds();
     return total ? Math.min(100, (this.currentTime() / total) * 100) : 0;
   });
-  readonly speedLabel = computed(() => `${this.speed().toLocaleString('nl-NL')}×`);
+  readonly speedLabel = computed(() => `${this.formatting.formatNumber(this.speed())}×`);
 
   /** Date and size under the title; the length sits at the end of the seek bar. */
   readonly details = computed(() => {
     const { createdAt, fileSize, audioUrl, duration } = this.podcast();
     return [
-      formatDate(createdAt),
+      this.formatting.formatDate(createdAt),
       !audioUrl && duration ? formatDuration(duration) : '',
       fileSize ? formatFileSize(fileSize) : '',
     ].filter(Boolean);

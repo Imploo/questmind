@@ -2,23 +2,35 @@ import { ChangeDetectionStrategy, Component, inject, resource } from '@angular/c
 import { ActivatedRoute } from '@angular/router';
 import { PodcastShareService } from './services/podcast-share.service';
 import { FormattingService } from '../shared/formatting.service';
+import { AuthService } from '../auth/auth.service';
 import { LogoComponent } from '../shared/components/logo.component';
+import { PublicTopbarComponent } from '../layout/public-topbar/public-topbar.component';
 
 /** Public player for a shared podcast — no sign-in needed. */
 @Component({
   selector: 'app-podcast-share-page',
-  imports: [LogoComponent],
+  imports: [LogoComponent, PublicTopbarComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'block min-h-dvh' },
   template: `
-    <main class="max-w-xl mx-auto px-4 py-12">
-      <div class="mb-6 flex items-center justify-center gap-3">
-        <app-logo [size]="44" />
-        <div>
-          <div class="qm-page-title !text-xl">Questmind</div>
-          <div class="qm-page-eyebrow">Podcast</div>
-        </div>
+    @if (!authService.isAuthenticated()) {
+      <!-- Same bar as on a shared character: where you are, the language, and signing in. -->
+      <div class="p-3 sm:p-6 !pb-0">
+        <app-public-topbar />
       </div>
+    }
+    <main class="max-w-xl mx-auto px-4 py-8">
+      @if (authService.isAuthenticated()) {
+        <div class="mb-6 flex items-center justify-center gap-3">
+          <app-logo [size]="44" />
+          <div>
+            <div class="qm-page-title !text-xl" data-no-i18n>Questmind</div>
+            <div class="qm-page-eyebrow">Podcast</div>
+          </div>
+        </div>
+      } @else {
+        <div class="qm-page-eyebrow mb-3 text-center">Podcast</div>
+      }
 
       @if (share.isLoading()) {
         <div class="text-center py-12" role="status">
@@ -70,6 +82,7 @@ import { LogoComponent } from '../shared/components/logo.component';
 export class PodcastSharePageComponent {
   private readonly shareService = inject(PodcastShareService);
   readonly formatting = inject(FormattingService);
+  protected readonly authService = inject(AuthService);
 
   private readonly shareId = inject(ActivatedRoute).snapshot.paramMap.get('shareId') ?? '';
 
