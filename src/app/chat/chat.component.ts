@@ -7,12 +7,14 @@ import { DndCharacter } from '../shared/models/dnd-character.model';
 import { RulesVersion } from '../shared/models/rules-version';
 import { ImageLightboxComponent } from './image-lightbox.component';
 import { ChatHistoryPanelComponent } from './chat-history-panel.component';
-import { readPdfAttachment } from './pdf-attachment';
+import { pdfAttachmentErrorText, readPdfAttachment } from './pdf-attachment';
 import { dayLabel, formatTime, isSameDay } from './chat-view';
+import { I18nService } from '../core/i18n/i18n.service';
+import { TranslatePipe } from '../core/i18n/translate.pipe';
 
 @Component({
   selector: 'app-chat',
-  imports: [FormsModule, ImageLightboxComponent, ChatHistoryPanelComponent],
+  imports: [FormsModule, ImageLightboxComponent, ChatHistoryPanelComponent, TranslatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     '[class.flex]': 'true',
@@ -34,8 +36,8 @@ import { dayLabel, formatTime, isSameDay } from './chat-view';
         <button
           type="button"
           class="head-btn"
-          aria-label="Eerdere gesprekken"
-          title="Eerdere gesprekken"
+          [attr.aria-label]="'chat.earlierConversations' | translate"
+          [title]="'chat.earlierConversations' | translate"
           (click)="historyOpen.set(true)"
         >
           <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -46,15 +48,15 @@ import { dayLabel, formatTime, isSameDay } from './chat-view';
         </button>
         @if (!floating()) {
           <div class="min-w-0 flex-1 text-center">
-            <div class="font-display text-[0.6rem] font-semibold uppercase tracking-[0.18em] text-white/75">The Sidekick</div>
+            <div class="font-display text-[0.6rem] font-semibold uppercase tracking-[0.18em] text-white/75" data-no-i18n>The Sidekick</div>
             <h2 class="truncate font-display text-sm font-bold leading-tight">{{ title() }}</h2>
           </div>
         }
         <button
           type="button"
           class="head-btn"
-          aria-label="Nieuw gesprek"
-          title="Nieuw gesprek"
+          [attr.aria-label]="'chat.newConversation' | translate"
+          [title]="'chat.newConversation' | translate"
           (click)="startNewChat()"
         >
           <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -78,13 +80,13 @@ import { dayLabel, formatTime, isSameDay } from './chat-view';
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
               </svg>
             </span>
-            <p class="mt-3 font-display text-sm font-bold">Ask about your character!</p>
-            <p class="mt-1 font-prose text-base italic text-gray-600">Try: "Change my class to Rogue"</p>
+            <p class="mt-3 font-display text-sm font-bold">{{ 'chat.emptyTitle' | translate }}</p>
+            <p class="mt-1 font-prose text-base italic text-gray-600">{{ 'chat.emptyExample' | translate }}</p>
           </div>
         }
 
         @if (hasEarlierMessages()) {
-          <button type="button" class="qm-btn qm-btn-sm self-center" (click)="loadEarlierMessages()">Eerdere berichten laden</button>
+          <button type="button" class="qm-btn qm-btn-sm self-center" (click)="loadEarlierMessages()">{{ 'chat.loadEarlierMessages' | translate }}</button>
         }
 
         @for (row of rows(); track row.message.id) {
@@ -110,34 +112,34 @@ import { dayLabel, formatTime, isSameDay } from './chat-view';
                     type="button"
                     (click)="viewVersions.emit()"
                     class="shrink-0 text-xs font-semibold underline underline-offset-2 hover:no-underline"
-                    title="Versiegeschiedenis openen"
-                  >versie {{ message.versionNumber }}</button>
+                    [title]="'chat.openVersionHistory' | translate"
+                  >{{ 'chat.versionLink' | translate: message.versionNumber }}</button>
                 }
                 @if (message.previousVersionId && message.versionId === activeVersionId()) {
                   <button
                     type="button"
                     (click)="undoVersion.emit(message.previousVersionId)"
                     class="ml-auto shrink-0 text-xs underline underline-offset-2 hover:no-underline"
-                    title="Terug naar de versie van voor deze aanpassing"
-                  >Undo</button>
+                    [title]="'chat.undoUpdateHint' | translate"
+                  >{{ 'common.undo' | translate }}</button>
                 }
                 @if (message.isUpdatingCharacter) {
                   <button
                     type="button"
                     (click)="cancelCharacterUpdate(message.id)"
                     class="ml-auto shrink-0 text-xs underline underline-offset-2 hover:no-underline"
-                  >Annuleren</button>
+                  >{{ 'common.cancel' | translate }}</button>
                 }
               </div>
               @if (message.abilityScoreWarnings?.length) {
                 <div class="mt-1.5 text-xs" role="alert">
-                  <div class="font-semibold">De ability scores volgen de regels niet:</div>
+                  <div class="font-semibold">{{ 'chat.abilityScoreWarningsTitle' | translate }}</div>
                   <ul class="ml-4 mt-0.5 list-disc">
                     @for (warning of message.abilityScoreWarnings; track $index) {
                       <li>{{ warning }}</li>
                     }
                   </ul>
-                  <div class="mt-0.5">Vraag The Sidekick om dit te herstellen.</div>
+                  <div class="mt-0.5">{{ 'chat.abilityScoreWarningsHint' | translate }}</div>
                 </div>
               }
             </div>
@@ -148,7 +150,11 @@ import { dayLabel, formatTime, isSameDay } from './chat-view';
               [class.is-error]="message.sender === 'error'"
             >
               <div class="bubble-meta">
-                <span>{{ message.sender === 'user' ? 'You' : 'The Sidekick' }}</span>
+                @if (message.sender === 'user') {
+                  <span>{{ 'chat.you' | translate }}</span>
+                } @else {
+                  <span data-no-i18n>The Sidekick</span>
+                }
                 <span class="time">{{ formatTime(message.timestamp) }}</span>
               </div>
               <div class="leading-relaxed">
@@ -172,7 +178,7 @@ import { dayLabel, formatTime, isSameDay } from './chat-view';
                     @for (image of message.images; track $index) {
                       <img
                         [src]="image.url"
-                        [alt]="'Generated image ' + ($index + 1)"
+                        [alt]="'chat.generatedImageAlt' | translate: $index + 1"
                         class="max-w-full rounded-lg border border-line cursor-zoom-in hover:opacity-90 transition-opacity"
                         loading="lazy"
                         (click)="openLightbox(image.url)"
@@ -186,7 +192,7 @@ import { dayLabel, formatTime, isSameDay } from './chat-view';
         }
 
         @if (isWaitingForAnswer()) {
-          <div class="bubble animate-slide-in" role="status" aria-label="The Sidekick is typing">
+          <div class="bubble animate-slide-in" role="status" [attr.aria-label]="'chat.typing' | translate">
             <div class="flex gap-1 py-1">
               <span class="w-1.5 h-1.5 rounded-full bg-primary animate-bounce-dot"></span>
               <span class="w-1.5 h-1.5 rounded-full bg-primary animate-bounce-dot [animation-delay:-0.16s]"></span>
@@ -211,9 +217,9 @@ import { dayLabel, formatTime, isSameDay } from './chat-view';
           <div class="flex flex-wrap items-center gap-2 px-3 pt-3 pb-1">
             <span class="qm-badge qm-badge-violet">
               <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-              <span>Afbeelding genereren</span>
+              <span>{{ 'chat.composer.imageMode' | translate }}</span>
             </span>
-            <span class="text-xs qm-muted">Stuurt naar Gemini beeldgenerator</span>
+            <span class="text-xs qm-muted">{{ 'chat.composer.imageModeHint' | translate }}</span>
           </div>
         }
         @if (pendingAttachment()) {
@@ -223,7 +229,7 @@ import { dayLabel, formatTime, isSameDay } from './chat-view';
                 <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd"/>
               </svg>
               <span class="truncate max-w-[180px]">{{ pendingAttachment()!.fileName }}</span>
-              <button type="button" (click)="removeAttachment()" aria-label="Bijlage verwijderen" class="flex items-center justify-center w-4 h-4 rounded-full hover:bg-primary/20 transition-colors">
+              <button type="button" (click)="removeAttachment()" [attr.aria-label]="'chat.composer.removeAttachment' | translate" class="flex items-center justify-center w-4 h-4 rounded-full hover:bg-primary/20 transition-colors">
                 <svg class="w-3 h-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                   <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
                 </svg>
@@ -236,7 +242,7 @@ import { dayLabel, formatTime, isSameDay } from './chat-view';
             <svg class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
               <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd"/>
             </svg>
-            <span>Drop PDF here</span>
+            <span>{{ 'chat.composer.dropPdf' | translate }}</span>
           </div>
         }
         <div class="composer-row" [class.has-chip]="isImageMode() || pendingAttachment()">
@@ -246,7 +252,7 @@ import { dayLabel, formatTime, isSameDay } from './chat-view';
                 type="button"
                 (click)="toggleActionMenu($event)"
                 [disabled]="isLoading()"
-                aria-label="Meer acties"
+                [attr.aria-label]="'chat.composer.moreActions' | translate"
                 [attr.aria-expanded]="showActionMenu()"
                 class="plus-btn flex items-center justify-center w-8 h-8 ml-1 rounded-md text-gray-500 hover:text-ink hover:bg-paper-2 transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -260,11 +266,11 @@ import { dayLabel, formatTime, isSameDay } from './chat-view';
                     <svg class="w-4 h-4 text-primary-dark" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                       <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd"/>
                     </svg>
-                    <span>Import PDF</span>
+                    <span>{{ 'chat.composer.importPdf' | translate }}</span>
                   </button>
-                  <button type="button" class="qm-menu-item" (click)="insertAction('maak afbeelding')">
+                  <button type="button" class="qm-menu-item" (click)="insertImageTrigger()">
                     <svg class="w-4 h-4 text-secondary" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                    <span>Genereer afbeelding</span>
+                    <span>{{ 'chat.composer.generateImageAction' | translate }}</span>
                   </button>
                 </div>
               }
@@ -279,8 +285,8 @@ import { dayLabel, formatTime, isSameDay } from './chat-view';
               type="text"
               [(ngModel)]="newMessage"
               (keyup.enter)="sendMessage()"
-              [placeholder]="pendingAttachment() ? 'Import this character (or add instructions)...' : 'Type a message...'"
-              aria-label="Bericht"
+              [placeholder]="(pendingAttachment() ? 'chat.composer.placeholderWithAttachment' : 'chat.composer.placeholder') | translate"
+              [attr.aria-label]="'chat.composer.messageLabel' | translate"
               class="composer-input min-w-0 flex-1 px-2 py-2 text-sm bg-transparent border-none outline-none placeholder:text-gray-400"
             />
           </div>
@@ -289,7 +295,7 @@ import { dayLabel, formatTime, isSameDay } from './chat-view';
             (click)="sendMessage()"
             [disabled]="isLoading() || (!newMessage().trim() && !pendingAttachment())"
             class="send qm-btn qm-btn-primary"
-            [attr.aria-label]="isImageMode() ? 'Afbeelding genereren' : floating() ? 'Verstuur' : null"
+            [attr.aria-label]="isImageMode() ? ('chat.composer.imageMode' | translate) : floating() ? ('chat.composer.send' | translate) : null"
           >
             @if (isLoading()) {
               <span class="qm-spinner qm-spinner-light" aria-hidden="true"></span>
@@ -298,7 +304,7 @@ import { dayLabel, formatTime, isSameDay } from './chat-view';
             } @else if (floating()) {
               <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
             } @else {
-              Send
+              {{ 'chat.composer.send' | translate }}
             }
           </button>
         </div>
@@ -307,7 +313,7 @@ import { dayLabel, formatTime, isSameDay } from './chat-view';
       @if (error()) {
         <div class="dock-alert qm-alert flex items-center justify-between animate-slide-in" role="alert">
           <span class="flex-1">{{ error() }}</span>
-          <button type="button" (click)="clearError()" aria-label="Sluiten" class="ml-2 w-5 h-5 text-xl leading-none hover:opacity-70">&times;</button>
+          <button type="button" (click)="clearError()" [attr.aria-label]="'common.close' | translate" class="ml-2 w-5 h-5 text-xl leading-none hover:opacity-70">&times;</button>
         </div>
       }
       </div>
@@ -569,6 +575,7 @@ export class ChatComponent {
   private chatService = inject(ChatService);
   private sanitizer = inject(DomSanitizer);
   private environmentInjector = inject(EnvironmentInjector);
+  private readonly i18n = inject(I18nService);
 
   messages = this.chatService.messages;
   conversations = this.chatService.conversations;
@@ -601,9 +608,13 @@ export class ChatComponent {
   /** The messages with a day label on the first message of each day. */
   rows = computed(() => {
     const now = new Date();
+    const texts = this.i18n.t().chat;
+    const locale = this.i18n.locale();
     let previous: Date | undefined;
     return this.messages().map(message => {
-      const label = !previous || !isSameDay(previous, message.timestamp) ? dayLabel(message.timestamp, now) : null;
+      const label = !previous || !isSameDay(previous, message.timestamp)
+        ? dayLabel(message.timestamp, now, texts, locale)
+        : null;
       previous = message.timestamp;
       return { message, dayLabel: label };
     });
@@ -704,9 +715,13 @@ export class ChatComponent {
     this.newMessage.set('');
     this.pendingAttachment.set(null);
 
-    // Use a default message when only an attachment is provided.
+    // Use a default message when only an attachment is provided. It is stored as the user's
+    // own words, so it is written in the language the app is in now.
     // From here the backend owns the turn; its progress arrives through the messages.
-    void this.chatService.send(messageText || 'Import this character', attachment ?? undefined);
+    void this.chatService.send(
+      messageText || this.i18n.t().chat.composer.importCharacterMessage,
+      attachment ?? undefined
+    );
   }
 
   focusInput(): void {
@@ -759,6 +774,11 @@ export class ChatComponent {
 
   onDocumentClick(): void {
     this.showActionMenu.set(false);
+  }
+
+  /** Start a message with the words that ask for an image, in the language the app is in. */
+  insertImageTrigger(): void {
+    this.insertAction(this.i18n.t().chat.composer.imageTrigger);
   }
 
   insertAction(text: string): void {
@@ -814,7 +834,7 @@ export class ChatComponent {
   }
 
   formatTime(timestamp: Date): string {
-    return formatTime(timestamp);
+    return formatTime(timestamp, this.i18n.locale());
   }
 
   parseMarkdown(text: string): SafeHtml {
@@ -831,7 +851,7 @@ export class ChatComponent {
     try {
       this.pendingAttachment.set(await readPdfAttachment(file));
     } catch (e) {
-      this.error.set(e instanceof Error ? e.message : 'Failed to read PDF file.');
+      this.error.set(pdfAttachmentErrorText(e, this.i18n.t().chat));
     }
   }
 

@@ -1,7 +1,9 @@
 import { Component, input, output, ChangeDetectionStrategy } from '@angular/core';
+import { TranslatePipe } from '../core/i18n/translate.pipe';
 
 @Component({
   selector: 'app-image-lightbox',
+  imports: [TranslatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div
@@ -10,13 +12,13 @@ import { Component, input, output, ChangeDetectionStrategy } from '@angular/core
     >
       <img
         [src]="url()"
-        alt="Vergroot afbeelding"
+        [alt]="'chat.enlargedImageAlt' | translate"
         class="max-h-[90vh] max-w-[90vw] rounded-xl border-4 border-paper shadow-2xl"
         (click)="$event.stopPropagation()"
       />
       <button
         type="button"
-        aria-label="Sluiten"
+        [attr.aria-label]="'common.close' | translate"
         class="absolute top-4 right-4 w-10 h-10 rounded-full bg-black/50 text-white flex items-center justify-center text-2xl leading-none hover:bg-black/80 transition-colors"
         (click)="closed.emit()"
       >&times;</button>

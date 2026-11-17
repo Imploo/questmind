@@ -1,6 +1,8 @@
 import { ChangeDetectionStrategy, Component, ElementRef, Injector, afterNextRender, computed, effect, inject, input, output, signal, viewChild } from '@angular/core';
 import { ChatConversation } from './chat.models';
 import { conversationTime, filterConversations, groupConversations } from './chat-view';
+import { I18nService } from '../core/i18n/i18n.service';
+import { TranslatePipe } from '../core/i18n/translate.pipe';
 
 /**
  * The earlier conversations of a character, as a drawer that slides over the chat
@@ -9,6 +11,7 @@ import { conversationTime, filterConversations, groupConversations } from './cha
  */
 @Component({
   selector: 'app-chat-history-panel',
+  imports: [TranslatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     class: 'absolute inset-0 z-20',
@@ -28,20 +31,20 @@ import { conversationTime, filterConversations, groupConversations } from './cha
       [class.shadow-2xl]="open()"
       [attr.inert]="open() ? null : ''"
       role="dialog"
-      aria-label="Eerdere gesprekken"
+      [attr.aria-label]="'chat.earlierConversations' | translate"
     >
       <div class="flex items-center justify-between px-1">
         <div class="min-w-0">
-          <h3 class="qm-display text-base leading-tight">Gesprekken</h3>
+          <h3 class="qm-display text-base leading-tight">{{ 'chat.history.title' | translate }}</h3>
           @if (characterName()) {
-            <p class="truncate text-xs qm-muted">met {{ characterName() }}</p>
+            <p class="truncate text-xs qm-muted">{{ 'chat.history.withCharacter' | translate: characterName() }}</p>
           }
         </div>
         <button
           #closeButton
           type="button"
           class="qm-btn qm-btn-ghost qm-btn-icon"
-          aria-label="Sluiten"
+          [attr.aria-label]="'common.close' | translate"
           (click)="closed.emit()"
         >
           <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
@@ -55,14 +58,14 @@ import { conversationTime, filterConversations, groupConversations } from './cha
           <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
           <path d="M18.4 2.6a2.1 2.1 0 0 1 3 3L12.4 14.6 8 16l1.4-4.4z" />
         </svg>
-        Nieuw gesprek
+        {{ 'chat.newConversation' | translate }}
       </button>
 
       <input
         type="search"
         class="qm-input !py-2 !text-sm"
-        placeholder="Zoek in gesprekken"
-        aria-label="Zoek in gesprekken"
+        [placeholder]="'chat.history.search' | translate"
+        [attr.aria-label]="'chat.history.search' | translate"
         [value]="query()"
         (input)="query.set($any($event.target).value)"
       />
@@ -76,18 +79,18 @@ import { conversationTime, filterConversations, groupConversations } from './cha
             @if (confirmingId() === conversation.id) {
               <div class="qm-alert my-0.5 flex flex-wrap items-center gap-1.5 !text-xs">
                 <span class="basis-full">
-                  “{{ conversation.title }}” verwijderen? Dit kan niet ongedaan worden gemaakt.
+                  {{ 'chat.history.confirmDelete' | translate: conversation.title }}
                 </span>
                 <button
                   type="button"
                   class="qm-btn qm-btn-sm !border-wine !bg-wine !text-white"
                   (click)="confirmRemove(conversation.id)"
-                >Verwijderen</button>
+                >{{ 'common.delete' | translate }}</button>
                 <button
                   type="button"
                   class="qm-btn qm-btn-sm"
                   (click)="confirmingId.set(null)"
-                >Annuleren</button>
+                >{{ 'common.cancel' | translate }}</button>
               </div>
             } @else {
               <div class="qm-item flex items-start !p-0" [class.is-active]="conversation.id === activeChatId()">
@@ -97,7 +100,7 @@ import { conversationTime, filterConversations, groupConversations } from './cha
                       #renameInput
                       type="text"
                       class="qm-input !px-2 !py-1 !text-sm font-semibold"
-                      aria-label="Nieuwe titel"
+                      [attr.aria-label]="'chat.history.newTitle' | translate"
                       maxlength="80"
                       [value]="conversation.title"
                       (keydown.enter)="finishRename(conversation, renameInput.value)"
@@ -118,14 +121,14 @@ import { conversationTime, filterConversations, groupConversations } from './cha
                       <span class="tabular-nums">{{ time(conversation) }}</span>
                       @if (conversation.updatedCharacter) {
                         <span class="qm-badge !text-[0.62rem]">
-                          Aangepast{{ conversation.lastVersionNumber ? ' · v' + conversation.lastVersionNumber : '' }}
+                          {{ 'chat.history.updated' | translate: conversation.lastVersionNumber }}
                         </span>
                       }
                       @if (conversation.hasImages) {
-                        <span class="qm-badge qm-badge-violet !text-[0.62rem]">Afbeelding</span>
+                        <span class="qm-badge qm-badge-violet !text-[0.62rem]">{{ 'chat.history.hasImages' | translate }}</span>
                       }
                       @if (conversation.hasPdf) {
-                        <span class="qm-badge qm-badge-info !text-[0.62rem]">PDF</span>
+                        <span class="qm-badge qm-badge-info !text-[0.62rem]" data-no-i18n>PDF</span>
                       }
                     </span>
                   </button>
@@ -133,7 +136,7 @@ import { conversationTime, filterConversations, groupConversations } from './cha
                 <button
                   type="button"
                   class="mr-1 mt-1.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-paper hover:text-ink"
-                  [attr.aria-label]="'Acties voor ' + conversation.title"
+                  [attr.aria-label]="'chat.history.actionsFor' | translate: conversation.title"
                   [attr.aria-expanded]="menuId() === conversation.id"
                   (click)="toggleMenu(conversation.id)"
                 >
@@ -144,8 +147,8 @@ import { conversationTime, filterConversations, groupConversations } from './cha
               </div>
               @if (menuId() === conversation.id) {
                 <div class="flex gap-1.5 px-2 pb-2 pt-1">
-                  <button type="button" class="qm-btn qm-btn-sm" (click)="startRename(conversation.id)">Hernoemen</button>
-                  <button type="button" class="qm-btn qm-btn-sm qm-btn-danger" (click)="askRemove(conversation.id)">Verwijderen</button>
+                  <button type="button" class="qm-btn qm-btn-sm" (click)="startRename(conversation.id)">{{ 'common.rename' | translate }}</button>
+                  <button type="button" class="qm-btn qm-btn-sm qm-btn-danger" (click)="askRemove(conversation.id)">{{ 'common.delete' | translate }}</button>
                 </div>
               }
             }
@@ -153,15 +156,15 @@ import { conversationTime, filterConversations, groupConversations } from './cha
         } @empty {
           <p class="px-3 py-6 text-center text-xs qm-muted">
             @if (query().trim()) {
-              Geen gesprekken gevonden voor “{{ query().trim() }}”.
+              {{ 'chat.history.noResults' | translate: query().trim() }}
             } @else {
-              Nog geen gesprekken met dit karakter.
+              {{ 'chat.history.empty' | translate }}
             }
           </p>
         }
 
         @if (canLoadMore() && !query().trim()) {
-          <button type="button" class="qm-btn qm-btn-sm mx-auto my-2" (click)="loadMore.emit()">Toon meer</button>
+          <button type="button" class="qm-btn qm-btn-sm mx-auto my-2" (click)="loadMore.emit()">{{ 'chat.history.showMore' | translate }}</button>
         }
       </div>
     </div>
@@ -187,17 +190,20 @@ export class ChatHistoryPanelComponent {
   confirmingId = signal<string | null>(null);
 
   private readonly injector = inject(Injector);
+  private readonly i18n = inject(I18nService);
   private readonly renameInput = viewChild<ElementRef<HTMLInputElement>>('renameInput');
   private readonly closeButton = viewChild<ElementRef<HTMLButtonElement>>('closeButton');
 
-  /** Captured when the list changes, so "Vandaag" and "Gisteren" are right for what is shown. */
+  /** Captured when the list changes, so "Today" and "Yesterday" are right for what is shown. */
   private readonly today = computed(() => {
     this.conversations();
     this.open();
     return new Date();
   });
 
-  groups = computed(() => groupConversations(filterConversations(this.conversations(), this.query()), this.today()));
+  groups = computed(() =>
+    groupConversations(filterConversations(this.conversations(), this.query()), this.today(), this.i18n.t().chat)
+  );
 
   constructor() {
     // An open drawer takes the focus; a closed one forgets what was half done in it.
@@ -228,7 +234,7 @@ export class ChatHistoryPanelComponent {
   }
 
   time(conversation: ChatConversation): string {
-    return conversationTime(conversation, this.today());
+    return conversationTime(conversation, this.today(), this.i18n.locale());
   }
 
   toggleMenu(id: string): void {
