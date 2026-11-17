@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { CharacterTileComponent } from './character-tile.component';
+import { en } from '../../../../core/i18n/en';
 
 describe('CharacterTileComponent', () => {
   let fixture: ComponentFixture<CharacterTileComponent>;
@@ -36,12 +37,21 @@ describe('CharacterTileComponent', () => {
     fixture.detectChanges();
     const unarchive = tile().querySelector('button')!;
 
-    expect(unarchive.textContent).toContain('Unarchive');
-    expect(unarchive.getAttribute('aria-label')).toBe('Unarchive Old Bram');
+    expect(unarchive.textContent).toContain(en.characters.unarchive);
+    expect(unarchive.getAttribute('aria-label')).toBe(en.characters.tile.unarchiveNamed('Old Bram'));
 
     unarchive.click();
 
     expect(restored).toHaveBeenCalledTimes(1);
     expect(opened).not.toHaveBeenCalled();
+  });
+
+  it('reads the level badge out as a level', () => {
+    fixture.componentRef.setInput('level', 5);
+    fixture.detectChanges();
+    const badge = tile().querySelector('.level')!;
+
+    expect(badge.textContent).toBe('5');
+    expect(badge.getAttribute('aria-label')).toBe('Level 5');
   });
 });
