@@ -7,7 +7,8 @@ import { CampaignStoryRepositoryFactory } from '../shared/repository/campaign-st
 import { CampaignStoryVersion } from './campaign-story.models';
 import * as logger from '../shared/logger';
 import { ToastService } from '../shared/services/toast.service';
-import { callableErrorCode, isPermissionDenied, PERMISSION_DENIED_MESSAGE } from '../shared/utils/callable-error';
+import { callableErrorCode, callableErrorMessage, isPermissionDenied } from '../shared/utils/callable-error';
+import { I18nService } from '../core/i18n/i18n.service';
 
 interface CallableResult {
   success: boolean;
@@ -25,6 +26,7 @@ export class CampaignStoryService {
   private readonly campaignContext = inject(CampaignContextService);
   private readonly repoFactory = inject(CampaignStoryRepositoryFactory);
   private readonly toastService = inject(ToastService);
+  private readonly i18n = inject(I18nService);
 
   private readonly repo = resource({
     params: () => {
@@ -88,13 +90,12 @@ export class CampaignStoryService {
       }
       if (isPermissionDenied(error)) {
         this.toastService.showCallableError(error);
-        throw new Error(PERMISSION_DENIED_MESSAGE);
+      } else if (code !== 'failed-precondition') {
+        logger.error(`Error starting ${label} generation:`, error);
       }
-      if (code === 'failed-precondition') {
-        throw new Error((error as Error).message);
-      }
-      logger.error(`Error starting ${label} generation:`, error);
-      throw new Error('Genereren kon niet gestart worden. Probeer het opnieuw.');
+      // Never the server's own message: its reason or code picks a text in the active language.
+      const texts = this.i18n.t();
+      throw new Error(callableErrorMessage(error, texts.errors, texts.campaignStory.startFailed));
     }
   }
 }

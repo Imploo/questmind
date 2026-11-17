@@ -1,19 +1,22 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { CampaignVoiceRosterComponent } from './campaign-voice-roster.component';
+import { provideTestLanguage } from '../core/i18n/testing';
+import { en } from '../core/i18n/en';
 
 describe('CampaignVoiceRosterComponent', () => {
   let fixture: ComponentFixture<CampaignVoiceRosterComponent>;
   let element: HTMLElement;
 
   beforeEach(() => {
+    TestBed.configureTestingModule({ providers: [provideTestLanguage('en')] });
     fixture = TestBed.createComponent(CampaignVoiceRosterComponent);
     element = fixture.nativeElement as HTMLElement;
   });
 
   function saveButton(): HTMLButtonElement {
     return Array.from(element.querySelectorAll('button')).find((b) =>
-      b.textContent?.includes('Save speaking order')
+      b.textContent?.includes(en.campaign.voiceRoster.save)
     ) as HTMLButtonElement;
   }
 
@@ -59,5 +62,20 @@ describe('CampaignVoiceRosterComponent', () => {
     fixture.detectChanges();
 
     expect(element.textContent).toContain('Save failed');
+  });
+
+  it('shows an example speaking order as placeholder', () => {
+    fixture.componentRef.setInput('canEdit', true);
+    fixture.detectChanges();
+
+    expect((element.querySelector('textarea') as HTMLTextAreaElement).placeholder).toBe(
+      en.campaign.voiceRoster.placeholder
+    );
+  });
+
+  it('tells a member when no speaking order was given', () => {
+    fixture.detectChanges();
+
+    expect(element.textContent).toContain(en.campaign.voiceRoster.empty);
   });
 });

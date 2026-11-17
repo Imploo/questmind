@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { CampaignVoiceIntro } from './campaign.models';
+import { TranslatePipe } from '../core/i18n/translate.pipe';
 
 /**
  * Presentational component for the campaign voice intro (ticket #68): shows the
@@ -7,17 +8,15 @@ import { CampaignVoiceIntro } from './campaign.models';
  */
 @Component({
   selector: 'app-campaign-voice-intro',
+  imports: [TranslatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="qm-well">
-      <h5 class="font-display text-sm font-bold tracking-wide mb-1">Voice introduction (speaker recognition)</h5>
+      <h5 class="font-display text-sm font-bold tracking-wide mb-1">{{ 'campaign.voiceIntro.title' | translate }}</h5>
       <p class="qm-help mb-3">
-        Record everyone at the table introducing themselves, then upload it here. It is sent along with
-        every transcription so the AI can tell which voice belongs to which character.
-        Let each person talk for about 10–20 seconds, e.g.
-        <em>"Hi, I'm Matt and I play Thorin, a dwarven fighter."</em> The DM introduces themselves as the DM.
-        Use the same microphone setup as during your sessions and re-record when the party changes.
-        Fill in the speaking order below so the AI knows which name belongs to which voice.
+        {{ 'campaign.voiceIntro.helpBefore' | translate }}
+        <em>{{ 'campaign.voiceIntro.helpExample' | translate }}</em>
+        {{ 'campaign.voiceIntro.helpAfter' | translate }}
       </p>
 
       @if (voiceIntro(); as intro) {
@@ -28,12 +27,12 @@ import { CampaignVoiceIntro } from './campaign.models';
           </div>
           @if (playbackUrl()) {
             <audio class="mt-2 w-full max-w-md" controls preload="none" [src]="playbackUrl()">
-              Your browser does not support audio playback.
+              {{ 'campaign.voiceIntro.audioUnsupported' | translate }}
             </audio>
           }
         </div>
       } @else {
-        <p class="text-sm qm-muted mb-3">No voice introduction uploaded yet.</p>
+        <p class="text-sm qm-muted mb-3">{{ 'campaign.voiceIntro.empty' | translate }}</p>
       }
 
       @if (canEdit()) {
@@ -43,7 +42,7 @@ import { CampaignVoiceIntro } from './campaign.models';
             [class.is-disabled]="isBusy()"
             [class.cursor-pointer]="!isBusy()"
           >
-            {{ voiceIntro() ? 'Replace recording' : 'Upload recording' }}
+            {{ (voiceIntro() ? 'campaign.voiceIntro.replace' : 'campaign.voiceIntro.upload') | translate }}
             <input
               type="file"
               accept="audio/*"
@@ -59,7 +58,7 @@ import { CampaignVoiceIntro } from './campaign.models';
               [disabled]="isBusy()"
               class="qm-btn qm-btn-danger"
             >
-              Remove
+              {{ 'common.remove' | translate }}
             </button>
           }
         </div>
@@ -69,7 +68,7 @@ import { CampaignVoiceIntro } from './campaign.models';
         <div
           class="qm-progress mt-3 max-w-md"
           role="progressbar"
-          aria-label="Voice introduction upload progress"
+          [attr.aria-label]="'campaign.voiceIntro.uploadProgress' | translate"
           [attr.aria-valuenow]="progress()"
           aria-valuemin="0"
           aria-valuemax="100"

@@ -1,10 +1,12 @@
 import { ChangeDetectionStrategy, Component, inject, input, output } from '@angular/core';
 import { FormattingService } from '../shared/formatting.service';
 import { CampaignStoryVersion } from './campaign-story.models';
+import { TranslatePipe } from '../core/i18n/translate.pipe';
 
 /** Slide-over listing all campaign story versions (ticket #69). Deliberately tucked away. */
 @Component({
   selector: 'app-campaign-story-versions-drawer',
+  imports: [TranslatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     '(document:keydown.escape)': 'onEscape()',
@@ -18,18 +20,18 @@ import { CampaignStoryVersion } from './campaign-story.models';
           class="qm-drawer relative z-50 w-full max-w-sm"
           role="dialog"
           aria-modal="true"
-          aria-label="Versies van het verhaal"
+          [attr.aria-label]="'campaignStory.drawer.label' | translate"
         >
           <div class="px-5 pt-5 pb-3 flex items-start justify-between gap-3">
             <div>
-              <div class="qm-eyebrow">Verhaal</div>
-              <h2 class="qm-display text-xl">Versies</h2>
+              <div class="qm-eyebrow">{{ 'campaignStory.title' | translate }}</div>
+              <h2 class="qm-display text-xl">{{ 'campaignStory.versions' | translate }}</h2>
             </div>
             <button
               type="button"
               class="qm-btn qm-btn-ghost qm-btn-icon"
               (click)="closed.emit()"
-              aria-label="Sluiten"
+              [attr.aria-label]="'common.close' | translate"
             >
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
@@ -48,13 +50,13 @@ import { CampaignStoryVersion } from './campaign-story.models';
                   (click)="selected.emit(version.version)"
                 >
                   <span class="flex items-center justify-between gap-2">
-                    <span class="font-display text-sm font-bold tracking-wide">Versie {{ version.version }}</span>
+                    <span class="font-display text-sm font-bold tracking-wide">{{ 'common.version' | translate: version.version }}</span>
                     @switch (version.status) {
                       @case ('generating') {
-                        <span class="qm-badge qm-badge-info">Bezig...</span>
+                        <span class="qm-badge qm-badge-info">{{ 'common.busy' | translate }}</span>
                       }
                       @case ('failed') {
-                        <span class="qm-badge qm-badge-danger">Mislukt</span>
+                        <span class="qm-badge qm-badge-danger">{{ 'common.failed' | translate }}</span>
                       }
                       @default {
                         @if (version.podcasts?.length) {
@@ -70,16 +72,23 @@ import { CampaignStoryVersion } from './campaign-story.models';
                     <span class="block text-sm text-gray-800 mt-1 truncate">{{ version.title }}</span>
                   }
                   <span class="block text-xs qm-muted mt-1">
-                    {{ formatting.formatDate(version.createdAt) }} · {{ version.sourceSessions.length }}
-                    {{ version.sourceSessions.length === 1 ? 'sessie' : 'sessies' }}
+                    {{ formatting.formatDate(version.createdAt) }} ·
+                    {{ 'campaignStory.sessionCount' | translate: version.sourceSessions.length }}
                   </span>
-                  @if (version.status === 'failed' && version.error) {
-                    <span class="block text-xs text-wine mt-1">{{ version.error }}</span>
+                  @if (version.status === 'failed') {
+                    <span class="block text-xs text-wine mt-1">{{ 'campaignStory.generationFailed' | translate }}</span>
                   }
                 </button>
+                <!-- Outside the button: a failed version's button is disabled, the details must still open. -->
+                @if (version.status === 'failed' && version.error) {
+                  <details class="px-3 pb-2 text-xs qm-muted">
+                    <summary class="cursor-pointer">{{ 'errors.technicalDetails' | translate }}</summary>
+                    <p class="mt-1 break-words">{{ version.error }}</p>
+                  </details>
+                }
               </li>
             } @empty {
-              <li class="p-4 text-sm qm-muted">Nog geen versies.</li>
+              <li class="p-4 text-sm qm-muted">{{ 'campaignStory.drawer.empty' | translate }}</li>
             }
           </ul>
         </aside>
