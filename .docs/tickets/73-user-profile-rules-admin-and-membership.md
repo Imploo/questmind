@@ -188,16 +188,17 @@ Elke fase is los te deployen. De volgorde is die van risico: eerst wat het meest
 
 ### Fase 2 — Lidmaatschap uit het campagnedocument (1 dag)
 - [ ] Het script uit §4 schrijven en draaien tegen productie; de afwijkingen afhandelen.
-- [ ] §3: `firestore.rules`, `storage.rules`, `access.ts`, de updateregel van de campagne.
+- [ ] §3: `isCampaignMember` in `firestore.rules` en `storage.rules`, en `access.ts`. De updateregel van de campagne volgt in fase 3.
 - [ ] Frontend: campagnes laden met `Promise.allSettled` en oude id's opruimen.
 - Na deze fase zijn bevinding 2 en het eerste deel van bevinding 5 (verwijderd lid houdt toegang) dicht. Verwijderen in de app geeft tot fase 3 nog steeds een foutmelding na afloop, maar de toegang is wel weg.
 
 ### Fase 3 — Ledenbeheer via de backend, profielen dicht (1 dag)
 - [ ] §5: de twee callables, de frontend erop aansluiten.
+- [ ] De updateregel van de campagne uit §3: de eigenaar schrijft `members` en `ownerId` niet meer zelf.
 - [ ] `users`: `get` alleen eigen profiel, geen `list`; de regel voor profielen van anderen weg.
 - [ ] Het commentaar in `firestore.rules` en `storage.rules` bijwerken.
 
-Tussen fase 2 en 3 werkt uitnodigen nog op de oude manier: de eigenaar schrijft `members` zelf. De beperking op `members` in de updateregel (§3) gaat daarom pas in fase 3 in.
+Tussen fase 2 en 3 werkt uitnodigen nog op de oude manier: de eigenaar schrijft `members` zelf. Daarom gaat de beperking op `members` pas in fase 3 in.
 
 ---
 
