@@ -1,6 +1,6 @@
 import * as logger from '../utils/logger';
 import {firestore} from 'firebase-admin';
-import {SessionProgress, SessionProgressStage} from '../types/audio-session.types';
+import {ProgressDetail, SessionProgress, SessionProgressStage} from '../types/audio-session.types';
 import {sessionRef} from '../utils/session-ref';
 
 /**
@@ -8,7 +8,10 @@ import {sessionRef} from '../utils/session-ref';
  */
 export class ProgressTrackerService {
   /**
-   * Update progress for an audio session using new unified SessionProgress
+   * Update progress for an audio session using new unified SessionProgress.
+   * `detail` is the count of a step that counts things ("segment 3 of 7"). The
+   * whole `progress` object is replaced on every update, so an update without
+   * `detail` also removes the count of an earlier one.
    */
   static async updateProgress(
     campaignId: string,
@@ -16,7 +19,8 @@ export class ProgressTrackerService {
     stage: SessionProgressStage,
     progress: number,
     message: string,
-    estimatedCompletionAt?: Date
+    estimatedCompletionAt?: Date,
+    detail?: ProgressDetail
   ): Promise<void> {
     const ref = sessionRef(firestore(), campaignId, sessionId);
 
@@ -36,6 +40,9 @@ export class ProgressTrackerService {
 
     if (estimatedCompletionAt) {
       progressData.estimatedCompletionAt = estimatedCompletionAt;
+    }
+    if (detail) {
+      progressData.detail = { current: detail.current, total: detail.total };
     }
 
     await ref.update({

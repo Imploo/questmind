@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { characterResponderPrompt } from './character-responder.prompt';
 import { characterJsonGeneratorPrompt } from './character-json-generator.prompt';
+import { chatSummaryPrompt, chatTitleInstruction } from './chat-summary.prompt';
 
 describe('characterResponderPrompt', () => {
   it('follows the 2014 books for a 2014 character', () => {
@@ -30,6 +31,52 @@ describe('characterResponderPrompt', () => {
     expect(prompt).toContain(`nog (deels) volgens de regels van ${other} is opgebouwd`);
     expect(prompt).toContain(`bij te werken naar de regels van ${rulesVersion}`);
     expect(prompt).toContain('zet shouldUpdateCharacter op true. Vraag niet eerst om bevestiging');
+  });
+});
+
+describe('the language The Sidekick answers in', () => {
+  const DUTCH_RULE = '4. Antwoord in het Nederlands (in het "text" veld).';
+  const ENGLISH_RULE = '4. Antwoord in het Engels (in het "text" veld)';
+
+  it('is Dutch for a Dutch user, and when no language is given', () => {
+    for (const prompt of [characterResponderPrompt('2014', 'nl'), characterResponderPrompt('2014')]) {
+      expect(prompt).toContain(DUTCH_RULE);
+      expect(prompt).not.toContain('Antwoord in het Engels');
+    }
+  });
+
+  it('is English for an English user', () => {
+    const prompt = characterResponderPrompt('2024', 'en');
+
+    expect(prompt).toContain(ENGLISH_RULE);
+    expect(prompt).not.toContain('Antwoord in het Nederlands');
+  });
+
+  it('leaves the rest of the prompt Dutch, with D&D terms in English, in both languages', () => {
+    const rest = (prompt: string) => prompt.replace(/^4\. .*$/m, '');
+
+    expect(rest(characterResponderPrompt('2014', 'en'))).toBe(rest(characterResponderPrompt('2014', 'nl')));
+    expect(characterResponderPrompt('2014', 'en')).toContain('Gebruik altijd de Engelse benamingen voor D&D termen');
+  });
+});
+
+describe('chatSummaryPrompt and chatTitleInstruction', () => {
+  it('ask for Dutch for a Dutch user', () => {
+    expect(chatSummaryPrompt('nl')).toContain('Schrijf in het Nederlands, in hooguit 200 woorden.');
+    expect(chatTitleInstruction('nl')).toContain('hooguit 6 woorden, in het Nederlands,');
+  });
+
+  it('ask for English for an English user', () => {
+    expect(chatSummaryPrompt('en')).toContain('Schrijf in het Engels, in hooguit 200 woorden.');
+    expect(chatSummaryPrompt('en')).not.toContain('het Nederlands');
+    expect(chatTitleInstruction('en')).toContain('hooguit 6 woorden, in het Engels,');
+    expect(chatTitleInstruction('en')).not.toContain('het Nederlands');
+  });
+
+  it('keep D&D terms English in the summary, in both languages', () => {
+    for (const language of ['nl', 'en'] as const) {
+      expect(chatSummaryPrompt(language)).toContain('Gebruik de Engelse benamingen voor D&D-termen');
+    }
   });
 });
 

@@ -3,6 +3,7 @@ import { getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { captureException } from './utils/sentry-error-handler';
 import { escapeHtml, injectMetaTags, loadIndexHtml, meta, resolveOrigin } from './utils/share-page';
+import { type Language, languageFromAcceptLanguage } from './utils/language';
 import { BANNER_HEIGHT, BANNER_WIDTH, renderShareBanner } from './utils/share-banner';
 import { characterImagePrefix } from './generate-image';
 
@@ -29,6 +30,7 @@ export interface CharacterPreviewSource {
 
 interface CharacterPreview {
   title: string;
+  /** Empty when the character has nothing to describe yet; the preview is then just the name. */
   description: string;
   /** Id of the newest portrait, when the character has one. */
   imageId: string | null;
@@ -85,7 +87,9 @@ export const characterSharePage = onRequest(
     if (indexHtml) {
       res.send(injectMetaTags(indexHtml, metaTags, preview?.title));
     } else {
-      res.send(renderFallbackPage(metaTags, preview, characterId));
+      // This page differs per visitor language, so a shared cache must keep them apart.
+      res.set('Vary', 'Accept-Language');
+      res.send(renderFallbackPage(metaTags, preview, characterId, languageFromAcceptLanguage(req.get('accept-language'))));
     }
   }
 );
@@ -112,7 +116,11 @@ async function loadPreview(characterId: string): Promise<CharacterPreview | null
   };
 }
 
-/** "Level 5 Tiefling Paladin · Soldier · Lawful Good" plus the start of the backstory. */
+/**
+ * "Level 5 Tiefling Paladin · Soldier · Lawful Good" plus the start of the backstory.
+ * Only game terms and the owner's own words, so it reads the same in every language;
+ * empty when there is nothing to describe.
+ */
 export function describeCharacter(character: CharacterPreviewSource): string {
   const identity = [
     typeof character.level === 'number' ? `Level ${character.level}` : '',
@@ -121,8 +129,8 @@ export function describeCharacter(character: CharacterPreviewSource): string {
   ].filter(Boolean).join(' ');
   const summary = [identity, character.background, character.alignment].filter(Boolean).join(' · ');
   const story = excerpt(character.backstory || character.appearance?.description || '');
-  const text = [summary, story || 'bekijk de character sheet'].filter(Boolean).join(' — ');
-  return `⚔️ ${text}`;
+  const text = [summary, story].filter(Boolean).join(' — ');
+  return text ? `⚔️ ${text}` : '';
 }
 
 /** The first words of a text on one line, cut at a word boundary. */
@@ -133,13 +141,14 @@ function excerpt(text: string): string {
   return `${cut.slice(0, Math.max(cut.lastIndexOf(' '), STORY_MAX_LENGTH / 2)).trimEnd()}…`;
 }
 
+/** Without a description the description tags are left out: the preview is then just the name. */
 export function buildCharacterMetaTags(title: string, description: string, pageUrl: string, imageUrl: string): string {
   return [
-    meta('name', 'description', description),
+    ...(description ? [meta('name', 'description', description)] : []),
     meta('property', 'og:type', 'website'),
     meta('property', 'og:site_name', 'QuestMind'),
     meta('property', 'og:title', title),
-    meta('property', 'og:description', description),
+    ...(description ? [meta('property', 'og:description', description)] : []),
     meta('property', 'og:url', pageUrl),
     meta('property', 'og:image', imageUrl),
     meta('property', 'og:image:width', String(BANNER_WIDTH)),
@@ -147,7 +156,7 @@ export function buildCharacterMetaTags(title: string, description: string, pageU
     meta('property', 'og:image:alt', `${title} — QuestMind character sheet`),
     meta('name', 'twitter:card', 'summary_large_image'),
     meta('name', 'twitter:title', title),
-    meta('name', 'twitter:description', description),
+    ...(description ? [meta('name', 'twitter:description', description)] : []),
     meta('name', 'twitter:image', imageUrl),
   ].join('\n  ');
 }
@@ -189,13 +198,35 @@ async function loadBanner(characterId: string, imageId: string): Promise<Buffer 
   }
 }
 
-function renderFallbackPage(metaTags: string, preview: CharacterPreview | null, characterId: string): string {
+/** Texts of the page that is served when the app shell cannot be fetched. */
+const FALLBACK_PAGE_TEXTS: Record<Language, { openSheet: string; notFoundTitle: string; notFoundText: string }> = {
+  nl: {
+    openSheet: 'Open de character sheet',
+    notFoundTitle: 'Karakter niet gevonden',
+    notFoundText: 'Deze link bestaat niet (meer).',
+  },
+  en: {
+    openSheet: 'Open the character sheet',
+    notFoundTitle: 'Character not found',
+    notFoundText: 'This link does not exist (any more).',
+  },
+};
+
+/** The page itself follows the visitor's language (`Accept-Language`). */
+function renderFallbackPage(
+  metaTags: string,
+  preview: CharacterPreview | null,
+  characterId: string,
+  language: Language
+): string {
+  const texts = FALLBACK_PAGE_TEXTS[language];
   const body = preview
-    ? `<h1>${escapeHtml(preview.title)}</h1><p>${escapeHtml(preview.description)}</p>` +
-      `<p><a href="/characters/${escapeHtml(characterId)}">Open de character sheet</a></p>`
-    : '<h1>Karakter niet gevonden</h1><p>Deze link bestaat niet (meer).</p>';
+    ? `<h1>${escapeHtml(preview.title)}</h1>` +
+      (preview.description ? `<p>${escapeHtml(preview.description)}</p>` : '') +
+      `<p><a href="/characters/${escapeHtml(characterId)}">${escapeHtml(texts.openSheet)}</a></p>`
+    : `<h1>${escapeHtml(texts.notFoundTitle)}</h1><p>${escapeHtml(texts.notFoundText)}</p>`;
   return `<!doctype html>
-<html lang="nl">
+<html lang="${language}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">

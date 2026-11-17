@@ -6,6 +6,7 @@ import { ensureAuthForTesting } from './utils/emulator-helpers';
 import { assertCampaignOwner, assertValidId, requireAuthUid } from './utils/access';
 import { processSourcesToRecording } from './audio/audio-processing.service';
 import { deleteStorageFiles } from './utils/storage-cleanup';
+import { refusal } from './utils/error-reasons';
 
 /** Maximum length of the introduction round. */
 export const VOICE_INTRO_MAX_DURATION_SEC = 5 * 60;
@@ -69,7 +70,7 @@ export const processVoiceIntro = onCall(
 
         if (durationSec > VOICE_INTRO_MAX_DURATION_SEC) {
           await deleteStorageFiles([storagePath]);
-          throw new HttpsError('invalid-argument', 'The introduction is too long. Keep it under 5 minutes.');
+          throw refusal('invalid-argument', 'The introduction is too long. Keep it under 5 minutes.', 'voice-intro-too-long');
         }
 
         const voiceIntro: CampaignVoiceIntro = {

@@ -1,8 +1,9 @@
 import type { DocumentReference } from 'firebase-admin/firestore';
-import { CHAT_SUMMARY_PROMPT } from '../prompts/chat-summary.prompt';
+import { chatSummaryPrompt } from '../prompts/chat-summary.prompt';
 import type { AIFeatureConfig } from '../types/audio-session.types';
 import type { ChatDoc, ChatMessageDoc } from '../types/chat.types';
 import { generateText } from '../utils/gemini-client';
+import { DEFAULT_LANGUAGE, type Language } from '../utils/language';
 import * as logger from '../utils/logger';
 import { HISTORY_WINDOW, SUMMARY_SLACK } from './chat-helpers';
 import { loadConversation } from './chat-store';
@@ -13,9 +14,13 @@ const isTextTurn = (message: ChatMessageDoc): boolean =>
 /**
  * Keep a long conversation affordable: once more than HISTORY_WINDOW + SUMMARY_SLACK
  * questions and answers are waiting to be sent as history, fold the oldest ones into
- * the chat's summary. The last HISTORY_WINDOW stay as they are.
+ * the chat's summary, written in `language`. The last HISTORY_WINDOW stay as they are.
  */
-export async function updateChatSummary(chat: DocumentReference, config: AIFeatureConfig): Promise<boolean> {
+export async function updateChatSummary(
+  chat: DocumentReference,
+  config: AIFeatureConfig,
+  language: Language = DEFAULT_LANGUAGE
+): Promise<boolean> {
   const chatDoc = (await chat.get()).data() as ChatDoc | undefined;
   if (!chatDoc) return false;
 
@@ -30,7 +35,7 @@ export async function updateChatSummary(chat: DocumentReference, config: AIFeatu
   const summary = await generateText({
     config,
     label: 'chatSummary',
-    systemInstruction: CHAT_SUMMARY_PROMPT,
+    systemInstruction: chatSummaryPrompt(language),
     contents: [
       ...(chatDoc.summary ? [{ text: `Eerdere samenvatting:\n${chatDoc.summary}` }] : []),
       { text: `Nieuwe berichten:\n${transcript}` },

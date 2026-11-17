@@ -53,6 +53,15 @@ describe('makeAutoTitle', () => {
   it('names an import after the file', () => {
     expect(makeAutoTitle('Import this character', 'text', 'mira-lvl3.pdf')).toBe('Import: mira-lvl3.pdf');
   });
+
+  it('writes the automatic titles in the language of the user', () => {
+    expect(makeAutoTitle('maak afbeelding Mira bij een kampvuur', 'image', undefined, 'nl')).toBe('Afbeelding: Mira bij een kampvuur');
+    expect(makeAutoTitle('create image Mira by a campfire', 'image', undefined, 'en')).toBe('Image: Mira by a campfire');
+    expect(makeAutoTitle('Import this character', 'text', 'mira-lvl3.pdf', 'en')).toBe('Import: mira-lvl3.pdf');
+    expect(makeAutoTitle('Importeer dit karakter', 'text', 'mira-lvl3.pdf', 'nl')).toBe('Import: mira-lvl3.pdf');
+    // The question itself is the title of an ordinary chat, whatever the language.
+    expect(makeAutoTitle('Which spells do you recommend?', 'text', undefined, 'en')).toBe('Which spells do you recommend?');
+  });
 });
 
 describe('sanitizeTitle', () => {
@@ -78,6 +87,13 @@ describe('imagePromptFrom', () => {
     expect(imagePromptFrom('Maak  afbeelding  in een herfstbos')).toBe('in een herfstbos');
     expect(imagePromptFrom('maak afbeelding')).toBe('maak afbeelding');
     expect(imagePromptFrom('een portret')).toBe('een portret');
+  });
+
+  it('knows the English trigger as well', () => {
+    expect(imagePromptFrom('Create image in an autumn forest')).toBe('in an autumn forest');
+    expect(imagePromptFrom('make an image of Mira')).toBe('of Mira');
+    expect(imagePromptFrom('Generate  image  by a campfire')).toBe('by a campfire');
+    expect(imagePromptFrom('a portrait')).toBe('a portrait');
   });
 });
 

@@ -107,7 +107,9 @@ describe('storyGenerationWorker (callable)', () => {
 
   it('rejects a session without a transcription', async () => {
     docs[SESSION] = { ownerId: 'dm' };
-    await expect(callable(request())).rejects.toThrow(code('failed-precondition'));
+    await expect(callable(request())).rejects.toThrow(
+      expect.objectContaining({ code: 'failed-precondition', details: { reason: 'no-transcription' } })
+    );
   });
 
   it('generates from the stored transcription and ignores client-provided text', async () => {
