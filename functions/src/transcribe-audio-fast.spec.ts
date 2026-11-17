@@ -118,6 +118,8 @@ vi.mock('firebase-admin/functions', () => ({
   getFunctions: () => ({ taskQueue: mockTaskQueue }),
 }));
 
+import { ProgressTrackerService } from './services/progress-tracker.service';
+
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 const recording = {
@@ -292,6 +294,58 @@ describe('transcribeAudioFast', () => {
     expect(parts.at(-1).fileData).toEqual({ mimeType: 'audio/mpeg', fileUri: SEGMENT.fileUri });
     expect(mockUpdate).toHaveBeenCalledWith({ 'transcriptionFast.segmentCount': 1 });
     expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({ 'transcriptionFast.status': 'completed' }));
+  });
+
+  // ── Progress counts ──
+
+  describe('segment counts in the session progress', () => {
+    const updateProgress = vi.mocked(ProgressTrackerService.updateProgress);
+    /** [message, detail] of every progress update, in order. */
+    const updates = () => updateProgress.mock.calls.map(call => [call[4], call[6]]);
+
+    it('counts the segments while they are prepared and transcribed, and stops counting afterwards', async () => {
+      const segments = [0, 1, 2].map(index => ({ ...SEGMENT, index, fileName: `files/seg${index}` }));
+      mockPrepareSegmentsFromStorage.mockImplementation(
+        async (_ai: unknown, _recording: unknown, _config: unknown, onUploaded: (uploaded: number, total: number) => Promise<void>) => {
+          for (let uploaded = 1; uploaded <= segments.length; uploaded++) {
+            await onUploaded(uploaded, segments.length);
+          }
+          return segments;
+        }
+      );
+      await runTranscription();
+
+      expect(updates()).toEqual([
+        ['Fast transcription started...', undefined],
+        ['Preparing stored audio...', undefined],
+        ['Preparing audio segment 1 of 3...', { current: 1, total: 3 }],
+        ['Preparing audio segment 2 of 3...', { current: 2, total: 3 }],
+        ['Preparing audio segment 3 of 3...', { current: 3, total: 3 }],
+        ['Transcribed 1 of 3 segments...', { current: 1, total: 3 }],
+        ['Transcribed 2 of 3 segments...', { current: 2, total: 3 }],
+        ['Transcribed 3 of 3 segments...', { current: 3, total: 3 }],
+        ['Transcription complete, preparing story generation...', undefined],
+      ]);
+    });
+
+    it('counts nothing for a recording that is transcribed in one piece', async () => {
+      mockPrepareSegmentsFromStorage.mockImplementation(
+        async (_ai: unknown, _recording: unknown, _config: unknown, onUploaded: (uploaded: number, total: number) => Promise<void>) => {
+          await onUploaded(1, 1);
+          return [SEGMENT];
+        }
+      );
+
+      await runTranscription();
+
+      expect(updates()).toEqual([
+        ['Fast transcription started...', undefined],
+        ['Preparing stored audio...', undefined],
+        ['Preparing stored audio...', undefined],
+        ['Transcribing audio...', undefined],
+        ['Transcription complete, preparing story generation...', undefined],
+      ]);
+    });
   });
 
   it('should use the Kanka campaign id from the task payload instead of re-reading the campaign', async () => {

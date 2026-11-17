@@ -47,8 +47,9 @@ function mockResponse() {
   });
 }
 
-function mockRequest(path: string, host = 'questmind.nl') {
-  return { path, hostname: 'internal', get: (name: string) => (name === 'x-forwarded-host' ? host : undefined) };
+function mockRequest(path: string, host = 'questmind.nl', acceptLanguage?: string) {
+  const headers: Record<string, string | undefined> = { 'x-forwarded-host': host, 'accept-language': acceptLanguage };
+  return { path, hostname: 'internal', get: (name: string) => headers[name.toLowerCase()] };
 }
 
 describe('podcastSharePage', () => {
@@ -113,5 +114,67 @@ describe('podcastSharePage', () => {
     expect(res.statusCode).toBe(200);
     expect(res.body).toContain('<audio controls');
     expect(res.body).toContain('og:title');
+  });
+
+  describe('the link preview, in the language of whoever shared', () => {
+    const PAGE_URL = `https://questmind.nl/share/podcast/${SHARE_ID}`;
+    const DUTCH = 'content="🎙️ Curse of Strahd · 2026-10-20 · Podcast 2 — luister naar de podcast"';
+    const ENGLISH = 'content="🎙️ Curse of Strahd · 2026-10-20 · Podcast 2 — listen to the podcast"';
+
+    it.each([
+      ['an English share', { ...share, language: 'en' }, ENGLISH],
+      ['a Dutch share', { ...share, language: 'nl' }, DUTCH],
+      ['a share from before the language was stored', share, DUTCH],
+      ['a share with a language it does not know', { ...share, language: 'de' }, DUTCH],
+    ])('writes the sentence of %s', async (_case, stored, sentence) => {
+      const { buildMetaTags } = await import('./podcast-share-page');
+
+      const tags = buildMetaTags(stored as Parameters<typeof buildMetaTags>[0], PAGE_URL, 'https://questmind.nl/og/podcast-share.png');
+
+      for (const tag of ['name="description"', 'property="og:description"', 'name="twitter:description"']) {
+        expect(tags).toContain(`<meta ${tag} ${sentence}>`);
+      }
+    });
+
+    it('does not follow the language of the visitor: a crawler sends none of its reader', async () => {
+      shareGet.mockResolvedValue({ exists: true, data: () => ({ ...share, language: 'en' }) });
+      const res = mockResponse();
+      await handler(mockRequest(`/share/podcast/${SHARE_ID}`, 'questmind.nl', 'nl-NL,nl;q=0.9'), res);
+
+      expect(res.body).toContain(`<meta property="og:description" ${ENGLISH}>`);
+      expect(res.headers['Vary']).toBeUndefined();
+    });
+  });
+
+  describe('the minimal page, in the language of the visitor', () => {
+    beforeEach(() => {
+      fetchMock.mockRejectedValue(new Error('network'));
+    });
+
+    it.each([
+      ['nl-NL,nl;q=0.9,en;q=0.8', 'nl', 'Podcast niet gevonden', 'Deze link bestaat niet (meer).'],
+      ['de,nl;q=0.4', 'nl', 'Podcast niet gevonden', 'Deze link bestaat niet (meer).'],
+      ['en-US,en;q=0.9', 'en', 'Podcast not found', 'This link does not exist (any more).'],
+      ['en;q=0.9,nl;q=0.8', 'en', 'Podcast not found', 'This link does not exist (any more).'],
+      ['fr', 'en', 'Podcast not found', 'This link does not exist (any more).'],
+      [undefined, 'en', 'Podcast not found', 'This link does not exist (any more).'],
+    ])('says for Accept-Language %j in %s that a share does not exist', async (acceptLanguage, lang, title, text) => {
+      shareGet.mockResolvedValue({ exists: false, data: () => undefined });
+      const res = mockResponse();
+      await handler(mockRequest(`/share/podcast/${SHARE_ID}`, 'questmind.nl', acceptLanguage), res);
+
+      expect(res.statusCode).toBe(404);
+      expect(res.body).toContain(`<html lang="${lang}">`);
+      expect(res.body).toContain(`<h1>${title}</h1><p>${text}</p>`);
+      expect(res.headers['Vary']).toBe('Accept-Language');
+    });
+
+    it.each(['nl', 'en'])('sets the language of the player page to %s', async (acceptLanguage) => {
+      const res = mockResponse();
+      await handler(mockRequest(`/share/podcast/${SHARE_ID}`, 'questmind.nl', acceptLanguage), res);
+
+      expect(res.body).toContain(`<html lang="${acceptLanguage}">`);
+      expect(res.body).toContain('<audio controls');
+    });
   });
 });

@@ -1,4 +1,5 @@
 import type { RulesVersion } from '../character/rules-version';
+import { DEFAULT_LANGUAGE, type Language } from '../utils/language';
 
 /** What The Sidekick knows and follows, per edition of the rules. */
 const RULES_SECTION: Record<RulesVersion, string> = {
@@ -32,8 +33,20 @@ Wat in 2024 anders is dan in 2014, onder meer:
 Gebruik geen 2014-versie van een feature, spell of feat waar een 2024-versie van bestaat. Heeft iets geen 2024-versie, zeg dan dat je de oudere versie gebruikt.`,
 };
 
-/** System prompt of The Sidekick (AI 1) for a character that follows the given rules. */
-export function characterResponderPrompt(rulesVersion: RulesVersion): string {
+/**
+ * The language The Sidekick answers in. The prompt itself and the conversation
+ * context around it are Dutch, so the English rule says so explicitly.
+ */
+const ANSWER_LANGUAGE_RULE: Record<Language, string> = {
+  nl: 'Antwoord in het Nederlands (in het "text" veld).',
+  en: 'Antwoord in het Engels (in het "text" veld), ook al zijn deze instructies en de context in het Nederlands geschreven.',
+};
+
+/**
+ * System prompt of The Sidekick (AI 1) for a character that follows the given rules,
+ * answering in the user's language.
+ */
+export function characterResponderPrompt(rulesVersion: RulesVersion, language: Language = DEFAULT_LANGUAGE): string {
   const other: RulesVersion = rulesVersion === '2024' ? '2014' : '2024';
   return `
 Je bent een expert D&D 5e Character Creator, genaamd "The Sidekick".
@@ -45,7 +58,7 @@ REGELS:
 1. Je antwoord is een JSON-object met twee velden: "text" (je tekstreactie) en "shouldUpdateCharacter" (boolean).
 2. Wees creatief, behulpzaam en beknopt in je antwoorden.
 3. Gebruik geen emoticons.
-4. Antwoord in het Nederlands (in het "text" veld).
+4. ${ANSWER_LANGUAGE_RULE[language]}
 5. Houd antwoorden kort en to-the-point.
 6. Leg kort uit welke wijzigingen je voorstelt aan het karakter.
 7. Stel verduidelijkende vragen als het verzoek van de gebruiker onduidelijk is.

@@ -168,8 +168,43 @@ describe('characterChat', () => {
       mode: 'text',
       currentCharacter: character,
       attachment: null,
+      language: 'nl',
     });
     expect(fake.db.data(CHAT)).not.toHaveProperty('pendingRulesVersion');
+  });
+
+  it.each([
+    ['English', 'en', 'en'],
+    ['Dutch', 'nl', 'nl'],
+    ['no language (an older client): Dutch', undefined, 'nl'],
+    ['a language it does not know: Dutch', 'fr', 'nl'],
+    ['something that is not a language: Dutch', ['en'], 'nl'],
+  ])('hands the worker the language of the user: %s', async (_case, language, handedOver) => {
+    await characterChat(request({ language }));
+
+    expect(mockEnqueue.mock.calls[0][1]).toMatchObject({ language: handedOver });
+  });
+
+  it('titles a new image chat in the language of the user', async () => {
+    await characterChat(request({ text: 'create image by a campfire', mode: 'image', language: 'en' }));
+
+    expect(fake.db.data(CHAT)).toMatchObject({ title: 'Image: by a campfire' });
+  });
+
+  it.each([
+    ['an empty message', { text: '   ' }, 'invalid-argument', 'message-length'],
+    ['a message that is too long', { text: 'x'.repeat(8001) }, 'invalid-argument', 'message-length'],
+    ['an attachment that is not a PDF', { attachment: { ...pdf, mimeType: 'image/png' } }, 'invalid-argument', 'attachment-not-pdf'],
+    [
+      'an attachment over 10 MB',
+      { attachment: { ...pdf, data: Buffer.alloc(11 * 1024 * 1024).toString('base64') } },
+      'invalid-argument',
+      'attachment-too-large',
+    ],
+  ])('tells the app why it refuses %s', async (_case, data, errorCode, reason) => {
+    await expect(characterChat(request(data))).rejects.toThrow(
+      expect.objectContaining({ code: errorCode, details: { reason } })
+    );
   });
 
   it('records on the chat which rules a message asks to convert the character to', async () => {
@@ -233,7 +268,9 @@ describe('characterChat', () => {
     await characterChat(request({ attachment: pdf }));
     mockEnqueue.mockClear();
 
-    await expect(characterChat(request({ attachment: pdf }))).rejects.toThrow(code('already-exists'));
+    await expect(characterChat(request({ attachment: pdf }))).rejects.toThrow(
+      expect.objectContaining({ code: 'already-exists', details: { reason: 'message-already-sent' } })
+    );
 
     expect(mockEnqueue).not.toHaveBeenCalled();
   });

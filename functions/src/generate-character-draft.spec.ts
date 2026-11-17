@@ -299,16 +299,27 @@ describe('executeGenerateCharacterDraft ability score feedback', () => {
     expect(mockUpdate).toHaveBeenCalledWith({ isGenerating: false });
   });
 
-  it('stops after two corrections and saves the remaining issues as warnings', async () => {
+  // The warnings are stored in the language of the conversation; without one that is Dutch.
+  it.each([
+    ['Dutch when the conversation names no language', undefined, 'Point buy kost 36 punten, het maximum is 27'],
+    ['Dutch', 'nl' as const, 'Point buy kost 36 punten, het maximum is 27'],
+    ['English', 'en' as const, 'Point buy costs 36 points, the maximum is 27'],
+  ])('stops after two corrections and saves the remaining issues as warnings, in %s', async (_case, language, warning) => {
     mockGenerateContent.mockResolvedValue(reply(overBudget()));
 
     const { executeGenerateCharacterDraft } = await import('./generate-character-draft');
-    const saved = await executeGenerateCharacterDraft(payload());
+    const saved = await executeGenerateCharacterDraft({ ...payload(), ...(language ? { language } : {}) });
 
     expect(mockGenerateContent).toHaveBeenCalledTimes(3);
-    expect(savedDraft().abilityScoreWarnings).toEqual([expect.stringContaining('36 points')]);
+    expect(savedDraft().abilityScoreWarnings).toEqual([expect.stringContaining(warning)]);
     // They go back to the chat too, which shows them with the update.
-    expect(saved?.abilityScoreWarnings).toEqual([expect.stringContaining('36 points')]);
+    expect(saved?.abilityScoreWarnings).toEqual([expect.stringContaining(warning)]);
+    // The generator itself is always corrected in English.
+    for (const retry of mockGenerateContent.mock.calls.slice(1)) {
+      const feedback = (retry[0].contents as { text?: string }[]).map(part => part.text ?? '').join('\n');
+      expect(feedback).toContain('Point buy costs 36 points, the maximum is 27');
+      expect(feedback).not.toContain('punten');
+    }
     mockGenerateContent.mockReset();
   });
 

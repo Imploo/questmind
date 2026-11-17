@@ -110,17 +110,21 @@ describe('parseCharacterLink', () => {
   });
 
   it.each([
-    ['', 'Paste a link'],
-    [42, 'Paste a link'],
-    ['https://', 'does not look like a link'],
-    [`https://evil.example.com/characters/${SOURCE_ID}`, 'Only links to a QuestMind character'],
-    [`https://questmind-beta.web.app.evil.com/characters/${SOURCE_ID}`, 'Only links to a QuestMind character'],
-    [`http://questmind.nl/characters/${SOURCE_ID}`, 'Only links to a QuestMind character'],
-    ['https://questmind.nl/characters', 'does not point to a character'],
-    ['https://questmind.nl/share/podcast/abcdefghijklmnop', 'does not point to a character'],
-    [`https://questmind.nl/characters/${SOURCE_ID}/../x`, 'does not point to a character'],
-  ])('rejects %j', (link, message) => {
+    ['', 'Paste a link', 'import-link-missing'],
+    [42, 'Paste a link', 'import-link-missing'],
+    ['https://', 'does not look like a link', 'import-link-invalid'],
+    [`https://evil.example.com/characters/${SOURCE_ID}`, 'Only links to a QuestMind character', 'import-link-not-questmind'],
+    [`https://questmind-beta.web.app.evil.com/characters/${SOURCE_ID}`, 'Only links to a QuestMind character', 'import-link-not-questmind'],
+    [`http://questmind.nl/characters/${SOURCE_ID}`, 'Only links to a QuestMind character', 'import-link-not-questmind'],
+    ['https://questmind.nl/characters', 'does not point to a character', 'import-link-not-character'],
+    ['https://questmind.nl/share/podcast/abcdefghijklmnop', 'does not point to a character', 'import-link-not-character'],
+    [`https://questmind.nl/characters/${SOURCE_ID}/../x`, 'does not point to a character', 'import-link-not-character'],
+  ])('rejects %j', (link, message, reason) => {
     expect(() => parseCharacterLink(link)).toThrow(message as string);
+    // The reason is what the app turns into a text in the user's language.
+    expect(() => parseCharacterLink(link)).toThrow(
+      expect.objectContaining({ code: 'invalid-argument', details: { reason } })
+    );
   });
 });
 
@@ -256,6 +260,9 @@ describe('executeImportCharacter', () => {
   it('reports a missing character', async () => {
     delete routes[`${DOCS}/characters/${SOURCE_ID}`];
     await expect(executeImportCharacter('me', link)).rejects.toThrow('No character was found');
+    await expect(executeImportCharacter('me', link)).rejects.toThrow(
+      expect.objectContaining({ code: 'not-found', details: { reason: 'import-character-not-found' } })
+    );
     expect(written).toEqual({});
   });
 
@@ -281,6 +288,9 @@ describe('executeImportCharacter', () => {
   it('refuses a character that does not fit the schema', async () => {
     routes[`${DOCS}/characters/${SOURCE_ID}/versions/v2`] = () => json({ name: 'x', fields: { character: map({ name: str('Only a name') }) } });
     await expect(executeImportCharacter('me', link)).rejects.toThrow('could not be read');
+    await expect(executeImportCharacter('me', link)).rejects.toThrow(
+      expect.objectContaining({ code: 'failed-precondition', details: { reason: 'import-character-unreadable' } })
+    );
     expect(written).toEqual({});
   });
 });

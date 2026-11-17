@@ -6,6 +6,7 @@ import type {
   ChatTurnMode,
 } from '../types/chat.types';
 import type { DndCharacter } from '../schemas/dnd-character.schema';
+import { DEFAULT_LANGUAGE, type Language } from '../utils/language';
 
 /** Longest message a user can send. */
 export const MAX_MESSAGE_CHARS = 8000;
@@ -18,7 +19,11 @@ export const SUMMARY_SLACK = 10;
 
 const TITLE_MAX_CHARS = 48;
 const PREVIEW_MAX_CHARS = 120;
-const IMAGE_TRIGGER = /maak\s+afbeelding\s*(.*)/is;
+/** The words that ask for a portrait, in either language, and the scene after them. */
+const IMAGE_TRIGGER = /(?:maak\s+afbeelding|(?:make|create|generate)\s+(?:an?\s+)?image)\s*(.*)/is;
+
+/** How the automatic title of an image request starts. */
+const IMAGE_TITLE_PREFIX: Record<Language, string> = { nl: 'Afbeelding', en: 'Image' };
 
 /** Ids the client makes up for a chat or message (a UUID): safe as a document id and a file name. */
 export function isClientId(value: unknown): value is string {
@@ -34,15 +39,23 @@ export function truncate(text: string, max: number): string {
   return `${(lastSpace > max / 2 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
 }
 
-/** What comes after "maak afbeelding": the scene the user asks for. */
+/** What comes after "maak afbeelding" (or "create image"): the scene the user asks for. */
 export function imagePromptFrom(text: string): string {
   return IMAGE_TRIGGER.exec(text)?.[1]?.trim() || text;
 }
 
-/** Title of a new chat, until the model writes a better one with its first answer. */
-export function makeAutoTitle(text: string, mode: ChatTurnMode, pdfFileName?: string): string {
+/**
+ * Title of a new chat, in the language of the user, until the model writes a better
+ * one with its first answer. "Import" is the same word in both languages.
+ */
+export function makeAutoTitle(
+  text: string,
+  mode: ChatTurnMode,
+  pdfFileName?: string,
+  language: Language = DEFAULT_LANGUAGE
+): string {
   if (pdfFileName) return truncate(`Import: ${pdfFileName}`, TITLE_MAX_CHARS);
-  if (mode === 'image') return truncate(`Afbeelding: ${imagePromptFrom(text)}`, TITLE_MAX_CHARS);
+  if (mode === 'image') return truncate(`${IMAGE_TITLE_PREFIX[language]}: ${imagePromptFrom(text)}`, TITLE_MAX_CHARS);
   return truncate(text, TITLE_MAX_CHARS);
 }
 

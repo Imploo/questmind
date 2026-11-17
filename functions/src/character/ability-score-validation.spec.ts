@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { DndCharacter } from '../schemas/dnd-character.schema';
 import {
   abilityModifier,
+  abilityScoreWarning,
   abilityScoresChanged,
   fixAbilityModifiers,
   formatAbilityFeedback,
@@ -107,6 +108,70 @@ describe('validateAbilityScores', () => {
   it('tolerates characters without abilities or bases', () => {
     expect(validateAbilityScores({ abilities: undefined as unknown as Abilities })).toEqual([]);
     expect(validateAbilityScores(chr({ strength: { score: 12, modifier: 1 } }))).toEqual([]);
+  });
+});
+
+describe('abilityScoreWarning', () => {
+  const array: Abilities = {
+    strength: ab(8), dexterity: ab(14, race(2)), constitution: ab(13), intelligence: ab(15, race(1)), wisdom: ab(12), charisma: ab(10),
+  };
+  const wisdomWithoutBase = { score: 16, modifier: 3 };
+
+  /** One character per kind of issue, with the warning in both languages. */
+  const cases: [string, ReturnType<typeof chr>, string, string][] = [
+    [
+      'bonusMismatch',
+      chr({ ...validPointBuy(), constitution: { ...ab(15, race(2)), score: 16, modifier: 3 } }, 'rolled'),
+      'CON: base 15 +2 (Race) = 17, but the score is 16.',
+      'CON: base 15 +2 (Race) = 17, maar de score is 16.',
+    ],
+    [
+      'missingBase',
+      chr({ ...validPointBuy(), wisdom: wisdomWithoutBase }, 'pointBuy'),
+      'Point buy needs a base score for all six abilities; missing: WIS.',
+      'Point buy heeft voor alle zes abilities een base score nodig; ontbreekt: WIS.',
+    ],
+    [
+      'missingBase',
+      chr({ strength: ab(15), dexterity: ab(14) }, 'standardArray'),
+      'Standard array needs a base score for all six abilities; missing: one or more abilities.',
+      'Standard array heeft voor alle zes abilities een base score nodig; ontbreekt: een of meer abilities.',
+    ],
+    [
+      'baseOutOfRange',
+      chr({ ...validPointBuy(), strength: ab(16) }, 'pointBuy'),
+      'STR: point buy base 16 is outside 8-15.',
+      'STR: point buy base 16 valt buiten 8-15.',
+    ],
+    [
+      'pointBuyBudget',
+      chr({ ...validPointBuy(), charisma: ab(14) }, 'pointBuy'),
+      'Point buy costs 32 points, the maximum is 27: STR 14 (7), DEX 8 (0), CON 15 (9), INT 8 (0), WIS 15 (9), CHA 14 (7).',
+      'Point buy kost 32 punten, het maximum is 27: STR 14 (7), DEX 8 (0), CON 15 (9), INT 8 (0), WIS 15 (9), CHA 14 (7).',
+    ],
+    [
+      'standardArray',
+      chr({ ...array, strength: ab(15) }, 'standardArray'),
+      'Standard array base scores must be exactly 15, 14, 13, 12, 10, 8 (each once); got 15, 15, 14, 13, 12, 10.',
+      'De base scores van de standard array moeten precies 15, 14, 13, 12, 10, 8 zijn (elk één keer); nu: 15, 15, 14, 13, 12, 10.',
+    ],
+  ];
+
+  it.each(cases)('writes a %s warning in the language of the user', (code, character, english, dutch) => {
+    const issues = validateAbilityScores(character);
+
+    expect(issues.map(issue => issue.code)).toEqual([code]);
+    expect(abilityScoreWarning(issues[0], 'en')).toBe(english);
+    expect(abilityScoreWarning(issues[0], 'nl')).toBe(dutch);
+  });
+
+  it('keeps the feedback for the generator English, whatever the language of the user', () => {
+    for (const [, character, english] of cases) {
+      const issues = validateAbilityScores(character);
+
+      expect(issues[0].message).toBe(english);
+      expect(formatAbilityFeedback(issues)).toContain(`- ${english}`);
+    }
   });
 });
 

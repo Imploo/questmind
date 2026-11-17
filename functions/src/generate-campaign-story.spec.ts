@@ -94,7 +94,9 @@ describe('generateCampaignStory', () => {
 
   it('rejects while a recent generation is still running', async () => {
     generatingGet.mockResolvedValue({ docs: [{ data: () => ({ createdAt: { toDate: () => new Date() } }) }] });
-    await expect(handler(request())).rejects.toThrow(expect.objectContaining({ code: 'failed-precondition' }));
+    await expect(handler(request())).rejects.toThrow(
+      expect.objectContaining({ code: 'failed-precondition', details: { reason: 'story-already-generating' } })
+    );
   });
 
   it('ignores abandoned generations older than the stale window', async () => {
@@ -105,7 +107,9 @@ describe('generateCampaignStory', () => {
 
   it('rejects when no session has a completed story', async () => {
     sessionsGet.mockResolvedValue({ docs: [{ id: 's1', data: () => ({ status: 'processing' }) }] });
-    await expect(handler(request())).rejects.toThrow(expect.objectContaining({ code: 'failed-precondition' }));
+    await expect(handler(request())).rejects.toThrow(
+      expect.objectContaining({ code: 'failed-precondition', details: { reason: 'no-session-stories' } })
+    );
   });
 
   it('allocates the next version in a transaction and stores the generated story', async () => {
@@ -127,11 +131,27 @@ describe('generateCampaignStory', () => {
     expect(campaignUpdate).toHaveBeenCalledWith({ 'campaignStory.latestCompletedVersion': 3 });
   });
 
+  it('writes the step of the generation as a code, next to the Dutch text for older clients', async () => {
+    await handler(request());
+
+    expect(txCreate).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ progressStep: 'collecting', progressMessage: 'Sessieverhalen verzamelen...' })
+    );
+    expect(versionUpdate.mock.calls.map(([update]) => [update.progressStep, update.progressMessage])).toEqual([
+      ['writing', 'Verhaal schrijven...'],
+      ['done', 'Klaar'],
+    ]);
+  });
+
   it('persists a failure on the version document instead of throwing', async () => {
     generateText.mockRejectedValue(new Error('Gemini down'));
 
     await expect(handler(request())).resolves.toEqual({ success: true, version: 3 });
     expect(versionUpdate).toHaveBeenCalledWith(expect.objectContaining({ status: 'failed', error: 'Gemini down' }));
+    expect(versionUpdate).toHaveBeenLastCalledWith(
+      expect.objectContaining({ progressStep: 'failed', progressMessage: 'Mislukt' })
+    );
     expect(captureFunctionError).toHaveBeenCalled();
     expect(campaignUpdate).not.toHaveBeenCalled();
   });

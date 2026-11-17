@@ -96,8 +96,9 @@ function mockResponse() {
   });
 }
 
-function mockRequest(path: string, host = 'questmind.nl') {
-  return { path, hostname: 'internal', get: (name: string) => (name === 'x-forwarded-host' ? host : undefined) };
+function mockRequest(path: string, host = 'questmind.nl', acceptLanguage?: string) {
+  const headers: Record<string, string | undefined> = { 'x-forwarded-host': host, 'accept-language': acceptLanguage };
+  return { path, hostname: 'internal', get: (name: string) => headers[name.toLowerCase()] };
 }
 
 describe('characterSharePage', () => {
@@ -163,13 +164,29 @@ describe('characterSharePage', () => {
       expect(description.length).toBeLessThan(230);
     });
 
-    it('falls back to the name on the character document and a call to action', async () => {
+    it('falls back to the name on the character document, without a description', async () => {
       delete documents[`characters/${CHARACTER_ID}/versions/v2`];
       const res = mockResponse();
       await handler(mockRequest(PAGE), res);
 
+      expect(res.body).toContain('<title>Vesper · QuestMind</title>');
       expect(res.body).toContain('<meta property="og:title" content="Vesper">');
-      expect(res.body).toContain('og:description" content="⚔️ bekijk de character sheet"');
+      // Nothing to describe: no sentence of our own (it would be in one language), and not the app's default either.
+      expect(res.body).not.toContain('description');
+      expect(res.body).not.toContain('bekijk de character sheet');
+      expect(res.body).toContain(`<meta property="og:url" content="https://questmind.nl${PAGE}">`);
+    });
+
+    it('describes a character with game terms only when it has no story', async () => {
+      documents[`characters/${CHARACTER_ID}/versions/v2`] = {
+        character: { name: 'Bram', class: 'Fighter', level: 5, race: 'Human' },
+      };
+      const res = mockResponse();
+      await handler(mockRequest(PAGE), res);
+
+      expect(res.body).toContain('<meta property="og:description" content="⚔️ Level 5 Human Fighter">');
+      expect(res.body).toContain('<meta name="description" content="⚔️ Level 5 Human Fighter">');
+      expect(res.body).toContain('<meta name="twitter:description" content="⚔️ Level 5 Human Fighter">');
     });
 
     it('uses the project domain for links when the host is not allowed', async () => {
@@ -204,6 +221,57 @@ describe('characterSharePage', () => {
       expect(res.statusCode).toBe(200);
       expect(res.body).toContain('og:title');
       expect(res.body).toContain(`<a href="/characters/${CHARACTER_ID}">`);
+    });
+
+    describe('the minimal page, in the language of the visitor', () => {
+      beforeEach(() => {
+        fetchMock.mockRejectedValue(new Error('network'));
+      });
+
+      it.each([
+        ['nl-NL,nl;q=0.9,en;q=0.8', 'nl', 'Open de character sheet'],
+        ['nl', 'nl', 'Open de character sheet'],
+        ['de-DE,de;q=0.9,nl;q=0.5', 'nl', 'Open de character sheet'],
+        ['en-GB,en;q=0.9,nl;q=0.8', 'en', 'Open the character sheet'],
+        ['fr-FR,fr;q=0.9', 'en', 'Open the character sheet'],
+        [undefined, 'en', 'Open the character sheet'],
+      ])('links to the sheet for Accept-Language %j in %s', async (acceptLanguage, lang, link) => {
+        const res = mockResponse();
+        await handler(mockRequest(PAGE, 'questmind.nl', acceptLanguage), res);
+
+        expect(res.body).toContain(`<html lang="${lang}">`);
+        expect(res.body).toContain(`<a href="/characters/${CHARACTER_ID}">${link}</a>`);
+        expect(res.headers['Vary']).toBe('Accept-Language');
+      });
+
+      it.each([
+        ['nl', '<h1>Karakter niet gevonden</h1><p>Deze link bestaat niet (meer).</p>'],
+        ['en', '<h1>Character not found</h1><p>This link does not exist (any more).</p>'],
+      ])('says in %s that a character does not exist', async (acceptLanguage, text) => {
+        documents = {};
+        const res = mockResponse();
+        await handler(mockRequest(PAGE, 'questmind.nl', acceptLanguage), res);
+
+        expect(res.statusCode).toBe(404);
+        expect(res.body).toContain(`<html lang="${acceptLanguage}">`);
+        expect(res.body).toContain(text);
+      });
+
+      it('leaves the description paragraph out when there is nothing to describe', async () => {
+        delete documents[`characters/${CHARACTER_ID}/versions/v2`];
+        const res = mockResponse();
+        await handler(mockRequest(PAGE, 'questmind.nl', 'en'), res);
+
+        expect(res.body).toContain('<h1>Vesper</h1><p><a href=');
+      });
+    });
+
+    it('does not vary the app shell on the language of the visitor', async () => {
+      const res = mockResponse();
+      await handler(mockRequest(PAGE, 'questmind.nl', 'nl'), res);
+
+      expect(res.headers['Vary']).toBeUndefined();
+      expect(res.body).toContain('<app-root></app-root>');
     });
   });
 

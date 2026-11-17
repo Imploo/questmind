@@ -11,6 +11,7 @@ import { TASK_WORKERS, TASK_WORKER_TIMEOUT_SECONDS, enqueueWorkerTask } from './
 import { AudioRecording, sessionAudioPrefix } from './audio/stored-audio.service';
 import { ProcessingStep, processSourcesToRecording } from './audio/audio-processing.service';
 import { deleteStorageFiles } from './utils/storage-cleanup';
+import { refusal } from './utils/error-reasons';
 import { enqueueTranscription } from './transcribe-audio-fast';
 
 /** An uploaded source file of a session (original M4A/MP3, or a browser-compressed WAV). */
@@ -154,7 +155,7 @@ export function loadSources(campaignId: string, sessionId: string, raw: unknown)
   const prefix = sessionSourcePrefix(campaignId, sessionId);
   const sources = Array.isArray(raw) ? (raw as AudioSource[]) : [];
   if (sources.length === 0) {
-    throw new HttpsError('failed-precondition', 'No uploaded audio found for this session');
+    throw refusal('failed-precondition', 'No uploaded audio found for this session', 'no-uploaded-audio');
   }
   if (sources.some((s) => typeof s?.storagePath !== 'string' || !s.storagePath.startsWith(prefix))) {
     throw new HttpsError('invalid-argument', 'Audio source does not belong to this session');

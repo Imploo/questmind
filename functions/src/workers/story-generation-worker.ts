@@ -1,5 +1,5 @@
 import * as logger from '../utils/logger';
-import {HttpsError, onCall} from 'firebase-functions/v2/https';
+import {onCall} from 'firebase-functions/v2/https';
 import {onTaskDispatched} from 'firebase-functions/v2/tasks';
 import {getFirestore} from 'firebase-admin/firestore';
 import {SHARED_CORS} from '../config/cors';
@@ -14,6 +14,7 @@ import {ensureAuthForTesting} from '../utils/emulator-helpers';
 import {assertValidId, loadSessionForMember, requireAuthUid} from '../utils/access';
 import {getGeminiApiKey} from '../utils/gemini-client';
 import {sessionRef} from '../utils/session-ref';
+import {refusal} from '../utils/error-reasons';
 
 const MAX_PREVIOUS_STORIES_CHARS = 100_000;
 
@@ -175,7 +176,7 @@ export const storyGenerationWorker = onCall(
 
       const session = await loadSessionForMember(getFirestore(), campaignId, sessionId, uid);
       if (!session.rawStory) {
-        throw new HttpsError('failed-precondition', 'No transcription found for this session');
+        throw refusal('failed-precondition', 'No transcription found for this session', 'no-transcription');
       }
       getGeminiApiKey();
 
