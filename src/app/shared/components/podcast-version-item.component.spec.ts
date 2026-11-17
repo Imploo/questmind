@@ -65,15 +65,46 @@ describe('PodcastVersionItemComponent', () => {
     expect(element.textContent).toContain('TTS quota');
   });
 
-  it('shows the share button only with a share target, disabled until the podcast is ready', () => {
-    render(podcast({ status: 'pending', audioUrl: undefined }));
-    expect(element.querySelector('app-podcast-share-button')).toBeNull();
+  it('shows the share button only for a podcast with audio and a share target', () => {
+    const shareTarget = { campaignId: 'c1', sessionId: 's1', podcastVersion: 3 };
+    const button = () => element.querySelector('app-podcast-share-button button') as HTMLButtonElement | null;
 
-    render(podcast({ status: 'pending', audioUrl: undefined }), {
-      shareTarget: { campaignId: 'c1', sessionId: 's1', podcastVersion: 3 },
-    });
-    const button = element.querySelector('app-podcast-share-button button') as HTMLButtonElement;
-    expect(button.disabled).toBe(true);
+    render(podcast());
+    expect(button()).toBeNull();
+
+    render(podcast({ status: 'pending', audioUrl: undefined }), { shareTarget });
+    expect(button()).toBeNull();
+
+    render(podcast(), { shareTarget });
+    expect(button()?.disabled).toBe(false);
+  });
+
+  it('plays from the play button and shows the position on the seek bar', () => {
+    render(podcast());
+    const audio = element.querySelector('audio') as HTMLAudioElement;
+    const play = element.querySelector('button.qm-play') as HTMLButtonElement;
+    const seek = element.querySelector('input[type="range"]') as HTMLInputElement;
+    expect(play.getAttribute('aria-label')).toBe('Speel podcast v3');
+    expect(seek.max).toBe('125');
+
+    audio.dispatchEvent(new Event('play'));
+    fixture.detectChanges();
+    expect(play.getAttribute('aria-label')).toBe('Pauzeer podcast v3');
+
+    seek.value = '65';
+    seek.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(audio.currentTime).toBe(65);
+    expect(element.textContent).toContain('1:05');
+  });
+
+  it('disables the player when the audio cannot be loaded', () => {
+    render(podcast());
+    (element.querySelector('audio') as HTMLAudioElement).dispatchEvent(new Event('error'));
+    fixture.detectChanges();
+
+    expect((element.querySelector('button.qm-play') as HTMLButtonElement).disabled).toBe(true);
+    expect(element.textContent).toContain('De audio kon niet worden geladen');
   });
 
   it('shows the script only when asked', () => {

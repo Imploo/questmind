@@ -10,12 +10,14 @@ import * as logger from '../shared/logger';
 @Component({
   selector: 'app-podcast-share-button',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  // The button fills its host, so a parent can stretch the host to size it.
+  host: { class: 'inline-flex' },
   template: `
     <button
       type="button"
       (click)="share()"
       [disabled]="disabled() || busy()"
-      class="qm-btn qm-btn-sm"
+      class="qm-btn qm-btn-sm w-full"
       title="Deelbare link kopiëren"
     >
       @if (busy()) {
