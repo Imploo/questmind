@@ -1,12 +1,11 @@
 import { Component, computed, inject, signal, ChangeDetectionStrategy } from '@angular/core';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { AudioUploadComponent, UploadRequestEvent } from './audio-upload.component';
-import { SessionListSidebarComponent } from './session-list-sidebar.component';
 import { AudioSessionStateService } from './services/audio-session-state.service';
 import { AudioCompleteProcessingService } from './services/audio-complete-processing.service';
 import { AuthService } from '../auth/auth.service';
 import { CampaignContextService } from '../campaign/campaign-context.service';
-import { AudioUpload, AudioSessionRecord, SessionProgress } from './services/audio-session.models';
+import { AudioUpload, SessionProgress } from './services/audio-session.models';
 import * as logger from '../shared/logger';
 import { ToastService } from '../shared/services/toast.service';
 import { ScreenWakeLockService } from '../shared/services/screen-wake-lock.service';
@@ -16,22 +15,19 @@ import { TranslatePipe } from '../core/i18n/translate.pipe';
 
 @Component({
   selector: 'app-audio-upload-page',
-  imports: [AudioUploadComponent, SessionListSidebarComponent, TranslatePipe],
+  imports: [AudioUploadComponent, RouterLink, TranslatePipe],
   template: `
-    <div class="flex flex-col lg:flex-row gap-4 lg:gap-6">
-      <app-session-list-sidebar
-        [sessions]="sortedSessions()"
-        [userId]="userId()"
-        [showNewButton]="false"
-        [mobileLabel]="'audio.upload.mobileLabel' | translate"
-        (sessionSelected)="selectSession($event)"
-      />
+    <div class="max-w-3xl mx-auto">
+      <a [routerLink]="['/campaign', campaignId(), 'sessions']" class="qm-backlink mb-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 12H5m7 7l-7-7 7-7" />
+        </svg>
+        {{ campaignName() }}
+      </a>
 
-      <!-- Right panel: Upload form -->
-      <main class="flex-1 min-w-0">
+      <div>
         <div class="mb-5">
-          <div class="qm-page-eyebrow">{{ 'audio.upload.eyebrow' | translate }}</div>
-          <h1 class="qm-page-title mt-1">{{ 'audio.upload.pageTitle' | translate }}</h1>
+          <h1 class="qm-page-title">{{ 'audio.upload.pageTitle' | translate }}</h1>
           <p class="qm-page-sub mt-1">{{ 'audio.upload.pageSubtitle' | translate }}</p>
         </div>
 
@@ -46,7 +42,7 @@ import { TranslatePipe } from '../core/i18n/translate.pipe';
           [wakeLockSupported]="wakeLockSupported"
           (uploadRequested)="startCompleteProcessing($event)"
         />
-      </main>
+      </div>
     </div>
   `,
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -63,6 +59,7 @@ export class AudioUploadPageComponent {
 
   userId = computed(() => this.authService.currentUser()?.uid ?? null);
   campaignId = computed(() => this.campaignContextService.selectedCampaignId());
+  campaignName = computed(() => this.campaignContextService.selectedCampaign()?.name ?? '');
 
   isBusy = signal(false);
   readonly wakeLockSupported = this.wakeLock.supported;
@@ -73,11 +70,6 @@ export class AudioUploadPageComponent {
     const isBusy = this.isBusy();
     return userId !== null && campaignId !== null && !isBusy;
   });
-
-  // Sessions list
-  sessions = this.sessionStateService.sessions;
-
-  sortedSessions = this.sessionStateService.sortedSessions;
 
   async startCompleteProcessing(event: UploadRequestEvent): Promise<void> {
     const userId = this.userId();
@@ -161,22 +153,7 @@ export class AudioUploadPageComponent {
     }
   }
 
-  selectSession(session: AudioSessionRecord): void {
-    this.navigateToSession(session.id);
-  }
-
   private navigateToSession(sessionId: string): void {
-    const campaignId = this.campaignId();
-    const basePath = campaignId ? `/campaign/${campaignId}/audio` : '/audio';
-    void this.router.navigate([basePath, sessionId]);
-  }
-
-  goBack(): void {
-    const campaignId = this.campaignId();
-    if (campaignId) {
-      this.router.navigate(['/campaign', campaignId, 'audio']);
-    } else {
-      this.router.navigate(['/audio']);
-    }
+    void this.router.navigate(['/campaign', this.campaignId(), 'sessions', sessionId]);
   }
 }

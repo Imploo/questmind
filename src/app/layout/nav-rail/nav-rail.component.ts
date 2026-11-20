@@ -5,7 +5,6 @@ import { filter, map, startWith } from 'rxjs/operators';
 import { LucideAngularModule } from 'lucide-angular';
 import { AuthService } from '../../auth/auth.service';
 import { UserService } from '../../core/user.service';
-import { CampaignContextService } from '../../campaign/campaign-context.service';
 import { NavItem } from '../nav-item.model';
 import { LogoComponent } from '../../shared/components/logo.component';
 import { I18nService, LanguagePreferenceService, TranslatePipe, type LanguageCode } from '../../core/i18n';
@@ -261,7 +260,6 @@ import { ProfileDrawerComponent, userInitials, type ProfileDrawerUser } from '..
 export class NavRailComponent {
   readonly authService = inject(AuthService);
   private readonly userService = inject(UserService);
-  private readonly campaignContext = inject(CampaignContextService);
   private readonly router = inject(Router);
   protected readonly i18n = inject(I18nService);
   private readonly preference = inject(LanguagePreferenceService);
@@ -277,27 +275,20 @@ export class NavRailComponent {
     )
   );
 
+  /** The first segment of the address: a single campaign counts as the campaigns. */
   readonly activeRoute = computed(() => {
     const url = this.routerEvents() ?? '';
-    // Match /campaign/:id/segment → return the segment for comparison
-    const campaignMatch = url.match(/^\/campaign\/[^/]+\/([^/?]+)/);
-    if (campaignMatch) return campaignMatch[1];
-    const rootMatch = url.match(/^\/([^/?]+)/);
-    return rootMatch ? `/${rootMatch[1]}` : '';
+    const rootMatch = url.match(/^\/([^/?#]+)/);
+    if (!rootMatch) return '';
+    return rootMatch[1] === 'campaign' ? '/campaigns' : `/${rootMatch[1]}`;
   });
 
   readonly navItems = computed((): NavItem[] => {
-    const campaignId = this.campaignContext.selectedCampaignId();
-    const audioRoute = campaignId ? `/campaign/${campaignId}/audio` : null;
-    const storyRoute = campaignId ? `/campaign/${campaignId}/story` : null;
-    const podcastsRoute = campaignId ? `/campaign/${campaignId}/podcasts` : null;
     const nav = this.i18n.t().nav;
 
     const items: NavItem[] = [
       { id: 'characters', label: nav.characters, route: '/characters', icon: 'users' },
-      ...(audioRoute ? [{ id: 'audio', label: nav.audio, route: audioRoute, icon: 'mic' }] : []),
-      ...(storyRoute ? [{ id: 'story', label: nav.story, route: storyRoute, icon: 'book-open' }] : []),
-      ...(podcastsRoute ? [{ id: 'podcasts', label: nav.podcasts, route: podcastsRoute, icon: 'music' }] : []),
+      { id: 'campaigns', label: nav.campaigns, route: '/campaigns', icon: 'map' },
     ];
 
     if (this.userService.isAdmin()) {
@@ -320,12 +311,7 @@ export class NavRailComponent {
   readonly userInitials = computed((): string => userInitials(this.profileUser()));
 
   isItemActive(item: NavItem): boolean {
-    const active = this.activeRoute();
-    // For campaign-prefixed routes, activeRoute() returns just the segment
-    if (item.id === 'audio') return active === 'audio';
-    if (item.id === 'story') return active === 'story';
-    if (item.id === 'podcasts') return active === 'podcasts';
-    return active === item.route;
+    return this.activeRoute() === item.route;
   }
 
   toggleMenu(): void {

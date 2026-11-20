@@ -1,15 +1,11 @@
-import { Component, ChangeDetectionStrategy, computed, inject } from '@angular/core';
-import { Router, NavigationEnd } from '@angular/router';
-import { toSignal } from '@angular/core/rxjs-interop';
-import { filter, map, startWith } from 'rxjs/operators';
-import { CampaignSelectorComponent } from '../../campaign/campaign-selector.component';
+import { Component, ChangeDetectionStrategy, inject } from '@angular/core';
 import { LogoComponent } from '../../shared/components/logo.component';
 import { PanelSwitcherComponent } from '../panel-switcher/panel-switcher.component';
 import { PanelSwitcherService } from '../panel-switcher/panel-switcher.service';
 
 @Component({
   selector: 'app-mobile-topbar',
-  imports: [CampaignSelectorComponent, LogoComponent, PanelSwitcherComponent],
+  imports: [LogoComponent, PanelSwitcherComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [`
     :host {
@@ -38,11 +34,6 @@ import { PanelSwitcherService } from '../panel-switcher/panel-switcher.service';
       }
     }
 
-    .topbar-content {
-      flex: 1;
-      min-width: 0;
-    }
-
     .wordmark {
       display: inline-flex;
       align-items: center;
@@ -59,29 +50,11 @@ import { PanelSwitcherService } from '../panel-switcher/panel-switcher.service';
     @if (panels.enabled()) {
       <!-- A character page with a chat: the bar switches between its two panels. -->
       <app-panel-switcher />
-    } @else if (onCampaignRoute()) {
-      <div class="topbar-content">
-        <app-campaign-selector [isCollapsed]="false" />
-      </div>
     } @else {
       <span class="wordmark" data-no-i18n><app-logo [size]="32" />Questmind</span>
     }
   `
 })
 export class MobileTopbarComponent {
-  private readonly router = inject(Router);
   readonly panels = inject(PanelSwitcherService);
-
-  private readonly currentUrl = toSignal(
-    this.router.events.pipe(
-      filter(event => event instanceof NavigationEnd),
-      map(() => this.router.url),
-      startWith(this.router.url)
-    )
-  );
-
-  readonly onCampaignRoute = computed(() => {
-    const url = this.currentUrl() ?? '';
-    return url.startsWith('/campaign/');
-  });
 }
