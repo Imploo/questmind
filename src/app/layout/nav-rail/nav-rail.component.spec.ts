@@ -2,10 +2,9 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
-import { LucideAngularModule, BookOpen, LogOut, Menu, Mic, Music, Settings, Users, X } from 'lucide-angular';
+import { LucideAngularModule, LogOut, MapIcon, Menu, Settings, Users, X } from 'lucide-angular';
 import { importProvidersFrom } from '@angular/core';
 import { AuthService } from '../../auth/auth.service';
-import { CampaignContextService } from '../../campaign/campaign-context.service';
 import { I18nService, LanguagePreferenceService } from '../../core/i18n';
 import { provideTestLanguage } from '../../core/i18n/testing';
 import { UserService } from '../../core/user.service';
@@ -39,10 +38,9 @@ describe('NavRailComponent', () => {
       providers: [
         provideRouter([]),
         provideTestLanguage('nl'),
-        importProvidersFrom(LucideAngularModule.pick({ BookOpen, LogOut, Menu, Mic, Music, Settings, Users, X })),
+        importProvidersFrom(LucideAngularModule.pick({ LogOut, Map: MapIcon, Menu, Settings, Users, X })),
         { provide: AuthService, useValue: authService },
         { provide: UserService, useValue: { isAdmin: () => false } },
-        { provide: CampaignContextService, useValue: { selectedCampaignId: () => 'c1' } },
         { provide: LanguagePreferenceService, useValue: preference },
       ],
     });
@@ -52,13 +50,31 @@ describe('NavRailComponent', () => {
   });
 
   it('names the pages in the active language', async () => {
-    expect(labels()).toEqual(['Karakters', 'Audio', 'Verhaal', 'Podcasts']);
+    expect(labels()).toEqual(['Karakters', 'Campagnes']);
 
     TestBed.inject(I18nService).use('en');
     await fixture.whenStable();
     fixture.detectChanges();
 
-    expect(labels()).toEqual(['Characters', 'Audio', 'Story', 'Podcasts']);
+    expect(labels()).toEqual(['Characters', 'Campaigns']);
+  });
+
+  it('marks Campaigns on the list and inside a campaign', async () => {
+    const router = TestBed.inject(Router);
+    const activeLabel = () => element.querySelector('.nav-item.active .nav-label')?.textContent?.trim();
+
+    router.resetConfig([{ path: '**', children: [] }]);
+    await router.navigateByUrl('/campaigns');
+    fixture.detectChanges();
+    expect(activeLabel()).toBe('Campagnes');
+
+    await router.navigateByUrl('/campaign/c1/sessions/s1');
+    fixture.detectChanges();
+    expect(activeLabel()).toBe('Campagnes');
+
+    await router.navigateByUrl('/characters');
+    fixture.detectChanges();
+    expect(activeLabel()).toBe('Karakters');
   });
 
   it('has no language choice and no sign-out button of its own', () => {

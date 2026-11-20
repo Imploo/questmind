@@ -1,6 +1,7 @@
-import { Component, effect, signal, computed, inject, resource, ChangeDetectionStrategy, Signal } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { Router, ActivatedRoute } from '@angular/router';
+import { Component, effect, computed, inject, resource, ChangeDetectionStrategy, Signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { Router, ActivatedRoute, RouterLink } from '@angular/router';
+import { map } from 'rxjs/operators';
 import { AudioSessionStateService } from './services/audio-session-state.service';
 import { AudioBackendOperationsService } from './services/audio-backend-operations.service';
 import { PodcastGenerationService } from './services/podcast-generation.service';
@@ -20,8 +21,8 @@ import { isActiveStage, toDisplayProgress } from './services/session-progress.ut
 import { SessionStoryComponent, SessionMetaUpdate } from './session-story.component';
 import { SessionProgressCardComponent } from './session-progress-card.component';
 import { SessionRecordingComponent } from './session-recording.component';
-import { SessionListSidebarComponent } from './session-list-sidebar.component';
-import { CampaignSelectorComponent } from '../campaign/campaign-selector.component';
+import { CampaignStoryService } from '../campaign-story/campaign-story.service';
+import { isInStory, isUsableSession, latestCompletedVersion } from '../campaign-story/campaign-story.utils';
 import { FormattingService } from '../shared/formatting.service';
 import { ToastService } from '../shared/services/toast.service';
 import { callableErrorMessage, isPermissionDenied } from '../shared/utils/callable-error';
@@ -32,123 +33,153 @@ const PODCAST_STAGES: SessionProgressStage[] = ['generating-podcast-script', 'ge
 
 @Component({
   selector: 'app-audio-session',
-  imports: [SessionStoryComponent, SessionProgressCardComponent, SessionRecordingComponent, SessionListSidebarComponent, CampaignSelectorComponent, TranslatePipe],
+  imports: [RouterLink, SessionStoryComponent, SessionProgressCardComponent, SessionRecordingComponent, TranslatePipe],
   providers: [PodcastGenerationService, CorrectionsSaveService],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    @if (authService.isAuthenticated()) {
-      <div class="mb-4 hidden sm:block">
-        <app-campaign-selector align="start" />
-      </div>
-    }
+    <div class="max-w-4xl mx-auto space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <nav class="flex flex-wrap items-center gap-x-2 text-sm font-semibold text-white" [attr.aria-label]="'audio.page.breadcrumb' | translate">
+          <a routerLink="/campaigns" class="crumb">{{ 'campaign.page.back' | translate }}</a>
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 6l6 6-6 6" /></svg>
+          <a [routerLink]="['/campaign', campaignId()]" class="crumb">{{ campaignName() }}</a>
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 6l6 6-6 6" /></svg>
+          <a [routerLink]="['/campaign', campaignId(), 'sessions']" class="crumb">{{ 'campaign.page.tabs.sessions' | translate }}</a>
+        </nav>
 
-    @if (!authService.isAuthenticated()) {
-      <div class="qm-panel qm-hero qm-empty max-w-xl mx-auto">
-        <span class="qm-medallion qm-medallion-lg"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg></span>
-        <h3 class="qm-empty-title">{{ 'audio.page.signedOutTitle' | translate }}</h3>
-        <p class="qm-empty-text">
-          {{ 'audio.page.signedOutText' | translate }}
-        </p>
-        <p class="qm-help mt-4">
-          {{ 'audio.page.signedOutHelp' | translate }}
-        </p>
-      </div>
-    } @else if (!campaignId()) {
-      <div class="qm-panel qm-hero qm-empty max-w-xl mx-auto">
-        <span class="qm-medallion qm-medallion-lg"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-width="1.75" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M15.5 8.5l-2 5-5 2 2-5 5-2z" /></svg></span>
-        <h3 class="qm-empty-title">{{ 'audio.page.noCampaignTitle' | translate }}</h3>
-        <p class="qm-empty-text">
-          {{ 'audio.page.noCampaignText' | translate }}
-        </p>
-      </div>
-    } @else {
-      <div class="flex flex-col lg:flex-row gap-4 lg:gap-6">
-        <app-session-list-sidebar
-          [sessions]="sortedSessions()"
-          [currentSessionId]="currentSession()?.id ?? null"
-          [userId]="userId()"
-          [mobileLabel]="currentSession()?.title || ''"
-          (sessionSelected)="selectSession($event)"
-          (newRequested)="navigateToNew()"
-        />
-
-        <!-- Right panel: Session details -->
-        <main class="flex-1 min-w-0">
-          <div class="grid">
-            @if (currentSession()) {
-              <app-session-progress-card
-                [progress]="displayProgress()"
-                [retryUnavailableMessage]="retryUnavailableMessage()"
-                (cancelled)="cancelCurrentOperation()"
-                (retry)="retryFailedOperation()"
-              />
-
-              <app-session-story
-                [title]="currentSession()?.title || ('audio.defaultStoryTitle' | translate)"
-                [subtitle]="formatSubtitle(currentSession())"
-                [sessionDate]="currentSession()?.sessionDate || ''"
-                [story]="currentSession()?.content || ''"
-                [transcript]="currentSession()?.rawStory || currentSession()?.transcription?.rawTranscript || ''"
-                [isBusy]="isBusy()"
-                [canRegenerate]="canRegenerateStory()"
-                [canEditStory]="canEditStory()"
-                [canEditCorrections]="canEditCorrections()"
-                [corrections]="correctionsSave.corrections()"
-                [correctionsStatus]="correctionsSave.saveStatus()"
-                [campaignId]="campaignId() || ''"
-                [sessionId]="currentSession()?.id || ''"
-                [podcasts]="podcasts()"
-                [isGeneratingPodcast]="podcastStatus().isGenerating"
-                [podcastGenerationProgress]="podcastStatus().message"
-                [podcastGenerationProgressPercent]="podcastStatus().percent"
-                [podcastError]="podcastGen.error()"
-                [canGeneratePodcast]="canGeneratePodcast()"
-                (storyUpdated)="saveStoryEdits($event)"
-                (regenerate)="regenerateStory()"
-                (correctionsChanged)="correctionsSave.onInput($event)"
-                (generatePodcast)="generatePodcast()"
-                (metaUpdated)="saveSessionMeta($event)"
-                (deleteSession)="deleteCurrentSession()"
-              ></app-session-story>
-
-              @if (currentSession()?.audioRecording; as recording) {
-                <app-session-recording
-                  [audioUrl]="recordingUrl.value() ?? null"
-                  [fileName]="recording.fileName"
-                  [durationSec]="recording.durationSec"
-                  [sizeBytes]="recording.sizeBytes"
-                  [canRetranscribe]="isSessionOwner()"
-                  [busy]="isBusy()"
-                  (retranscribe)="retranscribe()"
-                />
-              }
+        @if (currentSession()) {
+          <div class="flex gap-2">
+            @if (previousSession(); as previous) {
+              <a
+                [routerLink]="['/campaign', campaignId(), 'sessions', previous.id]"
+                class="qm-btn"
+                [attr.aria-label]="'audio.page.previousLabel' | translate: previous.title"
+                data-testid="previous-session"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 6l-6 6 6 6" /></svg>
+                {{ 'audio.page.previous' | translate }}
+              </a>
             }
-
-            @if (!currentSession()) {
-              <div class="qm-panel qm-hero qm-empty">
-                @if (sortedSessions().length > 0) {
-                  <span class="qm-medallion qm-medallion-lg"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg></span>
-                  <h3 class="qm-empty-title">{{ 'audio.selectSession' | translate }}</h3>
-                  <p class="qm-empty-text">
-                    {{ 'audio.page.selectSessionText' | translate }}
-                  </p>
-                } @else {
-                  <span class="qm-medallion qm-medallion-lg"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg></span>
-                  <h3 class="qm-empty-title">{{ 'audio.page.noSessionsTitle' | translate }}</h3>
-                  <p class="qm-empty-text">
-                    {{ 'audio.page.noSessionsText' | translate }}
-                  </p>
-                  <button type="button" (click)="navigateToNew()" class="qm-btn qm-btn-primary qm-btn-lg mt-6">
-                    {{ 'audio.page.uploadFirst' | translate }}
-                  </button>
-                }
-              </div>
+            @if (nextSession(); as next) {
+              <a
+                [routerLink]="['/campaign', campaignId(), 'sessions', next.id]"
+                class="qm-btn"
+                [attr.aria-label]="'audio.page.nextLabel' | translate: next.title"
+                data-testid="next-session"
+              >
+                {{ 'audio.page.next' | translate }}
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 6l6 6-6 6" /></svg>
+              </a>
             }
           </div>
-        </main>
+        }
       </div>
+
+      @if (showStoryNote()) {
+        <div class="story-note flex flex-wrap items-center gap-x-4 gap-y-3" data-testid="story-note">
+          <span class="qm-medallion qm-medallion-sm" aria-hidden="true">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 7v14M3 18a1 1 0 01-1-1V4a1 1 0 011-1h5a4 4 0 014 4 4 4 0 014-4h5a1 1 0 011 1v13a1 1 0 01-1 1h-6a3 3 0 00-3 3 3 3 0 00-3-3z" /></svg>
+          </span>
+          <div class="min-w-0 flex-[1_1_16rem]">
+            <p class="text-sm font-bold">{{ 'campaignStory.sessionNotIncluded' | translate }}</p>
+            <p class="text-[13px] text-gray-700 mt-0.5">{{ 'campaignStory.sessionNotIncludedHelp' | translate }}</p>
+          </div>
+          <a [routerLink]="['/campaign', campaignId(), 'story']" class="qm-btn qm-btn-ink">
+            {{ 'campaignStory.updateCampaignStory' | translate }}
+          </a>
+        </div>
+      }
+
+      <!-- The session itself -->
+      <div class="grid">
+        @if (currentSession()) {
+          <app-session-progress-card
+            [progress]="displayProgress()"
+            [retryUnavailableMessage]="retryUnavailableMessage()"
+            (cancelled)="cancelCurrentOperation()"
+            (retry)="retryFailedOperation()"
+          />
+
+          <app-session-story
+            [title]="currentSession()?.title || ('audio.defaultStoryTitle' | translate)"
+            [subtitle]="formatSubtitle(currentSession())"
+            [sessionDate]="currentSession()?.sessionDate || ''"
+            [story]="currentSession()?.content || ''"
+            [transcript]="currentSession()?.rawStory || currentSession()?.transcription?.rawTranscript || ''"
+            [isBusy]="isBusy()"
+            [canRegenerate]="canRegenerateStory()"
+            [canEditStory]="canEditStory()"
+            [canEditCorrections]="canEditCorrections()"
+            [corrections]="correctionsSave.corrections()"
+            [correctionsStatus]="correctionsSave.saveStatus()"
+            [campaignId]="campaignId() || ''"
+            [sessionId]="currentSession()?.id || ''"
+            [podcasts]="podcasts()"
+            [isGeneratingPodcast]="podcastStatus().isGenerating"
+            [podcastGenerationProgress]="podcastStatus().message"
+            [podcastGenerationProgressPercent]="podcastStatus().percent"
+            [podcastError]="podcastGen.error()"
+            [canGeneratePodcast]="canGeneratePodcast()"
+            (storyUpdated)="saveStoryEdits($event)"
+            (regenerate)="regenerateStory()"
+            (correctionsChanged)="correctionsSave.onInput($event)"
+            (generatePodcast)="generatePodcast()"
+            (metaUpdated)="saveSessionMeta($event)"
+            (deleteSession)="deleteCurrentSession()"
+          ></app-session-story>
+
+          @if (currentSession()?.audioRecording; as recording) {
+            <app-session-recording
+              [audioUrl]="recordingUrl.value() ?? null"
+              [fileName]="recording.fileName"
+              [durationSec]="recording.durationSec"
+              [sizeBytes]="recording.sizeBytes"
+              [canRetranscribe]="isSessionOwner()"
+              [busy]="isBusy()"
+              (retranscribe)="retranscribe()"
+            />
+          }
+        }
+
+        @if (!currentSession()) {
+          @if (sessionStateService.isLoaded()) {
+            <div class="qm-panel qm-hero qm-empty">
+              <h2 class="qm-empty-title !mt-0">{{ 'audio.page.notFoundTitle' | translate }}</h2>
+              <p class="qm-empty-text">{{ 'audio.page.notFoundText' | translate }}</p>
+              <a [routerLink]="['/campaign', campaignId(), 'sessions']" class="qm-btn qm-btn-lg mt-6">
+                {{ 'campaignStory.toSessions' | translate }}
+              </a>
+            </div>
+          } @else {
+            <div class="text-center py-12" role="status">
+              <span class="qm-spinner qm-spinner-lg qm-spinner-light"></span>
+            </div>
+          }
+        }
+      </div>
+    </div>
+  `,
+  styles: [`
+    .crumb {
+      display: inline-flex;
+      align-items: center;
+      min-height: 44px;
+      color: #fff;
+      text-decoration: none;
+      text-shadow: 0 1px 6px rgba(34, 16, 80, 0.4);
     }
-  `
+    .crumb:hover { text-decoration: underline; }
+
+    /* The session is missing from the campaign story: a gold note, the thing to do next. */
+    .story-note {
+      padding: 0.85rem 1rem;
+      border-radius: 14px;
+      color: var(--ink);
+      background: var(--gold-soft);
+      border: 1px solid var(--gold);
+      box-shadow: var(--panel-shadow);
+    }
+  `]
 })
 export class AudioSessionComponent {
   private readonly campaignContext = inject(CampaignContextService);
@@ -156,7 +187,7 @@ export class AudioSessionComponent {
   private readonly router = inject(Router);
   private readonly formatting = inject(FormattingService);
   private readonly route = inject(ActivatedRoute);
-  private readonly sessionStateService = inject(AudioSessionStateService);
+  protected readonly sessionStateService = inject(AudioSessionStateService);
   private readonly backendOperations = inject(AudioBackendOperationsService);
   readonly authService = inject(AuthService);
   private readonly toastService = inject(ToastService);
@@ -166,16 +197,34 @@ export class AudioSessionComponent {
   readonly correctionsSave = inject(CorrectionsSaveService);
   private readonly i18n = inject(I18nService);
 
+  private readonly storyService = inject(CampaignStoryService);
+
   userId = computed(() => this.authService.currentUser()?.uid || null);
   campaignId = computed(() => this.campaignContext.selectedCampaignId());
+  campaignName = computed(() => this.campaignContext.selectedCampaign()?.name ?? '');
 
-  // Session selection
-  private selectedSessionId = signal<string | null>(null);
+  /** The session in the address; the page shows whichever session it names. */
+  private readonly sessionId = toSignal(this.route.paramMap.pipe(map(params => params.get('sessionId'))), {
+    initialValue: this.route.snapshot.paramMap.get('sessionId'),
+  });
 
   currentSession = computed(() => {
-    const id = this.selectedSessionId();
+    const id = this.sessionId();
     if (!id) return null;
     return this.sessions().find(s => s.id === id) ?? null;
+  });
+
+  /** The session played before this one (older), and the one played after it (newer). */
+  previousSession = computed(() => this.neighbour(1));
+  nextSession = computed(() => this.neighbour(-1));
+
+  /** For the owner of the campaign: this finished session is missing from the campaign story. */
+  showStoryNote = computed(() => {
+    const session = this.currentSession();
+    const campaign = this.campaignContext.selectedCampaign();
+    if (!session || !campaign || campaign.ownerId !== this.userId()) return false;
+    if (this.storyService.isLoading() || !isUsableSession(session)) return false;
+    return !isInStory(latestCompletedVersion(this.storyService.versions()), session);
   });
 
   podcasts = computed(() => this.currentSession()?.podcasts || []);
@@ -226,68 +275,19 @@ export class AudioSessionComponent {
     this.sessions = this.sessionStateService.sessions;
     this.sortedSessions = this.sessionStateService.sortedSessions;
 
-    // Route param sync for session selection
-    this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(params => {
-      const sessionIdFromRoute = params.get('sessionId');
-      const sessions = this.sortedSessions();
-
-      if (sessionIdFromRoute && sessions.length > 0) {
-        const sessionToSelect = sessions.find(s => s.id === sessionIdFromRoute);
-        if (sessionToSelect && this.selectedSessionId() !== sessionIdFromRoute) {
-          this.selectSessionWithoutNavigation(sessionToSelect);
-        }
-      }
-    });
-
-    // Auto-select session based on route or first available
-    effect(() => {
-      const sessions = this.sortedSessions();
-      const currentId = this.selectedSessionId();
-      const sessionIdFromRoute = this.route.snapshot.paramMap.get('sessionId');
-
-      if (sessions.length === 0) {
-        if (currentId) {
-          this.selectedSessionId.set(null);
-        }
-        return;
-      }
-
-      if (sessionIdFromRoute) {
-        const sessionToSelect = sessions.find(s => s.id === sessionIdFromRoute);
-        if (sessionToSelect && currentId !== sessionIdFromRoute) {
-          this.selectSessionWithoutNavigation(sessionToSelect);
-        }
-        return;
-      }
-
-      if (!currentId || !sessions.some(session => session.id === currentId)) {
-        this.selectSession(sessions[0]);
-      }
-    });
-
     // Sync corrections service to current session
     effect(() => {
       this.correctionsSave.syncToSession(this.currentSession());
     });
   }
 
-  // --- Session selection ---
+  // --- Session navigation ---
 
-  selectSession(session: AudioSessionRecord): void {
-    this.selectSessionWithoutNavigation(session);
-    const campaignId = this.campaignId();
-    const basePath = campaignId ? `/campaign/${campaignId}/audio` : '/audio';
-    void this.router.navigate([basePath, session.id]);
-  }
-
-  navigateToNew(): void {
-    const campaignId = this.campaignId();
-    const basePath = campaignId ? `/campaign/${campaignId}/audio` : '/audio';
-    void this.router.navigate([basePath, 'new']);
-  }
-
-  private selectSessionWithoutNavigation(session: AudioSessionRecord): void {
-    this.selectedSessionId.set(session.id);
+  private neighbour(offset: number): (AudioSessionRecord & Record<string, unknown>) | null {
+    const sessions = this.sortedSessions();
+    const index = sessions.findIndex(session => session.id === this.sessionId());
+    if (index < 0) return null;
+    return sessions[index + offset] ?? null;
   }
 
   formatSubtitle(session: AudioSessionRecord | null): string {
@@ -366,7 +366,7 @@ export class AudioSessionComponent {
         );
       }
       await this.sessionStateService.deleteSession(session.id);
-      this.selectedSessionId.set(null);
+      void this.router.navigate(['/campaign', session.campaignId, 'sessions']);
     } catch (error) {
       logger.error('Failed to delete session:', error);
     }

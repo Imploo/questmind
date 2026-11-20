@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
-import { Router } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { AudioUploadPageComponent } from './audio-upload-page.component';
 import { AudioSessionStateService } from './services/audio-session-state.service';
 import { AudioCompleteProcessingService } from './services/audio-complete-processing.service';
@@ -15,6 +15,7 @@ import { provideTestLanguage } from '../core/i18n/testing';
 
 describe('AudioUploadPageComponent', () => {
   let fixture: ComponentFixture<AudioUploadPageComponent>;
+  let navigate: ReturnType<typeof vi.spyOn>;
   const startCompleteProcessing = vi.fn();
   const writeFailure = vi.fn();
   const show = vi.fn();
@@ -28,16 +29,17 @@ describe('AudioUploadPageComponent', () => {
   function setup(language: 'nl' | 'en' = 'en'): void {
     TestBed.configureTestingModule({
       providers: [
-        { provide: Router, useValue: { navigate: vi.fn().mockResolvedValue(true) } },
+        provideRouter([]),
         { provide: AudioSessionStateService, useValue: sessionState },
         { provide: AudioCompleteProcessingService, useValue: { startCompleteProcessing, writeFailure } },
         { provide: AuthService, useValue: { currentUser: signal({ uid: 'u1' }) } },
-        { provide: CampaignContextService, useValue: { selectedCampaignId: signal('c1') } },
+        { provide: CampaignContextService, useValue: { selectedCampaignId: signal('c1'), selectedCampaign: signal({ id: 'c1', name: 'Grauwhaven' }) } },
         { provide: ToastService, useValue: { show } },
         { provide: ScreenWakeLockService, useValue: { supported: true, hold: () => () => undefined } },
         provideTestLanguage(language),
       ],
     });
+    navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
     fixture = TestBed.createComponent(AudioUploadPageComponent);
     fixture.detectChanges();
   }
@@ -64,6 +66,19 @@ describe('AudioUploadPageComponent', () => {
     setup(language);
     await upload();
     expect(startCompleteProcessing).toHaveBeenCalledWith('c1', 's1', expect.any(Array), { sessionTitle, sessionDate: '2026-10-27' });
+  });
+
+  it('goes to the new session in its campaign right away', async () => {
+    setup();
+    await upload();
+    expect(navigate).toHaveBeenCalledWith(['/campaign', 'c1', 'sessions', 's1']);
+  });
+
+  it('leads back to the sessions of the campaign', () => {
+    setup();
+    const back = (fixture.nativeElement as HTMLElement).querySelector('a.qm-backlink');
+    expect(back?.getAttribute('href')).toBe('/campaign/c1/sessions');
+    expect(back?.textContent).toContain('Grauwhaven');
   });
 
   it('keeps writing the English progress message for older clients', async () => {

@@ -40,6 +40,9 @@ export class AudioSessionStateService {
     return repo ? repo.get() : [];
   });
 
+  /** True once the sessions of the selected campaign have been read. */
+  readonly isLoaded = computed(() => this.sessionRepo.hasValue());
+
   readonly sortedSessions = computed<SessionRecord[]>(() => {
     const sessions = this.sessions();
     return [...sessions].sort((a, b) => {
