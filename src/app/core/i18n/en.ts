@@ -58,7 +58,9 @@ export const en: Translations = {
       importCharacterNotFound: 'No character was found at that link.',
       importCharacterUnreadable: 'The character at that link could not be read.',
       storyAlreadyGenerating: 'A story is already being generated.',
-      noSessionStories: 'There are no session stories to summarise yet.',
+      noSessionStories: 'There are no session stories or journals in Kanka to summarise yet.',
+      kankaUnavailable:
+        'Kanka could not be read, so its journals would be missing from the story. Please try again later.',
       storyVersionNotReady: 'This version of the story is not ready yet.',
       podcastAlreadyGenerating: 'A podcast is already being generated.',
       podcastNotReady: 'This podcast is not ready to share yet.',
@@ -187,7 +189,8 @@ export const en: Translations = {
       kankaEnable: 'Enable Kanka Integration',
       kankaCampaignId: 'Kanka Campaign ID',
       kankaCampaignIdPlaceholder: 'e.g. 123456',
-      kankaHelp: 'Used for Kanka integration when generating stories.',
+      kankaHelp:
+        'Names from Kanka keep the spelling in the stories right. The journals in Kanka, such as written reports of sessions without a recording, are written into the campaign story.',
       allowMembersToCreateSessions: 'Allow members to create sessions',
       save: 'Save Settings',
       saved: 'Settings saved successfully!',
@@ -268,12 +271,14 @@ export const en: Translations = {
     sessionNotIncludedHelp: 'Update the story to write this evening into it.',
     updateCampaignStory: 'Update the campaign story',
     sessionCount: (count) => (count === 1 ? '1 session' : `${count} sessions`),
+    journalCount: (count) => (count === 1 ? '1 journal from Kanka' : `${count} journals from Kanka`),
     versionFailed: (version) => `Version ${version} failed.`,
     generationFailed: 'Generating this version failed.',
     startFailed: 'Generation could not be started. Please try again.',
     emptyTitle: 'There is no campaign story yet',
     emptyNoSessions: 'The story of the campaign is written from its sessions. Upload the first session to begin.',
     emptyWaiting: 'As soon as the story of a session is done, the campaign story can be written.',
+    emptyKanka: 'No session story is done yet, but the campaign story can also be written from the journals in Kanka.',
     emptyOwner: (count) =>
       count === 1
         ? '1 session is ready. Have one running story of the campaign written from it.'

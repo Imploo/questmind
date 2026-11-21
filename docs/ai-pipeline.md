@@ -2,7 +2,7 @@
 
 Overzicht van alle AI-stappen, hun input en wat ze opleveren.
 
-Laatst bijgewerkt: 2026-11-12
+Laatst bijgewerkt: 2026-11-21
 
 ## Configuratie
 
@@ -125,6 +125,50 @@ opname ──► 7. Gespreksverslag ──► 8. Verhaal ──► (op verzoek) 
   - Het script wordt in blokken van ~3000 tekens gerenderd. Output wordt expliciet als ruwe PCM (`audio/l16`, 24 kHz) opgevraagd, aan elkaar geplakt en daarna naar MP3 omgezet. (Standaard levert 3.8 WAV; WAV-blokken plakken zou headers midden in de audio zetten.)
 - Opslag: `campaigns/{campaignId}/podcasts/{sessionId}/v{version}.mp3`, plus een entry in `podcasts[]` en `latestPodcastVersion` op de sessie.
 - Instelbaar via admin: `geminiModel`, `host1VoiceName`, `host2VoiceName`, `maxCharacters`. ElevenLabs is volledig verwijderd (ticket #66).
+
+---
+
+## Campagneverhaal
+
+Eén doorlopend, samengevat verhaal van de hele campagne, in versies (ticket #69). Alleen de eigenaar van de campagne kan een nieuwe versie laten schrijven.
+
+| # | Stap (key) | Model | Input | Resultaat |
+|---|---|---|---|---|
+| 11 | **Campagneverhaal** (`campaignStory`) | Gemini, thinking medium | Alle sessieverhalen + geschreven verslagen uit Kanka + Kanka-naslag | `{ title, content }` op `campaigns/{id}/campaignStories/v{n}` |
+| 12 | **Podcast van het campagneverhaal** (`podcastScript` + `podcastVoices`) | als stap 9 + 10 | Een versie van het campagneverhaal | MP3 in Storage |
+
+### Details
+
+**11. Campagneverhaal** — `functions/src/generate-campaign-story.ts`, prompt in `functions/src/prompts/campaign-story-generator.prompt.ts`
+
+Twee soorten bronnen, samen in chronologische volgorde (`functions/src/campaign-story/campaign-story-sources.ts`):
+
+- **Sessieverhalen**: de `content` van elke sessie met status `completed`, op `sessionDate` (anders de uploaddatum).
+- **Verslagen uit Kanka**: de journals van de gekoppelde Kanka-campagne (`functions/src/campaign-story/campaign-story-kanka.ts`). Bedoeld voor sessies waar geen opname van is, vaak de eerste: daar is het verslag van een speler of de DM de enige bron. Alleen als Kanka voor de campagne aan staat (`settings.kankaEnabled` + `settings.kankaCampaignId`).
+
+Hoe een journal wordt gelezen:
+
+- De tekst is de entry van het journal plus de posts eronder, als platte tekst (HTML eruit, mentions uitgeschreven).
+- **Privé blijft privé**: journals met `is_private` en posts die alleen de DM of de schrijver kan lezen (`visibility_id` anders dan 1 of 5) worden overgeslagen, net als privé-personages, -plekken, -quests en -organisaties. Iedereen in de campagne leest het verhaal.
+- Een journal met een **datum** in Kanka krijgt die plek in de tijdlijn; op dezelfde dag als een sessie staat het verslag vóór het sessieverhaal.
+- Een journal **zonder datum** gaat in een apart blok. Het model plaatst het aan de hand van de titel (bijv. "Sessie 2") en de inhoud; lukt dat niet, dan telt het als voorgeschiedenis van vóór de eerste opname. Een datum invullen in Kanka is dus de betrouwbaarste manier om de volgorde vast te leggen.
+- Limieten: 40.000 tekens per journal (daarna ingekort), 300.000 tekens voor alle journals samen.
+
+Wat het model ermee moet doen:
+
+- Een verslag telt even zwaar als een sessieverhaal. Beschrijven ze dezelfde avond, dan worden ze samengevoegd en één keer verteld; bij een tegenstrijdige naam of feit geldt het geschreven verslag.
+- Verslagen in de ik- of wij-vorm worden omgezet naar de derde persoon; "ik" is de schrijver (het personage dat in Kanka als auteur van het journal staat).
+- Een journal dat geen gebeurtenissen beschrijft maar achtergrond (lore, notities) is alleen achtergrond.
+- **Naslag**: namen, type en de eerste regels van de niet-privé personages, plekken, quests en organisaties gaan mee voor spelling en om te weten wie of wat iets is. Het zijn nooit gebeurtenissen.
+
+Verder:
+
+- De versie bewaart waar het verhaal uit is geschreven: `sourceSessions` en `sourceJournals`. Met Kanka gekoppeld kan er ook een verhaal worden geschreven als nog geen enkele sessie een verhaal heeft.
+- **Kanka niet bereikbaar** (storing, ongeldig of ontbrekend `KANKA_API_TOKEN`, rate limit): er wordt geen versie gestart en de eigenaar krijgt een melding (`kanka-unavailable`). Zonder Kanka zouden de sessies die alleen als verslag bestaan ongemerkt uit het verhaal verdwijnen.
+- De Kanka-lijsten worden per pagina opgehaald (maximaal 10 pagina's per soort).
+
+**12. Podcast** — `functions/src/generate-campaign-story-podcast.ts`
+Zelfde instellingen en stappen als de sessiepodcast (9 + 10), met het campagneverhaal als bron. Wat uit de verslagen in het verhaal staat, komt dus ook in de podcast.
 
 ---
 

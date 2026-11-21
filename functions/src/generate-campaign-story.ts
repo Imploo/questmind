@@ -9,6 +9,7 @@ import { wrapCallable, captureFunctionError } from './utils/sentry-error-handler
 import { getCampaignStoryConfig } from './utils/ai-settings';
 import { selectCampaignStorySources, SessionDocForCampaignStory } from './campaign-story/campaign-story-sources';
 import { generateCampaignStory as generateCampaignStoryText } from './campaign-story/campaign-story-generator.service';
+import { CampaignStoryKanka, loadCampaignStoryKanka } from './campaign-story/campaign-story-kanka';
 import { CampaignStoryProgressStep, CampaignStoryVersion } from './types/campaign-story.types';
 import { campaignStoriesCollectionPath, campaignStoryDocPath } from './campaign-story/campaign-story-paths';
 import { refusal } from './utils/error-reasons';
@@ -34,12 +35,13 @@ function progressFields(step: CampaignStoryProgressStep): { progressStep: Campai
 
 /**
  * Generates a new version of the campaign story (ticket #69) from all completed
- * session stories. Only the campaign owner may generate.
+ * session stories and, when Kanka is linked to the campaign, the written
+ * reports (journals) in Kanka. Only the campaign owner may generate.
  */
 export const generateCampaignStory = onCall(
   {
     cors: SHARED_CORS,
-    secrets: ['GOOGLE_AI_API_KEY'],
+    secrets: ['GOOGLE_AI_API_KEY', 'KANKA_API_TOKEN'],
     timeoutSeconds: CAMPAIGN_STORY_TIMEOUT_SECONDS,
   },
   wrapCallable<GenerateCampaignStoryRequest, unknown>('generateCampaignStory', async (request) => {
@@ -49,7 +51,7 @@ export const generateCampaignStory = onCall(
     const campaignId = assertValidId(request.data?.campaignId, 'campaignId');
 
     const db = getFirestore();
-    await assertCampaignOwner(db, campaignId, uid);
+    const campaign = await assertCampaignOwner(db, campaignId, uid);
     const campaignRef = db.doc(`campaigns/${campaignId}`);
 
     const generatingSnap = await db.collection(campaignStoriesCollectionPath(campaignId))
@@ -64,9 +66,26 @@ export const generateCampaignStory = onCall(
       id: doc.id,
       ...(doc.data() as Omit<SessionDocForCampaignStory, 'id'>),
     }));
-    const { sources, skipped, inputs } = selectCampaignStorySources(sessions);
-    if (sources.length === 0) {
-      throw refusal('failed-precondition', 'There are no session stories to summarize yet.', 'no-session-stories');
+
+    // Before a version exists: sessions that were never recorded only live in Kanka,
+    // so a story written while Kanka can't be read would silently miss them.
+    let kanka: CampaignStoryKanka | undefined;
+    try {
+      kanka = await loadCampaignStoryKanka(campaignId, campaign);
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      captureFunctionError('generateCampaignStory', err, { campaignId, step: 'kanka' });
+      throw refusal('unavailable', 'Kanka could not be read.', 'kanka-unavailable');
+    }
+
+    const { sources, skipped, journalSources, timeline, undatedJournals } =
+      selectCampaignStorySources(sessions, kanka?.journals);
+    if (sources.length === 0 && journalSources.length === 0) {
+      throw refusal(
+        'failed-precondition',
+        'There are no session stories or written reports to summarize yet.',
+        'no-session-stories'
+      );
     }
 
     // Allocate the version number atomically so double clicks can't collide
@@ -78,6 +97,7 @@ export const generateCampaignStory = onCall(
         status: 'generating',
         sourceSessions: sources,
         skippedSessions: skipped,
+        sourceJournals: journalSources,
         createdBy: uid,
         createdAt: new Date(),
         progress: 10,
@@ -97,7 +117,7 @@ export const generateCampaignStory = onCall(
       const config = await getCampaignStoryConfig();
       await versionRef.update({ progress: 30, ...progressFields('writing') });
 
-      const story = await generateCampaignStoryText(inputs, config);
+      const story = await generateCampaignStoryText({ timeline, undatedJournals, reference: kanka?.reference }, config);
 
       await versionRef.update({
         status: 'completed',
@@ -114,7 +134,7 @@ export const generateCampaignStory = onCall(
       await campaignRef.update({ 'campaignStory.latestCompletedVersion': version });
 
       logger.info(`Campaign story v${version} generated`, {
-        campaignId, sessions: sources.length, wordCount: story.wordCount,
+        campaignId, sessions: sources.length, journals: journalSources.length, wordCount: story.wordCount,
       });
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));

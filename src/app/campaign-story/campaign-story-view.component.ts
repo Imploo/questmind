@@ -3,6 +3,7 @@ import { DomSanitizer } from '@angular/platform-browser';
 import { marked } from 'marked';
 import { FormattingService } from '../shared/formatting.service';
 import { CampaignStoryVersion } from './campaign-story.models';
+import { sourceCountText } from './campaign-story.utils';
 import { I18nService } from '../core/i18n/i18n.service';
 import { TranslatePipe } from '../core/i18n/translate.pipe';
 
@@ -62,7 +63,7 @@ export class CampaignStoryViewComponent {
     return [
       t.common.version(version.version),
       this.formatting.formatDate(version.completedAt ?? version.createdAt),
-      t.campaignStory.sessionCount(version.sourceSessions?.length ?? 0),
+      sourceCountText(version, t),
     ].filter(Boolean).join(' · ');
   });
 

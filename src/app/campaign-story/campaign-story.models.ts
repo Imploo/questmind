@@ -1,6 +1,6 @@
 import { PodcastVersion } from '../audio/services/audio-session.models';
 
-/** Campaign story (ticket #69): a versioned summary of all session stories. */
+/** Campaign story (ticket #69): a versioned summary of all session stories and the written reports in Kanka. */
 export type CampaignStoryStatus = 'generating' | 'completed' | 'failed';
 
 /** Where a generation is; the backend sends the step, the text comes from the translations. */
@@ -11,6 +11,14 @@ export interface CampaignStorySourceSession {
   title: string;
   sessionDate: string | null;
   storyVersion: number;
+}
+
+/** A written report (journal) from Kanka that went into a story version. */
+export interface CampaignStorySourceJournal {
+  journalId: number;
+  title: string;
+  date: string | null;
+  updatedAt: string | null;
 }
 
 export interface CampaignStorySkippedSession {
@@ -32,6 +40,8 @@ export interface CampaignStoryVersion {
   wordCount?: number;
   sourceSessions: CampaignStorySourceSession[];
   skippedSessions: CampaignStorySkippedSession[];
+  /** Absent on versions written before Kanka journals were a source. */
+  sourceJournals?: CampaignStorySourceJournal[];
   createdBy: string;
   createdAt: FirestoreDateValue;
   completedAt?: FirestoreDateValue;

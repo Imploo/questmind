@@ -20,6 +20,10 @@ describe('CampaignStoryPageComponent', () => {
   const versions = signal<CampaignStoryVersion[]>([]);
   const sessions = signal<{ id: string; status: string; content: string; storyRegenerationCount?: number }[]>([]);
   const currentUser = signal<{ uid: string } | null>({ uid: 'owner' });
+  const campaign = signal<{ id: string; name: string; ownerId: string; settings?: { kankaEnabled?: boolean; kankaCampaignId?: string } }>(
+    { id: 'campaign-1', name: 'Grauwhaven', ownerId: 'owner' }
+  );
+  const linkKanka = () => campaign.update(current => ({ ...current, settings: { kankaEnabled: true, kankaCampaignId: '123' } }));
   const storyService = {
     versions,
     isLoading: signal(false),
@@ -54,7 +58,7 @@ describe('CampaignStoryPageComponent', () => {
           provide: CampaignContextService,
           useValue: {
             campaigns: signal([]),
-            selectedCampaign: signal({ id: 'campaign-1', name: 'Grauwhaven', ownerId: 'owner' }),
+            selectedCampaign: campaign,
             selectedCampaignId: signal('campaign-1'),
           },
         },
@@ -73,6 +77,7 @@ describe('CampaignStoryPageComponent', () => {
     versions.set([]);
     sessions.set([]);
     currentUser.set({ uid: 'owner' });
+    campaign.set({ id: 'campaign-1', name: 'Grauwhaven', ownerId: 'owner' });
     storyService.generate.mockResolvedValue(undefined);
   });
 
@@ -199,6 +204,47 @@ describe('CampaignStoryPageComponent', () => {
       fixture.detectChanges();
       expect(emptyState().textContent).toContain(en.campaignStory.emptyMember);
       expect(generateButton()).toBeNull();
+    });
+  });
+
+  describe('with Kanka linked to the campaign', () => {
+    const emptyState = () => element.querySelector('[data-testid="story-empty"]') as HTMLElement;
+
+    it('lets the owner have the story written from the journals, before any session has a story', async () => {
+      linkKanka();
+      create();
+
+      expect(emptyState().textContent).toContain(en.campaignStory.emptyKanka);
+      generateButton().click();
+      await fixture.whenStable();
+      expect(storyService.generate).toHaveBeenCalledWith('campaign-1');
+    });
+
+    it('still sends a member to the sessions', () => {
+      linkKanka();
+      currentUser.set({ uid: 'member' });
+      create();
+
+      expect(emptyState().textContent).toContain(en.campaignStory.emptyNoSessions);
+      expect(generateButton()).toBeNull();
+    });
+
+    it('keeps the write button of an existing story usable without session stories', () => {
+      versions.set([version({ sourceSessions: [], sourceJournals: [{ journalId: 7, title: 'Sessie 1', date: null, updatedAt: null }] })]);
+      create();
+      expect(generateButton().disabled).toBe(true);
+
+      linkKanka();
+      fixture.detectChanges();
+      expect(generateButton().disabled).toBe(false);
+      expect(text()).toContain(en.campaignStory.journalCount(1));
+      expect(text()).not.toContain(en.campaignStory.sessionCount(0));
+    });
+
+    it('needs both the switch and the Kanka campaign', () => {
+      campaign.update(current => ({ ...current, settings: { kankaEnabled: true } }));
+      create();
+      expect(emptyState().textContent).toContain(en.campaignStory.emptyNoSessions);
     });
   });
 
