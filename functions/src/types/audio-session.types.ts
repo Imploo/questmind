@@ -2,29 +2,22 @@
  * Shared types for audio session processing
  */
 
-export interface KankaCharacter {
+/** What the Kanka lists return for every kind of entity, as far as we use it. */
+export interface KankaEntitySummary {
   name: string;
+  /** Free text, e.g. "NPC" or "City" */
+  type?: string;
   entry?: string;
   entry_parsed?: string;
+  /** Id used by mentions (`[character:42]`) and by `author_id` of a journal */
+  entity_id?: number;
+  is_private?: boolean;
 }
 
-export interface KankaLocation {
-  name: string;
-  entry?: string;
-  entry_parsed?: string;
-}
-
-export interface KankaQuest {
-  name: string;
-  entry?: string;
-  entry_parsed?: string;
-}
-
-export interface KankaOrganisation {
-  name: string;
-  entry?: string;
-  entry_parsed?: string;
-}
+export type KankaCharacter = KankaEntitySummary;
+export type KankaLocation = KankaEntitySummary;
+export type KankaQuest = KankaEntitySummary;
+export type KankaOrganisation = KankaEntitySummary;
 
 export interface KankaSearchResult {
   characters?: KankaCharacter[];

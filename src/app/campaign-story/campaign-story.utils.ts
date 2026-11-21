@@ -38,6 +38,19 @@ export function coveredUntil(version: Pick<CampaignStoryVersion, 'sourceSessions
   return days.at(-1) ?? null;
 }
 
+/** What a version was written from: `3 sessions`, with `· 2 journals from Kanka` when it has those. */
+export function sourceCountText(
+  version: Pick<CampaignStoryVersion, 'sourceSessions' | 'sourceJournals'>,
+  t: Pick<Translations, 'campaignStory'>
+): string {
+  const sessions = version.sourceSessions?.length ?? 0;
+  const journals = version.sourceJournals?.length ?? 0;
+  return [
+    sessions > 0 || journals === 0 ? t.campaignStory.sessionCount(sessions) : '',
+    journals > 0 ? t.campaignStory.journalCount(journals) : '',
+  ].filter(Boolean).join(' · ');
+}
+
 /** Newest completed version (versions are sorted newest first). */
 export function latestCompletedVersion(versions: CampaignStoryVersion[]): CampaignStoryVersion | null {
   return versions.find(version => version.status === 'completed') ?? null;

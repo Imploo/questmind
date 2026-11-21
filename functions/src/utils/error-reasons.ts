@@ -16,6 +16,7 @@ export const ERROR_REASONS = [
   'import-character-unreadable',
   'story-already-generating',
   'no-session-stories',
+  'kanka-unavailable',
   'story-version-not-ready',
   'podcast-already-generating',
   'podcast-not-ready',

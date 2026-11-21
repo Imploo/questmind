@@ -66,6 +66,7 @@ export interface Translations {
       importCharacterUnreadable: string;
       storyAlreadyGenerating: string;
       noSessionStories: string;
+      kankaUnavailable: string;
       storyVersionNotReady: string;
       podcastAlreadyGenerating: string;
       podcastNotReady: string;
@@ -275,12 +276,14 @@ export interface Translations {
     sessionNotIncludedHelp: string;
     updateCampaignStory: string;
     sessionCount: (count: number) => string;
+    journalCount: (count: number) => string;
     versionFailed: (version: number) => string;
     generationFailed: string;
     startFailed: string;
     emptyTitle: string;
     emptyNoSessions: string;
     emptyWaiting: string;
+    emptyKanka: string;
     emptyOwner: (count: number) => string;
     emptyMember: string;
     uploadFirst: string;

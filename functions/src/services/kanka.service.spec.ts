@@ -113,6 +113,71 @@ describe('KankaService', () => {
     });
   });
 
+  describe('paging', () => {
+    it('should read every page of a list, keeping its own address and filters', async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ data: [{ id: 1, name: 'A' }], links: { next: 'https://elsewhere.example/page=2' } }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ data: [{ id: 2, name: 'B' }], links: { next: null } }),
+        });
+
+      const service = new KankaService('test-token');
+      const result = await service.getAllEntities('kanka-123', ['characters']);
+
+      expect(result.characters?.map(character => character.name)).toEqual(['A', 'B']);
+      expect(mockFetch.mock.calls.map(([url]) => url)).toEqual([
+        'https://api.kanka.io/1.0/campaigns/kanka-123/characters',
+        'https://api.kanka.io/1.0/campaigns/kanka-123/characters?page=2',
+      ]);
+    });
+
+    it('should stop after ten pages', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ data: [{ id: 1, name: 'A' }], links: { next: 'more' } }),
+      });
+
+      const service = new KankaService('test-token');
+      const result = await service.getAllEntities('kanka-123', ['characters']);
+
+      expect(mockFetch).toHaveBeenCalledTimes(10);
+      expect(result.characters).toHaveLength(10);
+    });
+  });
+
+  describe('getJournals', () => {
+    it('should throw if kankaCampaignId is empty', async () => {
+      await expect(new KankaService('test-token').getJournals('')).rejects.toThrow('Kanka campaign ID is required');
+    });
+
+    it('should fetch the journals with their posts, page by page', async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({ data: [{ id: 1, name: 'Sessie 1', posts: [{ entry: 'x' }] }], links: { next: 'more' } }),
+        })
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ data: [{ id: 2, name: 'Sessie 2' }] }) });
+
+      const journals = await new KankaService('test-token').getJournals('kanka-123');
+
+      expect(journals.map(journal => journal.id)).toEqual([1, 2]);
+      expect(mockFetch.mock.calls.map(([url]) => url)).toEqual([
+        'https://api.kanka.io/1.0/campaigns/kanka-123/journals?related=1',
+        'https://api.kanka.io/1.0/campaigns/kanka-123/journals?related=1&page=2',
+      ]);
+    });
+
+    it('should throw when Kanka cannot be read, instead of returning nothing', async () => {
+      mockFetch.mockResolvedValue({ ok: false, status: 429, statusText: 'Too Many Requests', text: () => Promise.resolve('slow down') });
+
+      await expect(new KankaService('test-token').getJournals('kanka-123')).rejects.toThrow('Kanka API error: 429');
+    });
+  });
+
   describe('searchEntities', () => {
     it('should throw if kankaCampaignId is empty', async () => {
       const service = new KankaService('test-token');

@@ -58,7 +58,9 @@ export const nl: Translations = {
       importCharacterNotFound: 'Er is geen karakter gevonden op die link.',
       importCharacterUnreadable: 'Het karakter op die link kon niet worden gelezen.',
       storyAlreadyGenerating: 'Er wordt al een verhaal gegenereerd.',
-      noSessionStories: 'Er zijn nog geen sessieverhalen om samen te vatten.',
+      noSessionStories: 'Er zijn nog geen sessieverhalen of verslagen in Kanka om samen te vatten.',
+      kankaUnavailable:
+        'Kanka kon niet worden gelezen, dus de verslagen daaruit zouden in het verhaal ontbreken. Probeer het later opnieuw.',
       storyVersionNotReady: 'Deze versie van het verhaal is nog niet klaar.',
       podcastAlreadyGenerating: 'Er wordt al een podcast gegenereerd.',
       podcastNotReady: 'Deze podcast is nog niet klaar om te delen.',
@@ -187,7 +189,8 @@ export const nl: Translations = {
       kankaEnable: 'Kanka-integratie inschakelen',
       kankaCampaignId: 'Kanka-campagne-ID',
       kankaCampaignIdPlaceholder: 'bijv. 123456',
-      kankaHelp: 'Wordt gebruikt voor de Kanka-integratie bij het genereren van verhalen.',
+      kankaHelp:
+        'Namen uit Kanka zorgen voor de juiste spelling in de verhalen. De journals in Kanka, zoals verslagen van sessies zonder opname, worden verwerkt in het campagneverhaal.',
       allowMembersToCreateSessions: 'Leden mogen sessies aanmaken',
       save: 'Instellingen opslaan',
       saved: 'Instellingen opgeslagen!',
@@ -271,6 +274,7 @@ export const nl: Translations = {
     sessionNotIncludedHelp: 'Werk het verhaal bij om deze avond erin op te nemen.',
     updateCampaignStory: 'Campagneverhaal bijwerken',
     sessionCount: (count) => (count === 1 ? '1 sessie' : `${count} sessies`),
+    journalCount: (count) => (count === 1 ? '1 verslag uit Kanka' : `${count} verslagen uit Kanka`),
     versionFailed: (version) => `Versie ${version} is mislukt.`,
     generationFailed: 'Het genereren van deze versie is mislukt.',
     startFailed: 'Genereren kon niet gestart worden. Probeer het opnieuw.',
@@ -278,6 +282,8 @@ export const nl: Translations = {
     emptyNoSessions:
       'Het verhaal van de campagne wordt geschreven uit de sessies. Upload de eerste sessie om te beginnen.',
     emptyWaiting: 'Zodra het verhaal van een sessie klaar is, kan het campagneverhaal worden geschreven.',
+    emptyKanka:
+      'Er is nog geen sessieverhaal klaar, maar het campagneverhaal kan ook uit de verslagen in Kanka worden geschreven.',
     emptyOwner: (count) =>
       count === 1
         ? 'Er staat 1 sessie klaar. Laat er een doorlopend verhaal van de campagne van schrijven.'

@@ -5,6 +5,7 @@ import {
   isInStory,
   isActiveGeneration,
   latestCompletedVersion,
+  sourceCountText,
   storyProgressText,
 } from './campaign-story.utils';
 import { CampaignStoryProgressStep, CampaignStoryVersion } from './campaign-story.models';
@@ -119,6 +120,22 @@ describe('isInStory', () => {
     expect(isInStory(version, { id: 'a', storyRegenerationCount: 3 })).toBe(false);
     expect(isInStory(version, { id: 'b' })).toBe(false);
     expect(isInStory(null, { id: 'a' })).toBe(false);
+  });
+});
+
+describe('sourceCountText', () => {
+  const source = { sessionId: 'x', title: 'X', sessionDate: null, storyVersion: 1 };
+  const journal = { journalId: 1, title: 'Verslag', date: null, updatedAt: null };
+
+  it('counts the sessions, also on a version from before journals were a source', () => {
+    expect(sourceCountText({ sourceSessions: [source, source] }, nl)).toBe('2 sessies');
+    expect(sourceCountText({ sourceSessions: [], sourceJournals: [] }, en)).toBe('0 sessions');
+  });
+
+  it('adds the journals from Kanka, and leaves the sessions out when there are none', () => {
+    expect(sourceCountText({ sourceSessions: [source], sourceJournals: [journal, journal] }, nl))
+      .toBe('1 sessie · 2 verslagen uit Kanka');
+    expect(sourceCountText({ sourceSessions: [], sourceJournals: [journal] }, en)).toBe('1 journal from Kanka');
   });
 });
 
