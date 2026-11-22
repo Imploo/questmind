@@ -44,6 +44,9 @@ export { generateCampaignStoryPodcast } from './generate-campaign-story-podcast'
 export { createPodcastShare } from './create-podcast-share';
 export { podcastSharePage } from './podcast-share-page';
 
+// Deleting a podcast (campaign owner only): its entry, audio and share links
+export { deletePodcast } from './delete-podcast';
+
 // Public share link for a character, with a link preview
 export { characterSharePage } from './character-share-page';
 

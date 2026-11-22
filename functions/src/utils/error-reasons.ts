@@ -20,6 +20,7 @@ export const ERROR_REASONS = [
   'story-version-not-ready',
   'podcast-already-generating',
   'podcast-not-ready',
+  'podcast-generating',
   'session-has-no-story',
   'no-uploaded-audio',
   'no-transcription',
