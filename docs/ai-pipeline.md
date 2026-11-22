@@ -168,7 +168,7 @@ Verder:
 - De Kanka-lijsten worden per pagina opgehaald (maximaal 10 pagina's per soort).
 
 **12. Podcast** — `functions/src/generate-campaign-story-podcast.ts`
-Zelfde instellingen en stappen als de sessiepodcast (9 + 10), met het campagneverhaal als bron. Wat uit de verslagen in het verhaal staat, komt dus ook in de podcast.
+Zelfde instellingen en stappen als de sessiepodcast (9 + 10), met het campagneverhaal als bron. Wat uit de verslagen in het verhaal staat, komt dus ook in de podcast. De scriptprompt is dezelfde als voor een sessie, met een eigen framing (`kind: 'campaign'`): een terugblik op de grote lijnen die eindigt bij waar de party nu staat, zonder discussie over de toekomst als slot.
 
 ---
 

@@ -144,4 +144,22 @@ describe('getPodcastScriptPrompt kinds', () => {
     expect(prompt).not.toContain('sessie recap');
     expect(prompt).toContain('ONDER 5000 karakters');
   });
+
+  it('ends a campaign podcast at the present, without a discussion about the future', () => {
+    const campaign = getPodcastScriptPrompt(5000, 'campaign');
+    expect(campaign).toContain('Sluit NIET af met een discussie, speculatie of vooruitblik');
+    expect(campaign).toContain('zonder vooruitblik op de toekomst');
+    expect(campaign).not.toContain('sluit af met speculatie');
+    expect(campaign).not.toContain('waar het verhaal heen zou kunnen gaan');
+
+    expect(getPodcastScriptPrompt(5000, 'session')).toContain('sluit af met speculatie en een korte afronding');
+  });
+
+  it('asks for 10-20% speculation in both kinds', () => {
+    for (const kind of ['session', 'campaign'] as const) {
+      const prompt = getPodcastScriptPrompt(5000, kind);
+      expect(prompt).toContain('Ongeveer 10-20% van het transcript');
+      expect(prompt).not.toContain('20-30%');
+    }
+  });
 });
