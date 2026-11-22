@@ -77,9 +77,7 @@ describe('noAuthGuard', () => {
   };
 
   const mockRouter = {
-    createUrlTree: vi.fn((commands: string[]) => {
-      return { toString: () => commands.join('/') } as unknown as UrlTree;
-    }),
+    parseUrl: vi.fn((url: string) => ({ toString: () => url }) as unknown as UrlTree),
   };
 
   beforeEach(() => {
@@ -121,7 +119,7 @@ describe('noAuthGuard', () => {
     });
 
     expect(result).not.toBe(true);
-    expect(mockRouter.createUrlTree).toHaveBeenCalled();
+    expect(mockRouter.parseUrl).toHaveBeenCalledWith('/');
   });
 
   it('should redirect to returnUrl when available', async () => {
@@ -136,6 +134,17 @@ describe('noAuthGuard', () => {
     });
 
     expect(result).not.toBe(true);
-    expect(mockRouter.createUrlTree).toHaveBeenCalledWith(['/dashboard']);
+    expect(mockRouter.parseUrl).toHaveBeenCalledWith('/dashboard');
+  });
+
+  it('never returns to another site', async () => {
+    mockIsAuthenticated.set(true);
+
+    await TestBed.runInInjectionContext(() => firstValueFrom(noAuthGuard(
+      { queryParams: { returnUrl: 'https://evil.example' } } as unknown as ActivatedRouteSnapshot,
+      {} as RouterStateSnapshot
+    ) as Observable<boolean | UrlTree>));
+
+    expect(mockRouter.parseUrl).toHaveBeenCalledWith('/');
   });
 });

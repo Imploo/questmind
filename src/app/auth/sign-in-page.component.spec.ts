@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { signal } from '@angular/core';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { SignInPageComponent } from './sign-in-page.component';
 import { AuthService } from './auth.service';
 import { EmailAuthFormComponent } from './email-auth-form.component';
@@ -21,7 +21,8 @@ describe('SignInPageComponent', () => {
     signUpWithEmail: vi.fn(),
     sendPasswordReset: vi.fn(),
   };
-  const router = { navigate: vi.fn() };
+  const router = { navigateByUrl: vi.fn() };
+  let queryParams: Record<string, string> = {};
   const preference = { choose: vi.fn() };
 
   const form = () =>
@@ -33,19 +34,12 @@ describe('SignInPageComponent', () => {
     fixture.detectChanges();
   };
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-    isLoading.set(false);
-    authService.signInWithGoogle.mockResolvedValue(undefined);
-    authService.signInWithEmail.mockResolvedValue({});
-    authService.signUpWithEmail.mockResolvedValue({});
-    authService.sendPasswordReset.mockResolvedValue(undefined);
-    router.navigate.mockResolvedValue(true);
-
+  function create(): void {
     TestBed.configureTestingModule({
       providers: [
         { provide: AuthService, useValue: authService },
         { provide: Router, useValue: router },
+        { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: convertToParamMap(queryParams) } } },
         { provide: LanguagePreferenceService, useValue: preference },
       ],
     });
@@ -53,6 +47,19 @@ describe('SignInPageComponent', () => {
     component = fixture.componentInstance;
     element = fixture.nativeElement as HTMLElement;
     fixture.detectChanges();
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    queryParams = {};
+    isLoading.set(false);
+    authService.signInWithGoogle.mockResolvedValue(undefined);
+    authService.signInWithEmail.mockResolvedValue({});
+    authService.signUpWithEmail.mockResolvedValue({});
+    authService.sendPasswordReset.mockResolvedValue(undefined);
+    router.navigateByUrl.mockResolvedValue(true);
+
+    create();
   });
 
   it('shows Google sign in above the email form', () => {
@@ -67,7 +74,7 @@ describe('SignInPageComponent', () => {
 
     expect(authService.signInWithEmail).toHaveBeenCalledWith('hero@example.com', 'secret123');
     expect(authService.signUpWithEmail).not.toHaveBeenCalled();
-    expect(router.navigate).toHaveBeenCalledWith(['/']);
+    expect(router.navigateByUrl).toHaveBeenCalledWith('/');
   });
 
   it('signs up with email in sign up mode and navigates home', async () => {
@@ -78,7 +85,7 @@ describe('SignInPageComponent', () => {
 
     expect(authService.signUpWithEmail).toHaveBeenCalledWith('new@example.com', 'secret123');
     expect(authService.signInWithEmail).not.toHaveBeenCalled();
-    expect(router.navigate).toHaveBeenCalledWith(['/']);
+    expect(router.navigateByUrl).toHaveBeenCalledWith('/');
   });
 
   it('sends a password reset and shows a success message', async () => {
@@ -89,7 +96,7 @@ describe('SignInPageComponent', () => {
     await submit('hero@example.com', '');
 
     expect(authService.sendPasswordReset).toHaveBeenCalledWith('hero@example.com');
-    expect(router.navigate).not.toHaveBeenCalled();
+    expect(router.navigateByUrl).not.toHaveBeenCalled();
     expect(component.success()).toBe('Password reset email sent! Check your inbox.');
     expect(element.querySelector('[role="status"]')?.textContent).toContain('Password reset email sent!');
   });
@@ -99,7 +106,7 @@ describe('SignInPageComponent', () => {
 
     await submit('hero@example.com', 'wrong-password');
 
-    expect(router.navigate).not.toHaveBeenCalled();
+    expect(router.navigateByUrl).not.toHaveBeenCalled();
     expect(element.querySelector('[role="alert"]')?.textContent).toContain('Incorrect password');
   });
 
@@ -114,11 +121,32 @@ describe('SignInPageComponent', () => {
     expect(element.querySelector('[role="alert"]')).toBeNull();
   });
 
+  it('goes back to the page that sent the user to sign in, such as a shared campaign', async () => {
+    TestBed.resetTestingModule();
+    queryParams = { returnUrl: '/share/campaign/abc/sessions/s1' };
+    create();
+
+    await component.signInWithGoogle();
+    expect(router.navigateByUrl).toHaveBeenCalledWith('/share/campaign/abc/sessions/s1');
+
+    await submit('a@b.nl', 'secret123');
+    expect(router.navigateByUrl).toHaveBeenLastCalledWith('/share/campaign/abc/sessions/s1');
+  });
+
+  it('ignores a return address outside the app', async () => {
+    TestBed.resetTestingModule();
+    queryParams = { returnUrl: 'https://evil.example' };
+    create();
+
+    await component.signInWithGoogle();
+    expect(router.navigateByUrl).toHaveBeenCalledWith('/');
+  });
+
   it('signs in with Google and navigates home', async () => {
     await component.signInWithGoogle();
 
     expect(authService.signInWithGoogle).toHaveBeenCalled();
-    expect(router.navigate).toHaveBeenCalledWith(['/']);
+    expect(router.navigateByUrl).toHaveBeenCalledWith('/');
   });
 
   it('offers the language choice and passes a pick on', () => {
