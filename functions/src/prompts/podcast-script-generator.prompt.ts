@@ -8,6 +8,8 @@ interface PodcastFraming {
   sourceName: string;
   speculationExample: string;
   exampleOpening: string;
+  /** How the episode ends (last line of the LENGTE section). */
+  ending: string;
   closing: string;
 }
 
@@ -19,6 +21,7 @@ const FRAMING: Record<PodcastKind, PodcastFraming> = {
     sourceName: 'het sessieverhaal',
     speculationExample: 'Ik wed dat volgende sessie...',
     exampleOpening: 'Vandaag hebben we een bijzondere sessie om te bespreken.',
+    ending: 'sluit af met speculatie en een korte afronding',
     closing: 'Schrijf nu het transcript gebaseerd op het sessie verhaal hieronder.',
   },
   campaign: {
@@ -27,12 +30,15 @@ const FRAMING: Record<PodcastKind, PodcastFraming> = {
 TERUGBLIK OP DE CAMPAGNE:
 - Dit is geen recap van één avond, maar een terugblik op de grote lijnen van de campagne tot nu toe
 - Bespreek hoe het verhaal zich ontwikkeld heeft, hoe de party veranderd is en welke momenten achteraf het meest bepalend waren
-- Eindig bij waar de party nu staat: de open draden en waar het verhaal heen zou kunnen gaan
+- Eindig bij waar de party nu staat en rond daarna kort af
+- Sluit NIET af met een discussie, speculatie of vooruitblik over de toekomst van het verhaal: het slot gaat over wat er gebeurd is en waar de party nu staat
+- Speculatie en theorieën horen bij het moment waar ze over gaan, midden in het gesprek, en nooit als slotblok
 `,
     firstContentItem: 'De grote verhaallijnen en de meest bepalende momenten van de campagne',
     sourceName: 'het campagneverhaal',
     speculationExample: 'Ik wed dat ze straks...',
     exampleOpening: 'Vandaag kijken we terug op de hele campagne tot nu toe.',
+    ending: 'sluit af bij waar de party nu staat en een korte afronding, zonder vooruitblik op de toekomst',
     closing: 'Schrijf nu het transcript gebaseerd op het campagneverhaal hieronder.',
   },
 };
@@ -112,7 +118,7 @@ LENGTE:
 - Dit is een uitgebreide aflevering — mik op een vol, rijk transcript van ${Math.round(maxCharacters * 0.85)} tot ${maxCharacters} karakters (ruwweg ${Math.round(maxCharacters / 1000)} minuten luistertijd)
 - Blijf ONDER ${maxCharacters} karakters; dat is de harde bovengrens
 - Vul die lengte met ECHTE inhoud uit het verhaal: behandel meerdere scènes, beslissingen en momenten uitgebreid in plaats van één highlight uit te spinnen
-- Korte intro, neem ruim de tijd voor de inhoud, en sluit af met speculatie en een korte afronding
+- Korte intro, neem ruim de tijd voor de inhoud, en ${framing.ending}
 
 ${framing.closing}
 `;
