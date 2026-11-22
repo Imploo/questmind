@@ -31,6 +31,11 @@ vi.mock('./campaign-story/campaign-story-generator.service', () => ({
   generateCampaignStory: (...args: unknown[]) => generateText(...args),
 }));
 
+const loadKanka = vi.fn();
+vi.mock('./campaign-story/campaign-story-kanka', () => ({
+  loadCampaignStoryKanka: (...args: unknown[]) => loadKanka(...args),
+}));
+
 vi.mock('./utils/ai-settings', () => ({
   getCampaignStoryConfig: vi.fn(() => Promise.resolve({ model: 'gemini-test', maxOutputTokens: 1000, targetWords: 1200 })),
 }));
@@ -77,6 +82,7 @@ describe('generateCampaignStory', () => {
     sessionsGet.mockResolvedValue({ docs: [completedSession] });
     txGet.mockResolvedValue({ data: () => ({ campaignStory: { latestVersion: 2 } }) });
     generateText.mockResolvedValue({ title: 'De val', content: 'Tekst', wordCount: 1 });
+    loadKanka.mockResolvedValue(undefined);
   });
 
   it('rejects unauthenticated callers', async () => {
@@ -123,12 +129,106 @@ describe('generateCampaignStory', () => {
         status: 'generating',
         createdBy: 'owner-1',
         sourceSessions: [{ sessionId: 's1', title: 'Sessie 1', sessionDate: '2026-01-01', storyVersion: 1 }],
+        sourceJournals: [],
         podcasts: [],
       })
+    );
+    expect(generateText).toHaveBeenCalledWith(
+      {
+        timeline: [{ kind: 'session', title: 'Sessie 1', sessionDate: '2026-01-01', uploadedAt: null, content: 'Het verhaal' }],
+        undatedJournals: [],
+        reference: undefined,
+      },
+      expect.anything()
     );
     expect(txUpdate).toHaveBeenCalledWith(expect.anything(), { 'campaignStory.latestVersion': 3 });
     expect(versionUpdate).toHaveBeenCalledWith(expect.objectContaining({ status: 'completed', title: 'De val', content: 'Tekst' }));
     expect(campaignUpdate).toHaveBeenCalledWith({ 'campaignStory.latestCompletedVersion': 3 });
+  });
+
+  describe('with Kanka linked to the campaign', () => {
+    const reference = { characters: [{ name: 'Strahd' }], locations: [], quests: [], organisations: [] };
+    const journal = (overrides: Record<string, unknown>) => ({
+      journalId: 7,
+      title: 'Verslag sessie 1',
+      date: '2025-12-01',
+      createdAt: '2026-02-01',
+      updatedAt: '2026-02-02T10:00:00.000000Z',
+      type: 'Session',
+      author: 'Mira',
+      content: 'Wij kwamen aan.',
+      ...overrides,
+    });
+
+    it('reads Kanka with the settings of the campaign', async () => {
+      const campaign = { ownerId: 'owner-1', settings: { kankaEnabled: true, kankaCampaignId: '123' } };
+      campaignGet.mockResolvedValue({ exists: true, data: () => campaign });
+
+      await handler(request());
+
+      expect(loadKanka).toHaveBeenCalledWith('campaign-1', campaign);
+    });
+
+    it('writes the story from the session stories and the written reports, with the reference', async () => {
+      loadKanka.mockResolvedValue({
+        journals: [journal({}), journal({ journalId: 8, title: 'Los verslag', date: null })],
+        reference,
+      });
+
+      await handler(request());
+
+      expect(txCreate).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          sourceJournals: [
+            { journalId: 7, title: 'Verslag sessie 1', date: '2025-12-01', updatedAt: '2026-02-02T10:00:00.000000Z' },
+            { journalId: 8, title: 'Los verslag', date: null, updatedAt: '2026-02-02T10:00:00.000000Z' },
+          ],
+        })
+      );
+      const [material] = generateText.mock.calls[0];
+      expect(material.timeline.map((input: { kind: string; title: string }) => `${input.kind}:${input.title}`)).toEqual([
+        'journal:Verslag sessie 1',
+        'session:Sessie 1',
+      ]);
+      expect(material.undatedJournals.map((input: { title: string }) => input.title)).toEqual(['Los verslag']);
+      expect(material.reference).toBe(reference);
+    });
+
+    it('writes a story from written reports alone, when no session has a story yet', async () => {
+      sessionsGet.mockResolvedValue({ docs: [] });
+      loadKanka.mockResolvedValue({ journals: [journal({})], reference });
+
+      await expect(handler(request())).resolves.toEqual({ success: true, version: 3 });
+      expect(txCreate).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ sourceSessions: [], sourceJournals: [expect.objectContaining({ journalId: 7 })] })
+      );
+    });
+
+    it('rejects when there are no session stories and no written reports', async () => {
+      sessionsGet.mockResolvedValue({ docs: [] });
+      loadKanka.mockResolvedValue({ journals: [], reference });
+
+      await expect(handler(request())).rejects.toThrow(
+        expect.objectContaining({ code: 'failed-precondition', details: { reason: 'no-session-stories' } })
+      );
+    });
+
+    it('refuses, without starting a version, when Kanka cannot be read', async () => {
+      loadKanka.mockRejectedValue(new Error('Kanka API error: 500'));
+
+      await expect(handler(request())).rejects.toThrow(
+        expect.objectContaining({ code: 'unavailable', details: { reason: 'kanka-unavailable' } })
+      );
+      expect(txCreate).not.toHaveBeenCalled();
+      expect(generateText).not.toHaveBeenCalled();
+      expect(captureFunctionError).toHaveBeenCalledWith(
+        'generateCampaignStory',
+        expect.objectContaining({ message: 'Kanka API error: 500' }),
+        expect.objectContaining({ step: 'kanka' })
+      );
+    });
   });
 
   it('writes the step of the generation as a code, next to the Dutch text for older clients', async () => {

@@ -1,13 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { signal } from '@angular/core';
-import { Router } from '@angular/router';
-import { BookOpen, ChevronDown, LUCIDE_ICONS, LucideIconProvider, Plus, Settings } from 'lucide-angular';
+import { provideRouter } from '@angular/router';
 import { CampaignStoryPageComponent } from './campaign-story-page.component';
 import { CampaignStoryService } from './campaign-story.service';
 import { CampaignStoryVersion } from './campaign-story.models';
 import { AuthService } from '../auth/auth.service';
-import { CampaignService } from '../campaign/campaign.service';
 import { CampaignContextService } from '../campaign/campaign-context.service';
 import { AudioSessionStateService } from '../audio/services/audio-session-state.service';
 import { I18nService } from '../core/i18n/i18n.service';
@@ -22,6 +20,10 @@ describe('CampaignStoryPageComponent', () => {
   const versions = signal<CampaignStoryVersion[]>([]);
   const sessions = signal<{ id: string; status: string; content: string; storyRegenerationCount?: number }[]>([]);
   const currentUser = signal<{ uid: string } | null>({ uid: 'owner' });
+  const campaign = signal<{ id: string; name: string; ownerId: string; settings?: { kankaEnabled?: boolean; kankaCampaignId?: string } }>(
+    { id: 'campaign-1', name: 'Grauwhaven', ownerId: 'owner' }
+  );
+  const linkKanka = () => campaign.update(current => ({ ...current, settings: { kankaEnabled: true, kankaCampaignId: '123' } }));
   const storyService = {
     versions,
     isLoading: signal(false),
@@ -44,7 +46,7 @@ describe('CampaignStoryPageComponent', () => {
   const session = (id: string) => ({ id, status: 'completed', content: 'Verhaal' });
 
   const text = () => element.textContent ?? '';
-  const generateButton = () => element.querySelector('button.qm-btn-gold') as HTMLButtonElement;
+  const generateButton = () => element.querySelector('[data-testid="generate-story"]') as HTMLButtonElement;
   const alerts = () => Array.from(element.querySelectorAll('[role="alert"]')) as HTMLElement[];
 
   function create(language: 'nl' | 'en' = 'en'): void {
@@ -56,19 +58,12 @@ describe('CampaignStoryPageComponent', () => {
           provide: CampaignContextService,
           useValue: {
             campaigns: signal([]),
-            selectedCampaign: signal({ id: 'campaign-1', name: 'Grauwhaven', ownerId: 'owner' }),
+            selectedCampaign: campaign,
             selectedCampaignId: signal('campaign-1'),
           },
         },
         { provide: AudioSessionStateService, useValue: { sessions } },
-        // For the campaign selector at the top of the page.
-        { provide: Router, useValue: { navigate: vi.fn() } },
-        { provide: CampaignService, useValue: { isCampaignOwner: () => true } },
-        {
-          provide: LUCIDE_ICONS,
-          multi: true,
-          useValue: new LucideIconProvider({ BookOpen, ChevronDown, Plus, Settings }),
-        },
+        provideRouter([]),
         provideTestLanguage(language),
       ],
     });
@@ -82,6 +77,7 @@ describe('CampaignStoryPageComponent', () => {
     versions.set([]);
     sessions.set([]);
     currentUser.set({ uid: 'owner' });
+    campaign.set({ id: 'campaign-1', name: 'Grauwhaven', ownerId: 'owner' });
     storyService.generate.mockResolvedValue(undefined);
   });
 
@@ -89,6 +85,7 @@ describe('CampaignStoryPageComponent', () => {
     it('translates the step the backend is at, and ignores its own Dutch message', () => {
       versions.set([
         version({ version: 2, status: 'generating', progressStep: 'writing', progressMessage: 'Verhaal schrijven...' }),
+        version({}),
       ]);
       create();
 
@@ -98,18 +95,26 @@ describe('CampaignStoryPageComponent', () => {
     });
 
     it('follows the step in Dutch for a Dutch user', () => {
-      versions.set([version({ version: 2, status: 'generating', progressStep: 'collecting' })]);
+      versions.set([version({ version: 2, status: 'generating', progressStep: 'collecting' }), version({})]);
       create('nl');
 
       expect(generateButton().textContent).toContain(nl.campaignStory.progress.collecting);
     });
 
     it('falls back on the status for a version without a step', () => {
-      versions.set([version({ version: 2, status: 'generating', progressMessage: 'Sessieverhalen verzamelen...' })]);
+      versions.set([version({ version: 2, status: 'generating', progressMessage: 'Sessieverhalen verzamelen...' }), version({})]);
       create();
 
       expect(generateButton().textContent).toContain(en.common.busy);
       expect(generateButton().textContent).not.toContain('Sessieverhalen');
+    });
+
+    it('shows the step in place of the story while the first version is written', () => {
+      versions.set([version({ version: 1, status: 'generating', progressStep: 'writing' })]);
+      create();
+
+      expect(element.querySelector('[role="status"]')?.textContent).toContain(en.campaignStory.progress.writing);
+      expect(element.querySelector('[data-testid="story-empty"]')).toBeNull();
     });
   });
 
@@ -148,23 +153,99 @@ describe('CampaignStoryPageComponent', () => {
     sessions.set([session('a'), session('b')]);
     create('nl');
     expect(text()).toContain(nl.campaignStory.changedSessions(1));
+    expect(generateButton().textContent).toContain(nl.campaignStory.update);
 
     sessions.set([session('a'), session('b'), session('c')]);
     fixture.detectChanges();
     expect(text()).toContain(nl.campaignStory.changedSessions(2));
   });
 
-  it('explains an empty page to the owner and to a member', () => {
-    create();
-    expect(text()).toContain(en.campaignStory.emptyNoSessions);
+  it('says how far the story runs, and that every session is in it', () => {
+    versions.set([
+      version({
+        sourceSessions: [
+          { sessionId: 'a', title: 'A', sessionDate: '2026-10-10', storyVersion: 1 },
+          { sessionId: 'b', title: 'B', sessionDate: '2026-10-24', storyVersion: 1 },
+        ],
+      }),
+    ]);
+    sessions.set([session('a'), session('b')]);
+    create('nl');
 
-    sessions.set([session('a')]);
-    fixture.detectChanges();
-    expect(text()).toContain(en.campaignStory.emptyOwner);
+    expect(text()).toContain(nl.campaignStory.coversUntil('24 okt 2026'));
+    expect(text()).toContain(nl.campaignStory.upToDate);
+    expect(generateButton().textContent).toContain(nl.campaignStory.generate);
+  });
 
-    currentUser.set({ uid: 'member' });
-    fixture.detectChanges();
-    expect(text()).toContain(en.campaignStory.emptyMember);
+  describe('without a story', () => {
+    const emptyState = () => element.querySelector('[data-testid="story-empty"]') as HTMLElement;
+
+    it('asks for the first session when there are none', () => {
+      create();
+      expect(emptyState().textContent).toContain(en.campaignStory.emptyTitle);
+      expect(emptyState().textContent).toContain(en.campaignStory.emptyNoSessions);
+      expect(emptyState().querySelector('a')?.getAttribute('href')).toBe('/campaign/campaign-1/sessions/new');
+    });
+
+    it('waits for the story of a session that is still being processed', () => {
+      sessions.set([{ id: 'a', status: 'processing', content: '' }]);
+      create();
+      expect(emptyState().textContent).toContain(en.campaignStory.emptyWaiting);
+      expect(emptyState().querySelector('a')?.getAttribute('href')).toBe('/campaign/campaign-1/sessions');
+    });
+
+    it('lets the owner have it written, and sends a member to the sessions', () => {
+      sessions.set([session('a')]);
+      create();
+      expect(emptyState().textContent).toContain(en.campaignStory.emptyOwner(1));
+      expect(generateButton().textContent).toContain(en.campaignStory.write);
+
+      currentUser.set({ uid: 'member' });
+      fixture.detectChanges();
+      expect(emptyState().textContent).toContain(en.campaignStory.emptyMember);
+      expect(generateButton()).toBeNull();
+    });
+  });
+
+  describe('with Kanka linked to the campaign', () => {
+    const emptyState = () => element.querySelector('[data-testid="story-empty"]') as HTMLElement;
+
+    it('lets the owner have the story written from the journals, before any session has a story', async () => {
+      linkKanka();
+      create();
+
+      expect(emptyState().textContent).toContain(en.campaignStory.emptyKanka);
+      generateButton().click();
+      await fixture.whenStable();
+      expect(storyService.generate).toHaveBeenCalledWith('campaign-1');
+    });
+
+    it('still sends a member to the sessions', () => {
+      linkKanka();
+      currentUser.set({ uid: 'member' });
+      create();
+
+      expect(emptyState().textContent).toContain(en.campaignStory.emptyNoSessions);
+      expect(generateButton()).toBeNull();
+    });
+
+    it('keeps the write button of an existing story usable without session stories', () => {
+      versions.set([version({ sourceSessions: [], sourceJournals: [{ journalId: 7, title: 'Sessie 1', date: null, updatedAt: null }] })]);
+      create();
+      expect(generateButton().disabled).toBe(true);
+
+      linkKanka();
+      fixture.detectChanges();
+      expect(generateButton().disabled).toBe(false);
+      expect(text()).toContain(en.campaignStory.journalCount(1));
+      expect(text()).not.toContain(en.campaignStory.sessionCount(0));
+    });
+
+    it('needs both the switch and the Kanka campaign', () => {
+      campaign.update(current => ({ ...current, settings: { kankaEnabled: true } }));
+      create();
+      expect(emptyState().textContent).toContain(en.campaignStory.emptyNoSessions);
+    });
   });
 
   it('shows why a story could not be started', async () => {
@@ -183,14 +264,13 @@ describe('CampaignStoryPageComponent', () => {
   it('switches to Dutch without a reload, and leaves the story itself alone', () => {
     versions.set([version({})]);
     create();
-    expect(element.querySelector('h1')?.textContent).toBe(en.campaignStory.title);
+    expect(text()).toContain(en.campaignStory.versions);
     expect(text()).toContain(en.campaignStory.podcasts.empty);
 
     TestBed.inject(I18nService).use('nl');
     fixture.detectChanges();
 
-    expect(element.querySelector('h1')?.textContent).toBe(nl.campaignStory.title);
-    expect(text()).toContain(nl.campaignStory.intro);
+    expect(text()).toContain(nl.campaignStory.versions);
     expect(text()).toContain(nl.campaignStory.generate);
     expect(text()).toContain(nl.campaignStory.podcasts.empty);
     expect(text()).toContain(nl.campaignStory.sessionCount(1));

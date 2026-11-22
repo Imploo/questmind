@@ -2,7 +2,7 @@ import * as logger from '../utils/logger';
 import { generateText, parseJsonResponse } from '../utils/gemini-client';
 import { captureException } from '../utils/sentry-error-handler';
 import { buildCampaignStoryPrompt, countWords } from '../prompts/campaign-story-generator.prompt';
-import { CampaignStoryFeatureConfig, CampaignStoryInput } from '../types/campaign-story.types';
+import { CampaignStoryFeatureConfig, CampaignStoryMaterial } from '../types/campaign-story.types';
 
 export interface GeneratedCampaignStory {
   title: string;
@@ -16,15 +16,16 @@ const WORD_COUNT_WARN_MAX = 2200;
 const DEFAULT_TITLE = 'Het verhaal tot nu toe';
 
 export async function generateCampaignStory(
-  sessions: CampaignStoryInput[],
+  material: CampaignStoryMaterial,
   config: CampaignStoryFeatureConfig
 ): Promise<GeneratedCampaignStory> {
-  const prompt = buildCampaignStoryPrompt(sessions, config.targetWords ?? 1200);
+  const prompt = buildCampaignStoryPrompt(material, config.targetWords ?? 1200);
+  const sources = material.timeline.length + material.undatedJournals.length;
 
   const text = await generateText({
     config,
     label: 'generateCampaignStory',
-    logContext: { sessions: sessions.length },
+    logContext: { sources },
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
     extraConfig: {
       responseMimeType: 'application/json',
@@ -45,7 +46,7 @@ export async function generateCampaignStory(
     logger.warn(`generateCampaignStory: word count ${story.wordCount} outside expected range`);
     captureException(new Error(`Campaign story word count out of range: ${story.wordCount}`), {
       wordCount: story.wordCount,
-      sessions: sessions.length,
+      sources,
       targetWords: config.targetWords,
     });
   }

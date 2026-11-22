@@ -1,6 +1,8 @@
 import { ChangeDetectionStrategy, Component, inject, input, output } from '@angular/core';
 import { FormattingService } from '../shared/formatting.service';
 import { CampaignStoryVersion } from './campaign-story.models';
+import { sourceCountText } from './campaign-story.utils';
+import { I18nService } from '../core/i18n/i18n.service';
 import { TranslatePipe } from '../core/i18n/translate.pipe';
 
 /** Slide-over listing all campaign story versions (ticket #69). Deliberately tucked away. */
@@ -73,7 +75,7 @@ import { TranslatePipe } from '../core/i18n/translate.pipe';
                   }
                   <span class="block text-xs qm-muted mt-1">
                     {{ formatting.formatDate(version.createdAt) }} ·
-                    {{ 'campaignStory.sessionCount' | translate: version.sourceSessions.length }}
+                    {{ sourceCount(version) }}
                   </span>
                   @if (version.status === 'failed') {
                     <span class="block text-xs text-wine mt-1">{{ 'campaignStory.generationFailed' | translate }}</span>
@@ -98,6 +100,7 @@ import { TranslatePipe } from '../core/i18n/translate.pipe';
 })
 export class CampaignStoryVersionsDrawerComponent {
   readonly formatting = inject(FormattingService);
+  private readonly i18n = inject(I18nService);
 
   readonly open = input(false);
   readonly versions = input<CampaignStoryVersion[]>([]);
@@ -105,6 +108,10 @@ export class CampaignStoryVersionsDrawerComponent {
 
   readonly selected = output<number>();
   readonly closed = output<void>();
+
+  sourceCount(version: CampaignStoryVersion): string {
+    return sourceCountText(version, this.i18n.t());
+  }
 
   onEscape(): void {
     if (this.open()) {

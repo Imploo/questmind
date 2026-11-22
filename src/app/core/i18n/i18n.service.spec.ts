@@ -49,7 +49,7 @@ describe('I18nService', () => {
 
   it('translates a key, with its values', () => {
     const i18n = setup('en');
-    expect(i18n.translate('nav.story')).toBe('Story');
+    expect(i18n.translate('nav.campaigns')).toBe('Campaigns');
     expect(i18n.translate('common.version', 3)).toBe('Version 3');
     expect(i18n.translate('errors.reasons.podcastNotReady')).toBe(en.errors.reasons.podcastNotReady);
   });
@@ -69,9 +69,9 @@ describe('I18nService', () => {
   imports: [TranslatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <p data-testid="pipe">{{ 'nav.story' | translate }}</p>
+    <p data-testid="pipe">{{ 'nav.campaigns' | translate }}</p>
     <p data-testid="pipe-values">{{ 'common.version' | translate: 2 }}</p>
-    <p data-testid="signal">{{ t().nav.story }}</p>
+    <p data-testid="signal">{{ t().nav.campaigns }}</p>
     <p data-testid="computed">{{ label() }}</p>
     <button [attr.aria-label]="'common.close' | translate"></button>
   `,
@@ -92,9 +92,9 @@ describe('switching language in a zoneless OnPush component', () => {
     const text = (id: string) => element.querySelector(`[data-testid="${id}"]`)?.textContent;
     await fixture.whenStable();
 
-    expect(text('pipe')).toBe('Verhaal');
+    expect(text('pipe')).toBe('Campagnes');
     expect(text('pipe-values')).toBe('Versie 2');
-    expect(text('signal')).toBe('Verhaal');
+    expect(text('signal')).toBe('Campagnes');
     expect(text('computed')).toBe('Karakters');
     expect(element.querySelector('button')?.getAttribute('aria-label')).toBe('Sluiten');
 
@@ -102,9 +102,9 @@ describe('switching language in a zoneless OnPush component', () => {
     TestBed.inject(I18nService).use('en');
     await fixture.whenStable();
 
-    expect(text('pipe')).toBe('Story');
+    expect(text('pipe')).toBe('Campaigns');
     expect(text('pipe-values')).toBe('Version 2');
-    expect(text('signal')).toBe('Story');
+    expect(text('signal')).toBe('Campaigns');
     expect(text('computed')).toBe('Characters');
     expect(element.querySelector('button')?.getAttribute('aria-label')).toBe('Close');
   });

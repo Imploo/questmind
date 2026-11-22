@@ -66,6 +66,7 @@ export interface Translations {
       importCharacterUnreadable: string;
       storyAlreadyGenerating: string;
       noSessionStories: string;
+      kankaUnavailable: string;
       storyVersionNotReady: string;
       podcastAlreadyGenerating: string;
       podcastNotReady: string;
@@ -89,9 +90,7 @@ export interface Translations {
   /** The nav rail, the top bars and the panel switcher. */
   nav: {
     characters: string;
-    audio: string;
-    story: string;
-    podcasts: string;
+    campaigns: string;
     admin: string;
     mainNavigation: string;
     openMenu: string;
@@ -158,7 +157,7 @@ export interface Translations {
     };
   };
 
-  /** Campaign settings, members, the campaign selector and the voice intro. */
+  /** The campaign list, the campaign page, its settings, members and the voice intro. */
   campaign: {
     defaultName: (name: string) => string;
     saving: string;
@@ -166,16 +165,33 @@ export interface Translations {
       owner: string;
       member: string;
     };
-    selector: {
-      campaign: string;
-      campaigns: string;
-      select: string;
+    list: {
+      title: string;
+      intro: string;
+      loading: string;
       empty: string;
       newCampaign: string;
       createTitle: string;
+      createLabel: string;
       namePlaceholder: string;
       descriptionLabel: string;
       descriptionPlaceholder: string;
+      open: string;
+      processing: (count: number) => string;
+    };
+    page: {
+      back: string;
+      sessions: (count: number) => string;
+      players: (count: number) => string;
+      lastPlayed: (day: string) => string;
+      settings: string;
+      newSession: string;
+      tabsLabel: string;
+      tabs: {
+        story: string;
+        sessions: string;
+        podcasts: string;
+      };
     };
     settings: {
       title: string;
@@ -244,18 +260,34 @@ export interface Translations {
   /** The campaign story page, its versions and its podcasts. */
   campaignStory: {
     title: string;
-    intro: string;
     generate: string;
+    update: string;
     versions: string;
     loading: string;
     changedSessions: (count: number) => string;
+    coversUntil: (day: string) => string;
+    updatedOn: (date: string) => string;
+    upToDate: string;
+    noStory: string;
+    readySessions: (count: number) => string;
+    write: string;
+    latestVersion: (version: number) => string;
+    sessionNotIncluded: string;
+    sessionNotIncludedHelp: string;
+    updateCampaignStory: string;
     sessionCount: (count: number) => string;
+    journalCount: (count: number) => string;
     versionFailed: (version: number) => string;
     generationFailed: string;
     startFailed: string;
+    emptyTitle: string;
     emptyNoSessions: string;
-    emptyOwner: string;
+    emptyWaiting: string;
+    emptyKanka: string;
+    emptyOwner: (count: number) => string;
     emptyMember: string;
+    uploadFirst: string;
+    toSessions: string;
     olderVersion: string;
     viewingVersion: (version: number) => string;
     backToLatest: string;
@@ -286,35 +318,26 @@ export interface Translations {
     defaultStoryTitle: string;
     noDate: string;
     noCampaignSelected: string;
-    selectSession: string;
     page: {
-      signedOutTitle: string;
-      signedOutText: string;
-      signedOutHelp: string;
-      noCampaignTitle: string;
-      noCampaignText: string;
-      selectSessionText: string;
-      noSessionsTitle: string;
-      noSessionsText: string;
-      uploadFirst: string;
+      breadcrumb: string;
+      previous: string;
+      next: string;
+      previousLabel: (title: string) => string;
+      nextLabel: (title: string) => string;
+      notFoundTitle: string;
+      notFoundText: string;
     };
     list: {
-      title: string;
-      sessionsAvailable: (count: number) => string;
-      sessionCount: (count: number) => string;
-      close: string;
-      newSession: string;
-      empty: string;
-      emptyHintUpload: string;
-      emptyHintFirst: string;
       ariaLabel: string;
+      emptyTitle: string;
+      emptyText: string;
+      uploadFirst: string;
       statusUploading: string;
       statusProcessing: string;
       you: string;
+      podcast: string;
     };
     upload: {
-      mobileLabel: string;
-      eyebrow: string;
       pageTitle: string;
       pageSubtitle: string;
       title: string;
@@ -443,9 +466,7 @@ export interface Translations {
       startFailed: string;
     };
     library: {
-      title: string;
       intro: string;
-      selectCampaign: string;
       emptyTitle: string;
       emptyText: string;
       playDay: (date: string) => string;

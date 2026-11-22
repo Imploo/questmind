@@ -1,8 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
   countChangedSessions,
+  coveredUntil,
+  isInStory,
   isActiveGeneration,
   latestCompletedVersion,
+  sourceCountText,
   storyProgressText,
 } from './campaign-story.utils';
 import { CampaignStoryProgressStep, CampaignStoryVersion } from './campaign-story.models';
@@ -95,13 +98,56 @@ describe('storyProgressText', () => {
 
 describe('the campaign story plurals', () => {
   it('hold the whole sentence, in both languages', () => {
-    expect(nl.campaignStory.changedSessions(1)).toBe('1 nieuwe/gewijzigde sessie sinds de nieuwste versie.');
-    expect(nl.campaignStory.changedSessions(3)).toBe('3 nieuwe/gewijzigde sessies sinds de nieuwste versie.');
-    expect(en.campaignStory.changedSessions(1)).toBe('1 new/changed session since the latest version.');
-    expect(en.campaignStory.changedSessions(3)).toBe('3 new/changed sessions since the latest version.');
+    expect(nl.campaignStory.changedSessions(1)).toBe('1 sessie is er nog niet in verwerkt.');
+    expect(nl.campaignStory.changedSessions(3)).toBe('3 sessies zijn er nog niet in verwerkt.');
+    expect(en.campaignStory.changedSessions(1)).toBe('1 session is not in it yet.');
+    expect(en.campaignStory.changedSessions(3)).toBe('3 sessions are not in it yet.');
     expect(nl.campaignStory.sessionCount(1)).toBe('1 sessie');
     expect(nl.campaignStory.sessionCount(0)).toBe('0 sessies');
     expect(en.campaignStory.sessionCount(1)).toBe('1 session');
     expect(en.campaignStory.sessionCount(2)).toBe('2 sessions');
+  });
+});
+
+describe('isInStory', () => {
+  const version = { sourceSessions: [{ sessionId: 'a', title: 'A', sessionDate: null, storyVersion: 2 }] };
+
+  it('holds a session whose current story was used', () => {
+    expect(isInStory(version, { id: 'a', storyRegenerationCount: 2 })).toBe(true);
+  });
+
+  it('does not hold a session regenerated since, nor one it never saw', () => {
+    expect(isInStory(version, { id: 'a', storyRegenerationCount: 3 })).toBe(false);
+    expect(isInStory(version, { id: 'b' })).toBe(false);
+    expect(isInStory(null, { id: 'a' })).toBe(false);
+  });
+});
+
+describe('sourceCountText', () => {
+  const source = { sessionId: 'x', title: 'X', sessionDate: null, storyVersion: 1 };
+  const journal = { journalId: 1, title: 'Verslag', date: null, updatedAt: null };
+
+  it('counts the sessions, also on a version from before journals were a source', () => {
+    expect(sourceCountText({ sourceSessions: [source, source] }, nl)).toBe('2 sessies');
+    expect(sourceCountText({ sourceSessions: [], sourceJournals: [] }, en)).toBe('0 sessions');
+  });
+
+  it('adds the journals from Kanka, and leaves the sessions out when there are none', () => {
+    expect(sourceCountText({ sourceSessions: [source], sourceJournals: [journal, journal] }, nl))
+      .toBe('1 sessie · 2 verslagen uit Kanka');
+    expect(sourceCountText({ sourceSessions: [], sourceJournals: [journal] }, en)).toBe('1 journal from Kanka');
+  });
+});
+
+describe('coveredUntil', () => {
+  const source = (sessionDate: string | null) => ({ sessionId: 'x', title: 'X', sessionDate, storyVersion: 1 });
+
+  it('gives the latest play day of the sources', () => {
+    expect(coveredUntil({ sourceSessions: [source('2026-10-10'), source(null), source('2026-10-24'), source('2026-09-12')] })).toBe('2026-10-24');
+  });
+
+  it('gives null without dates or without a version', () => {
+    expect(coveredUntil({ sourceSessions: [source(null)] })).toBeNull();
+    expect(coveredUntil(null)).toBeNull();
   });
 });

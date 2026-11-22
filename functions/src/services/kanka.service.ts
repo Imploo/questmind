@@ -7,26 +7,47 @@
 
 import * as logger from '../utils/logger';
 import { DocumentData, getFirestore } from 'firebase-admin/firestore';
-import { KankaSearchResult } from '../types/audio-session.types';
+import { KankaEntitySummary, KankaSearchResult } from '../types/audio-session.types';
 
 export type KankaEntityType = 'characters' | 'locations' | 'quests' | 'organisations';
 
-export interface KankaEntity {
+export interface KankaEntity extends KankaEntitySummary {
   id: number;
-  name: string;
-  type?: string;
+}
+
+/** A post on an entity: Kanka's way to split a long text into parts. */
+export interface KankaPost {
+  name?: string;
   entry?: string;
   entry_parsed?: string;
+  /** 1 all, 2 self, 3 admin, 4 self-admin, 5 members */
+  visibility_id?: number;
+  position?: number | null;
+}
+
+/** A journal: where players and the DM write their session reports. */
+export interface KankaJournal extends KankaEntity {
+  /** Real-world date, YYYY-MM-DD */
+  date?: string | null;
+  /** Entity id of the character that wrote it */
+  author_id?: number | null;
+  created_at?: string;
+  updated_at?: string;
+  /** Only with `related=1` */
+  posts?: KankaPost[];
 }
 
 export interface KankaApiResponse<T> {
   data: T[];
-  links?: unknown;
+  links?: { next?: string | null } | null;
   meta?: unknown;
 }
 
 const DEFAULT_TYPES: KankaEntityType[] = ['characters', 'locations', 'quests', 'organisations'];
 const KANKA_API_BASE = 'https://api.kanka.io/1.0';
+/** A list is paged; this many pages is far more than a campaign holds and keeps us under the rate limit. */
+const MAX_PAGES = 10;
+const REQUEST_TIMEOUT_MS = 30_000;
 
 /** Kanka campaign id from a campaign document (`settings.kankaCampaignId`), if set. */
 export function kankaCampaignIdFrom(campaign: DocumentData | undefined): string | undefined {
@@ -187,13 +208,41 @@ export class KankaService {
     const url = `${KANKA_API_BASE}/campaigns/${kankaCampaignId}/${entityType}`;
 
     try {
-      const response = await fetch(url, {
+      return await this.fetchList<KankaEntity>(url);
+    } catch (error) {
+      logger.error(`[Kanka] Error fetching ${entityType}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch all journals of the campaign, each with its posts. Unlike
+   * `getAllEntities` this throws when Kanka can't be read: a caller that builds
+   * a story from the journals must not silently continue without them.
+   */
+  async getJournals(kankaCampaignId: string): Promise<KankaJournal[]> {
+    if (!kankaCampaignId) {
+      throw new Error('Kanka campaign ID is required');
+    }
+    return this.fetchList<KankaJournal>(`${KANKA_API_BASE}/campaigns/${kankaCampaignId}/journals?related=1`);
+  }
+
+  /** One list, page by page for as long as Kanka says there is a next one. */
+  private async fetchList<T>(url: string): Promise<T[]> {
+    const items: T[] = [];
+    let hasNext = true;
+
+    for (let page = 1; hasNext && page <= MAX_PAGES; page++) {
+      // The page number goes on our own address, so the filters stay and the token only goes to Kanka.
+      const pageUrl = page === 1 ? url : `${url}${url.includes('?') ? '&' : '?'}page=${page}`;
+      const response = await fetch(pageUrl, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${this.apiToken}`,
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
 
       if (!response.ok) {
@@ -203,12 +252,15 @@ export class KankaService {
         );
       }
 
-      const json = (await response.json()) as KankaApiResponse<KankaEntity>;
-      return json.data || [];
-    } catch (error) {
-      logger.error(`[Kanka] Error fetching ${entityType}:`, error);
-      throw error;
+      const json = (await response.json()) as KankaApiResponse<T>;
+      items.push(...(json.data || []));
+      hasNext = !!json.links?.next;
     }
+
+    if (hasNext) {
+      logger.warn(`[Kanka] ${url} has more than ${MAX_PAGES} pages; the rest is left out`);
+    }
+    return items;
   }
 
   /**
@@ -241,29 +293,10 @@ export class KankaService {
     )}`;
 
     try {
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${this.apiToken}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(
-          `Kanka API error: ${response.status} ${response.statusText} - ${errorText}`
-        );
-      }
-
-      const json = (await response.json()) as KankaApiResponse<KankaEntity>;
-      return json.data || [];
+      return await this.fetchList<KankaEntity>(url);
     } catch (error) {
       logger.error(`[Kanka] Error searching ${entityType}:`, error);
       throw error;
     }
   }
 }
-
-

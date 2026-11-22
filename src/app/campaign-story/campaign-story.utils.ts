@@ -17,12 +17,38 @@ export function countChangedSessions(
   sessions: Pick<AudioSessionRecord, 'id' | 'status' | 'content' | 'storyRegenerationCount'>[]
 ): number {
   if (!version) return 0;
-  const known = new Map(version.sourceSessions.map(source => [source.sessionId, source.storyVersion]));
-  return sessions.filter(session => {
-    if (!isUsableSession(session)) return false;
-    const usedVersion = known.get(session.id);
-    return usedVersion === undefined || (session.storyRegenerationCount ?? 1) > usedVersion;
-  }).length;
+  return sessions.filter(session => isUsableSession(session) && !isInStory(version, session)).length;
+}
+
+/** Whether the story version holds the session's current story (not an older one). */
+export function isInStory(
+  version: Pick<CampaignStoryVersion, 'sourceSessions'> | null,
+  session: Pick<AudioSessionRecord, 'id' | 'storyRegenerationCount'>
+): boolean {
+  const usedVersion = version?.sourceSessions.find(source => source.sessionId === session.id)?.storyVersion;
+  return usedVersion !== undefined && (session.storyRegenerationCount ?? 1) <= usedVersion;
+}
+
+/** The last play day a story version covers (`2026-10-24`), or null when its sessions have no dates. */
+export function coveredUntil(version: Pick<CampaignStoryVersion, 'sourceSessions'> | null): string | null {
+  const days = (version?.sourceSessions ?? [])
+    .map(source => source.sessionDate)
+    .filter((day): day is string => !!day)
+    .sort();
+  return days.at(-1) ?? null;
+}
+
+/** What a version was written from: `3 sessions`, with `· 2 journals from Kanka` when it has those. */
+export function sourceCountText(
+  version: Pick<CampaignStoryVersion, 'sourceSessions' | 'sourceJournals'>,
+  t: Pick<Translations, 'campaignStory'>
+): string {
+  const sessions = version.sourceSessions?.length ?? 0;
+  const journals = version.sourceJournals?.length ?? 0;
+  return [
+    sessions > 0 || journals === 0 ? t.campaignStory.sessionCount(sessions) : '',
+    journals > 0 ? t.campaignStory.journalCount(journals) : '',
+  ].filter(Boolean).join(' · ');
 }
 
 /** Newest completed version (versions are sorted newest first). */

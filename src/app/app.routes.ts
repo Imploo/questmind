@@ -45,6 +45,10 @@ export const routes: Routes = [
         loadComponent: () => import('./features/character-builder/pages/character-list-page/character-list-page.component').then(m => m.CharacterListPageComponent)
       },
       {
+        path: 'campaigns',
+        loadComponent: () => import('./campaign/campaign-list-page.component').then(m => m.CampaignListPageComponent)
+      },
+      {
         path: 'admin',
         loadComponent: () => import('./admin/admin.component').then(m => m.AdminComponent),
         canActivate: [adminGuard]
@@ -57,33 +61,39 @@ export const routes: Routes = [
     canActivate: [authGuard, campaignGuard],
     children: [
       {
-        path: '',
-        redirectTo: 'audio',
-        pathMatch: 'full'
-      },
-      {
-        path: 'audio',
-        loadComponent: () => import('./audio/audio-session.component').then(m => m.AudioSessionComponent)
-      },
-      {
-        path: 'audio/new',
+        path: 'sessions/new',
         loadComponent: () => import('./audio/audio-upload-page.component').then(m => m.AudioUploadPageComponent)
       },
       {
-        path: 'audio/:sessionId',
+        path: 'sessions/:sessionId',
         loadComponent: () => import('./audio/audio-session.component').then(m => m.AudioSessionComponent)
-      },
-      {
-        path: 'story',
-        loadComponent: () => import('./campaign-story/campaign-story-page.component').then(m => m.CampaignStoryPageComponent)
-      },
-      {
-        path: 'podcasts',
-        loadComponent: () => import('./audio/podcast-library.component').then(m => m.PodcastLibraryComponent)
       },
       {
         path: 'settings',
         loadComponent: () => import('./campaign/campaign-settings.component').then(m => m.CampaignSettingsComponent)
+      },
+      // Addresses from before the campaign page, kept working for old links and bookmarks.
+      { path: 'audio', redirectTo: 'sessions', pathMatch: 'full' },
+      { path: 'audio/new', redirectTo: 'sessions/new' },
+      { path: 'audio/:sessionId', redirectTo: 'sessions/:sessionId' },
+      {
+        path: '',
+        loadComponent: () => import('./campaign/campaign-page.component').then(m => m.CampaignPageComponent),
+        children: [
+          { path: '', redirectTo: 'story', pathMatch: 'full' },
+          {
+            path: 'story',
+            loadComponent: () => import('./campaign-story/campaign-story-page.component').then(m => m.CampaignStoryPageComponent)
+          },
+          {
+            path: 'sessions',
+            loadComponent: () => import('./audio/session-list-page.component').then(m => m.SessionListPageComponent)
+          },
+          {
+            path: 'podcasts',
+            loadComponent: () => import('./audio/podcast-library.component').then(m => m.PodcastLibraryComponent)
+          }
+        ]
       }
     ]
   },

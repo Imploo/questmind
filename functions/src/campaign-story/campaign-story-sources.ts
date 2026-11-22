@@ -1,7 +1,9 @@
 import { toMillis as toMillisOrNull } from '../utils/timestamp';
 import {
   CampaignStoryInput,
+  CampaignStoryJournal,
   CampaignStorySkippedSession,
+  CampaignStorySourceJournal,
   CampaignStorySourceSession,
 } from '../types/campaign-story.types';
 
@@ -19,16 +21,34 @@ export interface SessionDocForCampaignStory {
 export interface CampaignStorySources {
   sources: CampaignStorySourceSession[];
   skipped: CampaignStorySkippedSession[];
-  inputs: CampaignStoryInput[];
+  /** The written reports that go into the story, dated ones first */
+  journalSources: CampaignStorySourceJournal[];
+  /** Session stories and dated journals, in chronological order */
+  timeline: CampaignStoryInput[];
+  /** Journals without a date, by title: the prompt asks the model to place them */
+  undatedJournals: CampaignStoryInput[];
+}
+
+/** A session story or dated journal with its place in time. */
+interface TimelineEntry {
+  input: CampaignStoryInput;
+  sortKey: number;
+  /** Order within one day: a written report before the story of the recording, then upload time */
+  tieBreak: number;
 }
 
 const UNTITLED = 'Untitled Session';
 
 /**
- * Selects the sessions with a completed story and orders them chronologically:
- * by sessionDate, falling back to createdAt (upload date), createdAt breaks ties.
+ * Selects the sessions with a completed story and puts them, together with the
+ * written reports from Kanka, in chronological order: by sessionDate, falling
+ * back to createdAt (upload date), createdAt breaks ties. A journal takes its
+ * place by its Kanka date; journals without one are returned separately.
  */
-export function selectCampaignStorySources(sessions: SessionDocForCampaignStory[]): CampaignStorySources {
+export function selectCampaignStorySources(
+  sessions: SessionDocForCampaignStory[],
+  journals: CampaignStoryJournal[] = []
+): CampaignStorySources {
   const usable: SessionDocForCampaignStory[] = [];
   const skipped: CampaignStorySkippedSession[] = [];
 
@@ -49,6 +69,32 @@ export function selectCampaignStorySources(sessions: SessionDocForCampaignStory[
 
   usable.sort(compareChronologically);
 
+  const byTitle = (a: CampaignStoryJournal, b: CampaignStoryJournal) =>
+    a.title.localeCompare(b.title, 'nl', { numeric: true });
+  const dated = journals.filter(journal => journal.date).sort(byTitle);
+  const undated = journals.filter(journal => !journal.date).sort(byTitle);
+
+  const entries: TimelineEntry[] = [
+    ...usable.map((session): TimelineEntry => ({
+      input: {
+        kind: 'session',
+        title: session.title || UNTITLED,
+        sessionDate: session.sessionDate || null,
+        uploadedAt: toIsoDate(session.createdAt),
+        content: (session.content ?? '').trim(),
+      },
+      sortKey: sortKey(session),
+      tieBreak: toMillis(session.createdAt),
+    })),
+    ...dated.map((journal, index): TimelineEntry => ({
+      input: toJournalInput(journal),
+      sortKey: Date.parse(journal.date as string),
+      // Negative: before every session of that day, in title order among themselves.
+      tieBreak: index - dated.length,
+    })),
+  ];
+  entries.sort((a, b) => a.sortKey - b.sortKey || a.tieBreak - b.tieBreak);
+
   return {
     sources: usable.map(session => ({
       sessionId: session.id,
@@ -57,13 +103,32 @@ export function selectCampaignStorySources(sessions: SessionDocForCampaignStory[
       storyVersion: session.storyRegenerationCount ?? 1,
     })),
     skipped,
-    inputs: usable.map(session => ({
-      title: session.title || UNTITLED,
-      sessionDate: session.sessionDate || null,
-      uploadedAt: toIsoDate(session.createdAt),
-      content: (session.content ?? '').trim(),
+    journalSources: [...[...dated].sort(byDate), ...undated].map(journal => ({
+      journalId: journal.journalId,
+      title: journal.title,
+      date: journal.date,
+      updatedAt: journal.updatedAt,
     })),
+    timeline: entries.map(entry => entry.input),
+    undatedJournals: undated.map(toJournalInput),
   };
+}
+
+function toJournalInput(journal: CampaignStoryJournal): CampaignStoryInput {
+  return {
+    kind: 'journal',
+    title: journal.title,
+    sessionDate: journal.date,
+    uploadedAt: journal.createdAt,
+    content: journal.content,
+    author: journal.author,
+    journalType: journal.type,
+  };
+}
+
+/** Stable, so journals of one day keep their title order. */
+function byDate(a: CampaignStoryJournal, b: CampaignStoryJournal): number {
+  return (a.date ?? '').localeCompare(b.date ?? '');
 }
 
 function compareChronologically(a: SessionDocForCampaignStory, b: SessionDocForCampaignStory): number {

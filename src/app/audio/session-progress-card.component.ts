@@ -7,7 +7,7 @@ import { TranslatePipe } from '../core/i18n/translate.pipe';
 import type { Translations } from '../core/i18n/translations';
 
 /** The text of each stage, as a key of `progress.stages`. */
-const STAGE_TITLE_KEYS: Record<SessionProgressStage, keyof Translations['progress']['stages']> = {
+export const STAGE_TITLE_KEYS: Record<SessionProgressStage, keyof Translations['progress']['stages']> = {
   'idle': 'idle',
   'compressing': 'compressing',
   'uploading': 'uploading',

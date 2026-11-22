@@ -2,7 +2,6 @@ import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/c
 import { AuthService } from '../auth/auth.service';
 import { PodcastVersion } from './services/audio-session.models';
 import { CampaignContextService } from '../campaign/campaign-context.service';
-import { CampaignSelectorComponent } from '../campaign/campaign-selector.component';
 import { AudioSessionStateService } from './services/audio-session-state.service';
 import { PodcastVersionItemComponent } from '../shared/components/podcast-version-item.component';
 import { toMillis } from '../shared/utils/date.utils';
@@ -20,26 +19,12 @@ interface SessionWithPodcasts {
 
 @Component({
   selector: 'app-podcast-library',
-  imports: [CampaignSelectorComponent, PodcastVersionItemComponent, TranslatePipe],
+  imports: [PodcastVersionItemComponent, TranslatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="max-w-5xl mx-auto">
-      <div class="mb-4 hidden sm:block">
-        <app-campaign-selector align="start" />
-      </div>
-
-      <header class="mb-6 sm:mb-8">
-        <h1 class="qm-page-title">{{ 'podcast.library.title' | translate }}</h1>
-        <p class="qm-page-sub mt-1 max-w-2xl">
-          {{ 'podcast.library.intro' | translate }}
-        </p>
-      </header>
-
-      @if (!campaignId()) {
-        <div class="qm-panel qm-hero qm-empty">
-          <span class="qm-medallion qm-medallion-lg"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke-width="1.75" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M15.5 8.5l-2 5-5 2 2-5 5-2z" /></svg></span>
-          <p class="qm-empty-text">{{ 'podcast.library.selectCampaign' | translate }}</p>
-        </div>
+    <div>
+      @if (sessions().length > 0) {
+        <p class="mb-4 text-sm text-white/85">{{ 'podcast.library.intro' | translate }}</p>
       }
 
       @if (campaignId() && sessions().length === 0) {
