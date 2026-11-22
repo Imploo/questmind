@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TestBed } from '@angular/core/testing';
-import { signal } from '@angular/core';
+import { ApplicationRef, signal } from '@angular/core';
 import { CampaignStoryService } from './campaign-story.service';
 import { FirebaseService } from '../core/firebase.service';
 import { AuthService } from '../auth/auth.service';
@@ -53,6 +53,55 @@ describe('CampaignStoryService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  describe('saveEdit', () => {
+    const patch = vi.fn();
+
+    /** A service with the versions of a campaign loaded, for a signed-in owner. */
+    async function setupLoaded(): Promise<CampaignStoryService> {
+      const repo = { waitForData: () => Promise.resolve(), get: () => [], patch, destroy: vi.fn() };
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: FirebaseService, useValue: { requireFunctions: () => 'functions' } },
+          { provide: AuthService, useValue: { currentUser: signal({ uid: 'owner-1' }) } },
+          { provide: CampaignContextService, useValue: { selectedCampaignId: signal('campaign-1') } },
+          { provide: CampaignStoryRepositoryFactory, useValue: { create: () => repo } },
+          { provide: ToastService, useValue: toast },
+          provideTestLanguage('en'),
+        ],
+      });
+      const service = TestBed.inject(CampaignStoryService);
+      service.versions();
+      await TestBed.inject(ApplicationRef).whenStable();
+      return service;
+    }
+
+    it('writes the title and the text to the version, marked as edited by the owner', async () => {
+      patch.mockResolvedValue(undefined);
+      const service = await setupLoaded();
+
+      await service.saveEdit({ id: 'v3' }, { title: ' De val ', content: ' Kael opende de poort. \n' });
+
+      expect(patch).toHaveBeenCalledWith('v3', {
+        title: 'De val',
+        content: 'Kael opende de poort.',
+        wordCount: 4,
+        editedAt: expect.any(Date),
+        editedBy: 'owner-1',
+      });
+    });
+
+    it('passes a refused write on, for the page to report', async () => {
+      patch.mockRejectedValue(new Error('permission-denied'));
+      const service = await setupLoaded();
+
+      await expect(service.saveEdit({ id: 'v3' }, { title: 'x', content: 'y' })).rejects.toThrow('permission-denied');
+    });
+
+    it('refuses when no campaign story is loaded', async () => {
+      await expect(setup().saveEdit({ id: 'v3' }, { title: 'x', content: 'y' })).rejects.toThrow();
+    });
   });
 
   it('treats a client-side timeout as still running', async () => {

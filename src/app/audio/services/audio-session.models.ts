@@ -162,7 +162,16 @@ export interface AudioSessionRecord extends SessionStory {
   correctionsUpdatedAt?: string;
   rawStory?: string;
   storyRegeneratedAt?: string;
+  /**
+   * Version of the story: one higher every time it is regenerated or edited by
+   * hand (absent = 1). The campaign story compares it to know it holds an older text.
+   */
   storyRegenerationCount?: number;
+  /**
+   * Set when the story was edited by hand. From then on the current story goes
+   * along with every regeneration, so the improvements made in it stay.
+   */
+  storyEditedAt?: string;
   podcasts?: PodcastVersion[];
   latestPodcastVersion?: number;
 

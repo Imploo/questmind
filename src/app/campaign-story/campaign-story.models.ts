@@ -55,4 +55,15 @@ export interface CampaignStoryVersion {
   error?: string | null;
   podcasts?: PodcastVersion[];
   latestPodcastVersion?: number;
+  /** Set when the owner edited the title or the story by hand. */
+  editedAt?: FirestoreDateValue;
+  editedBy?: string;
+  /** The hand-edited version (or its successor) this version was written from. */
+  basedOnVersion?: number;
+}
+
+/** What the owner can change by hand in a version. */
+export interface CampaignStoryEdit {
+  title: string;
+  content: string;
 }

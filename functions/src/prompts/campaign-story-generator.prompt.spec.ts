@@ -124,6 +124,69 @@ describe('buildCampaignStoryPrompt', () => {
   });
 });
 
+describe('buildCampaignStoryPrompt with a version the owner improved by hand', () => {
+  const timeline: CampaignStoryInput[] = [
+    { kind: 'session', title: 'De poort', sessionDate: '2026-01-01', uploadedAt: null, content: 'Eerste verhaal' },
+    { kind: 'session', title: 'De grot', sessionDate: '2026-02-01', uploadedAt: null, content: 'Tweede verhaal', sinceLastVersion: 'changed' },
+    { kind: 'session', title: 'De toren', sessionDate: '2026-03-01', uploadedAt: null, content: 'Derde verhaal', sinceLastVersion: 'new' },
+  ];
+  const previousVersion = { title: 'De val van Grauwhaven', content: '  Kael opende de poort (Mira was er niet bij).  ' };
+
+  it('leaves the previous version out when nobody edited the story', () => {
+    const prompt = buildCampaignStoryPrompt({ timeline, undatedJournals: [] }, 1200);
+
+    expect(prompt).not.toContain('VORIGE VERSIE');
+    expect(prompt).not.toContain('VERBETERINGEN VAN DE DM');
+  });
+
+  it('passes the improved story along, before the sources, with its title', () => {
+    const prompt = buildCampaignStoryPrompt({ timeline, undatedJournals: [], previousVersion }, 1200);
+
+    const block = prompt.indexOf(
+      'VORIGE VERSIE (door de DM verbeterd) — titel: De val van Grauwhaven:\nKael opende de poort (Mira was er niet bij).\n'
+    );
+    expect(block).toBeGreaterThan(-1);
+    expect(block).toBeLessThan(prompt.indexOf('BRONNEN (chronologisch)'));
+  });
+
+  it('puts the improvements above the sources: corrected stays corrected, removed stays removed, added stays', () => {
+    const prompt = buildCampaignStoryPrompt({ timeline, undatedJournals: [], previousVersion }, 1200);
+
+    expect(prompt).toContain('VERBETERINGEN VAN DE DM (BELANGRIJK):');
+    expect(prompt).toContain('dan klopt de vorige versie');
+    expect(prompt).toContain('heeft de DM toegevoegd: laat het staan');
+    expect(prompt).toContain('haal het niet terug');
+    expect(prompt).toContain('Een opmerking tussen haakjes die leest als een notitie van de DM');
+    expect(prompt).toContain('Houd de titel van de vorige versie aan');
+  });
+
+  it('labels the sources that are new or revised since that version, and says what that means', () => {
+    const prompt = buildCampaignStoryPrompt({ timeline, undatedJournals: [], previousVersion }, 1200);
+
+    expect(prompt).toContain('BRON 1 — SESSIEVERHAAL — De poort — 2026-01-01\nEerste verhaal');
+    expect(prompt).toContain('BRON 2 — SESSIEVERHAAL — De grot — 2026-02-01 — HERZIEN sinds de vorige versie\nTweede verhaal');
+    expect(prompt).toContain('BRON 3 — SESSIEVERHAAL — De toren — 2026-03-01 — NIEUW sinds de vorige versie\nDerde verhaal');
+    expect(prompt).toContain('"NIEUW sinds de vorige versie": die is nog niet verwerkt');
+    expect(prompt).toContain('klopt de herziene bron');
+  });
+
+  it('labels a written report too', () => {
+    const report: CampaignStoryInput = {
+      kind: 'journal', title: 'Sessie 1', sessionDate: '2025-12-01', uploadedAt: null, content: 'Wij kwamen aan.',
+      author: 'Mira', journalType: null, sinceLastVersion: 'new',
+    };
+    const prompt = buildCampaignStoryPrompt({ timeline: [report], undatedJournals: [], previousVersion }, 1200);
+
+    expect(prompt).toContain('BRON 1 — VERSLAG — Sessie 1 — 2025-12-01 — geschreven door Mira — NIEUW sinds de vorige versie\n');
+  });
+
+  it('follows a note in parentheses in a source, with or without a previous version', () => {
+    expect(buildCampaignStoryPrompt({ timeline, undatedJournals: [] }, 1200)).toContain(
+      'Een opmerking tussen haakjes in een bron die leest als een notitie van de DM'
+    );
+  });
+});
+
 describe('countWords', () => {
   it('counts whitespace-separated words', () => {
     expect(countWords('  een twee\n drie ')).toBe(3);

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   countChangedSessions,
+  countWords,
   coveredUntil,
   isInStory,
   isActiveGeneration,
@@ -11,6 +12,13 @@ import {
 import { CampaignStoryProgressStep, CampaignStoryVersion } from './campaign-story.models';
 import { en } from '../core/i18n/en';
 import { nl } from '../core/i18n/nl';
+
+describe('countWords', () => {
+  it('counts the words of a story the way the backend does', () => {
+    expect(countWords('  een twee\n drie ')).toBe(3);
+    expect(countWords('')).toBe(0);
+  });
+});
 
 const version = (overrides: Partial<CampaignStoryVersion>): CampaignStoryVersion => ({
   id: `v${overrides.version ?? 1}`,

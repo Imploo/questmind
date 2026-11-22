@@ -75,14 +75,18 @@ const PODCAST_STAGES: SessionProgressStage[] = ['generating-podcast-script', 'ge
         }
       </div>
 
-      @if (showStoryNote()) {
+      @if (storyNote(); as note) {
         <div class="story-note flex flex-wrap items-center gap-x-4 gap-y-3" data-testid="story-note">
           <span class="qm-medallion qm-medallion-sm" aria-hidden="true">
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 7v14M3 18a1 1 0 01-1-1V4a1 1 0 011-1h5a4 4 0 014 4 4 4 0 014-4h5a1 1 0 011 1v13a1 1 0 01-1 1h-6a3 3 0 00-3 3 3 3 0 00-3-3z" /></svg>
           </span>
           <div class="min-w-0 flex-[1_1_16rem]">
-            <p class="text-sm font-bold">{{ 'campaignStory.sessionNotIncluded' | translate }}</p>
-            <p class="text-[13px] text-gray-700 mt-0.5">{{ 'campaignStory.sessionNotIncludedHelp' | translate }}</p>
+            <p class="text-sm font-bold">
+              {{ (note === 'changed' ? 'campaignStory.sessionChanged' : 'campaignStory.sessionNotIncluded') | translate }}
+            </p>
+            <p class="text-[13px] text-gray-700 mt-0.5">
+              {{ (note === 'changed' ? 'campaignStory.sessionChangedHelp' : 'campaignStory.sessionNotIncludedHelp') | translate }}
+            </p>
           </div>
           <a [routerLink]="['/campaign', campaignId(), 'story']" class="qm-btn qm-btn-ink">
             {{ 'campaignStory.updateCampaignStory' | translate }}
@@ -105,6 +109,7 @@ const PODCAST_STAGES: SessionProgressStage[] = ['generating-podcast-script', 'ge
             [subtitle]="formatSubtitle(currentSession())"
             [sessionDate]="currentSession()?.sessionDate || ''"
             [story]="currentSession()?.content || ''"
+            [edited]="!!currentSession()?.storyEditedAt"
             [transcript]="currentSession()?.rawStory || currentSession()?.transcription?.rawTranscript || ''"
             [isBusy]="isBusy()"
             [canRegenerate]="canRegenerateStory()"
@@ -219,13 +224,19 @@ export class AudioSessionComponent {
   previousSession = computed(() => this.neighbour(1));
   nextSession = computed(() => this.neighbour(-1));
 
-  /** For the owner of the campaign: this finished session is missing from the campaign story. */
-  showStoryNote = computed(() => {
+  /**
+   * For the owner of the campaign: this finished session is missing from the
+   * campaign story, or the campaign story holds an older text of it (the session
+   * story was regenerated or edited since).
+   */
+  storyNote = computed<'missing' | 'changed' | null>(() => {
     const session = this.currentSession();
     const campaign = this.campaignContext.selectedCampaign();
-    if (!session || !campaign || campaign.ownerId !== this.userId()) return false;
-    if (this.storyService.isLoading() || !isUsableSession(session)) return false;
-    return !isInStory(latestCompletedVersion(this.storyService.versions()), session);
+    if (!session || !campaign || campaign.ownerId !== this.userId()) return null;
+    if (this.storyService.isLoading() || !isUsableSession(session)) return null;
+    const latest = latestCompletedVersion(this.storyService.versions());
+    if (isInStory(latest, session)) return null;
+    return latest?.sourceSessions.some(source => source.sessionId === session.id) ? 'changed' : 'missing';
   });
 
   podcasts = computed(() => this.currentSession()?.podcasts || []);
@@ -343,11 +354,26 @@ export class AudioSessionComponent {
     }
   }
 
+  /**
+   * Save a story the owner edited by hand. It becomes a new version of the story
+   * (the campaign story then knows it holds the older one) and is marked as
+   * edited, so it goes along with every later regeneration.
+   */
   saveStoryEdits(content: string): void {
     if (!this.canEditStory()) return;
     const session = this.currentSession();
     if (!session) return;
-    this.sessionStateService.updateSession(session.id, { content, status: 'completed' });
+    const changed = content !== session.content;
+    this.sessionStateService.updateSession(session.id, {
+      content,
+      status: 'completed',
+      ...(changed
+        ? {
+          storyEditedAt: new Date().toISOString(),
+          storyRegenerationCount: (session.storyRegenerationCount ?? 1) + 1
+        }
+        : {})
+    });
   }
 
   saveSessionMeta(meta: SessionMetaUpdate): void {

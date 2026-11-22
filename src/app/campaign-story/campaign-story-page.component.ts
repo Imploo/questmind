@@ -7,6 +7,7 @@ import { CampaignStoryService } from './campaign-story.service';
 import { CampaignStoryViewComponent } from './campaign-story-view.component';
 import { CampaignStoryVersionsDrawerComponent } from './campaign-story-versions-drawer.component';
 import { CampaignStoryPodcastsComponent } from './campaign-story-podcasts.component';
+import { CampaignStoryEdit, CampaignStoryVersion } from './campaign-story.models';
 import {
   countChangedSessions,
   coveredUntil,
@@ -16,6 +17,7 @@ import {
   storyProgressText,
 } from './campaign-story.utils';
 import { FormattingService } from '../shared/formatting.service';
+import { ToastService } from '../shared/services/toast.service';
 import { I18nService } from '../core/i18n/i18n.service';
 import { TranslatePipe } from '../core/i18n/translate.pipe';
 
@@ -76,12 +78,20 @@ import { TranslatePipe } from '../core/i18n/translate.pipe';
               </svg>
               {{ 'campaignStory.versions' | translate }}
             </button>
+            @if (canEdit()) {
+              <button type="button" class="qm-btn" [disabled]="isEditing()" (click)="startEdit()" data-testid="edit-story">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                </svg>
+                {{ 'campaignStory.edit.button' | translate }}
+              </button>
+            }
             @if (isOwner()) {
               <button
                 type="button"
                 class="qm-btn"
                 [class.qm-btn-ink]="changedSessionCount() > 0"
-                [disabled]="isGenerating() || !canWrite()"
+                [disabled]="isGenerating() || !canWrite() || isEditing()"
                 (click)="generateStory()"
                 data-testid="generate-story"
               >
@@ -102,7 +112,11 @@ import { TranslatePipe } from '../core/i18n/translate.pipe';
           class="block"
           [version]="version"
           [isLatest]="version.version === latestCompleted()?.version"
+          [editing]="isEditing() && canEdit()"
+          [saving]="isSaving()"
           (backToLatest)="selectedVersion.set(null)"
+          (saved)="saveEdit(version, $event)"
+          (cancelled)="isEditing.set(false)"
         />
         <app-campaign-story-podcasts
           class="block"
@@ -171,6 +185,7 @@ export class CampaignStoryPageComponent {
   private readonly sessionState = inject(AudioSessionStateService);
   private readonly i18n = inject(I18nService);
   private readonly formatting = inject(FormattingService);
+  private readonly toastService = inject(ToastService);
 
   /** null = show the newest completed version */
   readonly campaignId = this.campaignContext.selectedCampaignId;
@@ -180,6 +195,9 @@ export class CampaignStoryPageComponent {
   readonly podcastError = signal('');
   private readonly startingStory = signal(false);
   private readonly startingPodcast = signal(false);
+  /** The owner is rewriting the newest version by hand. */
+  readonly isEditing = signal(false);
+  readonly isSaving = signal(false);
 
   readonly isOwner = computed(() => {
     const campaign = this.campaignContext.selectedCampaign();
@@ -206,6 +224,15 @@ export class CampaignStoryPageComponent {
   );
 
   readonly isGenerating = computed(() => this.startingStory() || !!this.activeGeneration());
+
+  /**
+   * The owner can edit the newest completed version: that is the one that goes
+   * along when the next version is written. Not while a new version is on its way.
+   */
+  readonly canEdit = computed(() => {
+    const displayed = this.displayedVersion();
+    return this.isOwner() && !this.isGenerating() && !!displayed && displayed.version === this.latestCompleted()?.version;
+  });
 
   /** The step the backend is at, in the active language; "busy" until the version document exists. */
   readonly generatingMessage = computed(() => {
@@ -253,6 +280,27 @@ export class CampaignStoryPageComponent {
   selectVersion(version: number): void {
     this.selectedVersion.set(version);
     this.drawerOpen.set(false);
+    this.isEditing.set(false);
+  }
+
+  startEdit(): void {
+    if (!this.canEdit()) return;
+    this.errorMessage.set('');
+    this.isEditing.set(true);
+  }
+
+  /** Saves the owner's edit; on failure the text stays in the form to try again. */
+  async saveEdit(version: CampaignStoryVersion, edit: CampaignStoryEdit): Promise<void> {
+    this.isSaving.set(true);
+    try {
+      await this.storyService.saveEdit(version, edit);
+      this.isEditing.set(false);
+    } catch {
+      // A toast: the form is long, a message at the top of the page would be out of sight.
+      this.toastService.show(this.i18n.t().campaignStory.edit.saveFailed, 'error', 6000);
+    } finally {
+      this.isSaving.set(false);
+    }
   }
 
   async generateStory(): Promise<void> {
@@ -261,6 +309,7 @@ export class CampaignStoryPageComponent {
 
     this.errorMessage.set('');
     this.selectedVersion.set(null);
+    this.isEditing.set(false);
     this.startingStory.set(true);
     try {
       await this.storyService.generate(campaignId);

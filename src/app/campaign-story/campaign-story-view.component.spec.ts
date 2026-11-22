@@ -53,6 +53,101 @@ describe('CampaignStoryViewComponent', () => {
     expect(emitted).toBe(1);
   });
 
+  describe('when the owner edits the story by hand', () => {
+    const form = () => element.querySelector('[data-testid="story-edit-form"]') as HTMLFormElement;
+    const titleField = () => element.querySelector('[data-testid="story-edit-title"]') as HTMLInputElement;
+    const contentField = () => element.querySelector('[data-testid="story-edit-content"]') as HTMLTextAreaElement;
+    const saveButton = () => element.querySelector('[data-testid="story-edit-save"]') as HTMLButtonElement;
+    const type = (field: HTMLInputElement | HTMLTextAreaElement, value: string) => {
+      field.value = value;
+      field.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+    };
+
+    it('shows the story as it reads, without a form, until editing starts', () => {
+      fixture.detectChanges();
+
+      expect(form()).toBeNull();
+      expect(element.querySelector('.prose')).not.toBeNull();
+    });
+
+    it('starts from the title and the markdown of the version, with what editing is for', () => {
+      fixture.componentRef.setInput('editing', true);
+      fixture.detectChanges();
+
+      expect(titleField().value).toBe('De val van Grauwhaven');
+      expect(contentField().value).toBe('## Het begin\nDe party vertrok.');
+      expect(form().textContent).toContain(en.campaignStory.edit.help);
+      expect(element.querySelector('.prose')).toBeNull();
+    });
+
+    it('emits the edited title and text, trimmed', () => {
+      const saved: unknown[] = [];
+      fixture.componentInstance.saved.subscribe(edit => saved.push(edit));
+      fixture.componentRef.setInput('editing', true);
+      fixture.detectChanges();
+
+      type(titleField(), ' De val ');
+      type(contentField(), 'De party vertrok (Mira was er niet bij).\n');
+      saveButton().click();
+
+      expect(saved).toEqual([{ title: 'De val', content: 'De party vertrok (Mira was er niet bij).' }]);
+    });
+
+    it('does not save an empty story', () => {
+      const saved: unknown[] = [];
+      fixture.componentInstance.saved.subscribe(edit => saved.push(edit));
+      fixture.componentRef.setInput('editing', true);
+      fixture.detectChanges();
+
+      type(contentField(), '   ');
+
+      expect(saveButton().disabled).toBe(true);
+      form().dispatchEvent(new Event('submit'));
+      expect(saved).toEqual([]);
+    });
+
+    it('keeps what was typed when the version changes underneath (podcast progress, a failed save)', () => {
+      fixture.componentRef.setInput('editing', true);
+      fixture.detectChanges();
+      type(contentField(), 'Mijn verbeterde tekst');
+
+      fixture.componentRef.setInput('version', { ...story, latestPodcastVersion: 1 });
+      fixture.componentRef.setInput('saving', true);
+      fixture.detectChanges();
+
+      expect(contentField().value).toBe('Mijn verbeterde tekst');
+      expect(contentField().disabled).toBe(true);
+      expect(saveButton().disabled).toBe(true);
+    });
+
+    it('starts over from the version after a cancel', () => {
+      let cancelled = 0;
+      fixture.componentInstance.cancelled.subscribe(() => cancelled++);
+      fixture.componentRef.setInput('editing', true);
+      fixture.detectChanges();
+      type(contentField(), 'Weggegooid');
+
+      (Array.from(form().querySelectorAll('button')).find(b => b.textContent?.includes(en.common.cancel)) as HTMLButtonElement).click();
+      expect(cancelled).toBe(1);
+
+      fixture.componentRef.setInput('editing', false);
+      fixture.detectChanges();
+      fixture.componentRef.setInput('editing', true);
+      fixture.detectChanges();
+      expect(contentField().value).toBe('## Het begin\nDe party vertrok.');
+    });
+
+    it('says in the line under the version that it was edited by hand', () => {
+      fixture.detectChanges();
+      expect(element.querySelector('.qm-eyebrow')?.textContent).not.toContain(en.campaignStory.edited);
+
+      fixture.componentRef.setInput('version', { ...story, editedAt: new Date('2026-11-20T10:00:00Z') });
+      fixture.detectChanges();
+      expect(element.querySelector('.qm-eyebrow')?.textContent).toContain(en.campaignStory.edited);
+    });
+  });
+
   it('falls back on a translated title when the version has none', () => {
     fixture.componentRef.setInput('version', { ...story, title: undefined });
     fixture.detectChanges();

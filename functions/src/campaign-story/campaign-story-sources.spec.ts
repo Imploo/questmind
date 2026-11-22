@@ -52,6 +52,70 @@ describe('selectCampaignStorySources', () => {
     });
   });
 
+  describe('with a previous version that goes along', () => {
+    const journal = (overrides: Partial<CampaignStoryJournal>): CampaignStoryJournal => ({
+      journalId: 1,
+      title: 'Verslag',
+      date: '2025-12-01',
+      createdAt: '2026-03-01',
+      updatedAt: '2026-03-02T10:00:00.000000Z',
+      type: null,
+      author: null,
+      content: 'Tekst',
+      ...overrides,
+    });
+    const sessions = [
+      { id: 'known', title: 'Bekend', status: 'completed', content: 'x', sessionDate: '2026-01-01', storyRegenerationCount: 2 },
+      { id: 'edited', title: 'Verbeterd', status: 'completed', content: 'x', sessionDate: '2026-02-01', storyRegenerationCount: 3 },
+      { id: 'fresh', title: 'Nieuw', status: 'completed', content: 'x', sessionDate: '2026-03-01' },
+    ];
+    const previous = {
+      sourceSessions: [
+        { sessionId: 'known', title: 'Bekend', sessionDate: '2026-01-01', storyVersion: 2 },
+        { sessionId: 'edited', title: 'Verbeterd', sessionDate: '2026-02-01', storyVersion: 2 },
+      ],
+      sourceJournals: [
+        { journalId: 1, title: 'Verslag', date: '2025-12-01', updatedAt: '2026-03-02T10:00:00.000000Z' },
+        { journalId: 2, title: 'Herschreven', date: '2025-12-02', updatedAt: '2026-01-01T10:00:00.000000Z' },
+      ],
+    };
+    const changes = (inputs: { title: string; sinceLastVersion?: string }[]) =>
+      Object.fromEntries(inputs.map(input => [input.title, input.sinceLastVersion]));
+
+    it('marks the sessions that version does not hold yet, and those rewritten or edited since', () => {
+      const result = selectCampaignStorySources(sessions, [], previous);
+
+      expect(changes(result.timeline)).toEqual({ Bekend: undefined, Verbeterd: 'changed', Nieuw: 'new' });
+    });
+
+    it('marks new and rewritten reports the same way, dated or not', () => {
+      const result = selectCampaignStorySources(
+        [],
+        [
+          journal({}),
+          journal({ journalId: 2, title: 'Herschreven', date: '2025-12-02' }),
+          journal({ journalId: 3, title: 'Later toegevoegd', date: null }),
+        ],
+        previous
+      );
+
+      expect(changes(result.timeline)).toEqual({ Verslag: undefined, Herschreven: 'changed' });
+      expect(changes(result.undatedJournals)).toEqual({ 'Later toegevoegd': 'new' });
+    });
+
+    it('counts every report as new for a version from before reports were a source', () => {
+      const result = selectCampaignStorySources([], [journal({})], { sourceSessions: [] });
+
+      expect(changes(result.timeline)).toEqual({ Verslag: 'new' });
+    });
+
+    it('marks nothing when no version goes along', () => {
+      const result = selectCampaignStorySources(sessions, [journal({})]);
+
+      expect(result.timeline.every(input => !('sinceLastVersion' in input))).toBe(true);
+    });
+  });
+
   describe('with written reports from Kanka', () => {
     const journal = (overrides: Partial<CampaignStoryJournal>): CampaignStoryJournal => ({
       journalId: 1,

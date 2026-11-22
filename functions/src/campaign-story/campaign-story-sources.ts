@@ -5,6 +5,7 @@ import {
   CampaignStorySkippedSession,
   CampaignStorySourceJournal,
   CampaignStorySourceSession,
+  CampaignStoryVersionSources,
 } from '../types/campaign-story.types';
 
 /** Minimal shape of an audio session document needed for source selection. */
@@ -44,10 +45,15 @@ const UNTITLED = 'Untitled Session';
  * written reports from Kanka, in chronological order: by sessionDate, falling
  * back to createdAt (upload date), createdAt breaks ties. A journal takes its
  * place by its Kanka date; journals without one are returned separately.
+ *
+ * With `previous` (the sources of the version that goes along with the new one),
+ * every source that version does not hold yet, or holds an older text of, is
+ * marked as new or changed.
  */
 export function selectCampaignStorySources(
   sessions: SessionDocForCampaignStory[],
-  journals: CampaignStoryJournal[] = []
+  journals: CampaignStoryJournal[] = [],
+  previous?: CampaignStoryVersionSources
 ): CampaignStorySources {
   const usable: SessionDocForCampaignStory[] = [];
   const skipped: CampaignStorySkippedSession[] = [];
@@ -82,12 +88,13 @@ export function selectCampaignStorySources(
         sessionDate: session.sessionDate || null,
         uploadedAt: toIsoDate(session.createdAt),
         content: (session.content ?? '').trim(),
+        ...sinceLastVersion(sessionChange(session, previous)),
       },
       sortKey: sortKey(session),
       tieBreak: toMillis(session.createdAt),
     })),
     ...dated.map((journal, index): TimelineEntry => ({
-      input: toJournalInput(journal),
+      input: toJournalInput(journal, previous),
       sortKey: Date.parse(journal.date as string),
       // Negative: before every session of that day, in title order among themselves.
       tieBreak: index - dated.length,
@@ -110,11 +117,32 @@ export function selectCampaignStorySources(
       updatedAt: journal.updatedAt,
     })),
     timeline: entries.map(entry => entry.input),
-    undatedJournals: undated.map(toJournalInput),
+    undatedJournals: undated.map(journal => toJournalInput(journal, previous)),
   };
 }
 
-function toJournalInput(journal: CampaignStoryJournal): CampaignStoryInput {
+type SourceChange = CampaignStoryInput['sinceLastVersion'];
+
+/** Leaves the key out for an unchanged source, so inputs without a previous version stay as they were. */
+function sinceLastVersion(change: SourceChange): Pick<CampaignStoryInput, 'sinceLastVersion'> {
+  return change ? { sinceLastVersion: change } : {};
+}
+
+function sessionChange(session: SessionDocForCampaignStory, previous?: CampaignStoryVersionSources): SourceChange {
+  if (!previous) return undefined;
+  const used = previous.sourceSessions.find(source => source.sessionId === session.id);
+  if (!used) return 'new';
+  return (session.storyRegenerationCount ?? 1) > used.storyVersion ? 'changed' : undefined;
+}
+
+function journalChange(journal: CampaignStoryJournal, previous?: CampaignStoryVersionSources): SourceChange {
+  if (!previous) return undefined;
+  const used = previous.sourceJournals?.find(source => source.journalId === journal.journalId);
+  if (!used) return 'new';
+  return used.updatedAt !== journal.updatedAt ? 'changed' : undefined;
+}
+
+function toJournalInput(journal: CampaignStoryJournal, previous?: CampaignStoryVersionSources): CampaignStoryInput {
   return {
     kind: 'journal',
     title: journal.title,
@@ -123,6 +151,7 @@ function toJournalInput(journal: CampaignStoryJournal): CampaignStoryInput {
     content: journal.content,
     author: journal.author,
     journalType: journal.type,
+    ...sinceLastVersion(journalChange(journal, previous)),
   };
 }
 
