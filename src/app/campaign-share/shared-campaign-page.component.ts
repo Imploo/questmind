@@ -22,15 +22,7 @@ import { TranslatePipe } from '../core/i18n/translate.pipe';
           [sessionCount]="campaign.sessionCount"
           [playerCount]="campaign.playerCount"
           [lastPlayed]="campaign.lastPlayed"
-        >
-          <span class="read-only" data-testid="read-only">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.46 12C3.73 7.94 7.52 5 12 5c4.48 0 8.27 2.94 9.54 7-1.27 4.06-5.06 7-9.54 7-4.48 0-8.27-2.94-9.54-7z" />
-            </svg>
-            {{ 'campaign.sharePage.readOnly' | translate }}
-          </span>
-        </app-campaign-heading>
+        />
 
         <app-campaign-tabs [base]="store.base()" [sessionCount]="campaign.sessionCount" />
 
@@ -40,21 +32,6 @@ import { TranslatePipe } from '../core/i18n/translate.pipe';
       }
     </div>
   `,
-  styles: [`
-    /* Light on the gradient, like the facts above it. */
-    .read-only {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.4rem;
-      padding: 0.3rem 0.75rem;
-      border-radius: 999px;
-      border: 1px solid rgba(255, 255, 255, 0.35);
-      background: rgba(255, 255, 255, 0.14);
-      color: #fff;
-      font-size: 0.8rem;
-      font-weight: 600;
-    }
-  `],
 })
 export class SharedCampaignPageComponent {
   protected readonly store = inject(SharedCampaignStore);

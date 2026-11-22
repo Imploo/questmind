@@ -190,7 +190,6 @@ export const nl: Translations = {
       failed: 'De deellink maken is mislukt. Probeer het opnieuw.',
     },
     sharePage: {
-      readOnly: 'Gedeelde campagne · alleen lezen',
       loading: 'Campagne laden...',
       notFoundTitle: 'Campagne niet gevonden',
       notFoundText: 'Deze link bestaat niet (meer).',

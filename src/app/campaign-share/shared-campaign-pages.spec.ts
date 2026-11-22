@@ -76,7 +76,6 @@ describe('shared campaign pages', () => {
     const facts = element.querySelector('[data-testid="campaign-facts"]')?.textContent ?? '';
     expect(facts).toContain(nl.campaign.page.sessions(3));
     expect(facts).toContain(nl.campaign.page.players(7));
-    expect(element.querySelector('[data-testid="read-only"]')?.textContent).toContain(nl.campaign.sharePage.readOnly);
     expect(Array.from(element.querySelectorAll('.campaign-tab')).map(tab => tab.getAttribute('href'))).toEqual([
       '/share/campaign/abc/story',
       '/share/campaign/abc/sessions',

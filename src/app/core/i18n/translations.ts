@@ -203,7 +203,6 @@ export interface Translations {
     };
     /** The read-only page a share link opens. */
     sharePage: {
-      readOnly: string;
       loading: string;
       notFoundTitle: string;
       notFoundText: string;

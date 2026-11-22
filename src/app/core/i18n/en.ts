@@ -190,7 +190,6 @@ export const en: Translations = {
       failed: 'Making the share link failed. Please try again.',
     },
     sharePage: {
-      readOnly: 'Shared campaign · read only',
       loading: 'Loading campaign...',
       notFoundTitle: 'Campaign not found',
       notFoundText: 'This link does not exist (any more).',
