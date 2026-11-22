@@ -1,7 +1,7 @@
 import * as logger from '../utils/logger';
 import {onCall} from 'firebase-functions/v2/https';
 import {onTaskDispatched} from 'firebase-functions/v2/tasks';
-import {getFirestore} from 'firebase-admin/firestore';
+import {DocumentData, getFirestore} from 'firebase-admin/firestore';
 import {SHARED_CORS} from '../config/cors';
 import {ProgressTrackerService} from '../services/progress-tracker.service';
 import {generateStoryFromTranscription} from '../story/story-generator.service';
@@ -25,6 +25,12 @@ export interface StoryGenerationPayload {
   enableKankaContext?: boolean;
   userCorrections?: string | null;
 }
+
+/**
+ * What started the generation: a member asking for the story again (same session
+ * log), or the audio pipeline after a (new) transcription.
+ */
+export type StoryGenerationTrigger = 'regenerate' | 'transcription';
 
 /**
  * Fetches previous completed stories from the same campaign,
@@ -69,12 +75,22 @@ async function fetchPreviousStories(
   return selected;
 }
 
+/** The version of the session's story; a story that was never replaced is version 1. */
+function storyVersionOf(sessionData: DocumentData | undefined): number {
+  const count = sessionData?.storyRegenerationCount;
+  return typeof count === 'number' && count >= 1 ? count : 1;
+}
+
 /**
  * Generates the session story from the transcription stored on the session
- * (`rawStory`). Marks the session failed and rethrows on error; the caller
- * reports the error (once).
+ * (`rawStory`). A story that was edited by hand is passed along as the previous
+ * version. Marks the session failed and rethrows on error; the caller reports
+ * the error (once).
  */
-export async function runStoryGeneration(payload: StoryGenerationPayload): Promise<void> {
+export async function runStoryGeneration(
+  payload: StoryGenerationPayload,
+  trigger: StoryGenerationTrigger = 'regenerate'
+): Promise<void> {
   const {campaignId, sessionId, enableKankaContext, userCorrections} = payload;
   const ref = sessionRef(getFirestore(), campaignId, sessionId);
 
@@ -97,6 +113,14 @@ export async function runStoryGeneration(payload: StoryGenerationPayload): Promi
     if (!storyInput) {
       throw new Error('No transcription found for this session');
     }
+
+    // A story the DM edited by hand goes along with the new generation, so the
+    // improvements made in it stay in this and every later version. An untouched
+    // story does not: regenerating it starts fresh from the log.
+    const currentStory = typeof sessionData?.content === 'string' ? sessionData.content.trim() : '';
+    const previousVersion = currentStory && sessionData?.storyEditedAt
+      ? {content: currentStory, logRenewed: trigger === 'transcription'}
+      : undefined;
 
     const kankaContext = await fetchKankaContextForSession(campaignId, sessionId, !!enableKankaContext);
 
@@ -123,18 +147,30 @@ export async function runStoryGeneration(payload: StoryGenerationPayload): Promi
     const storyContent = await generateStoryFromTranscription(
       storyInput,
       storyConfig,
-      kankaContext,
-      userCorrections ?? undefined,
-      previousStories
+      {
+        kankaContext,
+        userCorrections: userCorrections ?? undefined,
+        previousStories,
+        previousVersion,
+      }
     );
 
     logger.debug(`[StoryGeneration] Story generated: ${storyContent.length} characters`);
 
     // Save story to Firestore
+    const generatedAt = new Date().toISOString();
     await ref.update({
       content: storyContent,
-      storyGeneratedAt: new Date().toISOString(),
+      storyGeneratedAt: generatedAt,
       status: 'completed',
+      // Replacing a story makes a new version of it; the campaign story compares
+      // this number to know it still holds the older one.
+      ...(currentStory
+        ? {
+          storyRegenerationCount: storyVersionOf(sessionData) + 1,
+          storyRegeneratedAt: generatedAt,
+        }
+        : {}),
     });
 
     // Mark session as completed (100%)
@@ -208,7 +244,7 @@ export const storyGenerationTaskWorker = onTaskDispatched<StoryGenerationPayload
   },
   async (request) => {
     try {
-      await runStoryGeneration(request.data);
+      await runStoryGeneration(request.data, 'transcription');
     } catch (error) {
       // Already recorded on the session (markFailed); don't let Cloud Tasks log a 500.
       captureFunctionError(

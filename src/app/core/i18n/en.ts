@@ -270,6 +270,8 @@ export const en: Translations = {
     latestVersion: (version) => `Version ${version}`,
     sessionNotIncluded: 'This session is not in the campaign story yet.',
     sessionNotIncludedHelp: 'Update the story to write this evening into it.',
+    sessionChanged: 'The story of this session has changed since the campaign story was written.',
+    sessionChangedHelp: 'Update the campaign story to bring the changes into it.',
     updateCampaignStory: 'Update the campaign story',
     sessionCount: (count) => (count === 1 ? '1 session' : `${count} sessions`),
     journalCount: (count) => (count === 1 ? '1 journal from Kanka' : `${count} journals from Kanka`),
@@ -292,6 +294,16 @@ export const en: Translations = {
     backToLatest: 'Back to latest',
     untitled: 'The story so far',
     downloadName: 'campaign-story',
+    edited: 'Edited by hand',
+    edit: {
+      button: 'Edit story',
+      titleLabel: 'Story title',
+      contentLabel: 'Story text',
+      help:
+        'Remove what is not true, add what is missing, or leave a note in parentheses. The next version starts from this text: your improvements stay and notes are worked into the story.',
+      save: 'Save story',
+      saveFailed: 'The story could not be saved. Please try again.',
+    },
     progress: {
       collecting: 'Collecting session stories...',
       writing: 'Writing the story...',
@@ -391,8 +403,11 @@ export const en: Translations = {
       tabStory: 'Story',
       tabPodcasts: 'Podcasts',
       generatedStory: 'Generated Story',
+      edited: 'Edited by hand',
       preview: 'Preview',
       editStory: 'Edit story',
+      editHelp:
+        'Remove what is not true, add what is missing, or leave a note in parentheses. When you regenerate the story, this version goes along: your improvements stay and notes are worked into the story.',
       reset: 'Reset',
       saveStory: 'Save Story',
       downloadMarkdown: 'Download Markdown',
@@ -409,7 +424,8 @@ export const en: Translations = {
       label: 'Corrections',
       placeholder:
         `Example: When you hear "corikan", the correct name is "Khuri-Khan". The party is in Waterdeep, not Baldur's Gate.`,
-      help: 'Corrections auto-save as you type. Regenerating replaces the story on the left.',
+      help:
+        'Corrections auto-save as you type. Regenerating replaces the story on the left; what you improved in the story itself stays.',
       regenerate: 'Regenerate Story',
     },
     recording: {

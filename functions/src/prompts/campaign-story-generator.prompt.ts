@@ -1,6 +1,7 @@
 import {
   CampaignStoryInput,
   CampaignStoryMaterial,
+  CampaignStoryPreviousVersion,
   CampaignStoryReference,
   CampaignStoryReferenceEntry,
 } from '../types/campaign-story.types';
@@ -10,12 +11,21 @@ import {
  * whole campaign so far, built from all session stories in chronological order and,
  * when Kanka is linked, from the written reports (journals) in Kanka. Those reports
  * are the only source for sessions that were never recorded.
+ *
+ * Once the owner has edited a version by hand, that version goes along as the
+ * previous version: what was corrected, removed or added in it stays that way.
  */
 export const CAMPAIGN_STORY_MIN_WORDS = 500;
 export const CAMPAIGN_STORY_MAX_WORDS = 1800;
 
 /** With descriptions the reference stays under this; a larger campaign gets the names only. */
 const MAX_REFERENCE_CHARS = 60_000;
+
+/** Behind the heading of a source, when a previous version goes along. */
+const SOURCE_LABELS: Record<NonNullable<CampaignStoryInput['sinceLastVersion']>, string> = {
+  new: 'NIEUW sinds de vorige versie',
+  changed: 'HERZIEN sinds de vorige versie',
+};
 
 export function buildCampaignStoryPrompt(material: CampaignStoryMaterial, targetWords: number): string {
   const target = Math.min(CAMPAIGN_STORY_MAX_WORDS, Math.max(CAMPAIGN_STORY_MIN_WORDS, Math.round(targetWords)));
@@ -28,6 +38,7 @@ export function buildCampaignStoryPrompt(material: CampaignStoryMaterial, target
     .map((source, index) => sourceBlock(source, timeline.length + index + 1))
     .join('\n\n---\n\n');
   const reference = buildReferenceBlock(material.reference);
+  const previous = material.previousVersion?.content.trim() ? material.previousVersion : undefined;
 
   return `Je bent een ervaren verhalenverteller die D&D-campagnes samenvat.
 Je krijgt de bronnen van één campagne: de verhalen van de gespeelde sessies${hasJournals ? ' en de verslagen die de spelers en de DM zelf hebben geschreven' : ''}, in chronologische volgorde.
@@ -62,9 +73,12 @@ CHRONOLOGIE:
 TROUW AAN DE BRON (KRITISCH):
 - Gebruik UITSLUITEND gebeurtenissen, namen, plekken en details die in de ${hasJournals ? 'sessieverhalen en verslagen' : 'sessieverhalen'} staan
 - Verzin NOOIT gebeurtenissen, personages, dialogen, motieven of verbanden tussen sessies die niet in de bron staan
-- Is iets in de bron vaag, houd het dan vaag${reference ? `
+- Is iets in de bron vaag, houd het dan vaag
+- Een opmerking tussen haakjes in een bron die leest als een notitie van de DM (een rechtzetting of een aanvulling) gaat vóór de tekst eromheen: volg haar, en neem de notitie zelf niet letterlijk over${reference ? `
 - De NASLAG UIT KANKA is geen bron van gebeurtenissen. Gebruik hem om namen en plekken goed te spellen en om te weten wie of wat iets is. Vertel niets uit de naslag dat niet ook in een ${hasJournals ? 'sessieverhaal of verslag' : 'sessieverhaal'} gebeurt` : ''}
-
+${previous ? `
+${PREVIOUS_VERSION_RULES}
+` : ''}
 STRUCTUUR & STIJL:
 - Schrijf in de derde persoon, verleden tijd, als één doorlopend verhaal
 - Gebruik markdown. Je mag ##-tussenkopjes gebruiken per verhaalboog of fase van de campagne, maar NOOIT een kopje per sessie${hasJournals ? ' of per verslag' : ''}
@@ -75,10 +89,35 @@ OUTPUT:
 Geef een JSON-object terug met:
 - "title": een korte, verhalende titel voor het verhaal tot nu toe (maximaal 8 woorden)
 - "content": het verhaal in markdown (zonder de titel als kop bovenaan)
-${reference ? `\n${reference}\n` : ''}
+${reference ? `\n${reference}\n` : ''}${previous ? `\n${previousVersionBlock(previous)}\n` : ''}
 BRONNEN (chronologisch):
 
 ${timelineBlocks}${undatedBlocks ? `${timelineBlocks ? '\n\n---\n\n' : ''}VERSLAGEN ZONDER DATUM (nog niet op hun plek):\n\n${undatedBlocks}` : ''}`;
+}
+
+/**
+ * How the version the owner improved by hand weighs against the sources. A source
+ * is the truth for what happened, except where the owner said otherwise.
+ */
+const PREVIOUS_VERSION_RULES = `VERBETERINGEN VAN DE DM (BELANGRIJK):
+- Onder VORIGE VERSIE staat het campagneverhaal zoals het er nu staat. De DM heeft het nagelezen en met de hand verbeterd: geschrapt wat niet klopte, namen en feiten rechtgezet, aangevuld wat ontbrak, of een notitie tussen haakjes gezet. Die verbeteringen moeten ook in het nieuwe verhaal staan
+- Schrijf het verhaal opnieuw als één geheel, maar ga voor alles wat de vorige versie al vertelt uit van de vorige versie. Je mag dat deel korter opschrijven om ruimte te maken voor nieuwe bronnen; de feiten ervan verander je niet. De alinea "Waar staan we nu?" schrijf je opnieuw voor de stand van nu
+- Spreekt de vorige versie een bron tegen (een naam, wie wat deed, de volgorde, de afloop), dan klopt de vorige versie
+- Wat de vorige versie vertelt en in geen enkele bron staat, heeft de DM toegevoegd: laat het staan. Dit is de enige uitzondering op de regel dat je uitsluitend de bronnen gebruikt
+- Vertelt een bron iets dat de vorige versie niet noemt, dan is dat eerder bewust weggelaten of door de DM geschrapt: haal het niet terug
+- Dat geldt niet voor een bron met het label "${SOURCE_LABELS.new}": die is nog niet verwerkt, dus neem haar op in het verhaal
+- Een bron met het label "${SOURCE_LABELS.changed}" is ná de vorige versie zelf verbeterd of opnieuw geschreven. Lees die opnieuw: waar ze de vorige versie tegenspreekt, klopt de herziene bron, en wat er nieuw in staat mag in het verhaal
+- Een opmerking tussen haakjes die leest als een notitie van de DM (een rechtzetting, een aanvulling, een aanwijzing voor de schrijver) is geen verhaaltekst: doe wat er staat en verwerk de inhoud in het verhaal, zonder de haakjes en zonder de notitie te noemen
+- Houd de titel van de vorige versie aan, tenzij die door de nieuwe bronnen niet meer bij het verhaal past`;
+
+function previousVersionBlock(previous: CampaignStoryPreviousVersion): string {
+  const title = previous.title?.trim();
+  return `VORIGE VERSIE (door de DM verbeterd)${title ? ` — titel: ${title}` : ''}:\n${previous.content.trim()}`;
+}
+
+/** " — NIEUW sinds de vorige versie" behind the heading of a source the previous version does not hold yet. */
+function changeLabel(source: CampaignStoryInput): string {
+  return source.sinceLastVersion ? ` — ${SOURCE_LABELS[source.sinceLastVersion]}` : '';
 }
 
 function sourceBlock(source: CampaignStoryInput, number: number): string {
@@ -90,13 +129,13 @@ function sourceBlock(source: CampaignStoryInput, number: number): string {
       source.journalType ? `soort: ${source.journalType}` : '',
       source.author ? `geschreven door ${source.author}` : '',
     ].filter(Boolean).join(', ');
-    return `BRON ${number} — VERSLAG — ${source.title} — ${date}${details ? ` — ${details}` : ''}\n${source.content}`;
+    return `BRON ${number} — VERSLAG — ${source.title} — ${date}${details ? ` — ${details}` : ''}${changeLabel(source)}\n${source.content}`;
   }
 
   const date = source.sessionDate
     ? source.sessionDate
     : `Datum onbekend${source.uploadedAt ? ` (geüpload op ${source.uploadedAt})` : ''}`;
-  return `BRON ${number} — SESSIEVERHAAL — ${source.title} — ${date}\n${source.content}`;
+  return `BRON ${number} — SESSIEVERHAAL — ${source.title} — ${date}${changeLabel(source)}\n${source.content}`;
 }
 
 /** Who and what exists in the campaign, or '' when Kanka has nothing to list. */

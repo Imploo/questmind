@@ -94,3 +94,28 @@ OUTPUT FORMAT:
 - End with a natural conclusion that hints at what lies ahead (if applicable)
 - Aim for a long, thorough, detailed recap — preserve the full richness of the session log rather than condensing it; a detailed session deserves a substantial, multi-section write-up that keeps the dialogue, decisions, and specifics intact
 - Every scene, conversation, decision, and discovery in the log should be recognisable in the story — expand on them in prose rather than skipping them. Only the mechanics are dropped, never the events`;
+
+/**
+ * Instructions for a story the DM has edited by hand: the current text goes along
+ * with a new generation, so the improvements made in it stay in every later version.
+ *
+ * @param logRenewed - the session was transcribed again after the previous version
+ *   was written, so the log may hold scenes that version never had
+ */
+export function buildPreviousVersionBlock(previousVersion: string, logRenewed: boolean): string {
+  const missingFromPrevious = logRenewed
+    ? `- The session log was transcribed again after the previous version was written, so it can hold scenes the previous version knows nothing about: tell those too. Where the log repeats something the previous version tells differently, the previous version is right`
+    : `- An event, line of dialogue or detail that is in the session log but missing from the previous version was removed by the DM because it was not true: leave it out, do not bring it back`;
+
+  return `PREVIOUS VERSION OF THIS STORY (EDITED BY THE DM):
+Under PREVIOUS VERSION is the story of this session as it stands now. The DM has read it and improved it by hand: removed what was not true, corrected names and facts, added what was missing, or left a note in parentheses. Those improvements must still be there in the story you write now.
+- Write the story again from the session log, just as long and detailed as before — the previous version is no reason to write a shorter story
+- Where the previous version and the session log disagree (a name, who did what, the order of events, how something ended), the previous version is right
+- What the previous version tells that is not in the session log was added by the DM: keep it. This is the one exception to the rule that the session log is your only source of events
+${missingFromPrevious}
+- A remark in parentheses that reads as a note from the DM (a correction, an addition, an instruction to the writer) is not story text: do what it says and work its content into the narrative, without the parentheses and without mentioning the note
+- DM CORRECTIONS still apply, and win where they contradict the previous version
+
+PREVIOUS VERSION:
+${previousVersion}`;
+}

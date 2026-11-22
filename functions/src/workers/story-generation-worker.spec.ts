@@ -127,9 +127,66 @@ describe('storyGenerationWorker (callable)', () => {
     expect(result).toEqual({ success: true, stage: 'storyGenerationWorker' });
     expect(mockFetchKanka).toHaveBeenCalledWith('c1', 's1', true);
     expect(mockGenerateStory).toHaveBeenCalledWith(
-      'DM: Welkom terug.', expect.anything(), undefined, 'Thalia', undefined
+      'DM: Welkom terug.',
+      expect.anything(),
+      { kankaContext: undefined, userCorrections: 'Thalia', previousStories: undefined, previousVersion: undefined }
     );
     expect(mockUpdate).toHaveBeenCalledWith(SESSION, expect.objectContaining({ content: 'Het verhaal', status: 'completed' }));
+  });
+
+  describe('with a story that already exists', () => {
+    const storyContext = () => mockGenerateStory.mock.calls[0][2] as { previousVersion?: unknown };
+    const storyUpdate = () => mockUpdate.mock.calls.find(([, data]) => 'content' in (data as object))?.[1];
+
+    it('starts fresh from the log when nobody edited the story by hand', async () => {
+      docs[SESSION] = { ownerId: 'dm', rawStory: 'DM: Welkom terug.', content: 'Het oude verhaal' };
+
+      await callable(request());
+
+      expect(storyContext().previousVersion).toBeUndefined();
+    });
+
+    it('passes a hand-edited story along, so the improvements stay', async () => {
+      docs[SESSION] = {
+        ownerId: 'dm',
+        rawStory: 'DM: Welkom terug.',
+        content: ' Kael opende de deur (niet Mira). ',
+        storyEditedAt: '2026-11-20T10:00:00.000Z',
+      };
+
+      await callable(request());
+
+      expect(storyContext().previousVersion).toEqual({ content: 'Kael opende de deur (niet Mira).', logRenewed: false });
+    });
+
+    it('never takes the previous version from the caller', async () => {
+      docs[SESSION] = { ownerId: 'dm', rawStory: 'DM: Welkom terug.', content: 'Het oude verhaal' };
+
+      await callable(request({
+        data: { campaignId: 'c1', sessionId: 's1', previousVersion: { content: 'Injected', logRenewed: false } },
+      }));
+
+      expect(storyContext().previousVersion).toBeUndefined();
+    });
+
+    it('counts the replaced story as a new version, for the campaign story to notice', async () => {
+      docs[SESSION] = { ownerId: 'dm', rawStory: 'DM: Welkom terug.', content: 'Het oude verhaal' };
+      await callable(request());
+      expect(storyUpdate()).toEqual(expect.objectContaining({ storyRegenerationCount: 2, storyRegeneratedAt: expect.any(String) }));
+
+      mockUpdate.mockClear();
+      docs[SESSION] = { ownerId: 'dm', rawStory: 'DM: Welkom terug.', content: 'Het oude verhaal', storyRegenerationCount: 4 };
+      await callable(request());
+      expect(storyUpdate()).toEqual(expect.objectContaining({ storyRegenerationCount: 5 }));
+    });
+
+    it('leaves the version alone for the first story of a session', async () => {
+      docs[SESSION] = { ownerId: 'dm', rawStory: 'DM: Welkom terug.', content: '' };
+
+      await callable(request());
+
+      expect(storyUpdate()).not.toHaveProperty('storyRegenerationCount');
+    });
   });
 
   it('reports a generation failure to Sentry exactly once', async () => {
@@ -159,5 +216,21 @@ describe('storyGenerationTaskWorker', () => {
     expect(progress.markFailed).toHaveBeenCalledWith('c1', 's1', 'generating-story', expect.any(Error));
     expect(sentry.captureException).toHaveBeenCalledTimes(1);
     expect(sentry.captureMessage).not.toHaveBeenCalled();
+  });
+
+  it('tells the writer the log is new when a hand-edited story is written again after a transcription', async () => {
+    mockGenerateStory.mockResolvedValue('Het verhaal');
+    docs[SESSION] = {
+      ownerId: 'dm',
+      rawStory: 'DM: Welkom terug.',
+      content: 'Het verbeterde verhaal',
+      storyEditedAt: '2026-11-20T10:00:00.000Z',
+    };
+
+    await taskWorker({ data: { campaignId: 'c1', sessionId: 's1' } });
+
+    expect(mockGenerateStory.mock.calls[0][2]).toEqual(
+      expect.objectContaining({ previousVersion: { content: 'Het verbeterde verhaal', logRenewed: true } })
+    );
   });
 });

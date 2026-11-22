@@ -58,6 +58,15 @@ export interface CampaignStoryVersion {
   error?: string | null;
   podcasts: PodcastEntry[];
   latestPodcastVersion?: number;
+  /** Set by the app when the owner edits the title or the story by hand. */
+  editedAt?: Date;
+  editedBy?: string;
+  /**
+   * The version that went along as "previous version" when this one was written.
+   * The improvements the owner made by hand in it live on in this version, so
+   * this version goes along with the next one in turn.
+   */
+  basedOnVersion?: number;
 }
 
 /**
@@ -76,6 +85,24 @@ export interface CampaignStoryInput {
   author?: string | null;
   /** Journal only: Kanka's free-text type, e.g. "Session" or "Lore" */
   journalType?: string | null;
+  /**
+   * Only when a previous version goes along: this source is not in that version
+   * yet (`new`), or was rewritten or edited after it was written (`changed`).
+   */
+  sinceLastVersion?: 'new' | 'changed';
+}
+
+/** The sources a story version was written from, to tell which ones are new or changed since. */
+export interface CampaignStoryVersionSources {
+  sourceSessions: CampaignStorySourceSession[];
+  /** Absent on versions written before journals were a source. */
+  sourceJournals?: CampaignStorySourceJournal[];
+}
+
+/** The campaign story as it stands, with the improvements the owner made by hand. */
+export interface CampaignStoryPreviousVersion {
+  title?: string;
+  content: string;
 }
 
 /** A written report from Kanka, as plain text. */
@@ -114,6 +141,8 @@ export interface CampaignStoryMaterial {
   /** Journals without a date: the model places them by title and content */
   undatedJournals: CampaignStoryInput[];
   reference?: CampaignStoryReference;
+  /** Goes along once the owner has edited the story by hand, so those improvements stay */
+  previousVersion?: CampaignStoryPreviousVersion;
 }
 
 export interface CampaignStoryFeatureConfig extends AIFeatureConfig {

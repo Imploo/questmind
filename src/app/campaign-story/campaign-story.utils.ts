@@ -51,6 +51,12 @@ export function sourceCountText(
   ].filter(Boolean).join(' · ');
 }
 
+/** Words in a story, counted the way the backend does for a generated version. */
+export function countWords(text: string): number {
+  const trimmed = text.trim();
+  return trimmed ? trimmed.split(/\s+/).length : 0;
+}
+
 /** Newest completed version (versions are sorted newest first). */
 export function latestCompletedVersion(versions: CampaignStoryVersion[]): CampaignStoryVersion | null {
   return versions.find(version => version.status === 'completed') ?? null;

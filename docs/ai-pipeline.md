@@ -2,7 +2,7 @@
 
 Overzicht van alle AI-stappen, hun input en wat ze opleveren.
 
-Laatst bijgewerkt: 2026-11-21
+Laatst bijgewerkt: 2026-11-22
 
 ## Configuratie
 
@@ -82,7 +82,7 @@ opname ──► 7. Gespreksverslag ──► 8. Verhaal ──► (op verzoek) 
 | # | Stap (key) | Model | Input | Resultaat |
 |---|---|---|---|---|
 | 7 | **Geannoteerd gespreksverslag** (`transcription`) | Gemini, thinking low, 65.536 output tokens | Audio-segmenten + optionele Kanka-context | `rawStory` (geannoteerd log) |
-| 8 | **Verhaal** (`storyGeneration`) | Gemini, thinking medium | Gespreksverslag + Kanka-context + eerdere verhalen + DM-correcties | `content`, status `completed` |
+| 8 | **Verhaal** (`storyGeneration`) | Gemini, thinking medium | Gespreksverslag + Kanka-context + eerdere verhalen + DM-correcties + het huidige verhaal als dat met de hand is bewerkt | `content`, status `completed` |
 | 9 | **Podcastscript** (`podcastScript`) | Gemini, thinking medium | Sessieverhaal | Dialoog `HOST1:` / `HOST2:` |
 | 10 | **Podcaststemmen** (`podcastVoices`) | Gemini TTS `gemini-3.8-flash-tts` | Script uit stap 9 | MP3 in Storage |
 
@@ -117,6 +117,14 @@ opname ──► 7. Gespreksverslag ──► 8. Verhaal ──► (op verzoek) 
   - Dubbele regels door de segment-overlap worden één keer opgenomen; gaten blijven gaten.
   - Oudere sessies hebben nog een verhalende `rawStory`; die wordt op dezelfde manier gepolijst.
 - Schrijft het eindverhaal naar `content` op de sessie en zet de status op `completed`.
+- **Met de hand bewerkt verhaal gaat mee.** De eigenaar van de sessie kan het verhaal bewerken (tab Verhaal → "Verhaal bewerken"): schrappen wat niet klopt, aanvullen, of een notitie tussen haakjes zetten. Opslaan zet `storyEditedAt` op de sessie. Vanaf dan gaat het huidige verhaal bij elke nieuwe generatie mee als **vorige versie** (`buildPreviousVersionBlock` in de prompt), ook in de generaties daarna: de verbeteringen zitten dan in het nieuwe verhaal, en dat gaat de keer erop weer mee.
+  - Volgorde bij een tegenstrijdigheid: DM-correcties → vorige versie → gespreksverslag.
+  - Wat de vorige versie vertelt en niet in het verslag staat, is door de DM toegevoegd en blijft staan. Wat in het verslag staat maar in de vorige versie ontbreekt, is geschrapt en komt niet terug.
+  - Een notitie tussen haakjes wordt uitgevoerd en in de tekst verwerkt; de haakjes zelf verdwijnen.
+  - Na **opnieuw transcriberen** is het verslag nieuw: dan mogen scènes die de vorige versie niet kent er wel bij, maar wat is rechtgezet blijft rechtgezet.
+  - Een verhaal dat **nooit** met de hand is bewerkt gaat niet mee: opnieuw genereren begint dan gewoon vanaf het verslag (zo blijft een mislukt of afgekapt verhaal niet hangen).
+  - Tekst die nog in het bewerkveld staat wordt eerst opgeslagen als op "Verhaal opnieuw genereren" wordt geklikt.
+- **Versie van het verhaal**: `storyRegenerationCount` gaat één omhoog bij elke nieuwe generatie over een bestaand verhaal heen en bij elke bewerking met de hand (ontbreekt = 1). Het campagneverhaal vergelijkt dit getal met wat het heeft verwerkt (`sourceSessions[].storyVersion`): een gewijzigde sessie telt mee bij "nog niet verwerkt" en krijgt op de sessiepagina de melding dat het campagneverhaal bijgewerkt kan worden.
 
 **9 + 10. Podcast** — `functions/src/generate-podcast-audio.ts`, TTS in `functions/src/utils/podcast-tts.ts`
 - Stap 9 zet het verhaal om naar een twee-host dialoog; lengte begrensd door `maxCharacters` (default 5000). Pauzes als `<short pause>`; geen regieaanwijzingen, want 3.8 TTS leest de tekst letterlijk voor.
@@ -134,7 +142,7 @@ Eén doorlopend, samengevat verhaal van de hele campagne, in versies (ticket #69
 
 | # | Stap (key) | Model | Input | Resultaat |
 |---|---|---|---|---|
-| 11 | **Campagneverhaal** (`campaignStory`) | Gemini, thinking medium | Alle sessieverhalen + geschreven verslagen uit Kanka + Kanka-naslag | `{ title, content }` op `campaigns/{id}/campaignStories/v{n}` |
+| 11 | **Campagneverhaal** (`campaignStory`) | Gemini, thinking medium | Alle sessieverhalen + geschreven verslagen uit Kanka + Kanka-naslag + de vorige versie als die met de hand is bewerkt | `{ title, content }` op `campaigns/{id}/campaignStories/v{n}` |
 | 12 | **Podcast van het campagneverhaal** (`podcastScript` + `podcastVoices`) | als stap 9 + 10 | Een versie van het campagneverhaal | MP3 in Storage |
 
 ### Details
@@ -160,6 +168,18 @@ Wat het model ermee moet doen:
 - Verslagen in de ik- of wij-vorm worden omgezet naar de derde persoon; "ik" is de schrijver (het personage dat in Kanka als auteur van het journal staat).
 - Een journal dat geen gebeurtenissen beschrijft maar achtergrond (lore, notities) is alleen achtergrond.
 - **Naslag**: namen, type en de eerste regels van de niet-privé personages, plekken, quests en organisaties gaan mee voor spelling en om te weten wie of wat iets is. Het zijn nooit gebeurtenissen.
+
+Met de hand bewerken (alleen de eigenaar van de campagne):
+
+- De **nieuwste voltooide versie** is te bewerken ("Verhaal bewerken" naast "Versies"): titel en tekst. De app schrijft `title`, `content`, `wordCount`, `editedAt` en `editedBy` rechtstreeks naar de versie; `firestore.rules` staat precies die velden toe, alleen voor de eigenaar en alleen op de versie in `campaignStory.latestCompletedVersion`. Al het andere op een versie schrijft alleen de backend.
+- Een bewerkte versie gaat bij de volgende generatie mee als **vorige versie**. De nieuwe versie krijgt `basedOnVersion` en gaat daardoor de keer daarna zelf weer mee: verbeteringen blijven zo in alle latere versies staan. Zolang niemand iets heeft bewerkt gaat er geen vorige versie mee en wordt het verhaal elke keer vers uit de bronnen geschreven.
+- Regels in de prompt (`VERBETERINGEN VAN DE DM`):
+  - Spreekt de vorige versie een bron tegen, dan klopt de vorige versie. Wat de DM heeft toegevoegd blijft staan; wat de vorige versie weglaat, wordt niet teruggehaald uit de bronnen.
+  - Bronnen krijgen een label ten opzichte van de vorige versie (`campaign-story-sources.ts`): **NIEUW** (zat er nog niet in: opnemen) of **HERZIEN** (sessieverhaal opnieuw gegenereerd of bewerkt, journal gewijzigd in Kanka: de herziene bron gaat vóór de vorige versie). Een fout die uit een sessieverhaal komt, kun je dus het best ook in dat sessieverhaal rechtzetten.
+  - Een notitie tussen haakjes wordt uitgevoerd en in de tekst verwerkt. Dat geldt ook voor een notitie in een sessieverhaal dat als bron dient.
+  - De titel van de vorige versie blijft, tenzij die niet meer past.
+- Tijdens het bewerken kan er geen nieuwe versie worden gestart (niet-opgeslagen tekst zou niet meegaan), en tijdens het genereren kan er niet worden bewerkt.
+- Een podcast die al van de versie was gemaakt verandert niet mee met een bewerking.
 
 Verder:
 

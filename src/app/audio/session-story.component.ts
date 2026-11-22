@@ -119,6 +119,9 @@ export interface SessionMetaUpdate {
               <div class="space-y-4 min-w-0">
                 <div class="flex flex-wrap items-center justify-between gap-2">
                   <h4 class="qm-section-title flex-1 !mb-0">{{ 'audio.story.generatedStory' | translate }}</h4>
+                  @if (edited()) {
+                    <span class="qm-badge" data-testid="story-edited">{{ 'audio.story.edited' | translate }}</span>
+                  }
                   <button
                     type="button"
                     class="qm-btn qm-btn-sm"
@@ -138,6 +141,7 @@ export interface SessionMetaUpdate {
                       [disabled]="isBusy() || !canEditStory()"
                       [attr.aria-label]="'audio.story.tabStory' | translate"
                     ></textarea>
+                    <p class="qm-help mt-2">{{ 'audio.story.editHelp' | translate }}</p>
                     <div class="mt-3 flex justify-end gap-2">
                       <button
                         type="button"
@@ -212,7 +216,7 @@ export interface SessionMetaUpdate {
                   <button
                     type="button"
                     class="qm-btn qm-btn-gold qm-btn-block"
-                    (click)="regenerate.emit()"
+                    (click)="onRegenerateClick()"
                     [disabled]="isBusy() || !canRegenerate()"
                   >
                     {{ 'audio.corrections.regenerate' | translate }}
@@ -313,6 +317,8 @@ export class SessionStoryComponent {
   subtitle = input('');
   sessionDate = input('');
   story = input('');
+  /** The story was edited by hand: it goes along when the story is regenerated. */
+  edited = input(false);
   transcript = input('');
   isBusy = input(false);
   canRegenerate = input(false);
@@ -418,6 +424,14 @@ export class SessionStoryComponent {
   saveDraft(): void {
     this.storyUpdated.emit(this.draft());
     this.isEditing.set(false);
+  }
+
+  /** Edits that are still in the text field are saved first: the regeneration starts from them. */
+  onRegenerateClick(): void {
+    if (this.isEditing() && this.canEditStory() && this.draft() !== this.story()) {
+      this.saveDraft();
+    }
+    this.regenerate.emit();
   }
 
   toggleTranscript(): void {

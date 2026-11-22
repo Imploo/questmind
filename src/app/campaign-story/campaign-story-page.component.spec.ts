@@ -9,6 +9,7 @@ import { AuthService } from '../auth/auth.service';
 import { CampaignContextService } from '../campaign/campaign-context.service';
 import { AudioSessionStateService } from '../audio/services/audio-session-state.service';
 import { I18nService } from '../core/i18n/i18n.service';
+import { ToastService } from '../shared/services/toast.service';
 import { provideTestLanguage } from '../core/i18n/testing';
 import { en } from '../core/i18n/en';
 import { nl } from '../core/i18n/nl';
@@ -29,6 +30,7 @@ describe('CampaignStoryPageComponent', () => {
     isLoading: signal(false),
     generate: vi.fn(),
     generatePodcast: vi.fn(),
+    saveEdit: vi.fn(),
   };
 
   const version = (overrides: Partial<CampaignStoryVersion>): CampaignStoryVersion => ({
@@ -79,6 +81,98 @@ describe('CampaignStoryPageComponent', () => {
     currentUser.set({ uid: 'owner' });
     campaign.set({ id: 'campaign-1', name: 'Grauwhaven', ownerId: 'owner' });
     storyService.generate.mockResolvedValue(undefined);
+    storyService.saveEdit.mockResolvedValue(undefined);
+  });
+
+  describe('editing the story by hand', () => {
+    const editButton = () => element.querySelector('[data-testid="edit-story"]') as HTMLButtonElement | null;
+    const form = () => element.querySelector('[data-testid="story-edit-form"]') as HTMLFormElement | null;
+    const contentField = () => element.querySelector('[data-testid="story-edit-content"]') as HTMLTextAreaElement;
+    const saveButton = () => element.querySelector('[data-testid="story-edit-save"]') as HTMLButtonElement;
+
+    function startEditing(): void {
+      editButton()?.click();
+      fixture.detectChanges();
+    }
+    function typeStory(value: string): void {
+      contentField().value = value;
+      contentField().dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+    }
+
+    it('is for the owner, on the newest version', () => {
+      versions.set([version({ version: 2 }), version({ version: 1 })]);
+      create();
+      expect(editButton()?.textContent).toContain(en.campaignStory.edit.button);
+
+      fixture.componentInstance.selectVersion(1);
+      fixture.detectChanges();
+      expect(editButton()).toBeNull();
+    });
+
+    it('is not offered to a member', () => {
+      currentUser.set({ uid: 'member' });
+      versions.set([version({})]);
+      create();
+
+      expect(editButton()).toBeNull();
+    });
+
+    it('waits while a new version is being written', () => {
+      versions.set([version({ version: 2, status: 'generating', progressStep: 'writing' }), version({})]);
+      create();
+
+      expect(editButton()).toBeNull();
+    });
+
+    it('saves the edited story and shows it again', async () => {
+      const latest = version({ version: 2 });
+      versions.set([latest, version({ version: 1 })]);
+      create();
+
+      startEditing();
+      typeStory('De party vertrok (zonder Mira).');
+      saveButton().click();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(storyService.saveEdit).toHaveBeenCalledWith(latest, {
+        title: 'De val van Grauwhaven',
+        content: 'De party vertrok (zonder Mira).',
+      });
+      expect(form()).toBeNull();
+    });
+
+    it('holds a new version back until the edit is saved or dropped: unsaved text would not go along', () => {
+      versions.set([version({})]);
+      sessions.set([session('a')]);
+      create();
+      expect(generateButton().disabled).toBe(false);
+
+      startEditing();
+      expect(generateButton().disabled).toBe(true);
+      expect(editButton()?.disabled).toBe(true);
+
+      (Array.from(form()?.querySelectorAll('button') ?? []).find(b => b.textContent?.includes(en.common.cancel)) as HTMLButtonElement).click();
+      fixture.detectChanges();
+      expect(form()).toBeNull();
+      expect(generateButton().disabled).toBe(false);
+    });
+
+    it('keeps the text in the form and says so when saving fails', async () => {
+      storyService.saveEdit.mockRejectedValue(new Error('permission-denied'));
+      versions.set([version({})]);
+      create('nl');
+
+      startEditing();
+      typeStory('Mijn verbeterde tekst');
+      saveButton().click();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(contentField().value).toBe('Mijn verbeterde tekst');
+      expect(TestBed.inject(ToastService).toasts().map(toast => toast.message)).toContain(nl.campaignStory.edit.saveFailed);
+    });
   });
 
   describe('while a version is being generated', () => {

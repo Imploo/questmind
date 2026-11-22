@@ -153,10 +153,31 @@ service cloud.firestore {
       allow write: if isSessionOwner(campaignId, sessionId);
     }
 
-    // Campaign story versions (ticket #69) — members read, only the backend writes
+    // Campaign story versions (ticket #69) — members read, the backend writes.
+    // The owner may improve the newest finished version by hand (title and text):
+    // that version goes along when the next one is written.
     match /campaigns/{campaignId}/campaignStories/{versionId} {
       allow read: if isCampaignMember(campaignId);
-      allow write: if false;
+      allow update: if isCampaignOwner(campaignId) &&
+        resource.data.status == 'completed' &&
+        resource.data.version ==
+          get(/databases/$(database)/documents/campaigns/$(campaignId)).data.campaignStory.latestCompletedVersion &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'title',
+          'content',
+          'wordCount',
+          'editedAt',
+          'editedBy'
+        ]) &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() <= 200 &&
+        request.resource.data.content is string &&
+        request.resource.data.content.size() > 0 &&
+        request.resource.data.content.size() <= 200000 &&
+        request.resource.data.wordCount is int &&
+        request.resource.data.editedAt is timestamp &&
+        request.resource.data.editedBy == getUserId();
+      allow create, delete: if false;
     }
 
     // Public podcast share links — anyone with the (unguessable) id can read one,
