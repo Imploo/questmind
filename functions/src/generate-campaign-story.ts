@@ -1,6 +1,6 @@
 import * as logger from './utils/logger';
 import { onCall } from 'firebase-functions/v2/https';
-import { getFirestore } from 'firebase-admin/firestore';
+import { DocumentData, Firestore, getFirestore } from 'firebase-admin/firestore';
 import { SHARED_CORS } from './config/cors';
 import { ensureAuthForTesting } from './utils/emulator-helpers';
 import { assertCampaignOwner, assertValidId, requireAuthUid } from './utils/access';
@@ -29,6 +29,27 @@ const STEP_MESSAGES: Record<CampaignStoryProgressStep, string> = {
   failed: 'Mislukt',
 };
 
+/**
+ * The newest completed version, when the owner improved the story by hand: in
+ * that version itself, or in an earlier one this version was written from. It
+ * then goes along with the new version, so what was corrected stays corrected.
+ * A story nobody touched does not go along: the new version starts fresh.
+ */
+async function loadImprovedVersion(
+  db: Firestore,
+  campaignId: string,
+  campaign: DocumentData
+): Promise<CampaignStoryVersion | undefined> {
+  const latest: unknown = campaign.campaignStory?.latestCompletedVersion;
+  if (typeof latest !== 'number') return undefined;
+
+  const snap = await db.doc(campaignStoryDocPath(campaignId, latest)).get();
+  const version = snap.data() as CampaignStoryVersion | undefined;
+  if (!version || version.status !== 'completed' || !version.content?.trim()) return undefined;
+
+  return version.editedAt || version.basedOnVersion ? version : undefined;
+}
+
 function progressFields(step: CampaignStoryProgressStep): { progressStep: CampaignStoryProgressStep; progressMessage: string } {
   return { progressStep: step, progressMessage: STEP_MESSAGES[step] };
 }
@@ -36,7 +57,8 @@ function progressFields(step: CampaignStoryProgressStep): { progressStep: Campai
 /**
  * Generates a new version of the campaign story (ticket #69) from all completed
  * session stories and, when Kanka is linked to the campaign, the written
- * reports (journals) in Kanka. Only the campaign owner may generate.
+ * reports (journals) in Kanka. A version the owner edited by hand goes along
+ * as the previous version. Only the campaign owner may generate.
  */
 export const generateCampaignStory = onCall(
   {
@@ -78,8 +100,10 @@ export const generateCampaignStory = onCall(
       throw refusal('unavailable', 'Kanka could not be read.', 'kanka-unavailable');
     }
 
+    const previous = await loadImprovedVersion(db, campaignId, campaign);
+
     const { sources, skipped, journalSources, timeline, undatedJournals } =
-      selectCampaignStorySources(sessions, kanka?.journals);
+      selectCampaignStorySources(sessions, kanka?.journals, previous);
     if (sources.length === 0 && journalSources.length === 0) {
       throw refusal(
         'failed-precondition',
@@ -104,6 +128,7 @@ export const generateCampaignStory = onCall(
         ...progressFields('collecting'),
         error: null,
         podcasts: [],
+        ...(previous ? { basedOnVersion: previous.version } : {}),
       };
       // create() (not set()) so a lost counter can never overwrite an existing version
       tx.create(db.doc(campaignStoryDocPath(campaignId, nextVersion)), entry);
@@ -117,7 +142,15 @@ export const generateCampaignStory = onCall(
       const config = await getCampaignStoryConfig();
       await versionRef.update({ progress: 30, ...progressFields('writing') });
 
-      const story = await generateCampaignStoryText({ timeline, undatedJournals, reference: kanka?.reference }, config);
+      const story = await generateCampaignStoryText(
+        {
+          timeline,
+          undatedJournals,
+          reference: kanka?.reference,
+          previousVersion: previous ? { title: previous.title, content: previous.content ?? '' } : undefined,
+        },
+        config
+      );
 
       await versionRef.update({
         status: 'completed',

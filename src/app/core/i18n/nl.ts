@@ -273,6 +273,8 @@ export const nl: Translations = {
     latestVersion: (version) => `Versie ${version}`,
     sessionNotIncluded: 'Deze sessie staat nog niet in het campagneverhaal.',
     sessionNotIncludedHelp: 'Werk het verhaal bij om deze avond erin op te nemen.',
+    sessionChanged: 'Het verhaal van deze sessie is gewijzigd sinds het campagneverhaal is geschreven.',
+    sessionChangedHelp: 'Werk het campagneverhaal bij om de wijzigingen erin te verwerken.',
     updateCampaignStory: 'Campagneverhaal bijwerken',
     sessionCount: (count) => (count === 1 ? '1 sessie' : `${count} sessies`),
     journalCount: (count) => (count === 1 ? '1 verslag uit Kanka' : `${count} verslagen uit Kanka`),
@@ -297,6 +299,16 @@ export const nl: Translations = {
     backToLatest: 'Terug naar nieuwste',
     untitled: 'Het verhaal tot nu toe',
     downloadName: 'campagne-verhaal',
+    edited: 'Met de hand bewerkt',
+    edit: {
+      button: 'Verhaal bewerken',
+      titleLabel: 'Titel van het verhaal',
+      contentLabel: 'Tekst van het verhaal',
+      help:
+        'Haal weg wat niet klopt, vul aan wat ontbreekt, of zet een notitie tussen haakjes. Een volgende versie gaat uit van deze tekst: je verbeteringen blijven staan en notities worden in het verhaal verwerkt.',
+      save: 'Verhaal opslaan',
+      saveFailed: 'Het verhaal kon niet worden opgeslagen. Probeer het opnieuw.',
+    },
     progress: {
       collecting: 'Sessieverhalen verzamelen...',
       writing: 'Verhaal schrijven...',
@@ -397,8 +409,11 @@ export const nl: Translations = {
       tabStory: 'Verhaal',
       tabPodcasts: 'Podcasts',
       generatedStory: 'Gegenereerd verhaal',
+      edited: 'Met de hand bewerkt',
       preview: 'Voorbeeld',
       editStory: 'Verhaal bewerken',
+      editHelp:
+        'Haal weg wat niet klopt, vul aan wat ontbreekt, of zet een notitie tussen haakjes. Als je het verhaal opnieuw genereert, gaat deze versie mee: je verbeteringen blijven staan en notities worden in het verhaal verwerkt.',
       reset: 'Herstellen',
       saveStory: 'Verhaal opslaan',
       downloadMarkdown: 'Markdown downloaden',
@@ -416,7 +431,8 @@ export const nl: Translations = {
       label: 'Correcties',
       placeholder:
         `Voorbeeld: als je "corikan" hoort, is de juiste naam "Khuri-Khan". De groep is in Waterdeep, niet in Baldur's Gate.`,
-      help: 'Correcties worden automatisch opgeslagen terwijl je typt. Opnieuw genereren vervangt het verhaal links.',
+      help:
+        'Correcties worden automatisch opgeslagen terwijl je typt. Opnieuw genereren vervangt het verhaal links; wat je in het verhaal zelf hebt verbeterd, blijft staan.',
       regenerate: 'Verhaal opnieuw genereren',
     },
     recording: {

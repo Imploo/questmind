@@ -275,6 +275,8 @@ export interface Translations {
     latestVersion: (version: number) => string;
     sessionNotIncluded: string;
     sessionNotIncludedHelp: string;
+    sessionChanged: string;
+    sessionChangedHelp: string;
     updateCampaignStory: string;
     sessionCount: (count: number) => string;
     journalCount: (count: number) => string;
@@ -294,6 +296,16 @@ export interface Translations {
     backToLatest: string;
     untitled: string;
     downloadName: string;
+    /** In the line under the version number, when the owner edited the version by hand. */
+    edited: string;
+    edit: {
+      button: string;
+      titleLabel: string;
+      contentLabel: string;
+      help: string;
+      save: string;
+      saveFailed: string;
+    };
     progress: {
       collecting: string;
       writing: string;
@@ -392,8 +404,10 @@ export interface Translations {
       tabStory: string;
       tabPodcasts: string;
       generatedStory: string;
+      edited: string;
       preview: string;
       editStory: string;
+      editHelp: string;
       reset: string;
       saveStory: string;
       downloadMarkdown: string;

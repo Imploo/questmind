@@ -4,7 +4,8 @@ import { FirebaseService } from '../core/firebase.service';
 import { AuthService } from '../auth/auth.service';
 import { CampaignContextService } from '../campaign/campaign-context.service';
 import { CampaignStoryRepositoryFactory } from '../shared/repository/campaign-story.repository';
-import { CampaignStoryVersion } from './campaign-story.models';
+import { CampaignStoryEdit, CampaignStoryVersion } from './campaign-story.models';
+import { countWords } from './campaign-story.utils';
 import * as logger from '../shared/logger';
 import { ToastService } from '../shared/services/toast.service';
 import { callableErrorCode, callableErrorMessage, isPermissionDenied } from '../shared/utils/callable-error';
@@ -66,6 +67,33 @@ export class CampaignStoryService {
       'generateCampaignStory'
     );
     await this.invoke(() => callable({ campaignId }), 'campaign story');
+  }
+
+  /**
+   * Saves what the owner changed by hand in a version. The version is marked as
+   * edited: from then on it goes along when a new version is written, so the
+   * improvements stay. The Firestore rules allow this for the owner, on the
+   * newest completed version only.
+   */
+  async saveEdit(version: Pick<CampaignStoryVersion, 'id'>, edit: CampaignStoryEdit): Promise<void> {
+    const repo = this.repo.value();
+    const uid = this.authService.currentUser()?.uid;
+    if (!repo || !uid) {
+      throw new Error('No campaign story loaded.');
+    }
+    const content = edit.content.trim();
+    try {
+      await repo.patch(version.id, {
+        title: edit.title.trim(),
+        content,
+        wordCount: countWords(content),
+        editedAt: new Date(),
+        editedBy: uid,
+      });
+    } catch (error) {
+      logger.error('Failed to save campaign story edit:', error);
+      throw error;
+    }
   }
 
   /** Starts a podcast for a campaign story version, with the regular podcast settings. */

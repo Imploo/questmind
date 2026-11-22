@@ -8,6 +8,7 @@ type CallableFn = (...args: unknown[]) => Promise<unknown>;
 const campaignGet = vi.fn();
 const campaignUpdate = vi.fn();
 const versionUpdate = vi.fn();
+const versionGet = vi.fn();
 const generatingGet = vi.fn();
 const sessionsGet = vi.fn();
 const txCreate = vi.fn();
@@ -16,7 +17,7 @@ const txGet = vi.fn();
 
 const mockDb = {
   doc: vi.fn((path: string) => (path.includes('/campaignStories/')
-    ? { path, update: versionUpdate }
+    ? { path, get: () => versionGet(path), update: versionUpdate }
     : { path, get: campaignGet, update: campaignUpdate })),
   collection: vi.fn((path: string) => (path.endsWith('/campaignStories')
     ? { where: () => ({ get: generatingGet }) }
@@ -144,6 +145,79 @@ describe('generateCampaignStory', () => {
     expect(txUpdate).toHaveBeenCalledWith(expect.anything(), { 'campaignStory.latestVersion': 3 });
     expect(versionUpdate).toHaveBeenCalledWith(expect.objectContaining({ status: 'completed', title: 'De val', content: 'Tekst' }));
     expect(campaignUpdate).toHaveBeenCalledWith({ 'campaignStory.latestCompletedVersion': 3 });
+  });
+
+  describe('with an earlier version of the story', () => {
+    const latest = (version: Record<string, unknown>) => {
+      campaignGet.mockResolvedValue({
+        exists: true,
+        data: () => ({ ownerId: 'owner-1', campaignStory: { latestVersion: 2, latestCompletedVersion: 2 } }),
+      });
+      versionGet.mockResolvedValue({
+        data: () => ({
+          version: 2,
+          status: 'completed',
+          title: 'De val',
+          content: 'Kael opende de poort.',
+          sourceSessions: [],
+          ...version,
+        }),
+      });
+    };
+    const material = () => generateText.mock.calls[0][0];
+
+    it('starts fresh when nobody edited that version', async () => {
+      latest({});
+
+      await handler(request());
+
+      expect(material().previousVersion).toBeUndefined();
+      expect(material().timeline[0]).not.toHaveProperty('sinceLastVersion');
+      expect(txCreate.mock.calls[0][1]).not.toHaveProperty('basedOnVersion');
+    });
+
+    it('passes a version the owner edited by hand along, and remembers that it did', async () => {
+      latest({ editedAt: new Date(), editedBy: 'owner-1' });
+
+      await handler(request());
+
+      expect(versionGet).toHaveBeenCalledWith('campaigns/campaign-1/campaignStories/v2');
+      expect(material().previousVersion).toEqual({ title: 'De val', content: 'Kael opende de poort.' });
+      expect(txCreate).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ version: 3, basedOnVersion: 2 }));
+    });
+
+    it('keeps passing the story along in the versions after it, so the improvements stay', async () => {
+      latest({ basedOnVersion: 1 });
+
+      await handler(request());
+
+      expect(material().previousVersion).toEqual({ title: 'De val', content: 'Kael opende de poort.' });
+    });
+
+    it('marks what that version does not hold yet', async () => {
+      latest({
+        editedAt: new Date(),
+        sourceSessions: [{ sessionId: 's1', title: 'Sessie 1', sessionDate: '2026-01-01', storyVersion: 1 }],
+      });
+      sessionsGet.mockResolvedValue({
+        docs: [
+          completedSession,
+          { id: 's2', data: () => ({ title: 'Sessie 2', status: 'completed', content: 'Meer', sessionDate: '2026-02-01' }) },
+        ],
+      });
+
+      await handler(request());
+
+      expect(material().timeline.map((input: { sinceLastVersion?: string }) => input.sinceLastVersion)).toEqual([undefined, 'new']);
+    });
+
+    it('ignores a newest version that has no story (failed or still empty)', async () => {
+      latest({ editedAt: new Date(), content: '  ' });
+
+      await handler(request());
+
+      expect(material().previousVersion).toBeUndefined();
+    });
   });
 
   describe('with Kanka linked to the campaign', () => {
