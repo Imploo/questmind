@@ -3,7 +3,6 @@ import { RouterLink } from '@angular/router';
 import { AuthService } from '../auth/auth.service';
 import { CampaignContextService } from '../campaign/campaign-context.service';
 import { AudioSessionStateService } from './services/audio-session-state.service';
-import { AudioSessionRecord } from './services/audio-session.models';
 import { isActiveStage, toDisplayProgress } from './services/session-progress.utils';
 import { STAGE_TITLE_KEYS } from './session-progress-card.component';
 import { CampaignStoryService } from '../campaign-story/campaign-story.service';
@@ -16,19 +15,8 @@ import {
 import { FormattingService } from '../shared/formatting.service';
 import { I18nService } from '../core/i18n/i18n.service';
 import { TranslatePipe } from '../core/i18n/translate.pipe';
-
-interface SessionRow {
-  id: string;
-  title: string;
-  day: string;
-  month: string;
-  excerpt: string;
-  hasPodcast: boolean;
-  isMine: boolean;
-  failed: boolean;
-  /** Set while the session is uploaded or processed. */
-  busy: { label: string; percent: number } | null;
-}
+import { SessionRow, SessionRowsComponent } from './session-rows.component';
+import { dayParts, storyExcerpt } from './session-row.utils';
 
 /** The note above the list that the campaign story lags behind its sessions. */
 interface StoryNote {
@@ -43,7 +31,7 @@ interface StoryNote {
  */
 @Component({
   selector: 'app-session-list-page',
-  imports: [RouterLink, TranslatePipe],
+  imports: [RouterLink, SessionRowsComponent, TranslatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="qm-panel !p-3 sm:!p-5 space-y-4">
@@ -70,107 +58,10 @@ interface StoryNote {
           </a>
         </div>
       } @else {
-        <ul class="flex flex-col" role="list" [attr.aria-label]="'audio.list.ariaLabel' | translate">
-          @for (row of rows(); track row.id) {
-            <li>
-              <a
-                [routerLink]="['/campaign', campaignId(), 'sessions', row.id]"
-                class="session-row"
-                [class.is-busy]="row.busy"
-                data-testid="session-row"
-              >
-                <span class="session-day" aria-hidden="true">
-                  <span class="session-day-number">{{ row.day }}</span>
-                  <span class="session-day-month">{{ row.month }}</span>
-                </span>
-                <span class="min-w-0">
-                  <span class="block truncate text-[15px] font-semibold">{{ row.title }}</span>
-                  @if (row.busy; as busy) {
-                    <span class="mt-2 flex items-center gap-2.5">
-                      <span class="session-progress" role="progressbar" [attr.aria-valuenow]="busy.percent" aria-valuemin="0" aria-valuemax="100" [attr.aria-label]="busy.label">
-                        <span [style.width.%]="busy.percent"></span>
-                      </span>
-                      <span class="shrink-0 text-[13px] font-semibold text-[#3f4aa6]">{{ busy.label }} · {{ busy.percent }}%</span>
-                    </span>
-                  } @else if (row.excerpt) {
-                    <span class="block truncate font-prose text-[17px] leading-snug text-gray-700 mt-0.5">{{ row.excerpt }}</span>
-                  }
-                </span>
-                <span class="flex items-center gap-2">
-                  @if (row.failed) {
-                    <span class="qm-badge qm-badge-danger">{{ 'common.failed' | translate }}</span>
-                  }
-                  @if (row.hasPodcast) {
-                    <span class="qm-badge qm-badge-violet hidden sm:inline-flex">{{ 'audio.list.podcast' | translate }}</span>
-                  }
-                  @if (row.isMine) {
-                    <span class="qm-badge qm-badge-quiet hidden sm:inline-flex">{{ 'audio.list.you' | translate }}</span>
-                  }
-                  <svg class="w-[18px] h-[18px] text-gold-deep" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 6l6 6-6 6" />
-                  </svg>
-                </span>
-              </a>
-            </li>
-          }
-        </ul>
+        <app-session-rows [rows]="rows()" />
       }
     </section>
   `,
-  styles: [`
-    .session-row {
-      display: grid;
-      grid-template-columns: 3rem minmax(0, 1fr) auto;
-      align-items: center;
-      gap: 0.85rem;
-      padding: 0.8rem 0.6rem;
-      border: 1px solid transparent;
-      border-bottom: 1px dashed #e0d2b6;
-      color: var(--ink);
-      text-decoration: none;
-      transition: background 0.15s;
-    }
-    li:last-child .session-row { border-bottom-color: transparent; }
-    .session-row:hover { background: var(--paper-2); }
-    .session-row.is-busy {
-      border-radius: 10px;
-      border-color: rgba(102, 126, 234, 0.32);
-      background: rgba(102, 126, 234, 0.08);
-    }
-    .session-day {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      line-height: 1.1;
-      font-family: var(--font-display);
-    }
-    .session-day-number { font-size: 1.3rem; font-weight: 700; }
-    .session-day-month {
-      font-size: 0.68rem;
-      font-weight: 600;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: #5f5347;
-    }
-    .session-progress {
-      display: block;
-      flex: 1;
-      max-width: 22rem;
-      height: 6px;
-      overflow: hidden;
-      border-radius: 999px;
-      background: #dfe3fb;
-    }
-    .session-progress > span {
-      display: block;
-      height: 100%;
-      border-radius: 999px;
-      background: var(--color-primary-dark);
-    }
-    @media (min-width: 640px) {
-      .session-row { grid-template-columns: 3.5rem minmax(0, 1fr) auto; gap: 1rem; padding-inline: 0.75rem; }
-    }
-  `],
 })
 export class SessionListPageComponent {
   private readonly authService = inject(AuthService);
@@ -194,10 +85,11 @@ export class SessionListPageComponent {
         : null;
       return {
         id: session.id,
+        link: ['/campaign', this.campaignId() ?? '', 'sessions', session.id],
         title: session.title || t.audio.untitledSession,
         day,
         month,
-        excerpt: excerpt(session.content),
+        excerpt: storyExcerpt(session.content),
         hasPodcast: (session.podcasts ?? []).some(podcast => !!podcast.audioUrl),
         isMine: !!userId && session.ownerId === userId,
         failed: !busy && session.status === 'failed',
@@ -231,25 +123,3 @@ export class SessionListPageComponent {
   });
 }
 
-/** The day and the short month of a stored play day (`2026-11-20` → `20`, `nov`); dashes without one. */
-function dayParts(isoDay: string | undefined, locale: string): { day: string; month: string } {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDay ?? '');
-  if (!match) return { day: '–', month: '' };
-  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
-  return {
-    day: String(date.getDate()),
-    month: date.toLocaleDateString(locale, { month: 'short' }).replace(/\.$/, ''),
-  };
-}
-
-/** The first line of prose of a session story, without its markdown. */
-function excerpt(content: AudioSessionRecord['content'] | undefined): string {
-  const line = (content ?? '')
-    .split('\n')
-    .map(text => text.trim())
-    .find(text => text && !text.startsWith('#') && !/^[-*_]{3,}$/.test(text));
-  return (line ?? '')
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/[*_`>#]/g, '')
-    .trim();
-}

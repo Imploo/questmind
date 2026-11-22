@@ -194,6 +194,24 @@ export interface Translations {
         podcasts: string;
       };
     };
+    /** Sharing the whole campaign through a link that opens it read-only. */
+    share: {
+      button: string;
+      copied: string;
+      copyPrompt: string;
+      failed: string;
+    };
+    /** The read-only page a share link opens. */
+    sharePage: {
+      readOnly: string;
+      loading: string;
+      notFoundTitle: string;
+      notFoundText: string;
+      loadFailed: string;
+      noSessions: string;
+      noPodcasts: string;
+      sessionNotFound: string;
+    };
     settings: {
       title: string;
       general: string;

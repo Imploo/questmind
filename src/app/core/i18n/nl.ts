@@ -183,6 +183,22 @@ export const nl: Translations = {
         podcasts: 'Podcasts',
       },
     },
+    share: {
+      button: 'Campagne delen',
+      copied: 'Link gekopieerd — iedereen met deze link kan de campagne bekijken, zonder in te loggen.',
+      copyPrompt: 'Kopieer de link naar deze campagne:',
+      failed: 'De deellink maken is mislukt. Probeer het opnieuw.',
+    },
+    sharePage: {
+      readOnly: 'Gedeelde campagne · alleen lezen',
+      loading: 'Campagne laden...',
+      notFoundTitle: 'Campagne niet gevonden',
+      notFoundText: 'Deze link bestaat niet (meer).',
+      loadFailed: 'De campagne kon niet geladen worden. Probeer het later opnieuw.',
+      noSessions: 'Er zijn nog geen sessies met een verhaal.',
+      noPodcasts: 'Er zijn nog geen podcasts.',
+      sessionNotFound: 'Deze sessie staat niet (meer) in de gedeelde campagne.',
+    },
     settings: {
       title: 'Campagne-instellingen',
       general: 'Algemene instellingen',

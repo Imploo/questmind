@@ -187,6 +187,12 @@ service cloud.firestore {
       allow list, write: if false;
     }
 
+    // Public campaign share links — only the backend reads and writes them:
+    // visitors get the shared campaign through getCampaignShare.
+    match /campaignShares/{shareId} {
+      allow read, write: if false;
+    }
+
     // Settings collection - read-only for authenticated users
     match /settings/{document} {
       allow read: if isAuthenticated();

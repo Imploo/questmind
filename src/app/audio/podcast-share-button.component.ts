@@ -5,6 +5,7 @@ import * as logger from '../shared/logger';
 import { I18nService } from '../core/i18n/i18n.service';
 import { TranslatePipe } from '../core/i18n/translate.pipe';
 import { callableErrorMessage } from '../shared/utils/callable-error';
+import { copyPendingText } from '../shared/utils/clipboard';
 
 /**
  * Creates a public share link for a podcast and copies it to the clipboard.
@@ -57,7 +58,7 @@ export class PodcastShareButtonComponent {
     this.busy.set(true);
     const url = this.shareService.createShareUrl(this.target(), this.i18n.language());
     try {
-      await copyToClipboard(url);
+      await copyPendingText(url);
       this.copied.set(true);
       setTimeout(() => this.copied.set(false), 3000);
       this.toastService.show(this.i18n.t().podcast.share.copiedToast, 'success');
@@ -83,17 +84,4 @@ export class PodcastShareButtonComponent {
       this.busy.set(false);
     }
   }
-}
-
-/**
- * Copy text that is still being fetched. Safari only allows clipboard writes
- * inside the click, so the pending text is handed over as a ClipboardItem promise.
- */
-async function copyToClipboard(text: Promise<string>): Promise<void> {
-  if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
-    const blob = text.then(value => new Blob([value], { type: 'text/plain' }));
-    await navigator.clipboard.write([new ClipboardItem({ 'text/plain': blob })]);
-    return;
-  }
-  await navigator.clipboard.writeText(await text);
 }

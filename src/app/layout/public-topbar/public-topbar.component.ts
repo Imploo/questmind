@@ -5,8 +5,8 @@ import { LanguageSwitcherComponent } from '../../shared/components/language-swit
 import { LogoComponent } from '../../shared/components/logo.component';
 
 /**
- * Top bar for a visitor who is not signed in: on a shared character and on a
- * shared podcast. It says where they are, lets them pick a language and offers to sign in.
+ * Top bar for a visitor who is not signed in: on a shared character, a shared
+ * campaign and a shared podcast. It says where they are, lets them pick a language and offers to sign in.
  */
 @Component({
   selector: 'app-public-topbar',

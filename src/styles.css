@@ -415,6 +415,11 @@
     padding: 0;
     flex-shrink: 0;
   }
+  /* A square icon button beside a large button is as tall as that button. */
+  .qm-btn-icon.qm-btn-lg {
+    width: 46px;
+    min-height: 46px;
+  }
   .qm-btn-block {
     display: flex;
     width: 100%;
