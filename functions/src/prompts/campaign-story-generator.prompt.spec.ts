@@ -154,4 +154,12 @@ describe('getPodcastScriptPrompt kinds', () => {
 
     expect(getPodcastScriptPrompt(5000, 'session')).toContain('sluit af met speculatie en een korte afronding');
   });
+
+  it('asks for 10-20% speculation in both kinds', () => {
+    for (const kind of ['session', 'campaign'] as const) {
+      const prompt = getPodcastScriptPrompt(5000, kind);
+      expect(prompt).toContain('Ongeveer 10-20% van het transcript');
+      expect(prompt).not.toContain('20-30%');
+    }
+  });
 });

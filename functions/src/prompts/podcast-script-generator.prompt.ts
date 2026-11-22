@@ -100,7 +100,7 @@ BALANS TUSSEN RECAP EN SPECULATIE:
 - Besteed NIET het hele transcript aan alleen opsommen wat er gebeurd is
 - Na het bespreken van een belangrijk moment, laat de hosts SPECULEREN: "Wat denk jij, zou dit betekenen dat...?", "Ik heb zo'n gevoel dat dit nog terugkomt..."
 - Laat de hosts het ONEENS zijn over theorieën, dat maakt het levendig
-- Minstens 20-30% van het transcript moet speculatie, meningen en vooruitblikken bevatten
+- Ongeveer 10-20% van het transcript bestaat uit speculatie, meningen en vooruitblikken, niet meer: de recap van wat er gebeurd is blijft de hoofdzaak
 - Voorbeelden van speculatie: "Maar wacht, als dat klopt dan betekent dat toch dat...", "${framing.speculationExample}", "Nee maar serieus, ik vertrouw die NPC voor geen meter"
 
 FORMAT:
