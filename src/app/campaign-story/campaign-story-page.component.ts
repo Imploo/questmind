@@ -110,6 +110,7 @@ import { TranslatePipe } from '../core/i18n/translate.pipe';
           [storyVersion]="version.version"
           [podcasts]="version.podcasts ?? []"
           [canGenerate]="isOwner()"
+          [canDelete]="isOwner()"
           [isGenerating]="isPodcastGenerating()"
           [error]="podcastError()"
           [downloadName]="version.title ?? ''"

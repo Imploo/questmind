@@ -69,6 +69,7 @@ export interface Translations {
       storyVersionNotReady: string;
       podcastAlreadyGenerating: string;
       podcastNotReady: string;
+      podcastGenerating: string;
       sessionHasNoStory: string;
       noUploadedAudio: string;
       noTranscription: string;
@@ -425,6 +426,10 @@ export interface Translations {
     label: string;
     versionTitle: (version: number) => string;
     downloadTitle: string;
+    delete: string;
+    deleteLabel: (version: number) => string;
+    deleteConfirm: (version: number) => string;
+    deleteFailed: string;
     generationFailed: string;
     script: string;
     host1: string;

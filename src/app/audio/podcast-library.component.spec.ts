@@ -4,6 +4,7 @@ import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { PodcastLibraryComponent } from './podcast-library.component';
 import { AudioSessionStateService } from './services/audio-session-state.service';
 import { PodcastShareService } from './services/podcast-share.service';
+import { PodcastDeleteService } from './services/podcast-delete.service';
 import { AuthService } from '../auth/auth.service';
 import { CampaignContextService } from '../campaign/campaign-context.service';
 import { provideTestLanguage } from '../core/i18n/testing';
@@ -21,6 +22,7 @@ describe('PodcastLibraryComponent', () => {
     fileSize: 1000,
   });
   const sessions = signal<Record<string, unknown>[]>([]);
+  const currentUser = signal({ uid: 'u1' });
 
   const versionsShown = () =>
     Array.from(element.querySelectorAll('app-podcast-version-item')).map(item => item.textContent ?? '');
@@ -28,11 +30,16 @@ describe('PodcastLibraryComponent', () => {
 
   beforeEach(() => {
     sessions.set([]);
+    currentUser.set({ uid: 'u1' });
     TestBed.configureTestingModule({
       providers: [
         provideTestLanguage('nl'),
-        { provide: AuthService, useValue: { currentUser: signal({ uid: 'u1' }) } },
-        { provide: CampaignContextService, useValue: { selectedCampaignId: signal('c1') } },
+        { provide: AuthService, useValue: { currentUser } },
+        {
+          provide: CampaignContextService,
+          useValue: { selectedCampaignId: signal('c1'), selectedCampaign: signal({ id: 'c1', ownerId: 'u1' }) },
+        },
+        { provide: PodcastDeleteService, useValue: { delete: () => Promise.resolve() } },
         { provide: AudioSessionStateService, useValue: { sessions } },
         { provide: PodcastShareService, useValue: { createShareUrl: () => Promise.resolve('') } },
       ],
@@ -70,5 +77,15 @@ describe('PodcastLibraryComponent', () => {
 
     expect(versionsShown()).toHaveLength(1);
     expect(toggle()).toBeNull();
+  });
+
+  it('offers deleting to the campaign owner only', () => {
+    sessions.set([{ id: 's1', title: 'Eén avond', sessionDate: '2026-10-20', podcasts: [podcast(1)] }]);
+    create();
+    expect(element.querySelector('[data-testid="podcast-delete"]')).not.toBeNull();
+
+    currentUser.set({ uid: 'u2' });
+    fixture.detectChanges();
+    expect(element.querySelector('[data-testid="podcast-delete"]')).toBeNull();
   });
 });

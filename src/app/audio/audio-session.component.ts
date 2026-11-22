@@ -120,6 +120,7 @@ const PODCAST_STAGES: SessionProgressStage[] = ['generating-podcast-script', 'ge
             [podcastGenerationProgressPercent]="podcastStatus().percent"
             [podcastError]="podcastGen.error()"
             [canGeneratePodcast]="canGeneratePodcast()"
+            [canDeletePodcasts]="isCampaignOwner()"
             (storyUpdated)="saveStoryEdits($event)"
             (regenerate)="regenerateStory()"
             (correctionsChanged)="correctionsSave.onInput($event)"
@@ -243,6 +244,10 @@ export class AudioSessionComponent {
 
   canRegenerateStory = computed(() => this.isSessionOwner());
   canGeneratePodcast = computed(() => this.isSessionOwner());
+  isCampaignOwner = computed(() => {
+    const campaign = this.campaignContext.selectedCampaign();
+    return !!campaign && campaign.ownerId === this.userId();
+  });
   canEditStory = computed(() => this.isSessionOwner());
   canEditCorrections = computed(() => !!this.currentSession());
 

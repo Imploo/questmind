@@ -36,6 +36,7 @@ import { TranslatePipe } from '../core/i18n/translate.pipe';
           [podcast]="podcast"
           [shareTarget]="campaignId() && storyVersion() ? { campaignId: campaignId(), storyVersion: storyVersion(), podcastVersion: podcast.version } : null"
           [downloadName]="(downloadName() || ('campaignStory.downloadName' | translate)) + '-podcast'"
+          [canDelete]="canDelete()"
         />
       } @empty {
         <p class="font-prose text-base text-gray-600">{{ 'campaignStory.podcasts.empty' | translate }}</p>
@@ -48,6 +49,8 @@ export class CampaignStoryPodcastsComponent {
   readonly storyVersion = input(0);
   readonly podcasts = input<PodcastVersion[]>([]);
   readonly canGenerate = input(false);
+  /** The campaign owner may delete podcasts. */
+  readonly canDelete = input(false);
   readonly isGenerating = input(false);
   readonly error = input('');
   /** File name for a downloaded podcast; empty means the translated default. */

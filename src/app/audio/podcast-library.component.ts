@@ -82,6 +82,7 @@ interface SessionWithPodcasts {
                     [podcast]="podcast"
                     [shareTarget]="{ campaignId: campaignId() ?? '', sessionId: session.sessionId, podcastVersion: podcast.version }"
                     [downloadName]="session.sessionTitle"
+                    [canDelete]="isOwner()"
                   />
                 }
               </div>
@@ -115,6 +116,11 @@ export class PodcastLibraryComponent {
   private readonly sessionStateService = inject(AudioSessionStateService);
 
   readonly campaignId = this.campaignContext.selectedCampaignId;
+  /** Only the campaign owner may delete podcasts. */
+  readonly isOwner = computed(() => {
+    const uid = this.authService.currentUser()?.uid;
+    return !!uid && this.campaignContext.selectedCampaign()?.ownerId === uid;
+  });
   protected readonly formatting = inject(FormattingService);
   private readonly i18n = inject(I18nService);
 
