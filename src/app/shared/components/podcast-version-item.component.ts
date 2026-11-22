@@ -1,7 +1,12 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { PodcastProgressStep, PodcastVersion } from '../../audio/services/audio-session.models';
 import { PodcastShareTarget } from '../../audio/services/podcast-share.service';
 import { PodcastShareButtonComponent } from '../../audio/podcast-share-button.component';
+import { PodcastDeleteService } from '../../audio/services/podcast-delete.service';
+import { isActiveGeneration } from '../../campaign-story/campaign-story.utils';
+import { ToastService } from '../services/toast.service';
+import { callableErrorMessage, callableErrorReason } from '../utils/callable-error';
+import * as logger from '../logger';
 import { AudioPlayerComponent, type AudioPlayerLabels } from './audio-player.component';
 import { FormattingService, formatDuration, formatFileSize } from '../formatting.service';
 import { I18nService } from '../../core/i18n/i18n.service';
@@ -10,7 +15,8 @@ import { TranslatePipe } from '../../core/i18n/translate.pipe';
 const PROGRESS_STEPS: readonly PodcastProgressStep[] = ['starting', 'script', 'audio', 'uploading', 'done', 'failed'];
 
 /**
- * One podcast version: the player with a status badge, date/size, download and share.
+ * One podcast version: the player with a status badge, date/size, download and share,
+ * and for the campaign owner a delete button.
  * Used by the session story, the podcast library and the campaign story. Downloading is
  * a plain `<a download>` link, the only download path for podcasts.
  */
@@ -74,6 +80,23 @@ const PROGRESS_STEPS: readonly PodcastProgressStep[] = ['starting', 'script', 'a
               <app-podcast-share-button class="flex-1 @[30rem]:flex-none" [target]="target" [disabled]="!isReady()" />
             }
           }
+          @if (canDeleteNow()) {
+            <button
+              type="button"
+              class="qm-btn qm-btn-sm qm-btn-danger shrink-0 !px-2.5"
+              (click)="onDelete()"
+              [disabled]="deleting()"
+              [title]="'podcast.delete' | translate"
+              [attr.aria-label]="'podcast.deleteLabel' | translate: podcast().version"
+              data-testid="podcast-delete"
+            >
+              @if (deleting()) {
+                <span class="qm-spinner" aria-hidden="true"></span>
+              } @else {
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+              }
+            </button>
+          }
         </ng-container>
 
         @if (isInProgress() && podcast().progress) {
@@ -110,17 +133,30 @@ const PROGRESS_STEPS: readonly PodcastProgressStep[] = ['starting', 'script', 'a
 })
 export class PodcastVersionItemComponent {
   readonly podcast = input.required<PodcastVersion>();
-  /** Share target; without one, or without audio to share, the share button is hidden. */
+  /**
+   * Which podcast this is, for sharing and deleting; without one, or without audio
+   * to share, the share button is hidden.
+   */
   readonly shareTarget = input<PodcastShareTarget | null>(null);
+  /** The campaign owner may delete the podcast (needs `shareTarget`). */
+  readonly canDelete = input(false);
   /** Base name of the downloaded file; the version and `.mp3` are appended. */
   readonly downloadName = input('podcast');
   readonly showScript = input(false);
 
   private readonly formatting = inject(FormattingService);
   private readonly i18n = inject(I18nService);
+  private readonly deleter = inject(PodcastDeleteService);
+  private readonly toast = inject(ToastService);
+
+  readonly deleting = signal(false);
 
   readonly isReady = computed(() => this.podcast().status === 'completed' && !!this.podcast().audioUrl);
   readonly isInProgress = computed(() => !['completed', 'failed'].includes(this.podcast().status));
+  /** A finished or failed podcast can go, and so can an abandoned one; one being made cannot. */
+  readonly canDeleteNow = computed(() =>
+    this.canDelete() && !!this.shareTarget() && !(this.isInProgress() && isActiveGeneration(this.podcast().createdAt))
+  );
   readonly downloadFileName = computed(() => `${this.downloadName() || 'podcast'}-v${this.podcast().version}.mp3`);
 
   /** What the player's controls are called for this podcast, in the active language. */
@@ -157,4 +193,22 @@ export class PodcastVersionItemComponent {
       fileSize ? formatFileSize(fileSize) : '',
     ].filter(Boolean);
   });
+
+  async onDelete(): Promise<void> {
+    const target = this.shareTarget();
+    if (!target || this.deleting()) return;
+    const texts = this.i18n.t();
+    if (!(await this.toast.confirm(texts.podcast.deleteConfirm(this.podcast().version)))) return;
+
+    this.deleting.set(true);
+    try {
+      await this.deleter.delete(target);
+    } catch (error) {
+      if (!callableErrorReason(error)) logger.error('Deleting a podcast failed:', error);
+      const current = this.i18n.t();
+      this.toast.show(callableErrorMessage(error, current.errors, current.podcast.deleteFailed), 'error', 6000);
+    } finally {
+      this.deleting.set(false);
+    }
+  }
 }

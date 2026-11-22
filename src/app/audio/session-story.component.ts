@@ -281,6 +281,7 @@ export interface SessionMetaUpdate {
                     [podcast]="podcast"
                     [shareTarget]="campaignId() && sessionId() ? { campaignId: campaignId(), sessionId: sessionId(), podcastVersion: podcast.version } : null"
                     [downloadName]="title() || 'podcast'"
+                    [canDelete]="canDeletePodcasts()"
                   />
                 }
               </div>
@@ -329,6 +330,8 @@ export class SessionStoryComponent {
   podcastGenerationProgressPercent = input(0);
   podcastError = input('');
   canGeneratePodcast = input(false);
+  /** The campaign owner may delete the session's podcasts. */
+  canDeletePodcasts = input(false);
 
   storyUpdated = output<string>();
   regenerate = output<void>();

@@ -91,18 +91,21 @@ import { TranslatePipe } from '../core/i18n/translate.pipe';
     .campaign-tab {
       display: inline-flex;
       flex: 1 1 0;
+      /* On a phone the three tabs share the bar: they may shrink below their text's width. */
+      min-width: 0;
       align-items: center;
       justify-content: center;
-      gap: 0.5rem;
+      gap: 0.4rem;
       min-height: 44px;
-      padding: 0 1rem;
+      padding: 0 0.4rem;
       border-radius: 10px;
       border: 1px solid transparent;
       font-family: var(--font-display);
-      font-size: 0.78rem;
+      font-size: 0.72rem;
       font-weight: 700;
-      letter-spacing: 0.12em;
+      letter-spacing: 0.06em;
       text-transform: uppercase;
+      white-space: nowrap;
       color: #fff;
       text-decoration: none;
       transition: background 0.15s, color 0.15s;
@@ -129,9 +132,13 @@ import { TranslatePipe } from '../core/i18n/translate.pipe';
       color: var(--gold-deep);
       background: var(--gold-soft);
     }
+    /* A very narrow screen (or large text) has no room for the count. */
+    @media (max-width: 339px) {
+      .campaign-tab-count { display: none; }
+    }
     @media (min-width: 640px) {
       .campaign-tabs { align-self: flex-start; width: fit-content; }
-      .campaign-tab { flex: 0 0 auto; }
+      .campaign-tab { flex: 0 0 auto; gap: 0.5rem; padding: 0 1rem; font-size: 0.78rem; letter-spacing: 0.12em; }
     }
   `],
 })

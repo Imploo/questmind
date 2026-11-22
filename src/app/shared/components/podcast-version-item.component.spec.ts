@@ -1,7 +1,9 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { PodcastVersionItemComponent } from './podcast-version-item.component';
 import { PodcastShareService } from '../../audio/services/podcast-share.service';
+import { PodcastDeleteService } from '../../audio/services/podcast-delete.service';
+import { ToastService } from '../services/toast.service';
 import { PodcastProgressStep, PodcastStatus, PodcastVersion } from '../../audio/services/audio-session.models';
 import { I18nService } from '../../core/i18n/i18n.service';
 import { en } from '../../core/i18n/en';
@@ -21,12 +23,17 @@ const podcast = (overrides: Partial<PodcastVersion> = {}): PodcastVersion => ({
 describe('PodcastVersionItemComponent', () => {
   let fixture: ComponentFixture<PodcastVersionItemComponent>;
   let element: HTMLElement;
+  const deletePodcast = vi.fn();
+  const toast = { confirm: vi.fn(), show: vi.fn() };
 
   beforeEach(() => {
+    vi.clearAllMocks();
     TestBed.configureTestingModule({
       providers: [
         provideTestLanguage('en'),
         { provide: PodcastShareService, useValue: { createShareUrl: () => Promise.resolve('') } },
+        { provide: PodcastDeleteService, useValue: { delete: deletePodcast } },
+        { provide: ToastService, useValue: toast },
       ],
     });
     fixture = TestBed.createComponent(PodcastVersionItemComponent);
@@ -196,5 +203,69 @@ describe('PodcastVersionItemComponent', () => {
     TestBed.inject(I18nService).use('nl');
     fixture.detectChanges();
     expect(status()).toBe(nl.podcast.steps.script);
+  });
+
+  describe('deleting', () => {
+    const target = { campaignId: 'c1', sessionId: 's1', podcastVersion: 3 };
+    const deleteButton = () => element.querySelector('[data-testid="podcast-delete"]') as HTMLButtonElement | null;
+
+    it('is only offered to the campaign owner', () => {
+      render(podcast(), { shareTarget: target });
+      expect(deleteButton()).toBeNull();
+
+      fixture.componentRef.setInput('canDelete', true);
+      fixture.detectChanges();
+      expect(deleteButton()?.getAttribute('aria-label')).toBe(en.podcast.deleteLabel(3));
+    });
+
+    it('is offered for a failed podcast, which has no audio', () => {
+      render(podcast({ status: 'failed', audioUrl: undefined, error: 'boom' }), { shareTarget: target, canDelete: true });
+      expect(deleteButton()).not.toBeNull();
+    });
+
+    it('is not offered while the podcast is being made, but is once that was abandoned', () => {
+      render(podcast({ status: 'pending', audioUrl: undefined, createdAt: new Date() }), { shareTarget: target, canDelete: true });
+      expect(deleteButton()).toBeNull();
+
+      fixture.componentRef.setInput('podcast', podcast({ status: 'pending', audioUrl: undefined, createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000) }));
+      fixture.detectChanges();
+      expect(deleteButton()).not.toBeNull();
+    });
+
+    it('asks first, then deletes', async () => {
+      toast.confirm.mockResolvedValue(true);
+      deletePodcast.mockResolvedValue(undefined);
+      render(podcast(), { shareTarget: target, canDelete: true });
+
+      deleteButton()?.click();
+      await fixture.whenStable();
+
+      expect(toast.confirm).toHaveBeenCalledWith(en.podcast.deleteConfirm(3));
+      expect(deletePodcast).toHaveBeenCalledWith(target);
+    });
+
+    it('keeps the podcast when the owner changes their mind', async () => {
+      toast.confirm.mockResolvedValue(false);
+      render(podcast(), { shareTarget: target, canDelete: true });
+
+      deleteButton()?.click();
+      await fixture.whenStable();
+
+      expect(deletePodcast).not.toHaveBeenCalled();
+    });
+
+    it('says why a podcast could not be deleted', async () => {
+      toast.confirm.mockResolvedValue(true);
+      deletePodcast.mockRejectedValue(
+        Object.assign(new Error('still running'), { code: 'functions/failed-precondition', details: { reason: 'podcast-generating' } })
+      );
+      render(podcast(), { shareTarget: target, canDelete: true });
+
+      deleteButton()?.click();
+      await fixture.whenStable();
+
+      expect(toast.show).toHaveBeenCalledWith(en.errors.reasons.podcastGenerating, 'error', 6000);
+      expect(deleteButton()?.disabled).toBe(false);
+    });
   });
 });
