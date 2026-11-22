@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { AuthService } from '../auth/auth.service';
 import { PodcastVersion } from './services/audio-session.models';
 import { CampaignContextService } from '../campaign/campaign-context.service';
@@ -52,13 +52,32 @@ interface SessionWithPodcasts {
                   </div>
                   <h2 class="qm-display text-xl leading-tight break-words">{{ session.sessionTitle }}</h2>
                 </div>
-                <span class="qm-badge qm-badge-violet">
-                  {{ 'podcast.library.versionCount' | translate: session.podcasts.length }}
-                </span>
+                @if (session.podcasts.length > 1) {
+                  <!-- Only the newest version shows; the pill opens the older ones. -->
+                  <button
+                    type="button"
+                    class="qm-badge qm-badge-violet version-toggle"
+                    [attr.aria-expanded]="isExpanded(session.sessionId)"
+                    (click)="toggle(session.sessionId)"
+                    data-testid="version-toggle"
+                  >
+                    {{ 'podcast.library.versionCount' | translate: session.podcasts.length }}
+                    <svg
+                      class="w-3.5 h-3.5 transition-transform duration-200"
+                      [class.rotate-180]="isExpanded(session.sessionId)"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 9l6 6 6-6" />
+                    </svg>
+                  </button>
+                }
               </div>
 
               <div class="space-y-3">
-                @for (podcast of session.podcasts; track podcast.version) {
+                @for (podcast of visiblePodcasts(session); track podcast.version) {
                   <app-podcast-version-item
                     [podcast]="podcast"
                     [shareTarget]="{ campaignId: campaignId() ?? '', sessionId: session.sessionId, podcastVersion: podcast.version }"
@@ -75,7 +94,20 @@ interface SessionWithPodcasts {
         </p>
       }
     </div>
-  `
+  `,
+  styles: [`
+    .version-toggle {
+      min-height: 32px;
+      padding-inline: 0.7rem;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .version-toggle:hover { background: rgba(118, 75, 162, 0.2); }
+    .version-toggle[aria-expanded='true'] { border-color: rgba(118, 75, 162, 0.55); }
+    @media (pointer: coarse) {
+      .version-toggle { min-height: 40px; }
+    }
+  `]
 })
 export class PodcastLibraryComponent {
   private readonly authService = inject(AuthService);
@@ -97,8 +129,28 @@ export class PodcastLibraryComponent {
         sessionId: session.id,
         sessionTitle: session.title || untitled,
         sessionDate: session.sessionDate || '',
-        podcasts: session.podcasts ?? [],
+        // Newest version first: it is the one shown while the others are folded away.
+        podcasts: [...(session.podcasts ?? [])].sort((a, b) => b.version - a.version),
       }))
       .sort((a, b) => toMillis(b.sessionDate) - toMillis(a.sessionDate));
   });
+
+  /** Sessions whose older podcast versions are open. */
+  private readonly expanded = signal<ReadonlySet<string>>(new Set());
+
+  isExpanded(sessionId: string): boolean {
+    return this.expanded().has(sessionId);
+  }
+
+  toggle(sessionId: string): void {
+    this.expanded.update(open => {
+      const next = new Set(open);
+      if (!next.delete(sessionId)) next.add(sessionId);
+      return next;
+    });
+  }
+
+  visiblePodcasts(session: SessionWithPodcasts): PodcastVersion[] {
+    return this.isExpanded(session.sessionId) ? session.podcasts : session.podcasts.slice(0, 1);
+  }
 }
