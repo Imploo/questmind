@@ -48,6 +48,24 @@ export function injectMetaTags(indexHtml: string, metaTags: string, title?: stri
     .replace('</head>', () => `  ${metaTags}\n</head>`);
 }
 
+/**
+ * The first words of a (markdown) text on one line, cut at a word boundary.
+ * Headings, rules and markup are left out: a preview shows prose.
+ */
+export function excerpt(text: string, maxLength: number): string {
+  const plain = text
+    .split('\n')
+    .filter(line => !/^\s*(#|[-*_]{3,}\s*$)/.test(line))
+    .join(' ')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/[*_#>`]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (plain.length <= maxLength) return plain;
+  const cut = plain.slice(0, maxLength);
+  return `${cut.slice(0, Math.max(cut.lastIndexOf(' '), maxLength / 2)).trimEnd()}…`;
+}
+
 export function meta(attribute: 'name' | 'property', key: string, content: string): string {
   return `<meta ${attribute}="${key}" content="${escapeHtml(content)}">`;
 }

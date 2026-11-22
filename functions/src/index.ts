@@ -50,5 +50,10 @@ export { deletePodcast } from './delete-podcast';
 // Public share link for a character, with a link preview
 export { characterSharePage } from './character-share-page';
 
+// Public share link for a whole campaign: read-only view and link preview
+export { createCampaignShare } from './create-campaign-share';
+export { getCampaignShare } from './get-campaign-share';
+export { campaignSharePage } from './campaign-share-page';
+
 // Copy a character from a share link (also from another environment, such as beta)
 export { importCharacter } from './import-character';

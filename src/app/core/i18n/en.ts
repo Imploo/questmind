@@ -183,6 +183,21 @@ export const en: Translations = {
         podcasts: 'Podcasts',
       },
     },
+    share: {
+      button: 'Share campaign',
+      copied: 'Link copied — anyone with this link can view the campaign, without signing in.',
+      copyPrompt: 'Copy the link to this campaign:',
+      failed: 'Making the share link failed. Please try again.',
+    },
+    sharePage: {
+      loading: 'Loading campaign...',
+      notFoundTitle: 'Campaign not found',
+      notFoundText: 'This link does not exist (any more).',
+      loadFailed: 'The campaign could not be loaded. Please try again later.',
+      noSessions: 'There are no sessions with a story yet.',
+      noPodcasts: 'There are no podcasts yet.',
+      sessionNotFound: 'This session is not (or no longer) in the shared campaign.',
+    },
     settings: {
       title: 'Campaign Settings',
       general: 'General Settings',

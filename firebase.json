@@ -66,6 +66,13 @@
         }
       },
       {
+        "source": "/share/campaign/**",
+        "function": {
+          "functionId": "campaignSharePage",
+          "region": "europe-west1"
+        }
+      },
+      {
         "source": "/share/character/**",
         "function": {
           "functionId": "characterSharePage",
