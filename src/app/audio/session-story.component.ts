@@ -1,4 +1,16 @@
-import { ChangeDetectionStrategy, Component, SecurityContext, effect, inject, input, output, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  SecurityContext,
+  computed,
+  effect,
+  inject,
+  input,
+  model,
+  output,
+  signal,
+  untracked,
+} from '@angular/core';
 import { DomSanitizer } from '@angular/platform-browser';
 import { marked } from 'marked';
 import { PodcastVersion } from './services/audio-session.models';
@@ -10,6 +22,12 @@ import { TranslatePipe } from '../core/i18n/translate.pipe';
 export interface SessionMetaUpdate {
   title: string;
   sessionDate: string;
+}
+
+/** A story rewritten by hand, with the text the member started from. */
+export interface SessionStoryEdit {
+  content: string;
+  baseContent: string;
 }
 
 @Component({
@@ -58,7 +76,7 @@ export interface SessionMetaUpdate {
                 type="button"
                 class="qm-btn qm-btn-sm"
                 (click)="startMetaEdit()"
-                [disabled]="isBusy() || !canEditStory()"
+                [disabled]="isBusy() || !canManageSession()"
               >
                 {{ 'audio.story.editDetails' | translate }}
               </button>
@@ -66,7 +84,7 @@ export interface SessionMetaUpdate {
                 type="button"
                 class="qm-btn qm-btn-sm qm-btn-danger"
                 (click)="onDeleteClick()"
-                [disabled]="isBusy() || !canEditStory()"
+                [disabled]="isBusy() || !canManageSession()"
                 [title]="'audio.story.deleteSession' | translate"
                 [attr.aria-label]="'audio.story.deleteSession' | translate"
               >
@@ -132,34 +150,72 @@ export interface SessionMetaUpdate {
                   </button>
                 </div>
 
+                @if (otherEditors().length > 0) {
+                  <p class="qm-alert qm-alert-info" role="status" data-testid="story-other-editors">
+                    {{ 'storyEdit.othersEditing' | translate: otherEditors() }}
+                  </p>
+                }
+
                 <div>
                   @if (isEditing()) {
+                    @if (changedElsewhere()) {
+                      <div class="qm-alert qm-alert-warn mb-3 space-y-2" role="alert" data-testid="story-conflict">
+                        <p class="font-semibold">{{ conflictText() }}</p>
+                        <p>{{ 'storyEdit.conflictHelp' | translate }}</p>
+                        <details>
+                          <summary class="cursor-pointer font-semibold">{{ 'storyEdit.showCurrent' | translate }}</summary>
+                          <pre class="qm-well mt-2 max-h-80 overflow-auto text-xs whitespace-pre-wrap">{{ story() }}</pre>
+                        </details>
+                        <div class="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            class="qm-btn qm-btn-sm qm-btn-primary"
+                            (click)="keepMine()"
+                            [disabled]="isBusy() || saving() || !canEditStory() || !canSave()"
+                            data-testid="story-keep-mine"
+                          >
+                            {{ 'storyEdit.keepMine' | translate }}
+                          </button>
+                          <button
+                            type="button"
+                            class="qm-btn qm-btn-sm"
+                            (click)="resetDraft()"
+                            [disabled]="saving()"
+                            data-testid="story-load-current"
+                          >
+                            {{ 'storyEdit.loadCurrent' | translate }}
+                          </button>
+                        </div>
+                      </div>
+                    }
                     <textarea
                       class="qm-input min-h-[320px] !text-sm"
                       [value]="draft()"
                       (input)="onDraftInput($event)"
-                      [disabled]="isBusy() || !canEditStory()"
+                      [disabled]="isBusy() || saving() || !canEditStory()"
                       [attr.aria-label]="'audio.story.tabStory' | translate"
                     ></textarea>
                     <p class="qm-help mt-2">{{ 'audio.story.editHelp' | translate }}</p>
-                    <div class="mt-3 flex justify-end gap-2">
-                      <button
-                        type="button"
-                        class="qm-btn qm-btn-sm"
-                        (click)="resetDraft()"
-                      [disabled]="isBusy() || !canEditStory()"
-                      >
-                        {{ 'audio.story.reset' | translate }}
-                      </button>
-                      <button
-                        type="button"
-                        class="qm-btn qm-btn-sm qm-btn-primary"
-                        (click)="saveDraft()"
-                      [disabled]="isBusy() || !canEditStory()"
-                      >
-                        {{ 'audio.story.saveStory' | translate }}
-                      </button>
-                    </div>
+                    @if (!changedElsewhere()) {
+                      <div class="mt-3 flex justify-end gap-2">
+                        <button
+                          type="button"
+                          class="qm-btn qm-btn-sm"
+                          (click)="resetDraft()"
+                          [disabled]="isBusy() || saving() || !canEditStory()"
+                        >
+                          {{ 'audio.story.reset' | translate }}
+                        </button>
+                        <button
+                          type="button"
+                          class="qm-btn qm-btn-sm qm-btn-primary"
+                          (click)="saveDraft()"
+                          [disabled]="isBusy() || saving() || !canEditStory() || !canSave()"
+                        >
+                          {{ 'audio.story.saveStory' | translate }}
+                        </button>
+                      </div>
+                    }
                   } @else {
                     <div class="prose qm-prose max-w-none" [innerHTML]="renderedStory()"></div>
                   }
@@ -322,7 +378,16 @@ export class SessionStoryComponent {
   transcript = input('');
   isBusy = input(false);
   canRegenerate = input(false);
+  /** Every member of the campaign can rewrite a finished story. */
   canEditStory = input(false);
+  /** The session's own details and deleting it stay with its owner. */
+  canManageSession = input(false);
+  /** A save of the story is on its way to the database. */
+  saving = input(false);
+  /** Who last changed the story by hand, when that was someone else; '' when unknown. */
+  changedBy = input('');
+  /** Names of the other members who have the story open for editing right now. */
+  otherEditors = input<string[]>([]);
   canEditCorrections = input(true);
   corrections = input('');
   correctionsStatus = input<'idle' | 'saving' | 'saved'>('idle');
@@ -339,21 +404,43 @@ export class SessionStoryComponent {
   /** The campaign owner may delete the session's podcasts. */
   canDeletePodcasts = input(false);
 
-  storyUpdated = output<string>();
-  regenerate = output<void>();
+  /** The member saves the story; the parent closes the edit form (`isEditing`) once it is stored. */
+  storyUpdated = output<SessionStoryEdit>();
+  /** With the edit that still has to be saved first, or null when there is none. */
+  regenerate = output<SessionStoryEdit | null>();
   correctionsChanged = output<string>();
   generatePodcast = output<void>();
   metaUpdated = output<SessionMetaUpdate>();
   deleteSession = output<void>();
 
   activeTab = signal<'story' | 'podcasts'>('story');
-  isEditing = signal<boolean>(false);
+  /** The edit form is open. The parent closes it after a save, and shares it with the other members. */
+  isEditing = model<boolean>(false);
   isEditingMeta = signal<boolean>(false);
   titleDraft = signal<string>('');
   dateDraft = signal<string>('');
   draft = signal<string>('');
-  renderedStory = signal<string>('');
+  /** The stored story the draft started from. */
+  private readonly base = signal<string>('');
+  private shownSessionId: string | undefined;
   showTranscript = signal<boolean>(false);
+
+  readonly renderedStory = computed(
+    () => this.sanitizer.sanitize(SecurityContext.HTML, this.convertMarkdown(this.story())) ?? ''
+  );
+  /** The member typed something that is not stored yet. */
+  readonly hasUnsavedEdits = computed(() => this.draft() !== this.base());
+  /**
+   * The stored story is no longer the one the draft started from: someone else
+   * saved, or the story was regenerated, while this member was typing.
+   */
+  readonly changedElsewhere = computed(() => this.story() !== this.base());
+  readonly canSave = computed(() => this.draft().trim().length > 0);
+  readonly conflictText = computed(() => {
+    const texts = this.i18n.t().storyEdit;
+    const name = this.changedBy();
+    return name ? texts.changedBy(name) : texts.changedBySomeone;
+  });
 
   constructor() {
     // Configure marked options
@@ -362,11 +449,22 @@ export class SessionStoryComponent {
       gfm: true
     });
 
-    // React to story input changes (replaces ngOnChanges)
+    // The draft follows the stored story, except while it holds text that is not
+    // saved yet: then it is left alone and the form says the story has changed.
     effect(() => {
-      const storyValue = this.story();
-      this.draft.set(storyValue);
-      this.renderedStory.set(this.sanitizer.sanitize(SecurityContext.HTML, this.convertMarkdown(storyValue)) ?? '');
+      const story = this.story();
+      const sessionId = this.sessionId();
+      untracked(() => {
+        const otherSession = sessionId !== this.shownSessionId;
+        this.shownSessionId = sessionId;
+        if (otherSession || !this.hasUnsavedEdits() || story === this.draft()) {
+          this.base.set(story);
+          this.draft.set(story);
+        }
+        if (otherSession) {
+          this.isEditing.set(false);
+        }
+      });
     });
   }
 
@@ -417,21 +515,30 @@ export class SessionStoryComponent {
     this.draft.set(target.value);
   }
 
+  /** Drop what was typed and start again from the stored story. */
   resetDraft(): void {
+    this.base.set(this.story());
     this.draft.set(this.story());
   }
 
   saveDraft(): void {
-    this.storyUpdated.emit(this.draft());
-    this.isEditing.set(false);
+    if (!this.hasUnsavedEdits()) {
+      this.isEditing.set(false);
+      return;
+    }
+    this.storyUpdated.emit({ content: this.draft(), baseContent: this.base() });
+  }
+
+  /** After the story changed elsewhere: save this member's text over the current story. */
+  keepMine(): void {
+    this.base.set(this.story());
+    this.saveDraft();
   }
 
   /** Edits that are still in the text field are saved first: the regeneration starts from them. */
   onRegenerateClick(): void {
-    if (this.isEditing() && this.canEditStory() && this.draft() !== this.story()) {
-      this.saveDraft();
-    }
-    this.regenerate.emit();
+    const unsaved = this.canEditStory() && this.hasUnsavedEdits() && this.canSave();
+    this.regenerate.emit(unsaved ? { content: this.draft(), baseContent: this.base() } : null);
   }
 
   toggleTranscript(): void {

@@ -1,5 +1,8 @@
 import type { Translations } from './translations';
 
+/** "Mira, Kael en Thalia" */
+const listOf = (names: string[]) => new Intl.ListFormat('nl', { type: 'conjunction' }).format(names);
+
 /** The Dutch texts. Keep the order of the keys the same as in `translations.ts`. */
 export const nl: Translations = {
   common: {
@@ -305,9 +308,8 @@ export const nl: Translations = {
       titleLabel: 'Titel van het verhaal',
       contentLabel: 'Tekst van het verhaal',
       help:
-        'Haal weg wat niet klopt, vul aan wat ontbreekt, of zet een notitie tussen haakjes. Een volgende versie gaat uit van deze tekst: je verbeteringen blijven staan en notities worden in het verhaal verwerkt.',
+        'Haal weg wat niet klopt, vul aan wat ontbreekt, of zet een notitie tussen haakjes. Ieder lid van de campagne kan meeschrijven. Een volgende versie gaat uit van deze tekst: verbeteringen blijven staan en notities worden in het verhaal verwerkt.',
       save: 'Verhaal opslaan',
-      saveFailed: 'Het verhaal kon niet worden opgeslagen. Probeer het opnieuw.',
     },
     progress: {
       collecting: 'Sessieverhalen verzamelen...',
@@ -325,6 +327,26 @@ export const nl: Translations = {
       generate: 'Podcast genereren',
       empty: 'Nog geen podcast voor deze versie.',
     },
+  },
+
+  storyEdit: {
+    othersEditing: (names) =>
+      names.length === 1
+        ? `${names[0]} is dit verhaal nu ook aan het bewerken.`
+        : `${listOf(names)} zijn dit verhaal nu ook aan het bewerken.`,
+    changedBy: (name) => `${name} heeft het verhaal intussen gewijzigd. Jouw tekst is nog niet opgeslagen.`,
+    changedBySomeone: 'Het verhaal is intussen gewijzigd. Jouw tekst is nog niet opgeslagen.',
+    conflictHelp:
+      'Neem uit de huidige versie over wat je wilt bewaren en sla dan jouw tekst op: die vervangt de huidige versie. Of laad de huidige versie; dan vervalt wat jij hebt getypt.',
+    keepMine: 'Mijn tekst opslaan',
+    loadCurrent: 'Huidige versie laden',
+    showCurrent: 'Huidige versie bekijken',
+    newVersionBeingWritten: 'Er wordt een nieuwe versie geschreven. Opslaan kan weer zodra die klaar is.',
+    confirmGenerate: (names) =>
+      names.length === 1
+        ? `${names[0]} is dit verhaal aan het bewerken. Wat nog niet is opgeslagen gaat niet mee. Toch een nieuwe versie laten schrijven?`
+        : `${listOf(names)} zijn dit verhaal aan het bewerken. Wat nog niet is opgeslagen gaat niet mee. Toch een nieuwe versie laten schrijven?`,
+    saveFailed: 'Het verhaal kon niet worden opgeslagen. Probeer het opnieuw.',
   },
 
   audio: {
@@ -413,7 +435,7 @@ export const nl: Translations = {
       preview: 'Voorbeeld',
       editStory: 'Verhaal bewerken',
       editHelp:
-        'Haal weg wat niet klopt, vul aan wat ontbreekt, of zet een notitie tussen haakjes. Als je het verhaal opnieuw genereert, gaat deze versie mee: je verbeteringen blijven staan en notities worden in het verhaal verwerkt.',
+        'Haal weg wat niet klopt, vul aan wat ontbreekt, of zet een notitie tussen haakjes. Ieder lid van de campagne kan meeschrijven. Als het verhaal opnieuw wordt gegenereerd, gaat deze versie mee: verbeteringen blijven staan en notities worden in het verhaal verwerkt.',
       reset: 'Herstellen',
       saveStory: 'Verhaal opslaan',
       downloadMarkdown: 'Markdown downloaden',

@@ -12,6 +12,17 @@ import * as logger from '../../shared/logger';
 
 type SessionRecord = AudioSessionRecord & Record<string, unknown>;
 
+/** A story a member rewrote by hand, with the text it was based on. */
+export interface SessionStoryEditSave {
+  content: string;
+  /** The story as the member saw it when they started typing */
+  baseContent: string;
+  editedBy: string;
+  editedByName: string;
+  /** The session owner also clears a failed status; other members only edit a completed story. */
+  markCompleted: boolean;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -114,6 +125,36 @@ export class AudioSessionStateService {
 
     const updatedAt = new Date().toISOString();
     await repo.patch(id as SessionRecord['id'], { ...patch, updatedAt });
+  }
+
+  /**
+   * Save a story a member edited by hand, unless the stored story changed since
+   * they started (someone else saved, or it was regenerated): then nothing is
+   * written and the result is false, so no one's work is overwritten unseen.
+   *
+   * A saved edit is a new version of the story (the campaign story then knows it
+   * holds the older one) and marks the story as edited, so it goes along with
+   * every later regeneration.
+   */
+  async saveStoryEdit(id: string, edit: SessionStoryEditSave): Promise<boolean> {
+    const repo = this.sessionRepo.value();
+    if (!repo) {
+      throw new Error('No active campaign set for audio sessions.');
+    }
+
+    const now = new Date().toISOString();
+    return repo.patchInTransaction(id as SessionRecord['id'], current => {
+      if (!current || (current.content ?? '') !== edit.baseContent) return null;
+      return {
+        content: edit.content,
+        storyEditedAt: now,
+        storyEditedBy: edit.editedBy,
+        storyEditedByName: edit.editedByName,
+        storyRegenerationCount: (current.storyRegenerationCount ?? 1) + 1,
+        updatedAt: now,
+        ...(edit.markCompleted ? { status: 'completed' } : {}),
+      };
+    });
   }
 
   /**

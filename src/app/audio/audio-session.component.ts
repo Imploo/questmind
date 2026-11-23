@@ -1,4 +1,4 @@
-import { Component, effect, computed, inject, resource, ChangeDetectionStrategy, Signal } from '@angular/core';
+import { Component, effect, computed, inject, resource, signal, untracked, ChangeDetectionStrategy, Signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { Router, ActivatedRoute, RouterLink } from '@angular/router';
 import { map } from 'rxjs/operators';
@@ -18,7 +18,8 @@ import {
   SessionProgressStage
 } from './services/audio-session.models';
 import { isActiveStage, toDisplayProgress } from './services/session-progress.utils';
-import { SessionStoryComponent, SessionMetaUpdate } from './session-story.component';
+import { SessionStoryComponent, SessionMetaUpdate, SessionStoryEdit } from './session-story.component';
+import { StoryPresenceService, editorName, sessionStoryTarget } from '../shared/services/story-presence.service';
 import { SessionProgressCardComponent } from './session-progress-card.component';
 import { SessionRecordingComponent } from './session-recording.component';
 import { CampaignStoryService } from '../campaign-story/campaign-story.service';
@@ -34,7 +35,7 @@ const PODCAST_STAGES: SessionProgressStage[] = ['generating-podcast-script', 'ge
 @Component({
   selector: 'app-audio-session',
   imports: [RouterLink, SessionStoryComponent, SessionProgressCardComponent, SessionRecordingComponent, TranslatePipe],
-  providers: [PodcastGenerationService, CorrectionsSaveService],
+  providers: [PodcastGenerationService, CorrectionsSaveService, StoryPresenceService],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="max-w-4xl mx-auto space-y-4">
@@ -114,6 +115,11 @@ const PODCAST_STAGES: SessionProgressStage[] = ['generating-podcast-script', 'ge
             [isBusy]="isBusy()"
             [canRegenerate]="canRegenerateStory()"
             [canEditStory]="canEditStory()"
+            [canManageSession]="isSessionOwner()"
+            [(isEditing)]="isEditingStory"
+            [saving]="isSavingStory()"
+            [changedBy]="storyChangedBy()"
+            [otherEditors]="presence.others()"
             [canEditCorrections]="canEditCorrections()"
             [corrections]="correctionsSave.corrections()"
             [correctionsStatus]="correctionsSave.saveStatus()"
@@ -127,7 +133,7 @@ const PODCAST_STAGES: SessionProgressStage[] = ['generating-podcast-script', 'ge
             [canGeneratePodcast]="canGeneratePodcast()"
             [canDeletePodcasts]="isCampaignOwner()"
             (storyUpdated)="saveStoryEdits($event)"
-            (regenerate)="regenerateStory()"
+            (regenerate)="regenerateStory($event)"
             (correctionsChanged)="correctionsSave.onInput($event)"
             (generatePodcast)="generatePodcast()"
             (metaUpdated)="saveSessionMeta($event)"
@@ -204,6 +210,11 @@ export class AudioSessionComponent {
   private readonly i18n = inject(I18nService);
 
   private readonly storyService = inject(CampaignStoryService);
+  protected readonly presence = inject(StoryPresenceService);
+
+  /** The story's edit form is open; the other members see that. */
+  readonly isEditingStory = signal(false);
+  readonly isSavingStory = signal(false);
 
   userId = computed(() => this.authService.currentUser()?.uid || null);
   campaignId = computed(() => this.campaignContext.selectedCampaignId());
@@ -259,7 +270,24 @@ export class AudioSessionComponent {
     const campaign = this.campaignContext.selectedCampaign();
     return !!campaign && campaign.ownerId === this.userId();
   });
-  canEditStory = computed(() => this.isSessionOwner());
+  /**
+   * Every member of the campaign can rewrite a finished story. Only the session
+   * owner can also do that for a session that failed (and regenerate, see above).
+   */
+  canEditStory = computed(() => this.isSessionOwner() || this.currentSession()?.status === 'completed');
+
+  /**
+   * The member whose edit is the story's last change, when that is someone else.
+   * Empty when the story was regenerated after that edit: then nobody typed it.
+   */
+  storyChangedBy = computed(() => {
+    const session = this.currentSession();
+    if (!session?.storyEditedBy || session.storyEditedBy === this.userId()) return '';
+    if ((session.storyGeneratedAt ?? '') > (session.storyEditedAt ?? '')) return '';
+    return session.storyEditedByName ?? '';
+  });
+
+  private readonly currentSessionId = computed(() => this.currentSession()?.id ?? null);
   canEditCorrections = computed(() => !!this.currentSession());
 
   sessions: Signal<AudioSessionRecord[]>;
@@ -295,6 +323,19 @@ export class AudioSessionComponent {
     effect(() => {
       this.correctionsSave.syncToSession(this.currentSession());
     });
+
+    // Another session on screen: its edit form starts closed.
+    effect(() => {
+      this.sessionId();
+      untracked(() => this.isEditingStory.set(false));
+    });
+
+    // Show who else is editing this story, and tell them when this member is.
+    effect(() => {
+      const sessionId = this.currentSessionId();
+      this.presence.watch(this.campaignId(), sessionId ? sessionStoryTarget(sessionId) : null);
+      this.presence.setEditing(this.isEditingStory());
+    });
   }
 
   // --- Session navigation ---
@@ -314,8 +355,25 @@ export class AudioSessionComponent {
 
   // --- Story operations ---
 
-  async regenerateStory(): Promise<void> {
+  /**
+   * @param unsavedEdit what is still in the story's edit form: saved first, so it
+   *   goes along with the regeneration
+   */
+  async regenerateStory(unsavedEdit: SessionStoryEdit | null = null): Promise<void> {
     if (!this.canRegenerateStory()) return;
+
+    if (unsavedEdit && !(await this.saveStoryEdits(unsavedEdit))) {
+      // Not saved (the story changed in the meantime, or the save failed): the form says why.
+      this.isEditingStory.set(true);
+      return;
+    }
+
+    // Someone else is typing: what they have not saved would not go along.
+    const others = this.presence.others();
+    if (others.length > 0 && !(await this.toastService.confirm(this.i18n.t().storyEdit.confirmGenerate(others)))) {
+      return;
+    }
+
     const session = this.currentSession();
     if (!session?.rawStory && !session?.transcription) return;
 
@@ -355,25 +413,35 @@ export class AudioSessionComponent {
   }
 
   /**
-   * Save a story the owner edited by hand. It becomes a new version of the story
-   * (the campaign story then knows it holds the older one) and is marked as
-   * edited, so it goes along with every later regeneration.
+   * Save a story a member edited by hand. Resolves to whether it was stored: not
+   * when the story changed since the member started typing (the form then offers
+   * the choice between both texts), and not when the save failed.
    */
-  saveStoryEdits(content: string): void {
-    if (!this.canEditStory()) return;
+  async saveStoryEdits(edit: SessionStoryEdit): Promise<boolean> {
     const session = this.currentSession();
-    if (!session) return;
-    const changed = content !== session.content;
-    this.sessionStateService.updateSession(session.id, {
-      content,
-      status: 'completed',
-      ...(changed
-        ? {
-          storyEditedAt: new Date().toISOString(),
-          storyRegenerationCount: (session.storyRegenerationCount ?? 1) + 1
-        }
-        : {})
-    });
+    const user = this.authService.currentUser();
+    if (!session || !user?.uid || !this.canEditStory()) return false;
+
+    this.isSavingStory.set(true);
+    try {
+      const saved = await this.sessionStateService.saveStoryEdit(session.id, {
+        content: edit.content,
+        baseContent: edit.baseContent,
+        editedBy: user.uid,
+        editedByName: editorName(user),
+        markCompleted: this.isSessionOwner()
+      });
+      if (saved) {
+        this.isEditingStory.set(false);
+      }
+      return saved;
+    } catch (error) {
+      logger.error('Failed to save the edited story:', error);
+      this.toastService.show(this.i18n.t().storyEdit.saveFailed, 'error', 6000);
+      return false;
+    } finally {
+      this.isSavingStory.set(false);
+    }
   }
 
   saveSessionMeta(meta: SessionMetaUpdate): void {

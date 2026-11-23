@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { AuthService } from '../auth/auth.service';
 import { CampaignContextService } from '../campaign/campaign-context.service';
@@ -7,7 +7,8 @@ import { CampaignStoryService } from './campaign-story.service';
 import { CampaignStoryViewComponent } from './campaign-story-view.component';
 import { CampaignStoryVersionsDrawerComponent } from './campaign-story-versions-drawer.component';
 import { CampaignStoryPodcastsComponent } from './campaign-story-podcasts.component';
-import { CampaignStoryEdit, CampaignStoryVersion } from './campaign-story.models';
+import { CampaignStoryEditSave, CampaignStoryVersion } from './campaign-story.models';
+import { CAMPAIGN_STORY_TARGET, StoryPresenceService } from '../shared/services/story-presence.service';
 import {
   countChangedSessions,
   coveredUntil,
@@ -24,7 +25,8 @@ import { TranslatePipe } from '../core/i18n/translate.pipe';
 /**
  * The story tab of a campaign (ticket #69): how far the story runs, the newest
  * version of the campaign-wide story, older versions in a drawer, and generation of
- * new versions/podcasts for the owner. Without a story it says what comes first.
+ * new versions/podcasts for the owner. Every member can edit the newest version
+ * by hand. Without a story it says what comes first.
  */
 @Component({
   selector: 'app-campaign-story-page',
@@ -35,6 +37,7 @@ import { TranslatePipe } from '../core/i18n/translate.pipe';
     CampaignStoryPodcastsComponent,
     TranslatePipe,
   ],
+  providers: [StoryPresenceService],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="space-y-4 sm:space-y-5">
@@ -112,8 +115,11 @@ import { TranslatePipe } from '../core/i18n/translate.pipe';
           class="block"
           [version]="version"
           [isLatest]="version.version === latestCompleted()?.version"
-          [editing]="isEditing() && canEdit()"
+          [editing]="isEditing() && version.version === latestCompleted()?.version"
           [saving]="isSaving()"
+          [locked]="isGenerating()"
+          [changedBy]="changedBy()"
+          [otherEditors]="presence.others()"
           (backToLatest)="selectedVersion.set(null)"
           (saved)="saveEdit(version, $event)"
           (cancelled)="isEditing.set(false)"
@@ -186,6 +192,7 @@ export class CampaignStoryPageComponent {
   private readonly i18n = inject(I18nService);
   private readonly formatting = inject(FormattingService);
   private readonly toastService = inject(ToastService);
+  protected readonly presence = inject(StoryPresenceService);
 
   /** null = show the newest completed version */
   readonly campaignId = this.campaignContext.selectedCampaignId;
@@ -195,7 +202,7 @@ export class CampaignStoryPageComponent {
   readonly podcastError = signal('');
   private readonly startingStory = signal(false);
   private readonly startingPodcast = signal(false);
-  /** The owner is rewriting the newest version by hand. */
+  /** This member is rewriting the newest version by hand; the other members see that. */
   readonly isEditing = signal(false);
   readonly isSaving = signal(false);
 
@@ -226,12 +233,20 @@ export class CampaignStoryPageComponent {
   readonly isGenerating = computed(() => this.startingStory() || !!this.activeGeneration());
 
   /**
-   * The owner can edit the newest completed version: that is the one that goes
-   * along when the next version is written. Not while a new version is on its way.
+   * Every member can start editing the newest completed version: that is the one
+   * that goes along when the next version is written. Not while a new version is
+   * on its way; a form that is already open then stays, with saving held back.
    */
   readonly canEdit = computed(() => {
     const displayed = this.displayedVersion();
-    return this.isOwner() && !this.isGenerating() && !!displayed && displayed.version === this.latestCompleted()?.version;
+    return !this.isGenerating() && !!displayed && displayed.version === this.latestCompleted()?.version;
+  });
+
+  /** The member whose edit is on the newest version, when that is someone else. */
+  readonly changedBy = computed(() => {
+    const latest = this.latestCompleted();
+    const uid = this.authService.currentUser()?.uid;
+    return latest?.editedBy && latest.editedBy !== uid ? (latest.editedByName ?? '') : '';
   });
 
   /** The step the backend is at, in the active language; "busy" until the version document exists. */
@@ -277,6 +292,14 @@ export class CampaignStoryPageComponent {
     )
   );
 
+  constructor() {
+    // Show who else is editing the campaign story, and tell them when this member is.
+    effect(() => {
+      this.presence.watch(this.campaignId(), CAMPAIGN_STORY_TARGET);
+      this.presence.setEditing(this.isEditing());
+    });
+  }
+
   selectVersion(version: number): void {
     this.selectedVersion.set(version);
     this.drawerOpen.set(false);
@@ -289,15 +312,20 @@ export class CampaignStoryPageComponent {
     this.isEditing.set(true);
   }
 
-  /** Saves the owner's edit; on failure the text stays in the form to try again. */
-  async saveEdit(version: CampaignStoryVersion, edit: CampaignStoryEdit): Promise<void> {
+  /**
+   * Saves the member's edit. The form stays open, with the text in it, when the
+   * save fails or when the story changed in the meantime (the form then offers
+   * the choice between both texts).
+   */
+  async saveEdit(version: CampaignStoryVersion, edit: CampaignStoryEditSave): Promise<void> {
     this.isSaving.set(true);
     try {
-      await this.storyService.saveEdit(version, edit);
-      this.isEditing.set(false);
+      if (await this.storyService.saveEdit(version, edit)) {
+        this.isEditing.set(false);
+      }
     } catch {
       // A toast: the form is long, a message at the top of the page would be out of sight.
-      this.toastService.show(this.i18n.t().campaignStory.edit.saveFailed, 'error', 6000);
+      this.toastService.show(this.i18n.t().storyEdit.saveFailed, 'error', 6000);
     } finally {
       this.isSaving.set(false);
     }
@@ -306,6 +334,12 @@ export class CampaignStoryPageComponent {
   async generateStory(): Promise<void> {
     const campaignId = this.campaignContext.selectedCampaignId();
     if (!campaignId) return;
+
+    // Someone else is typing: what they have not saved would not go along.
+    const others = this.presence.others();
+    if (others.length > 0 && !(await this.toastService.confirm(this.i18n.t().storyEdit.confirmGenerate(others)))) {
+      return;
+    }
 
     this.errorMessage.set('');
     this.selectedVersion.set(null);

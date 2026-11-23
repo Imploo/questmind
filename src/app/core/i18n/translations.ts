@@ -304,7 +304,6 @@ export interface Translations {
       contentLabel: string;
       help: string;
       save: string;
-      saveFailed: string;
     };
     progress: {
       collecting: string;
@@ -322,6 +321,20 @@ export interface Translations {
       generate: string;
       empty: string;
     };
+  };
+
+  /** Editing a story (of a session or of the campaign) together with the other members. */
+  storyEdit: {
+    othersEditing: (names: string[]) => string;
+    changedBy: (name: string) => string;
+    changedBySomeone: string;
+    conflictHelp: string;
+    keepMine: string;
+    loadCurrent: string;
+    showCurrent: string;
+    newVersionBeingWritten: string;
+    confirmGenerate: (names: string[]) => string;
+    saveFailed: string;
   };
 
   /** Sessions: the list, the upload, the story tab and transcription. */

@@ -13,7 +13,7 @@ import {
 import { DomSanitizer } from '@angular/platform-browser';
 import { marked } from 'marked';
 import { FormattingService } from '../shared/formatting.service';
-import { CampaignStoryEdit, CampaignStoryVersion } from './campaign-story.models';
+import { CampaignStoryEdit, CampaignStoryEditSave, CampaignStoryVersion } from './campaign-story.models';
 import { sourceCountText } from './campaign-story.utils';
 import { I18nService } from '../core/i18n/i18n.service';
 import { TranslatePipe } from '../core/i18n/translate.pipe';
@@ -22,8 +22,10 @@ import { TranslatePipe } from '../core/i18n/translate.pipe';
 const MAX_TITLE_LENGTH = 200;
 
 /**
- * Renders one campaign story version (ticket #69). In edit mode the owner
+ * Renders one campaign story version (ticket #69). In edit mode a member
  * rewrites the title and the text by hand; the parent saves what is emitted.
+ * When the version changes while the member is typing (someone else saved, or a
+ * new version was written), the form keeps their text and offers the choice.
  */
 @Component({
   selector: 'app-campaign-story-view',
@@ -41,9 +43,44 @@ const MAX_TITLE_LENGTH = 200;
         </div>
       }
 
+      @if (otherEditors().length > 0) {
+        <p class="qm-alert qm-alert-info relative z-[1] mb-5" role="status" data-testid="story-other-editors">
+          {{ 'storyEdit.othersEditing' | translate: otherEditors() }}
+        </p>
+      }
+
       @if (editing()) {
         <form class="relative z-[1] space-y-3" (submit)="save($event)" data-testid="story-edit-form">
           <div class="qm-eyebrow text-center">{{ meta() }}</div>
+          @if (locked()) {
+            <p class="qm-alert qm-alert-info" role="status" data-testid="story-locked">
+              {{ 'storyEdit.newVersionBeingWritten' | translate }}
+            </p>
+          } @else if (changedElsewhere()) {
+            <div class="qm-alert qm-alert-warn space-y-2" role="alert" data-testid="story-conflict">
+              <p class="font-semibold">{{ conflictText() }}</p>
+              <p>{{ 'storyEdit.conflictHelp' | translate }}</p>
+              <details>
+                <summary class="cursor-pointer font-semibold">{{ 'storyEdit.showCurrent' | translate }}</summary>
+                <p class="mt-2 font-semibold">{{ version().title }}</p>
+                <pre class="qm-well mt-2 max-h-80 overflow-auto text-xs whitespace-pre-wrap">{{ version().content }}</pre>
+              </details>
+              <div class="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  class="qm-btn qm-btn-sm qm-btn-primary"
+                  [disabled]="saving() || !canSave()"
+                  (click)="keepMine()"
+                  data-testid="story-keep-mine"
+                >
+                  {{ 'storyEdit.keepMine' | translate }}
+                </button>
+                <button type="button" class="qm-btn qm-btn-sm" [disabled]="saving()" (click)="loadCurrent()" data-testid="story-load-current">
+                  {{ 'storyEdit.loadCurrent' | translate }}
+                </button>
+              </div>
+            </div>
+          }
           <input
             type="text"
             class="qm-input font-display !text-lg font-bold"
@@ -68,12 +105,14 @@ const MAX_TITLE_LENGTH = 200;
             <button type="button" class="qm-btn" [disabled]="saving()" (click)="cancelled.emit()">
               {{ 'common.cancel' | translate }}
             </button>
-            <button type="submit" class="qm-btn qm-btn-primary" [disabled]="saving() || !canSave()" data-testid="story-edit-save">
-              @if (saving()) {
-                <span class="qm-spinner qm-spinner-light" aria-hidden="true"></span>
-              }
-              {{ 'campaignStory.edit.save' | translate }}
-            </button>
+            @if (!changedElsewhere()) {
+              <button type="submit" class="qm-btn qm-btn-primary" [disabled]="saving() || locked() || !canSave()" data-testid="story-edit-save">
+                @if (saving()) {
+                  <span class="qm-spinner qm-spinner-light" aria-hidden="true"></span>
+                }
+                {{ 'campaignStory.edit.save' | translate }}
+              </button>
+            }
           </div>
         </form>
       } @else {
@@ -108,28 +147,54 @@ export class CampaignStoryViewComponent {
 
   readonly version = input.required<CampaignStoryVersion>();
   readonly isLatest = input(true);
-  /** The owner is rewriting this version by hand. */
+  /** The member is rewriting this version by hand. */
   readonly editing = input(false);
   /** The edit is on its way to the database. */
   readonly saving = input(false);
+  /** A new version is being written: an edit saved now would not go along with it. */
+  readonly locked = input(false);
+  /** Who last changed this version by hand, when that was someone else; '' when unknown. */
+  readonly changedBy = input('');
+  /** Names of the other members who have the story open for editing right now. */
+  readonly otherEditors = input<string[]>([]);
 
   readonly backToLatest = output<void>();
-  readonly saved = output<CampaignStoryEdit>();
+  readonly saved = output<CampaignStoryEditSave>();
   readonly cancelled = output<void>();
 
   protected readonly maxTitleLength = MAX_TITLE_LENGTH;
   protected readonly titleDraft = signal('');
   protected readonly contentDraft = signal('');
+  /** The title and text the drafts started from. */
+  private readonly base = signal<CampaignStoryEdit>({ title: '', content: '' });
   protected readonly canSave = computed(() => this.contentDraft().trim().length > 0);
+  /**
+   * The story on screen is no longer the one the drafts started from: someone
+   * else saved, or a new version was written, while this member was typing.
+   */
+  protected readonly changedElsewhere = computed(() => {
+    const current = this.stored();
+    const base = this.base();
+    return this.editing() && (current.title !== base.title || current.content !== base.content);
+  });
+  protected readonly conflictText = computed(() => {
+    const texts = this.i18n.t().storyEdit;
+    const name = this.changedBy();
+    return name ? texts.changedBy(name) : texts.changedBySomeone;
+  });
+
+  private readonly stored = computed<CampaignStoryEdit>(() => ({
+    title: this.version().title ?? '',
+    content: this.version().content ?? '',
+  }));
 
   constructor() {
-    // The drafts start from the version when editing begins. An update of the
-    // version while editing (e.g. podcast progress) leaves what was typed alone.
+    // The drafts start from the version when editing begins. A change of the
+    // version while editing leaves what was typed alone (see changedElsewhere).
     effect(() => {
-      if (!this.editing()) return;
-      const version = untracked(this.version);
-      this.titleDraft.set(version.title ?? '');
-      this.contentDraft.set(version.content ?? '');
+      if (this.editing()) {
+        untracked(() => this.loadCurrent());
+      }
     });
   }
 
@@ -159,7 +224,30 @@ export class CampaignStoryViewComponent {
 
   protected save(event: Event): void {
     event.preventDefault();
+    if (!this.canSave() || this.saving() || this.locked() || this.changedElsewhere()) return;
+    this.emitSave();
+  }
+
+  /** After the story changed elsewhere: save this member's text over the current story. */
+  protected keepMine(): void {
     if (!this.canSave() || this.saving()) return;
-    this.saved.emit({ title: this.titleDraft().trim(), content: this.contentDraft().trim() });
+    this.base.set(this.stored());
+    this.emitSave();
+  }
+
+  /** Start (again) from the story as it is stored now. */
+  protected loadCurrent(): void {
+    const stored = this.stored();
+    this.base.set(stored);
+    this.titleDraft.set(stored.title);
+    this.contentDraft.set(stored.content);
+  }
+
+  private emitSave(): void {
+    this.saved.emit({
+      title: this.titleDraft().trim(),
+      content: this.contentDraft().trim(),
+      base: this.base(),
+    });
   }
 }

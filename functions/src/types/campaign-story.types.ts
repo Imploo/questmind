@@ -58,9 +58,10 @@ export interface CampaignStoryVersion {
   error?: string | null;
   podcasts: PodcastEntry[];
   latestPodcastVersion?: number;
-  /** Set by the app when the owner edits the title or the story by hand. */
+  /** Set by the app when a member edits the title or the story by hand. */
   editedAt?: Date;
   editedBy?: string;
+  editedByName?: string;
   /**
    * The version that went along as "previous version" when this one was written.
    * The improvements the owner made by hand in it live on in this version, so

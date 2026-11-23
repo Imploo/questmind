@@ -14,6 +14,7 @@ import {
   query,
   Query,
   QueryConstraint,
+  runTransaction,
   setDoc,
   Unsubscribe,
   updateDoc,
@@ -97,6 +98,29 @@ export abstract class FirestoreRepository<
   public async patch(key: T[K], data: Record<string, unknown>): Promise<void> {
     const docRef = this.getDocRef(key as string);
     await updateDoc(docRef, data);
+  }
+
+  /**
+   * Reads the document and writes the patch `decide` returns, in one transaction:
+   * nobody else can change the document in between. `decide` gets the document
+   * as it is now (null when it does not exist) and returns null to leave it
+   * alone. Resolves to whether the patch was written. Needs a connection.
+   */
+  public async patchInTransaction(
+    key: T[K],
+    decide: (current: T | null) => Record<string, unknown> | null,
+  ): Promise<boolean> {
+    const docRef = this.getDocRef(key as string);
+    return runTransaction(this.firestore, async (transaction) => {
+      const snapshot = await transaction.get(docRef);
+      const current = snapshot.exists()
+        ? ({ ...this.mapDocToModel(snapshot), [this.keyProp]: snapshot.id } as T)
+        : null;
+      const patch = decide(current);
+      if (!patch) return false;
+      transaction.update(docRef, patch);
+      return true;
+    });
   }
 
   public async delete(key: T[K]): Promise<void> {

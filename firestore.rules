@@ -135,13 +135,36 @@ service cloud.firestore {
       allow create: if isCampaignMember(campaignId) &&
         request.resource.data.ownerId == getUserId();
 
+      // The session owner may change anything. Every other member may save
+      // corrections, and may rewrite the story of a finished session by hand:
+      // that is one version further each time, signed with their own uid.
       allow update: if isCampaignMember(campaignId) && (
         isSessionOwner(campaignId, sessionId) ||
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'userCorrections',
           'correctionsUpdatedAt',
           'updatedAt'
-        ])
+        ]) ||
+        (
+          resource.data.status == 'completed' &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'content',
+            'storyEditedAt',
+            'storyEditedBy',
+            'storyEditedByName',
+            'storyRegenerationCount',
+            'updatedAt'
+          ]) &&
+          request.resource.data.content is string &&
+          request.resource.data.content.size() > 0 &&
+          request.resource.data.content.size() <= 300000 &&
+          request.resource.data.storyEditedAt is string &&
+          request.resource.data.storyEditedBy == getUserId() &&
+          request.resource.data.storyEditedByName is string &&
+          request.resource.data.storyEditedByName.size() <= 100 &&
+          request.resource.data.storyRegenerationCount ==
+            resource.data.get('storyRegenerationCount', 1) + 1
+        )
       );
 
       allow delete: if isSessionOwner(campaignId, sessionId);
@@ -153,12 +176,27 @@ service cloud.firestore {
       allow write: if isSessionOwner(campaignId, sessionId);
     }
 
+    // Who has a story open for editing right now (a courtesy, not a lock). Every
+    // member reads them; a member writes and removes only their own mark.
+    match /campaigns/{campaignId}/storyEditors/{editorId} {
+      allow read: if isCampaignMember(campaignId);
+      allow create, update: if isCampaignMember(campaignId) &&
+        request.resource.data.keys().hasOnly(['id', 'target', 'uid', 'name', 'updatedAt']) &&
+        request.resource.data.uid == getUserId() &&
+        request.resource.data.target is string &&
+        editorId == request.resource.data.target + '_' + getUserId() &&
+        request.resource.data.name is string &&
+        request.resource.data.name.size() <= 100 &&
+        request.resource.data.updatedAt == request.time;
+      allow delete: if isAuthenticated() && resource.data.uid == getUserId();
+    }
+
     // Campaign story versions (ticket #69) — members read, the backend writes.
-    // The owner may improve the newest finished version by hand (title and text):
-    // that version goes along when the next one is written.
+    // Every member may improve the newest finished version by hand (title and
+    // text): that version goes along when the next one is written.
     match /campaigns/{campaignId}/campaignStories/{versionId} {
       allow read: if isCampaignMember(campaignId);
-      allow update: if isCampaignOwner(campaignId) &&
+      allow update: if isCampaignMember(campaignId) &&
         resource.data.status == 'completed' &&
         resource.data.version ==
           get(/databases/$(database)/documents/campaigns/$(campaignId)).data.campaignStory.latestCompletedVersion &&
@@ -167,7 +205,8 @@ service cloud.firestore {
           'content',
           'wordCount',
           'editedAt',
-          'editedBy'
+          'editedBy',
+          'editedByName'
         ]) &&
         request.resource.data.title is string &&
         request.resource.data.title.size() <= 200 &&
@@ -176,7 +215,9 @@ service cloud.firestore {
         request.resource.data.content.size() <= 200000 &&
         request.resource.data.wordCount is int &&
         request.resource.data.editedAt is timestamp &&
-        request.resource.data.editedBy == getUserId();
+        request.resource.data.editedBy == getUserId() &&
+        request.resource.data.editedByName is string &&
+        request.resource.data.editedByName.size() <= 100;
       allow create, delete: if false;
     }
 
