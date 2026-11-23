@@ -2,7 +2,7 @@ import { onRequest } from 'firebase-functions/v2/https';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { captureException } from './utils/sentry-error-handler';
-import { escapeHtml, injectMetaTags, loadIndexHtml, meta, resolveOrigin } from './utils/share-page';
+import { escapeHtml, excerpt, injectMetaTags, loadIndexHtml, meta, resolveOrigin } from './utils/share-page';
 import { type Language, languageFromAcceptLanguage } from './utils/language';
 import { BANNER_HEIGHT, BANNER_WIDTH, renderShareBanner } from './utils/share-banner';
 import { characterImagePrefix } from './generate-image';
@@ -128,17 +128,9 @@ export function describeCharacter(character: CharacterPreviewSource): string {
     character.class,
   ].filter(Boolean).join(' ');
   const summary = [identity, character.background, character.alignment].filter(Boolean).join(' · ');
-  const story = excerpt(character.backstory || character.appearance?.description || '');
+  const story = excerpt(character.backstory || character.appearance?.description || '', STORY_MAX_LENGTH);
   const text = [summary, story].filter(Boolean).join(' — ');
   return text ? `⚔️ ${text}` : '';
-}
-
-/** The first words of a text on one line, cut at a word boundary. */
-function excerpt(text: string): string {
-  const plain = text.replace(/[*_#>`]/g, '').replace(/\s+/g, ' ').trim();
-  if (plain.length <= STORY_MAX_LENGTH) return plain;
-  const cut = plain.slice(0, STORY_MAX_LENGTH);
-  return `${cut.slice(0, Math.max(cut.lastIndexOf(' '), STORY_MAX_LENGTH / 2)).trimEnd()}…`;
 }
 
 /** Without a description the description tags are left out: the preview is then just the name. */

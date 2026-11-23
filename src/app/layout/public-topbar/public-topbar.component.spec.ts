@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import { I18nService, LanguagePreferenceService } from '../../core/i18n';
 import { provideTestLanguage } from '../../core/i18n/testing';
 import { PublicTopbarComponent } from './public-topbar.component';
@@ -14,7 +14,7 @@ describe('PublicTopbarComponent', () => {
     preference.choose.mockReset();
     TestBed.configureTestingModule({
       providers: [
-        provideRouter([]),
+        provideRouter([{ path: '**', children: [] }]),
         provideTestLanguage('en'),
         { provide: LanguagePreferenceService, useValue: preference },
       ],
@@ -27,8 +27,17 @@ describe('PublicTopbarComponent', () => {
   it('shows where the visitor is, the language choice and the way in', () => {
     expect(element.textContent).toContain('Questmind');
     expect(element.querySelectorAll('app-language-switcher button')).toHaveLength(2);
-    const signIn = element.querySelector<HTMLAnchorElement>('a[href="/sign-in"]');
+    const signIn = element.querySelector<HTMLAnchorElement>('a[href^="/sign-in"]');
     expect(signIn?.textContent?.trim()).toBe('Sign in');
+  });
+
+  it('brings the visitor back to this page after signing in', async () => {
+    await TestBed.inject(Router).navigateByUrl('/share/campaign/abc/sessions');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(element.querySelector('a[href^="/sign-in"]')?.getAttribute('href'))
+      .toBe('/sign-in?returnUrl=%2Fshare%2Fcampaign%2Fabc%2Fsessions');
   });
 
   it('passes a picked language on to be remembered', () => {
@@ -41,7 +50,7 @@ describe('PublicTopbarComponent', () => {
     await fixture.whenStable();
     fixture.detectChanges();
 
-    expect(element.querySelector('a[href="/sign-in"]')?.textContent?.trim()).toBe('Inloggen');
+    expect(element.querySelector('a[href^="/sign-in"]')?.textContent?.trim()).toBe('Inloggen');
     expect(element.querySelector('app-language-switcher button[lang="nl"]')?.getAttribute('aria-pressed')).toBe('true');
   });
 });

@@ -5,6 +5,7 @@ import { provideRouter } from '@angular/router';
 import { CampaignPageComponent } from './campaign-page.component';
 import { CampaignContextService } from './campaign-context.service';
 import { AudioSessionStateService } from '../audio/services/audio-session-state.service';
+import { CampaignShareService } from '../campaign-share/campaign-share.service';
 import { provideTestLanguage } from '../core/i18n/testing';
 import { nl } from '../core/i18n/nl';
 
@@ -26,6 +27,7 @@ describe('CampaignPageComponent', () => {
           },
         },
         { provide: AudioSessionStateService, useValue: { sessions: signal(sessions), sortedSessions: signal(sessions) } },
+        { provide: CampaignShareService, useValue: { createShareUrl: () => Promise.resolve('') } },
       ],
     });
     const fixture = TestBed.createComponent(CampaignPageComponent);
@@ -53,5 +55,18 @@ describe('CampaignPageComponent', () => {
     expect(tabs[0].textContent).toContain(nl.campaign.page.tabs.story);
     expect(element.querySelector('[data-testid="new-session"]')?.getAttribute('href')).toBe('/campaign/c1/sessions/new');
     expect(element.querySelector('a.qm-backlink')?.getAttribute('href')).toBe('/campaigns');
+  });
+
+  it('shares the campaign from between the new session and the settings, all three equally tall', () => {
+    const element = create();
+    const actions = element.querySelector('[data-testid="new-session"]')?.parentElement as HTMLElement;
+    const order = Array.from(actions.children).map(child =>
+      child.getAttribute('data-testid') ?? child.querySelector('[data-testid]')?.getAttribute('data-testid'));
+    expect(order).toEqual(['new-session', 'share-campaign', 'campaign-settings']);
+    expect(actions.classList).toContain('items-stretch');
+    for (const id of order) {
+      expect(element.querySelector(`[data-testid="${id}"]`)?.classList).toContain('qm-btn-lg');
+    }
+    expect(element.querySelector('[data-testid="share-campaign"]')?.getAttribute('aria-label')).toBe(nl.campaign.share.button);
   });
 });

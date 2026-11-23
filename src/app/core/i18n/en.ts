@@ -183,6 +183,21 @@ export const en: Translations = {
         podcasts: 'Podcasts',
       },
     },
+    share: {
+      button: 'Share campaign',
+      copied: 'Link copied — anyone with this link can view the campaign, without signing in.',
+      copyPrompt: 'Copy the link to this campaign:',
+      failed: 'Making the share link failed. Please try again.',
+    },
+    sharePage: {
+      loading: 'Loading campaign...',
+      notFoundTitle: 'Campaign not found',
+      notFoundText: 'This link does not exist (any more).',
+      loadFailed: 'The campaign could not be loaded. Please try again later.',
+      noSessions: 'There are no sessions with a story yet.',
+      noPodcasts: 'There are no podcasts yet.',
+      sessionNotFound: 'This session is not (or no longer) in the shared campaign.',
+    },
     settings: {
       title: 'Campaign Settings',
       general: 'General Settings',
@@ -300,9 +315,8 @@ export const en: Translations = {
       titleLabel: 'Story title',
       contentLabel: 'Story text',
       help:
-        'Remove what is not true, add what is missing, or leave a note in parentheses. The next version starts from this text: your improvements stay and notes are worked into the story.',
+        'Remove what is not true, add what is missing, or leave a note in parentheses. Every member of the campaign can join in, one at a time. The next version starts from this text: improvements stay and notes are worked into the story.',
       save: 'Save story',
-      saveFailed: 'The story could not be saved. Please try again.',
     },
     progress: {
       collecting: 'Collecting session stories...',
@@ -320,6 +334,25 @@ export const en: Translations = {
       generate: 'Generate podcast',
       empty: 'No podcast for this version yet.',
     },
+  },
+
+  storyEdit: {
+    lockedBy: (name) => `${name} is editing this story. You can edit it as soon as ${name} is done.`,
+    takenOver: (name) =>
+      `${name} is editing this story now, because your edit had been idle for a while. Your text is still here; you can save once ${name} is done.`,
+    someone: 'Someone else',
+    startFailed: 'Editing could not be started. Please try again.',
+    changedBy: (name) => `${name} has changed the story in the meantime. Your text has not been saved yet.`,
+    changedBySomeone: 'The story has changed in the meantime. Your text has not been saved yet.',
+    conflictHelp:
+      'Take over what you want to keep from the current version, then save your text: it replaces the current version. Or load the current version; what you typed is then dropped.',
+    keepMine: 'Save my text',
+    loadCurrent: 'Load the current version',
+    showCurrent: 'View the current version',
+    newVersionBeingWritten: 'A new version is being written. You can save again once it is done.',
+    confirmGenerate: (name) =>
+      `${name} is editing this story. What has not been saved yet will not go along. Have a new version written anyway?`,
+    saveFailed: 'The story could not be saved. Please try again.',
   },
 
   audio: {
@@ -407,7 +440,7 @@ export const en: Translations = {
       preview: 'Preview',
       editStory: 'Edit story',
       editHelp:
-        'Remove what is not true, add what is missing, or leave a note in parentheses. When you regenerate the story, this version goes along: your improvements stay and notes are worked into the story.',
+        'Remove what is not true, add what is missing, or leave a note in parentheses. Every member of the campaign can join in, one at a time. When the story is regenerated, this version goes along: improvements stay and notes are worked into the story.',
       reset: 'Reset',
       saveStory: 'Save Story',
       downloadMarkdown: 'Download Markdown',

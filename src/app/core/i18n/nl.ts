@@ -183,6 +183,21 @@ export const nl: Translations = {
         podcasts: 'Podcasts',
       },
     },
+    share: {
+      button: 'Campagne delen',
+      copied: 'Link gekopieerd — iedereen met deze link kan de campagne bekijken, zonder in te loggen.',
+      copyPrompt: 'Kopieer de link naar deze campagne:',
+      failed: 'De deellink maken is mislukt. Probeer het opnieuw.',
+    },
+    sharePage: {
+      loading: 'Campagne laden...',
+      notFoundTitle: 'Campagne niet gevonden',
+      notFoundText: 'Deze link bestaat niet (meer).',
+      loadFailed: 'De campagne kon niet geladen worden. Probeer het later opnieuw.',
+      noSessions: 'Er zijn nog geen sessies met een verhaal.',
+      noPodcasts: 'Er zijn nog geen podcasts.',
+      sessionNotFound: 'Deze sessie staat niet (meer) in de gedeelde campagne.',
+    },
     settings: {
       title: 'Campagne-instellingen',
       general: 'Algemene instellingen',
@@ -305,9 +320,8 @@ export const nl: Translations = {
       titleLabel: 'Titel van het verhaal',
       contentLabel: 'Tekst van het verhaal',
       help:
-        'Haal weg wat niet klopt, vul aan wat ontbreekt, of zet een notitie tussen haakjes. Een volgende versie gaat uit van deze tekst: je verbeteringen blijven staan en notities worden in het verhaal verwerkt.',
+        'Haal weg wat niet klopt, vul aan wat ontbreekt, of zet een notitie tussen haakjes. Ieder lid van de campagne kan meeschrijven, één tegelijk. Een volgende versie gaat uit van deze tekst: verbeteringen blijven staan en notities worden in het verhaal verwerkt.',
       save: 'Verhaal opslaan',
-      saveFailed: 'Het verhaal kon niet worden opgeslagen. Probeer het opnieuw.',
     },
     progress: {
       collecting: 'Sessieverhalen verzamelen...',
@@ -325,6 +339,25 @@ export const nl: Translations = {
       generate: 'Podcast genereren',
       empty: 'Nog geen podcast voor deze versie.',
     },
+  },
+
+  storyEdit: {
+    lockedBy: (name) => `${name} is dit verhaal aan het bewerken. Je kunt het bewerken zodra ${name} klaar is.`,
+    takenOver: (name) =>
+      `${name} is dit verhaal nu aan het bewerken, omdat jouw bewerking een tijd stil lag. Jouw tekst staat er nog; opslaan kan zodra ${name} klaar is.`,
+    someone: 'Iemand anders',
+    startFailed: 'Bewerken kon niet worden gestart. Probeer het opnieuw.',
+    changedBy: (name) => `${name} heeft het verhaal intussen gewijzigd. Jouw tekst is nog niet opgeslagen.`,
+    changedBySomeone: 'Het verhaal is intussen gewijzigd. Jouw tekst is nog niet opgeslagen.',
+    conflictHelp:
+      'Neem uit de huidige versie over wat je wilt bewaren en sla dan jouw tekst op: die vervangt de huidige versie. Of laad de huidige versie; dan vervalt wat jij hebt getypt.',
+    keepMine: 'Mijn tekst opslaan',
+    loadCurrent: 'Huidige versie laden',
+    showCurrent: 'Huidige versie bekijken',
+    newVersionBeingWritten: 'Er wordt een nieuwe versie geschreven. Opslaan kan weer zodra die klaar is.',
+    confirmGenerate: (name) =>
+      `${name} is dit verhaal aan het bewerken. Wat nog niet is opgeslagen gaat niet mee. Toch een nieuwe versie laten schrijven?`,
+    saveFailed: 'Het verhaal kon niet worden opgeslagen. Probeer het opnieuw.',
   },
 
   audio: {
@@ -413,7 +446,7 @@ export const nl: Translations = {
       preview: 'Voorbeeld',
       editStory: 'Verhaal bewerken',
       editHelp:
-        'Haal weg wat niet klopt, vul aan wat ontbreekt, of zet een notitie tussen haakjes. Als je het verhaal opnieuw genereert, gaat deze versie mee: je verbeteringen blijven staan en notities worden in het verhaal verwerkt.',
+        'Haal weg wat niet klopt, vul aan wat ontbreekt, of zet een notitie tussen haakjes. Ieder lid van de campagne kan meeschrijven, één tegelijk. Als het verhaal opnieuw wordt gegenereerd, gaat deze versie mee: verbeteringen blijven staan en notities worden in het verhaal verwerkt.',
       reset: 'Herstellen',
       saveStory: 'Verhaal opslaan',
       downloadMarkdown: 'Markdown downloaden',

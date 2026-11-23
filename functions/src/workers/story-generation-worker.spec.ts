@@ -69,7 +69,7 @@ vi.mock('firebase-functions/v2/tasks', () => ({
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 const request = (overrides: Record<string, unknown> = {}) => ({
-  auth: { uid: 'member-1' },
+  auth: { uid: 'dm' },
   data: { campaignId: 'c1', sessionId: 's1', enableKankaContext: true, userCorrections: 'Thalia' },
   rawRequest: { headers: {} },
   ...overrides,
@@ -94,8 +94,12 @@ describe('storyGenerationWorker (callable)', () => {
   });
 
   it('rejects non-members', async () => {
-    docs[CAMPAIGN] = { ownerId: 'dm', members: [] };
-    await expect(callable(request())).rejects.toThrow(code('permission-denied'));
+    await expect(callable(request({ auth: { uid: 'stranger' } }))).rejects.toThrow(code('permission-denied'));
+    expect(mockGenerateStory).not.toHaveBeenCalled();
+  });
+
+  it('rejects a member who does not own the session: they can edit the story, not have it written again', async () => {
+    await expect(callable(request({ auth: { uid: 'member-1' } }))).rejects.toThrow(code('permission-denied'));
     expect(mockGenerateStory).not.toHaveBeenCalled();
   });
 

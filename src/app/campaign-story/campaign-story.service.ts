@@ -4,7 +4,8 @@ import { FirebaseService } from '../core/firebase.service';
 import { AuthService } from '../auth/auth.service';
 import { CampaignContextService } from '../campaign/campaign-context.service';
 import { CampaignStoryRepositoryFactory } from '../shared/repository/campaign-story.repository';
-import { CampaignStoryEdit, CampaignStoryVersion } from './campaign-story.models';
+import { CampaignStoryEditSave, CampaignStoryVersion } from './campaign-story.models';
+import { editorName } from '../shared/services/story-edit-lock.service';
 import { countWords } from './campaign-story.utils';
 import * as logger from '../shared/logger';
 import { ToastService } from '../shared/services/toast.service';
@@ -70,25 +71,33 @@ export class CampaignStoryService {
   }
 
   /**
-   * Saves what the owner changed by hand in a version. The version is marked as
-   * edited: from then on it goes along when a new version is written, so the
-   * improvements stay. The Firestore rules allow this for the owner, on the
-   * newest completed version only.
+   * Saves what a member changed by hand in a version, unless the version changed
+   * since they started typing (someone else saved): then nothing is written and
+   * the result is false, so no one's work is overwritten unseen.
+   *
+   * The version is marked as edited: from then on it goes along when a new
+   * version is written, so the improvements stay. The Firestore rules allow this
+   * for members, on the newest completed version only.
    */
-  async saveEdit(version: Pick<CampaignStoryVersion, 'id'>, edit: CampaignStoryEdit): Promise<void> {
+  async saveEdit(version: Pick<CampaignStoryVersion, 'id'>, edit: CampaignStoryEditSave): Promise<boolean> {
     const repo = this.repo.value();
-    const uid = this.authService.currentUser()?.uid;
-    if (!repo || !uid) {
+    const user = this.authService.currentUser();
+    if (!repo || !user?.uid) {
       throw new Error('No campaign story loaded.');
     }
     const content = edit.content.trim();
     try {
-      await repo.patch(version.id, {
-        title: edit.title.trim(),
-        content,
-        wordCount: countWords(content),
-        editedAt: new Date(),
-        editedBy: uid,
+      return await repo.patchInTransaction(version.id, current => {
+        if (!current || current.status !== 'completed') return null;
+        if ((current.title ?? '') !== edit.base.title || (current.content ?? '') !== edit.base.content) return null;
+        return {
+          title: edit.title.trim(),
+          content,
+          wordCount: countWords(content),
+          editedAt: new Date(),
+          editedBy: user.uid,
+          editedByName: editorName(user),
+        };
       });
     } catch (error) {
       logger.error('Failed to save campaign story edit:', error);

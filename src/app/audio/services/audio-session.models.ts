@@ -172,6 +172,9 @@ export interface AudioSessionRecord extends SessionStory {
    * along with every regeneration, so the improvements made in it stay.
    */
   storyEditedAt?: string;
+  /** The member who made that last edit by hand, and the name the others see. */
+  storyEditedBy?: string;
+  storyEditedByName?: string;
   podcasts?: PodcastVersion[];
   latestPodcastVersion?: number;
 

@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, signal, inject } from '@angular/core';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
+import { safeReturnUrl } from './return-url';
 import { AuthService } from './auth.service';
 import { EmailAuthFormComponent, type EmailAuthCredentials, type EmailAuthMode } from './email-auth-form.component';
 import { LogoComponent } from '../shared/components/logo.component';
@@ -87,6 +88,8 @@ import { LanguageSwitcherComponent } from '../shared/components/language-switche
 export class SignInPageComponent {
   private readonly authService = inject(AuthService);
   private readonly router = inject(Router);
+  /** Where the user came from (e.g. a shared campaign), to go back to once signed in. */
+  private readonly returnUrl = safeReturnUrl(inject(ActivatedRoute).snapshot.queryParamMap.get('returnUrl'));
   protected readonly i18n = inject(I18nService);
   private readonly preference = inject(LanguagePreferenceService);
 
@@ -121,7 +124,7 @@ export class SignInPageComponent {
   async signInWithGoogle(): Promise<void> {
     await this.run(async () => {
       await this.authService.signInWithGoogle();
-      await this.router.navigate(['/']);
+      await this.router.navigateByUrl(this.returnUrl);
     });
   }
 
@@ -138,7 +141,7 @@ export class SignInPageComponent {
       } else {
         await this.authService.signInWithEmail(email, password);
       }
-      await this.router.navigate(['/']);
+      await this.router.navigateByUrl(this.returnUrl);
     });
   }
 

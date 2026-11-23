@@ -56,15 +56,27 @@ describe('CampaignStoryService', () => {
   });
 
   describe('saveEdit', () => {
-    const patch = vi.fn();
+    /** The version as it is stored at the moment of the transaction. */
+    let stored: Record<string, unknown> | null = null;
+    const written = vi.fn();
+    const patchInTransaction = vi.fn(
+      async (_id: string, decide: (current: Record<string, unknown> | null) => Record<string, unknown> | null) => {
+        const patch = decide(stored);
+        if (!patch) return false;
+        written(patch);
+        return true;
+      }
+    );
+    const base = { title: 'De val', content: 'Mira opende de poort.' };
+    const edit = { title: ' De val ', content: ' Kael opende de poort. \n', base };
 
     /** A service with the versions of a campaign loaded, for a signed-in owner. */
     async function setupLoaded(): Promise<CampaignStoryService> {
-      const repo = { waitForData: () => Promise.resolve(), get: () => [], patch, destroy: vi.fn() };
+      const repo = { waitForData: () => Promise.resolve(), get: () => [], patchInTransaction, destroy: vi.fn() };
       TestBed.configureTestingModule({
         providers: [
           { provide: FirebaseService, useValue: { requireFunctions: () => 'functions' } },
-          { provide: AuthService, useValue: { currentUser: signal({ uid: 'owner-1' }) } },
+          { provide: AuthService, useValue: { currentUser: signal({ uid: 'member-1', displayName: 'Mira' }) } },
           { provide: CampaignContextService, useValue: { selectedCampaignId: signal('campaign-1') } },
           { provide: CampaignStoryRepositoryFactory, useValue: { create: () => repo } },
           { provide: ToastService, useValue: toast },
@@ -77,30 +89,51 @@ describe('CampaignStoryService', () => {
       return service;
     }
 
-    it('writes the title and the text to the version, marked as edited by the owner', async () => {
-      patch.mockResolvedValue(undefined);
+    it('writes the title and the text to the version, signed by the member who edited it', async () => {
+      stored = { id: 'v3', status: 'completed', ...base };
       const service = await setupLoaded();
 
-      await service.saveEdit({ id: 'v3' }, { title: ' De val ', content: ' Kael opende de poort. \n' });
+      await expect(service.saveEdit({ id: 'v3' }, edit)).resolves.toBe(true);
 
-      expect(patch).toHaveBeenCalledWith('v3', {
+      expect(patchInTransaction).toHaveBeenCalledWith('v3', expect.any(Function));
+      expect(written).toHaveBeenCalledWith({
         title: 'De val',
         content: 'Kael opende de poort.',
         wordCount: 4,
         editedAt: expect.any(Date),
-        editedBy: 'owner-1',
+        editedBy: 'member-1',
+        editedByName: 'Mira',
       });
     });
 
-    it('passes a refused write on, for the page to report', async () => {
-      patch.mockRejectedValue(new Error('permission-denied'));
+    it.each([
+      ['the text', { status: 'completed', title: 'De val', content: 'Thalia opende de poort.' }],
+      ['the title', { status: 'completed', title: 'De opkomst', content: 'Mira opende de poort.' }],
+    ])('writes nothing when someone else changed %s in the meantime', async (_what, current) => {
+      stored = { id: 'v3', ...current };
       const service = await setupLoaded();
 
-      await expect(service.saveEdit({ id: 'v3' }, { title: 'x', content: 'y' })).rejects.toThrow('permission-denied');
+      await expect(service.saveEdit({ id: 'v3' }, edit)).resolves.toBe(false);
+
+      expect(written).not.toHaveBeenCalled();
+    });
+
+    it('treats a version without a title as an empty title', async () => {
+      stored = { id: 'v3', status: 'completed', content: 'Mira opende de poort.' };
+      const service = await setupLoaded();
+
+      await expect(service.saveEdit({ id: 'v3' }, { ...edit, base: { title: '', content: base.content } })).resolves.toBe(true);
+    });
+
+    it('passes a refused write on, for the page to report', async () => {
+      patchInTransaction.mockRejectedValueOnce(new Error('permission-denied'));
+      const service = await setupLoaded();
+
+      await expect(service.saveEdit({ id: 'v3' }, edit)).rejects.toThrow('permission-denied');
     });
 
     it('refuses when no campaign story is loaded', async () => {
-      await expect(setup().saveEdit({ id: 'v3' }, { title: 'x', content: 'y' })).rejects.toThrow();
+      await expect(setup().saveEdit({ id: 'v3' }, edit)).rejects.toThrow();
     });
   });
 

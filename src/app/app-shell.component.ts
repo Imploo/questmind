@@ -22,7 +22,7 @@ import { PanelSwitcherService } from './layout/panel-switcher/panel-switcher.ser
 
       <div [class]="contentClass()">
         @if (!authService.isAuthenticated()) {
-          <!-- A shared character is the first thing a visitor sees of the app: say where they are. -->
+          <!-- A shared character or campaign is the first thing a visitor sees of the app: say where they are. -->
           <app-public-topbar />
         }
         <section>

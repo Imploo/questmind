@@ -2,7 +2,7 @@
 
 Overzicht van alle AI-stappen, hun input en wat ze opleveren.
 
-Laatst bijgewerkt: 2026-11-22
+Laatst bijgewerkt: 2026-11-23
 
 ## Configuratie
 
@@ -117,7 +117,7 @@ opname ──► 7. Gespreksverslag ──► 8. Verhaal ──► (op verzoek) 
   - Dubbele regels door de segment-overlap worden één keer opgenomen; gaten blijven gaten.
   - Oudere sessies hebben nog een verhalende `rawStory`; die wordt op dezelfde manier gepolijst.
 - Schrijft het eindverhaal naar `content` op de sessie en zet de status op `completed`.
-- **Met de hand bewerkt verhaal gaat mee.** De eigenaar van de sessie kan het verhaal bewerken (tab Verhaal → "Verhaal bewerken"): schrappen wat niet klopt, aanvullen, of een notitie tussen haakjes zetten. Opslaan zet `storyEditedAt` op de sessie. Vanaf dan gaat het huidige verhaal bij elke nieuwe generatie mee als **vorige versie** (`buildPreviousVersionBlock` in de prompt), ook in de generaties daarna: de verbeteringen zitten dan in het nieuwe verhaal, en dat gaat de keer erop weer mee.
+- **Met de hand bewerkt verhaal gaat mee.** Ieder lid van de campagne kan het verhaal van een afgeronde sessie bewerken (tab Verhaal → "Verhaal bewerken"): schrappen wat niet klopt, aanvullen, of een notitie tussen haakjes zetten. Opnieuw genereren, de gegevens van de sessie en verwijderen blijven bij de eigenaar van de sessie. Opslaan zet `storyEditedAt`, `storyEditedBy` en `storyEditedByName` op de sessie (zie [Samen bewerken](#samen-bewerken)). Vanaf dan gaat het huidige verhaal bij elke nieuwe generatie mee als **vorige versie** (`buildPreviousVersionBlock` in de prompt), ook in de generaties daarna: de verbeteringen zitten dan in het nieuwe verhaal, en dat gaat de keer erop weer mee.
   - Volgorde bij een tegenstrijdigheid: DM-correcties → vorige versie → gespreksverslag.
   - Wat de vorige versie vertelt en niet in het verslag staat, is door de DM toegevoegd en blijft staan. Wat in het verslag staat maar in de vorige versie ontbreekt, is geschrapt en komt niet terug.
   - Een notitie tussen haakjes wordt uitgevoerd en in de tekst verwerkt; de haakjes zelf verdwijnen.
@@ -169,16 +169,16 @@ Wat het model ermee moet doen:
 - Een journal dat geen gebeurtenissen beschrijft maar achtergrond (lore, notities) is alleen achtergrond.
 - **Naslag**: namen, type en de eerste regels van de niet-privé personages, plekken, quests en organisaties gaan mee voor spelling en om te weten wie of wat iets is. Het zijn nooit gebeurtenissen.
 
-Met de hand bewerken (alleen de eigenaar van de campagne):
+Met de hand bewerken (ieder lid van de campagne; een nieuwe versie laten schrijven blijft bij de eigenaar):
 
-- De **nieuwste voltooide versie** is te bewerken ("Verhaal bewerken" naast "Versies"): titel en tekst. De app schrijft `title`, `content`, `wordCount`, `editedAt` en `editedBy` rechtstreeks naar de versie; `firestore.rules` staat precies die velden toe, alleen voor de eigenaar en alleen op de versie in `campaignStory.latestCompletedVersion`. Al het andere op een versie schrijft alleen de backend.
+- De **nieuwste voltooide versie** is te bewerken ("Verhaal bewerken" naast "Versies"): titel en tekst. De app schrijft `title`, `content`, `wordCount`, `editedAt`, `editedBy` en `editedByName` rechtstreeks naar de versie; `firestore.rules` staat precies die velden toe, voor leden van de campagne en alleen op de versie in `campaignStory.latestCompletedVersion`. Al het andere op een versie schrijft alleen de backend. Zie [Samen bewerken](#samen-bewerken).
 - Een bewerkte versie gaat bij de volgende generatie mee als **vorige versie**. De nieuwe versie krijgt `basedOnVersion` en gaat daardoor de keer daarna zelf weer mee: verbeteringen blijven zo in alle latere versies staan. Zolang niemand iets heeft bewerkt gaat er geen vorige versie mee en wordt het verhaal elke keer vers uit de bronnen geschreven.
 - Regels in de prompt (`VERBETERINGEN VAN DE DM`):
   - Spreekt de vorige versie een bron tegen, dan klopt de vorige versie. Wat de DM heeft toegevoegd blijft staan; wat de vorige versie weglaat, wordt niet teruggehaald uit de bronnen.
   - Bronnen krijgen een label ten opzichte van de vorige versie (`campaign-story-sources.ts`): **NIEUW** (zat er nog niet in: opnemen) of **HERZIEN** (sessieverhaal opnieuw gegenereerd of bewerkt, journal gewijzigd in Kanka: de herziene bron gaat vóór de vorige versie). Een fout die uit een sessieverhaal komt, kun je dus het best ook in dat sessieverhaal rechtzetten.
   - Een notitie tussen haakjes wordt uitgevoerd en in de tekst verwerkt. Dat geldt ook voor een notitie in een sessieverhaal dat als bron dient.
   - De titel van de vorige versie blijft, tenzij die niet meer past.
-- Tijdens het bewerken kan er geen nieuwe versie worden gestart (niet-opgeslagen tekst zou niet meegaan), en tijdens het genereren kan er niet worden bewerkt.
+- Wie zelf aan het bewerken is kan geen nieuwe versie starten (niet-opgeslagen tekst zou niet meegaan). Start de eigenaar een nieuwe versie terwijl een ander lid typt, dan blijft dat formulier open maar kan er pas weer worden opgeslagen als de versie klaar is; daarna kiest dat lid tussen de eigen tekst en de nieuwe versie.
 - Een podcast die al van de versie was gemaakt verandert niet mee met een bewerking.
 
 Verder:
@@ -189,6 +189,37 @@ Verder:
 
 **12. Podcast** — `functions/src/generate-campaign-story-podcast.ts`
 Zelfde instellingen en stappen als de sessiepodcast (9 + 10), met het campagneverhaal als bron. Wat uit de verslagen in het verhaal staat, komt dus ook in de podcast. De scriptprompt is dezelfde als voor een sessie, met een eigen framing (`kind: 'campaign'`): een terugblik op de grote lijnen die eindigt bij waar de party nu staat, zonder discussie over de toekomst als slot.
+
+---
+
+## Samen bewerken
+
+Een verhaal (van een sessie of van de campagne) is een gezamenlijk stuk: ieder lid kan het met de hand verbeteren, **één tegelijk**. Er is geen live meetypen; een slot en een controle bij het opslaan zorgen dat niemands werk verloren gaat.
+
+**1. Het slot: één lid bewerkt tegelijk.** `StoryEditLockService` (`src/app/shared/services/story-edit-lock.service.ts`) houdt per verhaal één document bij in `campaigns/{id}/storyEditors/{target}` (`target`: `session_{sessionId}` of `campaign-story`), met `uid`, naam en `updatedAt` (servertijd).
+
+- **Nemen**: wie op "Verhaal bewerken" klikt neemt het slot in een transactie; pas daarna gaat het formulier open. Heeft een ander het slot, dan is de knop uitgeschakeld en staat erbij wie er bezig is. Klikken twee leden tegelijk, dan krijgt er één het slot en de ander een melding.
+- **Afgedwongen in `firestore.rules`**: een slot van een ander is alleen te overschrijven als het 90 seconden niet is ververst. Alleen de houder kan het verwijderen.
+- **Houden**: zolang het formulier open is wordt het slot elke 25 seconden ververst. Het wordt teruggegeven als het formulier sluit of de pagina weggaat.
+- **Verlopen**: klapt iemand het tabblad dicht of valt de verbinding weg, dan is het slot na 90 seconden vrij.
+- **Laten openstaan**: wie het formulier open laat staan en 10 minuten niets doet op de pagina (geen toets, geen klik), geeft het slot terug; de tekst blijft in het formulier. Zodra dat lid verdergaat wordt het slot weer genomen, als niemand anders het intussen heeft. Heeft een ander het wel, dan staat dat in het formulier en kan er pas weer worden opgeslagen als die klaar is.
+- **Opslaan** vraagt het slot (opnieuw): zonder slot wordt er niet opgeslagen.
+- **Genereren**: de eigenaar krijgt een bevestigingsvraag als hij opnieuw wil genereren terwijl een ander het slot heeft.
+- Naam: de weergavenaam van het account, anders het deel van het e-mailadres vóór de @.
+
+**2. Opslaan controleert of het verhaal nog hetzelfde is.** Het formulier onthoudt de tekst waarmee het lid begon. Opslaan gaat in een Firestore-transactie (`FirestoreRepository.patchInTransaction`): staat er intussen iets anders, dan wordt er niets geschreven. Met het slot komt dat alleen nog voor als het verhaal opnieuw is gegenereerd terwijl iemand typte, of als iemand na een lange pauze het slot kwijt was en een ander intussen heeft opgeslagen.
+
+- Het formulier ziet de wijziging ook al vóór het opslaan, omdat het verhaal live binnenkomt. Wat het lid heeft getypt blijft staan; er verschijnt een melding (met de naam van wie het wijzigde, als dat een lid was) en de huidige versie is in te zien.
+- Het lid kiest: **Mijn tekst opslaan** (vervangt de huidige versie; eerst overnemen wat bewaard moet blijven) of **Huidige versie laden** (de eigen tekst vervalt).
+- Sessie: `AudioSessionStateService.saveStoryEdit`. Campagne: `CampaignStoryService.saveEdit` (vergelijkt titel en tekst).
+- Een transactie heeft verbinding nodig: offline is er geen slot te nemen en niet op te slaan; de tekst blijft in het formulier.
+
+Rechten (`firestore.rules`):
+
+- **Sessie**: een lid dat niet de eigenaar is mag van een sessie met status `completed` alleen `content`, `storyEditedAt`, `storyEditedBy`, `storyEditedByName`, `storyRegenerationCount` (precies één hoger) en `updatedAt` schrijven, ondertekend met de eigen uid. Titel, datum, transcript en status blijven van de eigenaar.
+- **Campagneverhaal**: zie stap 11.
+- **`storyEditors`**: leden lezen; een lid neemt een vrij of verlopen slot op eigen naam, ververst en verwijdert alleen het eigen slot.
+- De callable `storyGenerationWorker` weigert iedereen behalve de eigenaar van de sessie; `generateCampaignStory` iedereen behalve de eigenaar van de campagne.
 
 ---
 

@@ -55,15 +55,21 @@ export interface CampaignStoryVersion {
   error?: string | null;
   podcasts?: PodcastVersion[];
   latestPodcastVersion?: number;
-  /** Set when the owner edited the title or the story by hand. */
+  /** Set when a member edited the title or the story by hand: who, and the name the others see. */
   editedAt?: FirestoreDateValue;
   editedBy?: string;
+  editedByName?: string;
   /** The hand-edited version (or its successor) this version was written from. */
   basedOnVersion?: number;
 }
 
-/** What the owner can change by hand in a version. */
+/** What a member can change by hand in a version. */
 export interface CampaignStoryEdit {
   title: string;
   content: string;
+}
+
+/** An edit to save, with the title and text the member started from. */
+export interface CampaignStoryEditSave extends CampaignStoryEdit {
+  base: CampaignStoryEdit;
 }

@@ -10,6 +10,7 @@ import { CampaignContextService } from '../campaign/campaign-context.service';
 import { AudioSessionStateService } from '../audio/services/audio-session-state.service';
 import { I18nService } from '../core/i18n/i18n.service';
 import { ToastService } from '../shared/services/toast.service';
+import { CAMPAIGN_STORY_TARGET, StoryEditLockService } from '../shared/services/story-edit-lock.service';
 import { provideTestLanguage } from '../core/i18n/testing';
 import { en } from '../core/i18n/en';
 import { nl } from '../core/i18n/nl';
@@ -32,6 +33,16 @@ describe('CampaignStoryPageComponent', () => {
     generatePodcast: vi.fn(),
     saveEdit: vi.fn(),
   };
+
+  /** Stands in for the edit lock the page provides itself: free unless `heldBy` names someone else. */
+  const heldBy = signal('');
+  const editLock = {
+    heldBy,
+    watch: vi.fn(),
+    acquire: vi.fn(() => Promise.resolve(heldBy() === '')),
+    release: vi.fn(),
+  };
+  const confirm = vi.fn();
 
   const version = (overrides: Partial<CampaignStoryVersion>): CampaignStoryVersion => ({
     id: `v${overrides.version ?? 1}`,
@@ -69,6 +80,10 @@ describe('CampaignStoryPageComponent', () => {
         provideTestLanguage(language),
       ],
     });
+    TestBed.overrideComponent(CampaignStoryPageComponent, {
+      set: { providers: [{ provide: StoryEditLockService, useValue: editLock }] },
+    });
+    vi.spyOn(TestBed.inject(ToastService), 'confirm').mockImplementation(confirm);
     fixture = TestBed.createComponent(CampaignStoryPageComponent);
     element = fixture.nativeElement as HTMLElement;
     fixture.detectChanges();
@@ -81,7 +96,9 @@ describe('CampaignStoryPageComponent', () => {
     currentUser.set({ uid: 'owner' });
     campaign.set({ id: 'campaign-1', name: 'Grauwhaven', ownerId: 'owner' });
     storyService.generate.mockResolvedValue(undefined);
-    storyService.saveEdit.mockResolvedValue(undefined);
+    storyService.saveEdit.mockResolvedValue(true);
+    heldBy.set('');
+    confirm.mockResolvedValue(true);
   });
 
   describe('editing the story by hand', () => {
@@ -90,8 +107,10 @@ describe('CampaignStoryPageComponent', () => {
     const contentField = () => element.querySelector('[data-testid="story-edit-content"]') as HTMLTextAreaElement;
     const saveButton = () => element.querySelector('[data-testid="story-edit-save"]') as HTMLButtonElement;
 
-    function startEditing(): void {
+    /** Asks for the form and waits for the lock. */
+    async function startEditing(): Promise<void> {
       editButton()?.click();
+      await fixture.whenStable();
       fixture.detectChanges();
     }
     function typeStory(value: string): void {
@@ -100,7 +119,7 @@ describe('CampaignStoryPageComponent', () => {
       fixture.detectChanges();
     }
 
-    it('is for the owner, on the newest version', () => {
+    it('is offered on the newest version only', () => {
       versions.set([version({ version: 2 }), version({ version: 1 })]);
       create();
       expect(editButton()?.textContent).toContain(en.campaignStory.edit.button);
@@ -110,12 +129,146 @@ describe('CampaignStoryPageComponent', () => {
       expect(editButton()).toBeNull();
     });
 
-    it('is not offered to a member', () => {
+    it('is for every member, while writing a new version stays with the owner', async () => {
       currentUser.set({ uid: 'member' });
+      const latest = version({});
+      versions.set([latest]);
+      create();
+      expect(generateButton()).toBeNull();
+
+      await startEditing();
+      typeStory('De party vertrok bij zonsopgang.');
+      saveButton().click();
+      await fixture.whenStable();
+
+      expect(storyService.saveEdit).toHaveBeenCalledWith(latest, expect.objectContaining({ content: 'De party vertrok bij zonsopgang.' }));
+    });
+
+    it('takes the lock on the story before the form opens, and gives it back when the form closes', async () => {
+      versions.set([version({})]);
+      create();
+      expect(editLock.watch).toHaveBeenCalledWith('campaign-1', CAMPAIGN_STORY_TARGET);
+
+      await startEditing();
+      expect(editLock.acquire).toHaveBeenCalledTimes(1);
+      expect(form()).not.toBeNull();
+      editLock.release.mockClear();
+
+      (Array.from(form()?.querySelectorAll('button') ?? []).find(b => b.textContent?.includes(en.common.cancel)) as HTMLButtonElement).click();
+      fixture.detectChanges();
+      expect(editLock.release).toHaveBeenCalled();
+    });
+
+    it('cannot start while someone else is editing, and says who', () => {
+      versions.set([version({})]);
+      heldBy.set('Mira');
+      create('nl');
+
+      expect(text()).toContain(nl.storyEdit.lockedBy('Mira'));
+      expect(editButton()?.disabled).toBe(true);
+    });
+
+    it('does not open the form when someone else takes the lock at the same moment', async () => {
+      versions.set([version({})]);
+      create();
+      editLock.acquire.mockResolvedValueOnce(false);
+      heldBy.set('Mira');
+
+      await fixture.componentInstance.startEdit();
+      fixture.detectChanges();
+
+      expect(form()).toBeNull();
+      expect(TestBed.inject(ToastService).toasts().map(toast => toast.message)).toContain(en.storyEdit.lockedBy('Mira'));
+    });
+
+    it('says so when the lock could not be reached', async () => {
+      versions.set([version({})]);
+      create();
+      editLock.acquire.mockResolvedValueOnce(false);
+
+      await startEditing();
+
+      expect(form()).toBeNull();
+      expect(TestBed.inject(ToastService).toasts().map(toast => toast.message)).toContain(en.storyEdit.startFailed);
+    });
+
+    it('does not save without the lock: someone else took it over during a long pause', async () => {
+      versions.set([version({})]);
+      create();
+      await startEditing();
+      typeStory('Mijn verbeterde tekst');
+
+      editLock.acquire.mockResolvedValueOnce(false);
+      await fixture.componentInstance.saveEdit(version({}), {
+        title: 'x', content: 'Mijn verbeterde tekst', base: { title: 'x', content: 'y' },
+      });
+      fixture.detectChanges();
+
+      expect(storyService.saveEdit).not.toHaveBeenCalled();
+      expect(contentField().value).toBe('Mijn verbeterde tekst');
+    });
+
+    it('keeps the form, with the text in it, when the story changed in the meantime', async () => {
+      storyService.saveEdit.mockResolvedValue(false);
       versions.set([version({})]);
       create();
 
-      expect(editButton()).toBeNull();
+      await startEditing();
+      typeStory('Mijn verbeterde tekst');
+      saveButton().click();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(contentField().value).toBe('Mijn verbeterde tekst');
+      expect(TestBed.inject(ToastService).toasts()).toEqual([]);
+    });
+
+    it('names the member whose edit is on the newest version, but not this member themselves', () => {
+      versions.set([version({ editedBy: 'member', editedByName: 'Mira' })]);
+      create();
+      expect(fixture.componentInstance.changedBy()).toBe('Mira');
+
+      currentUser.set({ uid: 'member' });
+      expect(fixture.componentInstance.changedBy()).toBe('');
+    });
+
+    it('keeps an open form when the owner starts a new version, with saving held back until it is done', async () => {
+      currentUser.set({ uid: 'member' });
+      versions.set([version({})]);
+      create();
+      await startEditing();
+      typeStory('Mijn verbeterde tekst');
+
+      versions.set([version({ version: 2, status: 'generating', progressStep: 'writing' }), version({})]);
+      fixture.detectChanges();
+
+      expect(contentField().value).toBe('Mijn verbeterde tekst');
+      expect(element.querySelector('[data-testid="story-locked"]')?.textContent).toContain(en.storyEdit.newVersionBeingWritten);
+      expect(saveButton().disabled).toBe(true);
+
+      // The new version is there: the member's text is still theirs to keep or drop.
+      versions.set([version({ version: 2, content: 'De nieuwe versie.' }), version({})]);
+      fixture.detectChanges();
+      expect(contentField().value).toBe('Mijn verbeterde tekst');
+      expect(element.querySelector('[data-testid="story-conflict"]')).not.toBeNull();
+    });
+
+    it('asks the owner before writing a new version while someone else is editing', async () => {
+      versions.set([version({})]);
+      sessions.set([session('a')]);
+      heldBy.set('Mira');
+      confirm.mockResolvedValue(false);
+      create('nl');
+
+      generateButton().click();
+      await fixture.whenStable();
+      expect(confirm).toHaveBeenCalledWith(nl.storyEdit.confirmGenerate('Mira'));
+      expect(storyService.generate).not.toHaveBeenCalled();
+
+      confirm.mockResolvedValue(true);
+      generateButton().click();
+      await fixture.whenStable();
+      expect(storyService.generate).toHaveBeenCalledWith('campaign-1');
     });
 
     it('waits while a new version is being written', () => {
@@ -130,7 +283,7 @@ describe('CampaignStoryPageComponent', () => {
       versions.set([latest, version({ version: 1 })]);
       create();
 
-      startEditing();
+      await startEditing();
       typeStory('De party vertrok (zonder Mira).');
       saveButton().click();
       await fixture.whenStable();
@@ -139,17 +292,18 @@ describe('CampaignStoryPageComponent', () => {
       expect(storyService.saveEdit).toHaveBeenCalledWith(latest, {
         title: 'De val van Grauwhaven',
         content: 'De party vertrok (zonder Mira).',
+        base: { title: 'De val van Grauwhaven', content: 'De party vertrok.' },
       });
       expect(form()).toBeNull();
     });
 
-    it('holds a new version back until the edit is saved or dropped: unsaved text would not go along', () => {
+    it('holds a new version back until the edit is saved or dropped: unsaved text would not go along', async () => {
       versions.set([version({})]);
       sessions.set([session('a')]);
       create();
       expect(generateButton().disabled).toBe(false);
 
-      startEditing();
+      await startEditing();
       expect(generateButton().disabled).toBe(true);
       expect(editButton()?.disabled).toBe(true);
 
@@ -164,14 +318,14 @@ describe('CampaignStoryPageComponent', () => {
       versions.set([version({})]);
       create('nl');
 
-      startEditing();
+      await startEditing();
       typeStory('Mijn verbeterde tekst');
       saveButton().click();
       await fixture.whenStable();
       fixture.detectChanges();
 
       expect(contentField().value).toBe('Mijn verbeterde tekst');
-      expect(TestBed.inject(ToastService).toasts().map(toast => toast.message)).toContain(nl.campaignStory.edit.saveFailed);
+      expect(TestBed.inject(ToastService).toasts().map(toast => toast.message)).toContain(nl.storyEdit.saveFailed);
     });
   });
 

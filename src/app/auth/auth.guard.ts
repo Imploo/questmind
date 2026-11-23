@@ -1,6 +1,7 @@
 import { inject } from '@angular/core';
 import { Router, type CanActivateFn } from '@angular/router';
 import { AuthService } from './auth.service';
+import { safeReturnUrl } from './return-url';
 import { map, filter, take } from 'rxjs/operators';
 import { toObservable } from '@angular/core/rxjs-interop';
 
@@ -52,9 +53,8 @@ export const noAuthGuard: CanActivateFn = (route) => {
         return true;
       }
       
-      // Check for return URL or redirect to home
-      const returnUrl = route.queryParams['returnUrl'] || '/';
-      return router.createUrlTree([returnUrl]);
+      // Back to where they came from (an address in the app), or home
+      return router.parseUrl(safeReturnUrl(route.queryParams['returnUrl']));
     })
   );
 };

@@ -4,6 +4,7 @@ import { SignInPageComponent } from './auth/sign-in-page.component';
 import { AppShellComponent } from './app-shell.component';
 import { campaignGuard } from './campaign/campaign.guard';
 import { adminGuard } from './auth/admin.guard';
+import { SharedCampaignStore } from './campaign-share/shared-campaign.store';
 
 export const routes: Routes = [
   {
@@ -15,6 +16,38 @@ export const routes: Routes = [
   {
     path: 'share/podcast/:shareId',
     loadComponent: () => import('./audio/podcast-share-page.component').then(m => m.PodcastSharePageComponent)
+  },
+  // A shared campaign: read-only and public. The server adds a link preview to these
+  // addresses (see the campaignSharePage function); the campaign is loaded once for all its pages.
+  {
+    path: 'share/campaign/:shareId',
+    component: AppShellComponent,
+    providers: [SharedCampaignStore],
+    children: [
+      {
+        path: 'sessions/:sessionId',
+        loadComponent: () => import('./campaign-share/shared-session-page.component').then(m => m.SharedSessionPageComponent)
+      },
+      {
+        path: '',
+        loadComponent: () => import('./campaign-share/shared-campaign-page.component').then(m => m.SharedCampaignPageComponent),
+        children: [
+          { path: '', redirectTo: 'story', pathMatch: 'full' },
+          {
+            path: 'story',
+            loadComponent: () => import('./campaign-share/shared-campaign-story.component').then(m => m.SharedCampaignStoryComponent)
+          },
+          {
+            path: 'sessions',
+            loadComponent: () => import('./campaign-share/shared-campaign-sessions.component').then(m => m.SharedCampaignSessionsComponent)
+          },
+          {
+            path: 'podcasts',
+            loadComponent: () => import('./campaign-share/shared-campaign-podcasts.component').then(m => m.SharedCampaignPodcastsComponent)
+          }
+        ]
+      }
+    ]
   },
   // Shared character links: the server adds a link preview to this address (see the
   // characterSharePage function); in the browser it simply leads to the character page.

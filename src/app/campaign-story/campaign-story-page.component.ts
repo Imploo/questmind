@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { AuthService } from '../auth/auth.service';
 import { CampaignContextService } from '../campaign/campaign-context.service';
@@ -7,7 +7,8 @@ import { CampaignStoryService } from './campaign-story.service';
 import { CampaignStoryViewComponent } from './campaign-story-view.component';
 import { CampaignStoryVersionsDrawerComponent } from './campaign-story-versions-drawer.component';
 import { CampaignStoryPodcastsComponent } from './campaign-story-podcasts.component';
-import { CampaignStoryEdit, CampaignStoryVersion } from './campaign-story.models';
+import { CampaignStoryEditSave, CampaignStoryVersion } from './campaign-story.models';
+import { CAMPAIGN_STORY_TARGET, StoryEditLockService } from '../shared/services/story-edit-lock.service';
 import {
   countChangedSessions,
   coveredUntil,
@@ -24,7 +25,8 @@ import { TranslatePipe } from '../core/i18n/translate.pipe';
 /**
  * The story tab of a campaign (ticket #69): how far the story runs, the newest
  * version of the campaign-wide story, older versions in a drawer, and generation of
- * new versions/podcasts for the owner. Without a story it says what comes first.
+ * new versions/podcasts for the owner. Every member can edit the newest version
+ * by hand. Without a story it says what comes first.
  */
 @Component({
   selector: 'app-campaign-story-page',
@@ -35,6 +37,7 @@ import { TranslatePipe } from '../core/i18n/translate.pipe';
     CampaignStoryPodcastsComponent,
     TranslatePipe,
   ],
+  providers: [StoryEditLockService],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="space-y-4 sm:space-y-5">
@@ -79,7 +82,7 @@ import { TranslatePipe } from '../core/i18n/translate.pipe';
               {{ 'campaignStory.versions' | translate }}
             </button>
             @if (canEdit()) {
-              <button type="button" class="qm-btn" [disabled]="isEditing()" (click)="startEdit()" data-testid="edit-story">
+              <button type="button" class="qm-btn" [disabled]="isEditing() || !!editLock.heldBy()" (click)="startEdit()" data-testid="edit-story">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
                 </svg>
@@ -112,8 +115,11 @@ import { TranslatePipe } from '../core/i18n/translate.pipe';
           class="block"
           [version]="version"
           [isLatest]="version.version === latestCompleted()?.version"
-          [editing]="isEditing() && canEdit()"
+          [editing]="isEditing() && version.version === latestCompleted()?.version"
           [saving]="isSaving()"
+          [locked]="isGenerating()"
+          [changedBy]="changedBy()"
+          [lockedBy]="editLock.heldBy()"
           (backToLatest)="selectedVersion.set(null)"
           (saved)="saveEdit(version, $event)"
           (cancelled)="isEditing.set(false)"
@@ -186,6 +192,7 @@ export class CampaignStoryPageComponent {
   private readonly i18n = inject(I18nService);
   private readonly formatting = inject(FormattingService);
   private readonly toastService = inject(ToastService);
+  protected readonly editLock = inject(StoryEditLockService);
 
   /** null = show the newest completed version */
   readonly campaignId = this.campaignContext.selectedCampaignId;
@@ -195,7 +202,7 @@ export class CampaignStoryPageComponent {
   readonly podcastError = signal('');
   private readonly startingStory = signal(false);
   private readonly startingPodcast = signal(false);
-  /** The owner is rewriting the newest version by hand. */
+  /** This member is rewriting the newest version by hand: they hold the lock on the story. */
   readonly isEditing = signal(false);
   readonly isSaving = signal(false);
 
@@ -226,12 +233,20 @@ export class CampaignStoryPageComponent {
   readonly isGenerating = computed(() => this.startingStory() || !!this.activeGeneration());
 
   /**
-   * The owner can edit the newest completed version: that is the one that goes
-   * along when the next version is written. Not while a new version is on its way.
+   * Every member can start editing the newest completed version: that is the one
+   * that goes along when the next version is written. Not while a new version is
+   * on its way; a form that is already open then stays, with saving held back.
    */
   readonly canEdit = computed(() => {
     const displayed = this.displayedVersion();
-    return this.isOwner() && !this.isGenerating() && !!displayed && displayed.version === this.latestCompleted()?.version;
+    return !this.isGenerating() && !!displayed && displayed.version === this.latestCompleted()?.version;
+  });
+
+  /** The member whose edit is on the newest version, when that is someone else. */
+  readonly changedBy = computed(() => {
+    const latest = this.latestCompleted();
+    const uid = this.authService.currentUser()?.uid;
+    return latest?.editedBy && latest.editedBy !== uid ? (latest.editedByName ?? '') : '';
   });
 
   /** The step the backend is at, in the active language; "busy" until the version document exists. */
@@ -277,27 +292,55 @@ export class CampaignStoryPageComponent {
     )
   );
 
+  constructor() {
+    // One member edits the campaign story at a time: follow its lock, and give it back when the form closes.
+    effect(() => {
+      this.editLock.watch(this.campaignId(), CAMPAIGN_STORY_TARGET);
+      if (!this.isEditing()) {
+        this.editLock.release();
+      }
+    });
+  }
+
   selectVersion(version: number): void {
     this.selectedVersion.set(version);
     this.drawerOpen.set(false);
     this.isEditing.set(false);
   }
 
-  startEdit(): void {
+  /** Open the edit form, once this member holds the lock on the story. */
+  async startEdit(): Promise<void> {
     if (!this.canEdit()) return;
     this.errorMessage.set('');
-    this.isEditing.set(true);
+    if (await this.takeEditLock()) {
+      this.isEditing.set(true);
+    }
   }
 
-  /** Saves the owner's edit; on failure the text stays in the form to try again. */
-  async saveEdit(version: CampaignStoryVersion, edit: CampaignStoryEdit): Promise<void> {
+  /** Take the lock on the story for this member; says why when that does not work. */
+  private async takeEditLock(): Promise<boolean> {
+    if (await this.editLock.acquire()) return true;
+    const texts = this.i18n.t().storyEdit;
+    const editor = this.editLock.heldBy();
+    this.toastService.show(editor ? texts.lockedBy(editor) : texts.startFailed, 'warning', 6000);
+    return false;
+  }
+
+  /**
+   * Saves the member's edit. The form stays open, with the text in it, when the
+   * member no longer holds the lock, when the save fails, or when the story
+   * changed in the meantime (the form then offers the choice between both texts).
+   */
+  async saveEdit(version: CampaignStoryVersion, edit: CampaignStoryEditSave): Promise<void> {
     this.isSaving.set(true);
     try {
-      await this.storyService.saveEdit(version, edit);
-      this.isEditing.set(false);
+      if (!(await this.takeEditLock())) return;
+      if (await this.storyService.saveEdit(version, edit)) {
+        this.isEditing.set(false);
+      }
     } catch {
       // A toast: the form is long, a message at the top of the page would be out of sight.
-      this.toastService.show(this.i18n.t().campaignStory.edit.saveFailed, 'error', 6000);
+      this.toastService.show(this.i18n.t().storyEdit.saveFailed, 'error', 6000);
     } finally {
       this.isSaving.set(false);
     }
@@ -306,6 +349,12 @@ export class CampaignStoryPageComponent {
   async generateStory(): Promise<void> {
     const campaignId = this.campaignContext.selectedCampaignId();
     if (!campaignId) return;
+
+    // Someone else is editing: what they have not saved would not go along.
+    const editor = this.editLock.heldBy();
+    if (editor && !(await this.toastService.confirm(this.i18n.t().storyEdit.confirmGenerate(editor)))) {
+      return;
+    }
 
     this.errorMessage.set('');
     this.selectedVersion.set(null);
