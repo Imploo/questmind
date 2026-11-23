@@ -8,7 +8,7 @@ import { CampaignStoryViewComponent } from './campaign-story-view.component';
 import { CampaignStoryVersionsDrawerComponent } from './campaign-story-versions-drawer.component';
 import { CampaignStoryPodcastsComponent } from './campaign-story-podcasts.component';
 import { CampaignStoryEditSave, CampaignStoryVersion } from './campaign-story.models';
-import { CAMPAIGN_STORY_TARGET, StoryPresenceService } from '../shared/services/story-presence.service';
+import { CAMPAIGN_STORY_TARGET, StoryEditLockService } from '../shared/services/story-edit-lock.service';
 import {
   countChangedSessions,
   coveredUntil,
@@ -37,7 +37,7 @@ import { TranslatePipe } from '../core/i18n/translate.pipe';
     CampaignStoryPodcastsComponent,
     TranslatePipe,
   ],
-  providers: [StoryPresenceService],
+  providers: [StoryEditLockService],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="space-y-4 sm:space-y-5">
@@ -82,7 +82,7 @@ import { TranslatePipe } from '../core/i18n/translate.pipe';
               {{ 'campaignStory.versions' | translate }}
             </button>
             @if (canEdit()) {
-              <button type="button" class="qm-btn" [disabled]="isEditing()" (click)="startEdit()" data-testid="edit-story">
+              <button type="button" class="qm-btn" [disabled]="isEditing() || !!editLock.heldBy()" (click)="startEdit()" data-testid="edit-story">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
                 </svg>
@@ -119,7 +119,7 @@ import { TranslatePipe } from '../core/i18n/translate.pipe';
           [saving]="isSaving()"
           [locked]="isGenerating()"
           [changedBy]="changedBy()"
-          [otherEditors]="presence.others()"
+          [lockedBy]="editLock.heldBy()"
           (backToLatest)="selectedVersion.set(null)"
           (saved)="saveEdit(version, $event)"
           (cancelled)="isEditing.set(false)"
@@ -192,7 +192,7 @@ export class CampaignStoryPageComponent {
   private readonly i18n = inject(I18nService);
   private readonly formatting = inject(FormattingService);
   private readonly toastService = inject(ToastService);
-  protected readonly presence = inject(StoryPresenceService);
+  protected readonly editLock = inject(StoryEditLockService);
 
   /** null = show the newest completed version */
   readonly campaignId = this.campaignContext.selectedCampaignId;
@@ -202,7 +202,7 @@ export class CampaignStoryPageComponent {
   readonly podcastError = signal('');
   private readonly startingStory = signal(false);
   private readonly startingPodcast = signal(false);
-  /** This member is rewriting the newest version by hand; the other members see that. */
+  /** This member is rewriting the newest version by hand: they hold the lock on the story. */
   readonly isEditing = signal(false);
   readonly isSaving = signal(false);
 
@@ -293,10 +293,12 @@ export class CampaignStoryPageComponent {
   );
 
   constructor() {
-    // Show who else is editing the campaign story, and tell them when this member is.
+    // One member edits the campaign story at a time: follow its lock, and give it back when the form closes.
     effect(() => {
-      this.presence.watch(this.campaignId(), CAMPAIGN_STORY_TARGET);
-      this.presence.setEditing(this.isEditing());
+      this.editLock.watch(this.campaignId(), CAMPAIGN_STORY_TARGET);
+      if (!this.isEditing()) {
+        this.editLock.release();
+      }
     });
   }
 
@@ -306,20 +308,33 @@ export class CampaignStoryPageComponent {
     this.isEditing.set(false);
   }
 
-  startEdit(): void {
+  /** Open the edit form, once this member holds the lock on the story. */
+  async startEdit(): Promise<void> {
     if (!this.canEdit()) return;
     this.errorMessage.set('');
-    this.isEditing.set(true);
+    if (await this.takeEditLock()) {
+      this.isEditing.set(true);
+    }
+  }
+
+  /** Take the lock on the story for this member; says why when that does not work. */
+  private async takeEditLock(): Promise<boolean> {
+    if (await this.editLock.acquire()) return true;
+    const texts = this.i18n.t().storyEdit;
+    const editor = this.editLock.heldBy();
+    this.toastService.show(editor ? texts.lockedBy(editor) : texts.startFailed, 'warning', 6000);
+    return false;
   }
 
   /**
    * Saves the member's edit. The form stays open, with the text in it, when the
-   * save fails or when the story changed in the meantime (the form then offers
-   * the choice between both texts).
+   * member no longer holds the lock, when the save fails, or when the story
+   * changed in the meantime (the form then offers the choice between both texts).
    */
   async saveEdit(version: CampaignStoryVersion, edit: CampaignStoryEditSave): Promise<void> {
     this.isSaving.set(true);
     try {
+      if (!(await this.takeEditLock())) return;
       if (await this.storyService.saveEdit(version, edit)) {
         this.isEditing.set(false);
       }
@@ -335,9 +350,9 @@ export class CampaignStoryPageComponent {
     const campaignId = this.campaignContext.selectedCampaignId();
     if (!campaignId) return;
 
-    // Someone else is typing: what they have not saved would not go along.
-    const others = this.presence.others();
-    if (others.length > 0 && !(await this.toastService.confirm(this.i18n.t().storyEdit.confirmGenerate(this.formatting.formatList(others), others.length)))) {
+    // Someone else is editing: what they have not saved would not go along.
+    const editor = this.editLock.heldBy();
+    if (editor && !(await this.toastService.confirm(this.i18n.t().storyEdit.confirmGenerate(editor)))) {
       return;
     }
 

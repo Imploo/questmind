@@ -305,7 +305,7 @@ export const nl: Translations = {
       titleLabel: 'Titel van het verhaal',
       contentLabel: 'Tekst van het verhaal',
       help:
-        'Haal weg wat niet klopt, vul aan wat ontbreekt, of zet een notitie tussen haakjes. Ieder lid van de campagne kan meeschrijven. Een volgende versie gaat uit van deze tekst: verbeteringen blijven staan en notities worden in het verhaal verwerkt.',
+        'Haal weg wat niet klopt, vul aan wat ontbreekt, of zet een notitie tussen haakjes. Ieder lid van de campagne kan meeschrijven, één tegelijk. Een volgende versie gaat uit van deze tekst: verbeteringen blijven staan en notities worden in het verhaal verwerkt.',
       save: 'Verhaal opslaan',
     },
     progress: {
@@ -327,10 +327,11 @@ export const nl: Translations = {
   },
 
   storyEdit: {
-    othersEditing: (names, count) =>
-      count === 1
-        ? `${names} is dit verhaal nu ook aan het bewerken.`
-        : `${names} zijn dit verhaal nu ook aan het bewerken.`,
+    lockedBy: (name) => `${name} is dit verhaal aan het bewerken. Je kunt het bewerken zodra ${name} klaar is.`,
+    takenOver: (name) =>
+      `${name} is dit verhaal nu aan het bewerken, omdat jouw bewerking een tijd stil lag. Jouw tekst staat er nog; opslaan kan zodra ${name} klaar is.`,
+    someone: 'Iemand anders',
+    startFailed: 'Bewerken kon niet worden gestart. Probeer het opnieuw.',
     changedBy: (name) => `${name} heeft het verhaal intussen gewijzigd. Jouw tekst is nog niet opgeslagen.`,
     changedBySomeone: 'Het verhaal is intussen gewijzigd. Jouw tekst is nog niet opgeslagen.',
     conflictHelp:
@@ -339,10 +340,8 @@ export const nl: Translations = {
     loadCurrent: 'Huidige versie laden',
     showCurrent: 'Huidige versie bekijken',
     newVersionBeingWritten: 'Er wordt een nieuwe versie geschreven. Opslaan kan weer zodra die klaar is.',
-    confirmGenerate: (names, count) =>
-      count === 1
-        ? `${names} is dit verhaal aan het bewerken. Wat nog niet is opgeslagen gaat niet mee. Toch een nieuwe versie laten schrijven?`
-        : `${names} zijn dit verhaal aan het bewerken. Wat nog niet is opgeslagen gaat niet mee. Toch een nieuwe versie laten schrijven?`,
+    confirmGenerate: (name) =>
+      `${name} is dit verhaal aan het bewerken. Wat nog niet is opgeslagen gaat niet mee. Toch een nieuwe versie laten schrijven?`,
     saveFailed: 'Het verhaal kon niet worden opgeslagen. Probeer het opnieuw.',
   },
 
@@ -432,7 +431,7 @@ export const nl: Translations = {
       preview: 'Voorbeeld',
       editStory: 'Verhaal bewerken',
       editHelp:
-        'Haal weg wat niet klopt, vul aan wat ontbreekt, of zet een notitie tussen haakjes. Ieder lid van de campagne kan meeschrijven. Als het verhaal opnieuw wordt gegenereerd, gaat deze versie mee: verbeteringen blijven staan en notities worden in het verhaal verwerkt.',
+        'Haal weg wat niet klopt, vul aan wat ontbreekt, of zet een notitie tussen haakjes. Ieder lid van de campagne kan meeschrijven, één tegelijk. Als het verhaal opnieuw wordt gegenereerd, gaat deze versie mee: verbeteringen blijven staan en notities worden in het verhaal verwerkt.',
       reset: 'Herstellen',
       saveStory: 'Verhaal opslaan',
       downloadMarkdown: 'Markdown downloaden',

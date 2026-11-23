@@ -43,9 +43,9 @@ const MAX_TITLE_LENGTH = 200;
         </div>
       }
 
-      @if (otherEditors().length > 0) {
-        <p class="qm-alert qm-alert-info relative z-[1] mb-5" role="status" data-testid="story-other-editors">
-          {{ 'storyEdit.othersEditing' | translate: otherEditorNames() : otherEditors().length }}
+      @if (lockedBy()) {
+        <p class="qm-alert qm-alert-info relative z-[1] mb-5" role="status" data-testid="story-locked-by">
+          {{ (editing() ? 'storyEdit.takenOver' : 'storyEdit.lockedBy') | translate: lockedBy() }}
         </p>
       }
 
@@ -69,7 +69,7 @@ const MAX_TITLE_LENGTH = 200;
                 <button
                   type="button"
                   class="qm-btn qm-btn-sm qm-btn-primary"
-                  [disabled]="saving() || !canSave()"
+                  [disabled]="saving() || !canSave() || !!lockedBy()"
                   (click)="keepMine()"
                   data-testid="story-keep-mine"
                 >
@@ -106,7 +106,7 @@ const MAX_TITLE_LENGTH = 200;
               {{ 'common.cancel' | translate }}
             </button>
             @if (!changedElsewhere()) {
-              <button type="submit" class="qm-btn qm-btn-primary" [disabled]="saving() || locked() || !canSave()" data-testid="story-edit-save">
+              <button type="submit" class="qm-btn qm-btn-primary" [disabled]="saving() || locked() || !canSave() || !!lockedBy()" data-testid="story-edit-save">
                 @if (saving()) {
                   <span class="qm-spinner qm-spinner-light" aria-hidden="true"></span>
                 }
@@ -155,10 +155,8 @@ export class CampaignStoryViewComponent {
   readonly locked = input(false);
   /** Who last changed this version by hand, when that was someone else; '' when unknown. */
   readonly changedBy = input('');
-  /** Names of the other members who have the story open for editing right now. */
-  readonly otherEditors = input<string[]>([]);
-
-  protected readonly otherEditorNames = computed(() => this.formatting.formatList(this.otherEditors()));
+  /** The other member who is editing the story right now (they hold the lock); '' when it is free. */
+  readonly lockedBy = input('');
 
   readonly backToLatest = output<void>();
   readonly saved = output<CampaignStoryEditSave>();
@@ -226,13 +224,13 @@ export class CampaignStoryViewComponent {
 
   protected save(event: Event): void {
     event.preventDefault();
-    if (!this.canSave() || this.saving() || this.locked() || this.changedElsewhere()) return;
+    if (!this.canSave() || this.saving() || this.locked() || this.lockedBy() || this.changedElsewhere()) return;
     this.emitSave();
   }
 
   /** After the story changed elsewhere: save this member's text over the current story. */
   protected keepMine(): void {
-    if (!this.canSave() || this.saving()) return;
+    if (!this.canSave() || this.saving() || this.lockedBy()) return;
     this.base.set(this.stored());
     this.emitSave();
   }

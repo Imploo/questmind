@@ -49,6 +49,8 @@ describe('SessionStoryComponent', () => {
 
     saves = [];
     regenerations = [];
+    // The parent opens the form once the member holds the lock on the story.
+    fixture.componentInstance.editRequested.subscribe(() => fixture.componentInstance.isEditing.set(true));
     fixture.componentInstance.storyUpdated.subscribe(edit => saves.push(edit));
     fixture.componentInstance.regenerate.subscribe(edit => regenerations.push(edit));
     fixture.detectChanges();
@@ -73,7 +75,8 @@ describe('SessionStoryComponent', () => {
     expect(saves).toEqual([{ content: 'Kael opende de deur.', baseContent: STORED }]);
     expect(storyField()).not.toBeNull();
 
-    set('isEditing', false);
+    fixture.componentInstance.isEditing.set(false);
+    fixture.detectChanges();
     expect(storyField()).toBeNull();
   });
 
@@ -185,12 +188,37 @@ describe('SessionStoryComponent', () => {
     expect(regenerations).toEqual([null]);
   });
 
-  it('shows who else is editing the story', () => {
-    expect(byTestId('story-other-editors')).toBeNull();
+  describe('the lock: one member edits at a time', () => {
+    it('asks the parent for the form instead of opening it itself', () => {
+      let requests = 0;
+      fixture.componentInstance.editRequested.subscribe(() => requests++);
 
-    set('otherEditors', ['Kael', 'Mira']);
+      button(en.audio.story.editStory).click();
 
-    expect(byTestId('story-other-editors')?.textContent).toContain(en.storyEdit.othersEditing('Kael and Mira', 2));
+      expect(requests).toBe(1);
+    });
+
+    it('cannot start while someone else is editing, and says who', () => {
+      expect(byTestId('story-locked-by')).toBeNull();
+
+      set('lockedBy', 'Mira');
+
+      expect(byTestId('story-locked-by')?.textContent).toContain(en.storyEdit.lockedBy('Mira'));
+      expect((byTestId('story-edit-toggle') as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it('holds saving back, keeping the text, when someone else took the lock over during a long pause', () => {
+      startEditing();
+      typeStory('Kael opende de deur.');
+
+      set('lockedBy', 'Mira');
+
+      expect(byTestId('story-locked-by')?.textContent).toContain(en.storyEdit.takenOver('Mira'));
+      expect(storyField().value).toBe('Kael opende de deur.');
+      expect(button(en.audio.story.saveStory).disabled).toBe(true);
+      // Leaving the form stays possible.
+      expect((byTestId('story-edit-toggle') as HTMLButtonElement).disabled).toBe(false);
+    });
   });
 
   it('lets a member who is not the session owner edit the story, but not the session itself', () => {

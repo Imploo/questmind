@@ -123,6 +123,28 @@ export abstract class FirestoreRepository<
     });
   }
 
+  /**
+   * Like `patchInTransaction`, but writes the whole document `decide` returns,
+   * also when it does not exist yet. For a document several members may claim
+   * at the same moment: only one of them gets it.
+   */
+  public async setInTransaction(
+    key: T[K],
+    decide: (current: T | null) => Record<string, unknown> | null,
+  ): Promise<boolean> {
+    const docRef = this.getDocRef(key as string);
+    return runTransaction(this.firestore, async (transaction) => {
+      const snapshot = await transaction.get(docRef);
+      const current = snapshot.exists()
+        ? ({ ...this.mapDocToModel(snapshot), [this.keyProp]: snapshot.id } as T)
+        : null;
+      const document = decide(current);
+      if (!document) return false;
+      transaction.set(docRef, document);
+      return true;
+    });
+  }
+
   public async delete(key: T[K]): Promise<void> {
     const docRef = this.getDocRef(key as string);
     await deleteDoc(docRef);

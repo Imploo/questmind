@@ -17,7 +17,6 @@ import { PodcastVersion } from './services/audio-session.models';
 import { ToastService } from '../shared/services/toast.service';
 import { PodcastVersionItemComponent } from '../shared/components/podcast-version-item.component';
 import { I18nService } from '../core/i18n/i18n.service';
-import { FormattingService } from '../shared/formatting.service';
 import { TranslatePipe } from '../core/i18n/translate.pipe';
 
 export interface SessionMetaUpdate {
@@ -145,15 +144,16 @@ export interface SessionStoryEdit {
                     type="button"
                     class="qm-btn qm-btn-sm"
                     (click)="toggleEdit()"
-                    [disabled]="isBusy() || !canEditStory()"
+                    [disabled]="isBusy() || !canEditStory() || (!isEditing() && !!lockedBy())"
+                    data-testid="story-edit-toggle"
                   >
                     {{ (isEditing() ? 'audio.story.preview' : 'audio.story.editStory') | translate }}
                   </button>
                 </div>
 
-                @if (otherEditors().length > 0) {
-                  <p class="qm-alert qm-alert-info" role="status" data-testid="story-other-editors">
-                    {{ 'storyEdit.othersEditing' | translate: otherEditorNames() : otherEditors().length }}
+                @if (lockedBy()) {
+                  <p class="qm-alert qm-alert-info" role="status" data-testid="story-locked-by">
+                    {{ (isEditing() ? 'storyEdit.takenOver' : 'storyEdit.lockedBy') | translate: lockedBy() }}
                   </p>
                 }
 
@@ -172,7 +172,7 @@ export interface SessionStoryEdit {
                             type="button"
                             class="qm-btn qm-btn-sm qm-btn-primary"
                             (click)="keepMine()"
-                            [disabled]="isBusy() || saving() || !canEditStory() || !canSave()"
+                            [disabled]="isBusy() || saving() || !canEditStory() || !canSave() || !!lockedBy()"
                             data-testid="story-keep-mine"
                           >
                             {{ 'storyEdit.keepMine' | translate }}
@@ -211,7 +211,7 @@ export interface SessionStoryEdit {
                           type="button"
                           class="qm-btn qm-btn-sm qm-btn-primary"
                           (click)="saveDraft()"
-                          [disabled]="isBusy() || saving() || !canEditStory() || !canSave()"
+                          [disabled]="isBusy() || saving() || !canEditStory() || !canSave() || !!lockedBy()"
                         >
                           {{ 'audio.story.saveStory' | translate }}
                         </button>
@@ -368,7 +368,6 @@ export class SessionStoryComponent {
   private readonly sanitizer = inject(DomSanitizer);
   private readonly toastService = inject(ToastService);
   private readonly i18n = inject(I18nService);
-  private readonly formatting = inject(FormattingService);
 
   /** Title of the session; the parent passes a translated default for a session without one. */
   title = input('');
@@ -388,9 +387,8 @@ export class SessionStoryComponent {
   saving = input(false);
   /** Who last changed the story by hand, when that was someone else; '' when unknown. */
   changedBy = input('');
-  /** Names of the other members who have the story open for editing right now. */
-  otherEditors = input<string[]>([]);
-  readonly otherEditorNames = computed(() => this.formatting.formatList(this.otherEditors()));
+  /** The other member who is editing the story right now (they hold the lock); '' when it is free. */
+  lockedBy = input('');
   canEditCorrections = input(true);
   corrections = input('');
   correctionsStatus = input<'idle' | 'saving' | 'saved'>('idle');
@@ -411,13 +409,15 @@ export class SessionStoryComponent {
   storyUpdated = output<SessionStoryEdit>();
   /** With the edit that still has to be saved first, or null when there is none. */
   regenerate = output<SessionStoryEdit | null>();
+  /** The member wants to edit: the parent opens the form (`isEditing`) once they hold the lock. */
+  editRequested = output<void>();
   correctionsChanged = output<string>();
   generatePodcast = output<void>();
   metaUpdated = output<SessionMetaUpdate>();
   deleteSession = output<void>();
 
   activeTab = signal<'story' | 'podcasts'>('story');
-  /** The edit form is open. The parent closes it after a save, and shares it with the other members. */
+  /** The edit form is open. The parent opens it when the member holds the lock, and closes it after a save. */
   isEditing = model<boolean>(false);
   isEditingMeta = signal<boolean>(false);
   titleDraft = signal<string>('');
@@ -510,7 +510,11 @@ export class SessionStoryComponent {
     if (!this.canEditStory()) {
       return;
     }
-    this.isEditing.set(!this.isEditing());
+    if (this.isEditing()) {
+      this.isEditing.set(false);
+    } else {
+      this.editRequested.emit();
+    }
   }
 
   onDraftInput(event: Event): void {

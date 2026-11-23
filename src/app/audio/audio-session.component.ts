@@ -19,7 +19,7 @@ import {
 } from './services/audio-session.models';
 import { isActiveStage, toDisplayProgress } from './services/session-progress.utils';
 import { SessionStoryComponent, SessionMetaUpdate, SessionStoryEdit } from './session-story.component';
-import { StoryPresenceService, editorName, sessionStoryTarget } from '../shared/services/story-presence.service';
+import { StoryEditLockService, editorName, sessionStoryTarget } from '../shared/services/story-edit-lock.service';
 import { SessionProgressCardComponent } from './session-progress-card.component';
 import { SessionRecordingComponent } from './session-recording.component';
 import { CampaignStoryService } from '../campaign-story/campaign-story.service';
@@ -35,7 +35,7 @@ const PODCAST_STAGES: SessionProgressStage[] = ['generating-podcast-script', 'ge
 @Component({
   selector: 'app-audio-session',
   imports: [RouterLink, SessionStoryComponent, SessionProgressCardComponent, SessionRecordingComponent, TranslatePipe],
-  providers: [PodcastGenerationService, CorrectionsSaveService, StoryPresenceService],
+  providers: [PodcastGenerationService, CorrectionsSaveService, StoryEditLockService],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="max-w-4xl mx-auto space-y-4">
@@ -119,7 +119,8 @@ const PODCAST_STAGES: SessionProgressStage[] = ['generating-podcast-script', 'ge
             [(isEditing)]="isEditingStory"
             [saving]="isSavingStory()"
             [changedBy]="storyChangedBy()"
-            [otherEditors]="presence.others()"
+            [lockedBy]="editLock.heldBy()"
+            (editRequested)="startStoryEdit()"
             [canEditCorrections]="canEditCorrections()"
             [corrections]="correctionsSave.corrections()"
             [correctionsStatus]="correctionsSave.saveStatus()"
@@ -210,9 +211,9 @@ export class AudioSessionComponent {
   private readonly i18n = inject(I18nService);
 
   private readonly storyService = inject(CampaignStoryService);
-  protected readonly presence = inject(StoryPresenceService);
+  protected readonly editLock = inject(StoryEditLockService);
 
-  /** The story's edit form is open; the other members see that. */
+  /** The story's edit form is open: this member holds the lock on the story. */
   readonly isEditingStory = signal(false);
   readonly isSavingStory = signal(false);
 
@@ -330,11 +331,13 @@ export class AudioSessionComponent {
       untracked(() => this.isEditingStory.set(false));
     });
 
-    // Show who else is editing this story, and tell them when this member is.
+    // One member edits a story at a time: follow its lock, and give it back when the form closes.
     effect(() => {
       const sessionId = this.currentSessionId();
-      this.presence.watch(this.campaignId(), sessionId ? sessionStoryTarget(sessionId) : null);
-      this.presence.setEditing(this.isEditingStory());
+      this.editLock.watch(this.campaignId(), sessionId ? sessionStoryTarget(sessionId) : null);
+      if (!this.isEditingStory()) {
+        this.editLock.release();
+      }
     });
   }
 
@@ -368,9 +371,9 @@ export class AudioSessionComponent {
       return;
     }
 
-    // Someone else is typing: what they have not saved would not go along.
-    const others = this.presence.others();
-    if (others.length > 0 && !(await this.toastService.confirm(this.i18n.t().storyEdit.confirmGenerate(this.formatting.formatList(others), others.length)))) {
+    // Someone else is editing: what they have not saved would not go along.
+    const editor = this.editLock.heldBy();
+    if (editor && !(await this.toastService.confirm(this.i18n.t().storyEdit.confirmGenerate(editor)))) {
       return;
     }
 
@@ -412,10 +415,28 @@ export class AudioSessionComponent {
     }
   }
 
+  /** Open the story's edit form, once this member holds the lock on the story. */
+  async startStoryEdit(): Promise<void> {
+    if (!this.canEditStory() || this.isBusy()) return;
+    if (await this.takeEditLock()) {
+      this.isEditingStory.set(true);
+    }
+  }
+
+  /** Take the lock on the story for this member; says why when that does not work. */
+  private async takeEditLock(): Promise<boolean> {
+    if (await this.editLock.acquire()) return true;
+    const texts = this.i18n.t().storyEdit;
+    const editor = this.editLock.heldBy();
+    this.toastService.show(editor ? texts.lockedBy(editor) : texts.startFailed, 'warning', 6000);
+    return false;
+  }
+
   /**
    * Save a story a member edited by hand. Resolves to whether it was stored: not
-   * when the story changed since the member started typing (the form then offers
-   * the choice between both texts), and not when the save failed.
+   * without the lock on the story, not when the story changed since the member
+   * started typing (the form then offers the choice between both texts), and not
+   * when the save failed.
    */
   async saveStoryEdits(edit: SessionStoryEdit): Promise<boolean> {
     const session = this.currentSession();
@@ -424,6 +445,8 @@ export class AudioSessionComponent {
 
     this.isSavingStory.set(true);
     try {
+      if (!(await this.takeEditLock())) return false;
+
       const saved = await this.sessionStateService.saveStoryEdit(session.id, {
         content: edit.content,
         baseContent: edit.baseContent,

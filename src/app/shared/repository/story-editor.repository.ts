@@ -4,14 +4,14 @@ import { FirestoreRepository } from './firestore-repository';
 import { FirebaseService } from '../../core/firebase.service';
 
 /**
- * Someone who has a story open for editing right now. One small document per
- * member and story, kept fresh while the edit form is open and removed when it
- * closes; a document that is no longer refreshed counts as gone.
+ * The member who is editing a story right now: the lock on that story. One
+ * document per story, taken when the edit form opens, kept fresh while the
+ * member is at work and removed when the form closes. A lock that is no longer
+ * refreshed has expired and can be taken over (see firestore.rules).
  */
 export interface StoryEditor {
-  /** `${target}_${uid}` */
+  /** The story: see `sessionStoryTarget` and `CAMPAIGN_STORY_TARGET`. Equal to `target`. */
   id: string;
-  /** Which story: see `sessionStoryTarget` and `CAMPAIGN_STORY_TARGET` */
   target: string;
   uid: string;
   name: string;
@@ -19,7 +19,7 @@ export interface StoryEditor {
   updatedAt: unknown;
 }
 
-/** The members editing one story of a campaign (`campaigns/{id}/storyEditors`). */
+/** The lock on one story of a campaign (`campaigns/{id}/storyEditors/{target}`). */
 export class StoryEditorRepository extends FirestoreRepository<StoryEditor & Record<string, unknown>, 'id'> {
   constructor(firestore: Firestore, campaignId: string, private readonly target: string) {
     super(firestore, `campaigns/${campaignId}/storyEditors`, 'id');

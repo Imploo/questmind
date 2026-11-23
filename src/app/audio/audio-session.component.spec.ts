@@ -17,7 +17,7 @@ import { CampaignService } from '../campaign/campaign.service';
 import { CampaignStoryService } from '../campaign-story/campaign-story.service';
 import { FirebaseService } from '../core/firebase.service';
 import { ToastService } from '../shared/services/toast.service';
-import { StoryPresenceService, sessionStoryTarget } from '../shared/services/story-presence.service';
+import { StoryEditLockService, sessionStoryTarget } from '../shared/services/story-edit-lock.service';
 import { provideTestLanguage } from '../core/i18n/testing';
 import { en } from '../core/i18n/en';
 
@@ -45,7 +45,8 @@ describe('AudioSessionComponent: the story as a team effort', () => {
 
   const sessions = signal<AudioSessionRecord[]>([]);
   const currentUser = signal<{ uid: string; displayName?: string; email?: string }>({ uid: 'dm', displayName: 'Thalia' });
-  const otherEditors = signal<string[]>([]);
+  /** The other member who holds the lock on the story; '' when it is free. */
+  const heldBy = signal('');
 
   const sessionState = {
     sessions,
@@ -56,7 +57,12 @@ describe('AudioSessionComponent: the story as a team effort', () => {
     updateSession: vi.fn(),
   };
   const backend = { regenerateStory: vi.fn() };
-  const presence = { others: otherEditors, watch: vi.fn(), setEditing: vi.fn() };
+  const editLock = {
+    heldBy,
+    watch: vi.fn(),
+    acquire: vi.fn(() => Promise.resolve(heldBy() === '')),
+    release: vi.fn(),
+  };
   const confirm = vi.fn();
 
   const button = (label: string) =>
@@ -96,7 +102,7 @@ describe('AudioSessionComponent: the story as a team effort', () => {
     TestBed.overrideComponent(AudioSessionComponent, {
       set: {
         providers: [
-          { provide: StoryPresenceService, useValue: presence },
+          { provide: StoryEditLockService, useValue: editLock },
           { provide: PodcastGenerationService, useValue: { error: signal(''), statusFor: () => ({ isGenerating: false, message: '', percent: 0 }) } },
           { provide: CorrectionsSaveService, useValue: { corrections: signal('Het is Thalia.'), saveStatus: signal('idle'), syncToSession: vi.fn(), onInput: vi.fn() } },
         ],
@@ -108,9 +114,10 @@ describe('AudioSessionComponent: the story as a team effort', () => {
     fixture.detectChanges();
   }
 
-  function editStory(text: string): void {
+  /** Asks for the form, waits for the lock, and types. */
+  async function editStory(text: string): Promise<void> {
     button(en.audio.story.editStory).click();
-    fixture.detectChanges();
+    await settle();
     const field = storyField() as HTMLTextAreaElement;
     field.value = text;
     field.dispatchEvent(new Event('input'));
@@ -125,7 +132,7 @@ describe('AudioSessionComponent: the story as a team effort', () => {
     vi.clearAllMocks();
     sessions.set([session()]);
     currentUser.set({ uid: 'dm', displayName: 'Thalia' });
-    otherEditors.set([]);
+    heldBy.set('');
     sessionState.saveStoryEdit.mockResolvedValue(true);
     sessionState.persistSessionPatch.mockResolvedValue(undefined);
     backend.regenerateStory.mockResolvedValue(undefined);
@@ -138,7 +145,7 @@ describe('AudioSessionComponent: the story as a team effort', () => {
     it('can rewrite the finished story, signed with their own name, and leaves the status alone', async () => {
       create();
 
-      editStory('Kael opende de deur.');
+      await editStory('Kael opende de deur.');
       button(en.audio.story.saveStory).click();
       await settle();
 
@@ -171,7 +178,7 @@ describe('AudioSessionComponent: the story as a team effort', () => {
     sessions.set([session({ status: 'failed' })]);
     create();
 
-    editStory('Kael opende de deur.');
+    await editStory('Kael opende de deur.');
     button(en.audio.story.saveStory).click();
     await settle();
 
@@ -182,7 +189,7 @@ describe('AudioSessionComponent: the story as a team effort', () => {
     sessionState.saveStoryEdit.mockResolvedValue(false);
     create();
 
-    editStory('Kael opende de deur.');
+    await editStory('Kael opende de deur.');
     button(en.audio.story.saveStory).click();
     await settle();
 
@@ -193,7 +200,7 @@ describe('AudioSessionComponent: the story as a team effort', () => {
     sessionState.saveStoryEdit.mockRejectedValue(new Error('offline'));
     create();
 
-    editStory('Kael opende de deur.');
+    await editStory('Kael opende de deur.');
     button(en.audio.story.saveStory).click();
     await settle();
 
@@ -213,26 +220,65 @@ describe('AudioSessionComponent: the story as a team effort', () => {
     expect(fixture.componentInstance.storyChangedBy()).toBe('');
   });
 
-  describe('who is editing', () => {
-    it('follows the story of this session and tells the others when the form opens and closes', () => {
+  describe('the lock: one member edits at a time', () => {
+    it('takes the lock on this story before the form opens, and gives it back when the form closes', async () => {
       create();
-      expect(presence.watch).toHaveBeenCalledWith('c1', sessionStoryTarget('s1'));
-      expect(presence.setEditing).toHaveBeenLastCalledWith(false);
+      expect(editLock.watch).toHaveBeenCalledWith('c1', sessionStoryTarget('s1'));
 
       button(en.audio.story.editStory).click();
-      fixture.detectChanges();
-      expect(presence.setEditing).toHaveBeenLastCalledWith(true);
+      await settle();
+      expect(editLock.acquire).toHaveBeenCalledTimes(1);
+      expect(storyField()).not.toBeNull();
+      editLock.release.mockClear();
 
       button(en.audio.story.preview).click();
       fixture.detectChanges();
-      expect(presence.setEditing).toHaveBeenLastCalledWith(false);
+      expect(editLock.release).toHaveBeenCalled();
     });
 
-    it('shows the names of the others', () => {
-      otherEditors.set(['Mira']);
+    it('cannot start while someone else is editing, and says who', () => {
+      heldBy.set('Mira');
       create();
 
-      expect(byTestId('story-other-editors')?.textContent).toContain(en.storyEdit.othersEditing('Mira', 1));
+      expect(byTestId('story-locked-by')?.textContent).toContain(en.storyEdit.lockedBy('Mira'));
+      expect((byTestId('story-edit-toggle') as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it('does not open the form when someone else takes the lock at the same moment', async () => {
+      create();
+      editLock.acquire.mockResolvedValueOnce(false);
+      heldBy.set('Mira');
+
+      await fixture.componentInstance.startStoryEdit();
+      fixture.detectChanges();
+
+      expect(storyField()).toBeNull();
+      expect(TestBed.inject(ToastService).toasts().map(toast => toast.message)).toContain(en.storyEdit.lockedBy('Mira'));
+    });
+
+    it('says so when the lock could not be reached', async () => {
+      create();
+      editLock.acquire.mockResolvedValueOnce(false);
+
+      button(en.audio.story.editStory).click();
+      await settle();
+
+      expect(storyField()).toBeNull();
+      expect(TestBed.inject(ToastService).toasts().map(toast => toast.message)).toContain(en.storyEdit.startFailed);
+    });
+
+    it('does not save without the lock: someone else took it over during a long pause', async () => {
+      create();
+      await editStory('Kael opende de deur.');
+
+      editLock.acquire.mockResolvedValueOnce(false);
+      await expect(
+        fixture.componentInstance.saveStoryEdits({ content: 'Kael opende de deur.', baseContent: STORED })
+      ).resolves.toBe(false);
+      fixture.detectChanges();
+
+      expect(sessionState.saveStoryEdit).not.toHaveBeenCalled();
+      expect(storyField()?.value).toBe('Kael opende de deur.');
     });
   });
 
@@ -243,7 +289,7 @@ describe('AudioSessionComponent: the story as a team effort', () => {
       backend.regenerateStory.mockImplementation(async () => { order.push('regenerate'); });
       create();
 
-      editStory('Kael opende de deur (niet Mira).');
+      await editStory('Kael opende de deur (niet Mira).');
       button(en.audio.corrections.regenerate).click();
       await settle();
 
@@ -256,7 +302,7 @@ describe('AudioSessionComponent: the story as a team effort', () => {
       sessionState.saveStoryEdit.mockResolvedValue(false);
       create();
 
-      editStory('Kael opende de deur.');
+      await editStory('Kael opende de deur.');
       button(en.audio.corrections.regenerate).click();
       await settle();
 
@@ -266,13 +312,13 @@ describe('AudioSessionComponent: the story as a team effort', () => {
     });
 
     it('asks first when someone else is editing: what they have not saved would not go along', async () => {
-      otherEditors.set(['Mira', 'Kael']);
+      heldBy.set('Mira');
       confirm.mockResolvedValue(false);
       create();
 
       button(en.audio.corrections.regenerate).click();
       await settle();
-      expect(confirm).toHaveBeenCalledWith(en.storyEdit.confirmGenerate('Mira and Kael', 2));
+      expect(confirm).toHaveBeenCalledWith(en.storyEdit.confirmGenerate('Mira'));
       expect(backend.regenerateStory).not.toHaveBeenCalled();
 
       confirm.mockResolvedValue(true);

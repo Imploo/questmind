@@ -325,8 +325,13 @@ export interface Translations {
 
   /** Editing a story (of a session or of the campaign) together with the other members. */
   storyEdit: {
-    /** `names` is the list as one text ("Mira and Kael", see FormattingService.formatList), `count` how many. */
-    othersEditing: (names: string, count: number) => string;
+    /** Someone else holds the lock on the story. */
+    lockedBy: (name: string) => string;
+    /** While this member has the form open: someone else took the lock over. */
+    takenOver: (name: string) => string;
+    /** A member whose name is not known. */
+    someone: string;
+    startFailed: string;
     changedBy: (name: string) => string;
     changedBySomeone: string;
     conflictHelp: string;
@@ -334,7 +339,7 @@ export interface Translations {
     loadCurrent: string;
     showCurrent: string;
     newVersionBeingWritten: string;
-    confirmGenerate: (names: string, count: number) => string;
+    confirmGenerate: (name: string) => string;
     saveFailed: string;
   };
 

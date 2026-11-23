@@ -176,18 +176,26 @@ service cloud.firestore {
       allow write: if isSessionOwner(campaignId, sessionId);
     }
 
-    // Who has a story open for editing right now (a courtesy, not a lock). Every
-    // member reads them; a member writes and removes only their own mark.
-    match /campaigns/{campaignId}/storyEditors/{editorId} {
+    // The lock on a story: the member who is editing it right now. One document
+    // per story. A member takes it when it is free, keeps it by refreshing it, and
+    // can take it over only once its holder has not refreshed it for 90 seconds
+    // (LOCK_EXPIRES_MS in story-edit-lock.service.ts). Only the holder removes it.
+    match /campaigns/{campaignId}/storyEditors/{target} {
+      function isOwnFreshLock() {
+        return request.resource.data.keys().hasOnly(['id', 'target', 'uid', 'name', 'updatedAt']) &&
+          request.resource.data.uid == getUserId() &&
+          request.resource.data.target == target &&
+          request.resource.data.name is string &&
+          request.resource.data.name.size() <= 100 &&
+          request.resource.data.updatedAt == request.time;
+      }
+
       allow read: if isCampaignMember(campaignId);
-      allow create, update: if isCampaignMember(campaignId) &&
-        request.resource.data.keys().hasOnly(['id', 'target', 'uid', 'name', 'updatedAt']) &&
-        request.resource.data.uid == getUserId() &&
-        request.resource.data.target is string &&
-        editorId == request.resource.data.target + '_' + getUserId() &&
-        request.resource.data.name is string &&
-        request.resource.data.name.size() <= 100 &&
-        request.resource.data.updatedAt == request.time;
+      allow create: if isCampaignMember(campaignId) && isOwnFreshLock();
+      allow update: if isCampaignMember(campaignId) && isOwnFreshLock() && (
+        resource.data.uid == getUserId() ||
+        resource.data.updatedAt < request.time - duration.value(90, 's')
+      );
       allow delete: if isAuthenticated() && resource.data.uid == getUserId();
     }
 

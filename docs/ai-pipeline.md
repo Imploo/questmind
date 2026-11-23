@@ -194,26 +194,31 @@ Zelfde instellingen en stappen als de sessiepodcast (9 + 10), met het campagneve
 
 ## Samen bewerken
 
-Een verhaal (van een sessie of van de campagne) is een gezamenlijk stuk: ieder lid kan het met de hand verbeteren. Er is geen live meetypen; twee dingen zorgen dat niemands werk ongezien verdwijnt.
+Een verhaal (van een sessie of van de campagne) is een gezamenlijk stuk: ieder lid kan het met de hand verbeteren, **één tegelijk**. Er is geen live meetypen; een slot en een controle bij het opslaan zorgen dat niemands werk verloren gaat.
 
-**1. Opslaan controleert of het verhaal nog hetzelfde is.** Het formulier onthoudt de tekst waarmee het lid begon. Opslaan gaat in een Firestore-transactie (`FirestoreRepository.patchInTransaction`): staat er intussen iets anders (een ander lid sloeg op, of het verhaal is opnieuw gegenereerd), dan wordt er niets geschreven.
+**1. Het slot: één lid bewerkt tegelijk.** `StoryEditLockService` (`src/app/shared/services/story-edit-lock.service.ts`) houdt per verhaal één document bij in `campaigns/{id}/storyEditors/{target}` (`target`: `session_{sessionId}` of `campaign-story`), met `uid`, naam en `updatedAt` (servertijd).
+
+- **Nemen**: wie op "Verhaal bewerken" klikt neemt het slot in een transactie; pas daarna gaat het formulier open. Heeft een ander het slot, dan is de knop uitgeschakeld en staat erbij wie er bezig is. Klikken twee leden tegelijk, dan krijgt er één het slot en de ander een melding.
+- **Afgedwongen in `firestore.rules`**: een slot van een ander is alleen te overschrijven als het 90 seconden niet is ververst. Alleen de houder kan het verwijderen.
+- **Houden**: zolang het formulier open is wordt het slot elke 25 seconden ververst. Het wordt teruggegeven als het formulier sluit of de pagina weggaat.
+- **Verlopen**: klapt iemand het tabblad dicht of valt de verbinding weg, dan is het slot na 90 seconden vrij.
+- **Laten openstaan**: wie het formulier open laat staan en 10 minuten niets doet op de pagina (geen toets, geen klik), geeft het slot terug; de tekst blijft in het formulier. Zodra dat lid verdergaat wordt het slot weer genomen, als niemand anders het intussen heeft. Heeft een ander het wel, dan staat dat in het formulier en kan er pas weer worden opgeslagen als die klaar is.
+- **Opslaan** vraagt het slot (opnieuw): zonder slot wordt er niet opgeslagen.
+- **Genereren**: de eigenaar krijgt een bevestigingsvraag als hij opnieuw wil genereren terwijl een ander het slot heeft.
+- Naam: de weergavenaam van het account, anders het deel van het e-mailadres vóór de @.
+
+**2. Opslaan controleert of het verhaal nog hetzelfde is.** Het formulier onthoudt de tekst waarmee het lid begon. Opslaan gaat in een Firestore-transactie (`FirestoreRepository.patchInTransaction`): staat er intussen iets anders, dan wordt er niets geschreven. Met het slot komt dat alleen nog voor als het verhaal opnieuw is gegenereerd terwijl iemand typte, of als iemand na een lange pauze het slot kwijt was en een ander intussen heeft opgeslagen.
 
 - Het formulier ziet de wijziging ook al vóór het opslaan, omdat het verhaal live binnenkomt. Wat het lid heeft getypt blijft staan; er verschijnt een melding (met de naam van wie het wijzigde, als dat een lid was) en de huidige versie is in te zien.
 - Het lid kiest: **Mijn tekst opslaan** (vervangt de huidige versie; eerst overnemen wat bewaard moet blijven) of **Huidige versie laden** (de eigen tekst vervalt).
 - Sessie: `AudioSessionStateService.saveStoryEdit`. Campagne: `CampaignStoryService.saveEdit` (vergelijkt titel en tekst).
-- Een transactie heeft verbinding nodig: offline opslaan geeft een foutmelding, de tekst blijft in het formulier.
-
-**2. Je ziet wie er bezig is.** `StoryPresenceService` (`src/app/shared/services/story-presence.service.ts`) houdt per lid en per verhaal een klein document bij in `campaigns/{id}/storyEditors/{target}_{uid}` (`target`: `session_{sessionId}` of `campaign-story`), met naam en `updatedAt` (servertijd).
-
-- Het document wordt geschreven als het formulier opengaat, elke 25 seconden ververst en verwijderd als het formulier sluit of de pagina weggaat. Wie 90 seconden niets heeft laten horen (tabblad dichtgeklapt) telt niet meer mee.
-- Het is een attentie, geen slot: iedereen kan blijven bewerken. De eigenaar krijgt een bevestigingsvraag als hij opnieuw wil genereren terwijl een ander aan het bewerken is.
-- Naam: de weergavenaam van het account, anders het deel van het e-mailadres vóór de @.
+- Een transactie heeft verbinding nodig: offline is er geen slot te nemen en niet op te slaan; de tekst blijft in het formulier.
 
 Rechten (`firestore.rules`):
 
 - **Sessie**: een lid dat niet de eigenaar is mag van een sessie met status `completed` alleen `content`, `storyEditedAt`, `storyEditedBy`, `storyEditedByName`, `storyRegenerationCount` (precies één hoger) en `updatedAt` schrijven, ondertekend met de eigen uid. Titel, datum, transcript en status blijven van de eigenaar.
 - **Campagneverhaal**: zie stap 11.
-- **`storyEditors`**: leden lezen; een lid schrijft en verwijdert alleen het eigen document.
+- **`storyEditors`**: leden lezen; een lid neemt een vrij of verlopen slot op eigen naam, ververst en verwijdert alleen het eigen slot.
 - De callable `storyGenerationWorker` weigert iedereen behalve de eigenaar van de sessie; `generateCampaignStory` iedereen behalve de eigenaar van de campagne.
 
 ---

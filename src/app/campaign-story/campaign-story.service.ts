@@ -5,7 +5,7 @@ import { AuthService } from '../auth/auth.service';
 import { CampaignContextService } from '../campaign/campaign-context.service';
 import { CampaignStoryRepositoryFactory } from '../shared/repository/campaign-story.repository';
 import { CampaignStoryEditSave, CampaignStoryVersion } from './campaign-story.models';
-import { editorName } from '../shared/services/story-presence.service';
+import { editorName } from '../shared/services/story-edit-lock.service';
 import { countWords } from './campaign-story.utils';
 import * as logger from '../shared/logger';
 import { ToastService } from '../shared/services/toast.service';

@@ -191,11 +191,28 @@ describe('CampaignStoryViewComponent', () => {
       expect(contentField().value).toBe('Mijn verbeterde tekst');
     });
 
-    it('shows who else is editing the story, also to someone who is only reading', () => {
-      fixture.componentRef.setInput('otherEditors', ['Mira']);
+    it('says who is editing the story to someone who is reading it', () => {
+      fixture.componentRef.setInput('lockedBy', 'Mira');
       fixture.detectChanges();
 
-      expect(byTestId('story-other-editors')?.textContent).toContain(en.storyEdit.othersEditing('Mira', 1));
+      expect(byTestId('story-locked-by')?.textContent).toContain(en.storyEdit.lockedBy('Mira'));
+    });
+
+    it('holds saving back, keeping the text, when someone else took the lock over during a long pause', () => {
+      const saved: unknown[] = [];
+      fixture.componentInstance.saved.subscribe(edit => saved.push(edit));
+      fixture.componentRef.setInput('editing', true);
+      fixture.detectChanges();
+      type(contentField(), 'Mijn verbeterde tekst');
+
+      fixture.componentRef.setInput('lockedBy', 'Mira');
+      fixture.detectChanges();
+
+      expect(byTestId('story-locked-by')?.textContent).toContain(en.storyEdit.takenOver('Mira'));
+      expect(contentField().value).toBe('Mijn verbeterde tekst');
+      expect(saveButton().disabled).toBe(true);
+      form().dispatchEvent(new Event('submit'));
+      expect(saved).toEqual([]);
     });
 
     it('starts over from the version after a cancel', () => {
