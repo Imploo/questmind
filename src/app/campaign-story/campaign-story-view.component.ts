@@ -45,7 +45,7 @@ const MAX_TITLE_LENGTH = 200;
 
       @if (otherEditors().length > 0) {
         <p class="qm-alert qm-alert-info relative z-[1] mb-5" role="status" data-testid="story-other-editors">
-          {{ 'storyEdit.othersEditing' | translate: otherEditors() }}
+          {{ 'storyEdit.othersEditing' | translate: otherEditorNames() : otherEditors().length }}
         </p>
       }
 
@@ -157,6 +157,8 @@ export class CampaignStoryViewComponent {
   readonly changedBy = input('');
   /** Names of the other members who have the story open for editing right now. */
   readonly otherEditors = input<string[]>([]);
+
+  protected readonly otherEditorNames = computed(() => this.formatting.formatList(this.otherEditors()));
 
   readonly backToLatest = output<void>();
   readonly saved = output<CampaignStoryEditSave>();

@@ -17,6 +17,7 @@ import { PodcastVersion } from './services/audio-session.models';
 import { ToastService } from '../shared/services/toast.service';
 import { PodcastVersionItemComponent } from '../shared/components/podcast-version-item.component';
 import { I18nService } from '../core/i18n/i18n.service';
+import { FormattingService } from '../shared/formatting.service';
 import { TranslatePipe } from '../core/i18n/translate.pipe';
 
 export interface SessionMetaUpdate {
@@ -152,7 +153,7 @@ export interface SessionStoryEdit {
 
                 @if (otherEditors().length > 0) {
                   <p class="qm-alert qm-alert-info" role="status" data-testid="story-other-editors">
-                    {{ 'storyEdit.othersEditing' | translate: otherEditors() }}
+                    {{ 'storyEdit.othersEditing' | translate: otherEditorNames() : otherEditors().length }}
                   </p>
                 }
 
@@ -367,6 +368,7 @@ export class SessionStoryComponent {
   private readonly sanitizer = inject(DomSanitizer);
   private readonly toastService = inject(ToastService);
   private readonly i18n = inject(I18nService);
+  private readonly formatting = inject(FormattingService);
 
   /** Title of the session; the parent passes a translated default for a session without one. */
   title = input('');
@@ -388,6 +390,7 @@ export class SessionStoryComponent {
   changedBy = input('');
   /** Names of the other members who have the story open for editing right now. */
   otherEditors = input<string[]>([]);
+  readonly otherEditorNames = computed(() => this.formatting.formatList(this.otherEditors()));
   canEditCorrections = input(true);
   corrections = input('');
   correctionsStatus = input<'idle' | 'saving' | 'saved'>('idle');

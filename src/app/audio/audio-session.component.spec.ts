@@ -232,7 +232,7 @@ describe('AudioSessionComponent: the story as a team effort', () => {
       otherEditors.set(['Mira']);
       create();
 
-      expect(byTestId('story-other-editors')?.textContent).toContain(en.storyEdit.othersEditing(['Mira']));
+      expect(byTestId('story-other-editors')?.textContent).toContain(en.storyEdit.othersEditing('Mira', 1));
     });
   });
 
@@ -272,7 +272,7 @@ describe('AudioSessionComponent: the story as a team effort', () => {
 
       button(en.audio.corrections.regenerate).click();
       await settle();
-      expect(confirm).toHaveBeenCalledWith(en.storyEdit.confirmGenerate(['Mira', 'Kael']));
+      expect(confirm).toHaveBeenCalledWith(en.storyEdit.confirmGenerate('Mira and Kael', 2));
       expect(backend.regenerateStory).not.toHaveBeenCalled();
 
       confirm.mockResolvedValue(true);

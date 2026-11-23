@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { I18nService } from '../core/i18n/i18n.service';
 import { provideTestLanguage } from '../core/i18n/testing';
-import { formatDay, formatFileSize, formatNumber, FormattingService } from './formatting.service';
+import { formatDay, formatFileSize, formatList, formatNumber, FormattingService } from './formatting.service';
 
 describe('formatDay', () => {
   it('writes a stored session day the way people do, in the given locale', () => {
@@ -14,6 +14,16 @@ describe('formatDay', () => {
     expect(formatDay('Unknown', 'nl-NL')).toBe('Unknown');
     expect(formatDay('', 'nl-NL')).toBe('');
     expect(formatDay(undefined, 'nl-NL')).toBe('');
+  });
+});
+
+describe('formatList', () => {
+  it('joins names the way the locale does', () => {
+    expect(formatList(['Mira'], 'nl-NL')).toBe('Mira');
+    expect(formatList(['Mira', 'Kael'], 'nl-NL')).toBe('Mira en Kael');
+    expect(formatList(['Mira', 'Kael', 'Thalia'], 'nl-NL')).toBe('Mira, Kael en Thalia');
+    expect(formatList(['Mira', 'Kael'], 'en-GB')).toBe('Mira and Kael');
+    expect(formatList([], 'en-GB')).toBe('');
   });
 });
 

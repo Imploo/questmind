@@ -325,7 +325,8 @@ export interface Translations {
 
   /** Editing a story (of a session or of the campaign) together with the other members. */
   storyEdit: {
-    othersEditing: (names: string[]) => string;
+    /** `names` is the list as one text ("Mira and Kael", see FormattingService.formatList), `count` how many. */
+    othersEditing: (names: string, count: number) => string;
     changedBy: (name: string) => string;
     changedBySomeone: string;
     conflictHelp: string;
@@ -333,7 +334,7 @@ export interface Translations {
     loadCurrent: string;
     showCurrent: string;
     newVersionBeingWritten: string;
-    confirmGenerate: (names: string[]) => string;
+    confirmGenerate: (names: string, count: number) => string;
     saveFailed: string;
   };
 

@@ -1,8 +1,5 @@
 import type { Translations } from './translations';
 
-/** "Mira, Kael en Thalia" */
-const listOf = (names: string[]) => new Intl.ListFormat('nl', { type: 'conjunction' }).format(names);
-
 /** The Dutch texts. Keep the order of the keys the same as in `translations.ts`. */
 export const nl: Translations = {
   common: {
@@ -330,10 +327,10 @@ export const nl: Translations = {
   },
 
   storyEdit: {
-    othersEditing: (names) =>
-      names.length === 1
-        ? `${names[0]} is dit verhaal nu ook aan het bewerken.`
-        : `${listOf(names)} zijn dit verhaal nu ook aan het bewerken.`,
+    othersEditing: (names, count) =>
+      count === 1
+        ? `${names} is dit verhaal nu ook aan het bewerken.`
+        : `${names} zijn dit verhaal nu ook aan het bewerken.`,
     changedBy: (name) => `${name} heeft het verhaal intussen gewijzigd. Jouw tekst is nog niet opgeslagen.`,
     changedBySomeone: 'Het verhaal is intussen gewijzigd. Jouw tekst is nog niet opgeslagen.',
     conflictHelp:
@@ -342,10 +339,10 @@ export const nl: Translations = {
     loadCurrent: 'Huidige versie laden',
     showCurrent: 'Huidige versie bekijken',
     newVersionBeingWritten: 'Er wordt een nieuwe versie geschreven. Opslaan kan weer zodra die klaar is.',
-    confirmGenerate: (names) =>
-      names.length === 1
-        ? `${names[0]} is dit verhaal aan het bewerken. Wat nog niet is opgeslagen gaat niet mee. Toch een nieuwe versie laten schrijven?`
-        : `${listOf(names)} zijn dit verhaal aan het bewerken. Wat nog niet is opgeslagen gaat niet mee. Toch een nieuwe versie laten schrijven?`,
+    confirmGenerate: (names, count) =>
+      count === 1
+        ? `${names} is dit verhaal aan het bewerken. Wat nog niet is opgeslagen gaat niet mee. Toch een nieuwe versie laten schrijven?`
+        : `${names} zijn dit verhaal aan het bewerken. Wat nog niet is opgeslagen gaat niet mee. Toch een nieuwe versie laten schrijven?`,
     saveFailed: 'Het verhaal kon niet worden opgeslagen. Probeer het opnieuw.',
   },
 

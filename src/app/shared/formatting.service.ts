@@ -51,6 +51,11 @@ export function formatNumber(value: number, locale: string): string {
   return value.toLocaleString(locale);
 }
 
+/** A list as one text in the notation of `locale`: "Mira, Kael and Thalia" / "Mira, Kael en Thalia". */
+export function formatList(items: string[], locale: string): string {
+  return new Intl.ListFormat(locale, { style: 'long', type: 'conjunction' }).format(items);
+}
+
 /**
  * The formatting functions in the active language. Called from a template or a
  * `computed`, the result follows the language: each call reads the locale signal.
@@ -77,5 +82,9 @@ export class FormattingService {
 
   formatNumber(value: number): string {
     return formatNumber(value, this.i18n.locale());
+  }
+
+  formatList(items: string[]): string {
+    return formatList(items, this.i18n.locale());
   }
 }

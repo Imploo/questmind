@@ -156,7 +156,7 @@ describe('CampaignStoryPageComponent', () => {
       otherEditors.set(['Mira']);
       create('nl');
 
-      expect(text()).toContain(nl.storyEdit.othersEditing(['Mira']));
+      expect(text()).toContain(nl.storyEdit.othersEditing('Mira', 1));
     });
 
     it('keeps the form, with the text in it, when the story changed in the meantime', async () => {
@@ -213,7 +213,7 @@ describe('CampaignStoryPageComponent', () => {
 
       generateButton().click();
       await fixture.whenStable();
-      expect(confirm).toHaveBeenCalledWith(nl.storyEdit.confirmGenerate(['Mira']));
+      expect(confirm).toHaveBeenCalledWith(nl.storyEdit.confirmGenerate('Mira', 1));
       expect(storyService.generate).not.toHaveBeenCalled();
 
       confirm.mockResolvedValue(true);

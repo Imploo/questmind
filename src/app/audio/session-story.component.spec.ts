@@ -190,7 +190,7 @@ describe('SessionStoryComponent', () => {
 
     set('otherEditors', ['Kael', 'Mira']);
 
-    expect(byTestId('story-other-editors')?.textContent).toContain(en.storyEdit.othersEditing(['Kael', 'Mira']));
+    expect(byTestId('story-other-editors')?.textContent).toContain(en.storyEdit.othersEditing('Kael and Mira', 2));
   });
 
   it('lets a member who is not the session owner edit the story, but not the session itself', () => {

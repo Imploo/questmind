@@ -337,7 +337,7 @@ export class CampaignStoryPageComponent {
 
     // Someone else is typing: what they have not saved would not go along.
     const others = this.presence.others();
-    if (others.length > 0 && !(await this.toastService.confirm(this.i18n.t().storyEdit.confirmGenerate(others)))) {
+    if (others.length > 0 && !(await this.toastService.confirm(this.i18n.t().storyEdit.confirmGenerate(this.formatting.formatList(others), others.length)))) {
       return;
     }
 

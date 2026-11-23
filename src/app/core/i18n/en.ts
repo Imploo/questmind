@@ -1,8 +1,5 @@
 import type { Translations } from './translations';
 
-/** "Mira, Kael, and Thalia" */
-const listOf = (names: string[]) => new Intl.ListFormat('en', { type: 'conjunction' }).format(names);
-
 /** The English texts. Keep the order of the keys the same as in `translations.ts`. */
 export const en: Translations = {
   common: {
@@ -325,10 +322,10 @@ export const en: Translations = {
   },
 
   storyEdit: {
-    othersEditing: (names) =>
-      names.length === 1
-        ? `${names[0]} is editing this story right now too.`
-        : `${listOf(names)} are editing this story right now too.`,
+    othersEditing: (names, count) =>
+      count === 1
+        ? `${names} is editing this story right now too.`
+        : `${names} are editing this story right now too.`,
     changedBy: (name) => `${name} has changed the story in the meantime. Your text has not been saved yet.`,
     changedBySomeone: 'The story has changed in the meantime. Your text has not been saved yet.',
     conflictHelp:
@@ -337,10 +334,10 @@ export const en: Translations = {
     loadCurrent: 'Load the current version',
     showCurrent: 'View the current version',
     newVersionBeingWritten: 'A new version is being written. You can save again once it is done.',
-    confirmGenerate: (names) =>
-      names.length === 1
-        ? `${names[0]} is editing this story. What has not been saved yet will not go along. Have a new version written anyway?`
-        : `${listOf(names)} are editing this story. What has not been saved yet will not go along. Have a new version written anyway?`,
+    confirmGenerate: (names, count) =>
+      count === 1
+        ? `${names} is editing this story. What has not been saved yet will not go along. Have a new version written anyway?`
+        : `${names} are editing this story. What has not been saved yet will not go along. Have a new version written anyway?`,
     saveFailed: 'The story could not be saved. Please try again.',
   },
 

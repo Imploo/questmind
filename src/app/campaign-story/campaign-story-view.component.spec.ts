@@ -195,7 +195,7 @@ describe('CampaignStoryViewComponent', () => {
       fixture.componentRef.setInput('otherEditors', ['Mira']);
       fixture.detectChanges();
 
-      expect(byTestId('story-other-editors')?.textContent).toContain(en.storyEdit.othersEditing(['Mira']));
+      expect(byTestId('story-other-editors')?.textContent).toContain(en.storyEdit.othersEditing('Mira', 1));
     });
 
     it('starts over from the version after a cancel', () => {
