@@ -53,7 +53,9 @@ describe('CampaignStoryViewComponent', () => {
     expect(emitted).toBe(1);
   });
 
-  describe('when the owner edits the story by hand', () => {
+  describe('when a member edits the story by hand', () => {
+    const byTestId = (id: string) => element.querySelector(`[data-testid="${id}"]`) as HTMLElement | null;
+    const base = { title: 'De val van Grauwhaven', content: '## Het begin\nDe party vertrok.' };
     const form = () => element.querySelector('[data-testid="story-edit-form"]') as HTMLFormElement;
     const titleField = () => element.querySelector('[data-testid="story-edit-title"]') as HTMLInputElement;
     const contentField = () => element.querySelector('[data-testid="story-edit-content"]') as HTMLTextAreaElement;
@@ -91,7 +93,7 @@ describe('CampaignStoryViewComponent', () => {
       type(contentField(), 'De party vertrok (Mira was er niet bij).\n');
       saveButton().click();
 
-      expect(saved).toEqual([{ title: 'De val', content: 'De party vertrok (Mira was er niet bij).' }]);
+      expect(saved).toEqual([{ title: 'De val', content: 'De party vertrok (Mira was er niet bij).', base }]);
     });
 
     it('does not save an empty story', () => {
@@ -107,7 +109,7 @@ describe('CampaignStoryViewComponent', () => {
       expect(saved).toEqual([]);
     });
 
-    it('keeps what was typed when the version changes underneath (podcast progress, a failed save)', () => {
+    it('keeps what was typed when the version changes underneath without touching the story (podcast progress)', () => {
       fixture.componentRef.setInput('editing', true);
       fixture.detectChanges();
       type(contentField(), 'Mijn verbeterde tekst');
@@ -117,8 +119,100 @@ describe('CampaignStoryViewComponent', () => {
       fixture.detectChanges();
 
       expect(contentField().value).toBe('Mijn verbeterde tekst');
+      expect(byTestId('story-conflict')).toBeNull();
       expect(contentField().disabled).toBe(true);
       expect(saveButton().disabled).toBe(true);
+    });
+
+    describe('and the story changes while they are typing', () => {
+      const theirs = { ...story, content: 'Thalia herschreef dit.', editedBy: 'other' };
+      let saved: unknown[];
+
+      beforeEach(() => {
+        saved = [];
+        fixture.componentInstance.saved.subscribe(edit => saved.push(edit));
+        fixture.componentRef.setInput('editing', true);
+        fixture.detectChanges();
+        type(contentField(), 'Mijn verbeterde tekst');
+        fixture.componentRef.setInput('version', theirs);
+        fixture.detectChanges();
+      });
+
+      it('keeps their text and says the story has changed, showing the current version', () => {
+        expect(contentField().value).toBe('Mijn verbeterde tekst');
+        expect(byTestId('story-conflict')?.textContent).toContain(en.storyEdit.changedBySomeone);
+        expect(byTestId('story-conflict')?.querySelector('pre')?.textContent).toBe('Thalia herschreef dit.');
+        // The plain save would overwrite the other change unseen: it makes way for the choice.
+        expect(saveButton()).toBeNull();
+        form().dispatchEvent(new Event('submit'));
+        expect(saved).toEqual([]);
+      });
+
+      it('names who changed it when that is known', () => {
+        fixture.componentRef.setInput('changedBy', 'Thalia');
+        fixture.detectChanges();
+
+        expect(byTestId('story-conflict')?.textContent).toContain(en.storyEdit.changedBy('Thalia'));
+      });
+
+      it('saves their text over the current story when they choose so', () => {
+        byTestId('story-keep-mine')?.click();
+
+        expect(saved).toEqual([
+          { title: base.title, content: 'Mijn verbeterde tekst', base: { title: base.title, content: 'Thalia herschreef dit.' } },
+        ]);
+      });
+
+      it('loads the current version, dropping what was typed, when they choose so', () => {
+        byTestId('story-load-current')?.click();
+        fixture.detectChanges();
+
+        expect(contentField().value).toBe('Thalia herschreef dit.');
+        expect(byTestId('story-conflict')).toBeNull();
+        expect(saveButton()).not.toBeNull();
+        expect(saved).toEqual([]);
+      });
+    });
+
+    it('holds saving back while a new version is being written: the edit would not go along', () => {
+      const saved: unknown[] = [];
+      fixture.componentInstance.saved.subscribe(edit => saved.push(edit));
+      fixture.componentRef.setInput('editing', true);
+      fixture.detectChanges();
+      type(contentField(), 'Mijn verbeterde tekst');
+
+      fixture.componentRef.setInput('locked', true);
+      fixture.detectChanges();
+
+      expect(byTestId('story-locked')?.textContent).toContain(en.storyEdit.newVersionBeingWritten);
+      expect(saveButton().disabled).toBe(true);
+      form().dispatchEvent(new Event('submit'));
+      expect(saved).toEqual([]);
+      expect(contentField().value).toBe('Mijn verbeterde tekst');
+    });
+
+    it('says who is editing the story to someone who is reading it', () => {
+      fixture.componentRef.setInput('lockedBy', 'Mira');
+      fixture.detectChanges();
+
+      expect(byTestId('story-locked-by')?.textContent).toContain(en.storyEdit.lockedBy('Mira'));
+    });
+
+    it('holds saving back, keeping the text, when someone else took the lock over during a long pause', () => {
+      const saved: unknown[] = [];
+      fixture.componentInstance.saved.subscribe(edit => saved.push(edit));
+      fixture.componentRef.setInput('editing', true);
+      fixture.detectChanges();
+      type(contentField(), 'Mijn verbeterde tekst');
+
+      fixture.componentRef.setInput('lockedBy', 'Mira');
+      fixture.detectChanges();
+
+      expect(byTestId('story-locked-by')?.textContent).toContain(en.storyEdit.takenOver('Mira'));
+      expect(contentField().value).toBe('Mijn verbeterde tekst');
+      expect(saveButton().disabled).toBe(true);
+      form().dispatchEvent(new Event('submit'));
+      expect(saved).toEqual([]);
     });
 
     it('starts over from the version after a cancel', () => {

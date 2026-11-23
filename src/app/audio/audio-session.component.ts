@@ -1,4 +1,4 @@
-import { Component, effect, computed, inject, resource, ChangeDetectionStrategy, Signal } from '@angular/core';
+import { Component, effect, computed, inject, resource, signal, untracked, ChangeDetectionStrategy, Signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { Router, ActivatedRoute, RouterLink } from '@angular/router';
 import { map } from 'rxjs/operators';
@@ -18,7 +18,8 @@ import {
   SessionProgressStage
 } from './services/audio-session.models';
 import { isActiveStage, toDisplayProgress } from './services/session-progress.utils';
-import { SessionStoryComponent, SessionMetaUpdate } from './session-story.component';
+import { SessionStoryComponent, SessionMetaUpdate, SessionStoryEdit } from './session-story.component';
+import { StoryEditLockService, editorName, sessionStoryTarget } from '../shared/services/story-edit-lock.service';
 import { SessionProgressCardComponent } from './session-progress-card.component';
 import { SessionRecordingComponent } from './session-recording.component';
 import { CampaignStoryService } from '../campaign-story/campaign-story.service';
@@ -34,7 +35,7 @@ const PODCAST_STAGES: SessionProgressStage[] = ['generating-podcast-script', 'ge
 @Component({
   selector: 'app-audio-session',
   imports: [RouterLink, SessionStoryComponent, SessionProgressCardComponent, SessionRecordingComponent, TranslatePipe],
-  providers: [PodcastGenerationService, CorrectionsSaveService],
+  providers: [PodcastGenerationService, CorrectionsSaveService, StoryEditLockService],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="max-w-4xl mx-auto space-y-4">
@@ -114,6 +115,12 @@ const PODCAST_STAGES: SessionProgressStage[] = ['generating-podcast-script', 'ge
             [isBusy]="isBusy()"
             [canRegenerate]="canRegenerateStory()"
             [canEditStory]="canEditStory()"
+            [canManageSession]="isSessionOwner()"
+            [(isEditing)]="isEditingStory"
+            [saving]="isSavingStory()"
+            [changedBy]="storyChangedBy()"
+            [lockedBy]="editLock.heldBy()"
+            (editRequested)="startStoryEdit()"
             [canEditCorrections]="canEditCorrections()"
             [corrections]="correctionsSave.corrections()"
             [correctionsStatus]="correctionsSave.saveStatus()"
@@ -127,7 +134,7 @@ const PODCAST_STAGES: SessionProgressStage[] = ['generating-podcast-script', 'ge
             [canGeneratePodcast]="canGeneratePodcast()"
             [canDeletePodcasts]="isCampaignOwner()"
             (storyUpdated)="saveStoryEdits($event)"
-            (regenerate)="regenerateStory()"
+            (regenerate)="regenerateStory($event)"
             (correctionsChanged)="correctionsSave.onInput($event)"
             (generatePodcast)="generatePodcast()"
             (metaUpdated)="saveSessionMeta($event)"
@@ -204,6 +211,11 @@ export class AudioSessionComponent {
   private readonly i18n = inject(I18nService);
 
   private readonly storyService = inject(CampaignStoryService);
+  protected readonly editLock = inject(StoryEditLockService);
+
+  /** The story's edit form is open: this member holds the lock on the story. */
+  readonly isEditingStory = signal(false);
+  readonly isSavingStory = signal(false);
 
   userId = computed(() => this.authService.currentUser()?.uid || null);
   campaignId = computed(() => this.campaignContext.selectedCampaignId());
@@ -259,7 +271,24 @@ export class AudioSessionComponent {
     const campaign = this.campaignContext.selectedCampaign();
     return !!campaign && campaign.ownerId === this.userId();
   });
-  canEditStory = computed(() => this.isSessionOwner());
+  /**
+   * Every member of the campaign can rewrite a finished story. Only the session
+   * owner can also do that for a session that failed (and regenerate, see above).
+   */
+  canEditStory = computed(() => this.isSessionOwner() || this.currentSession()?.status === 'completed');
+
+  /**
+   * The member whose edit is the story's last change, when that is someone else.
+   * Empty when the story was regenerated after that edit: then nobody typed it.
+   */
+  storyChangedBy = computed(() => {
+    const session = this.currentSession();
+    if (!session?.storyEditedBy || session.storyEditedBy === this.userId()) return '';
+    if ((session.storyGeneratedAt ?? '') > (session.storyEditedAt ?? '')) return '';
+    return session.storyEditedByName ?? '';
+  });
+
+  private readonly currentSessionId = computed(() => this.currentSession()?.id ?? null);
   canEditCorrections = computed(() => !!this.currentSession());
 
   sessions: Signal<AudioSessionRecord[]>;
@@ -295,6 +324,21 @@ export class AudioSessionComponent {
     effect(() => {
       this.correctionsSave.syncToSession(this.currentSession());
     });
+
+    // Another session on screen: its edit form starts closed.
+    effect(() => {
+      this.sessionId();
+      untracked(() => this.isEditingStory.set(false));
+    });
+
+    // One member edits a story at a time: follow its lock, and give it back when the form closes.
+    effect(() => {
+      const sessionId = this.currentSessionId();
+      this.editLock.watch(this.campaignId(), sessionId ? sessionStoryTarget(sessionId) : null);
+      if (!this.isEditingStory()) {
+        this.editLock.release();
+      }
+    });
   }
 
   // --- Session navigation ---
@@ -314,8 +358,25 @@ export class AudioSessionComponent {
 
   // --- Story operations ---
 
-  async regenerateStory(): Promise<void> {
+  /**
+   * @param unsavedEdit what is still in the story's edit form: saved first, so it
+   *   goes along with the regeneration
+   */
+  async regenerateStory(unsavedEdit: SessionStoryEdit | null = null): Promise<void> {
     if (!this.canRegenerateStory()) return;
+
+    if (unsavedEdit && !(await this.saveStoryEdits(unsavedEdit))) {
+      // Not saved (the story changed in the meantime, or the save failed): the form says why.
+      this.isEditingStory.set(true);
+      return;
+    }
+
+    // Someone else is editing: what they have not saved would not go along.
+    const editor = this.editLock.heldBy();
+    if (editor && !(await this.toastService.confirm(this.i18n.t().storyEdit.confirmGenerate(editor)))) {
+      return;
+    }
+
     const session = this.currentSession();
     if (!session?.rawStory && !session?.transcription) return;
 
@@ -354,26 +415,56 @@ export class AudioSessionComponent {
     }
   }
 
+  /** Open the story's edit form, once this member holds the lock on the story. */
+  async startStoryEdit(): Promise<void> {
+    if (!this.canEditStory() || this.isBusy()) return;
+    if (await this.takeEditLock()) {
+      this.isEditingStory.set(true);
+    }
+  }
+
+  /** Take the lock on the story for this member; says why when that does not work. */
+  private async takeEditLock(): Promise<boolean> {
+    if (await this.editLock.acquire()) return true;
+    const texts = this.i18n.t().storyEdit;
+    const editor = this.editLock.heldBy();
+    this.toastService.show(editor ? texts.lockedBy(editor) : texts.startFailed, 'warning', 6000);
+    return false;
+  }
+
   /**
-   * Save a story the owner edited by hand. It becomes a new version of the story
-   * (the campaign story then knows it holds the older one) and is marked as
-   * edited, so it goes along with every later regeneration.
+   * Save a story a member edited by hand. Resolves to whether it was stored: not
+   * without the lock on the story, not when the story changed since the member
+   * started typing (the form then offers the choice between both texts), and not
+   * when the save failed.
    */
-  saveStoryEdits(content: string): void {
-    if (!this.canEditStory()) return;
+  async saveStoryEdits(edit: SessionStoryEdit): Promise<boolean> {
     const session = this.currentSession();
-    if (!session) return;
-    const changed = content !== session.content;
-    this.sessionStateService.updateSession(session.id, {
-      content,
-      status: 'completed',
-      ...(changed
-        ? {
-          storyEditedAt: new Date().toISOString(),
-          storyRegenerationCount: (session.storyRegenerationCount ?? 1) + 1
-        }
-        : {})
-    });
+    const user = this.authService.currentUser();
+    if (!session || !user?.uid || !this.canEditStory()) return false;
+
+    this.isSavingStory.set(true);
+    try {
+      if (!(await this.takeEditLock())) return false;
+
+      const saved = await this.sessionStateService.saveStoryEdit(session.id, {
+        content: edit.content,
+        baseContent: edit.baseContent,
+        editedBy: user.uid,
+        editedByName: editorName(user),
+        markCompleted: this.isSessionOwner()
+      });
+      if (saved) {
+        this.isEditingStory.set(false);
+      }
+      return saved;
+    } catch (error) {
+      logger.error('Failed to save the edited story:', error);
+      this.toastService.show(this.i18n.t().storyEdit.saveFailed, 'error', 6000);
+      return false;
+    } finally {
+      this.isSavingStory.set(false);
+    }
   }
 
   saveSessionMeta(meta: SessionMetaUpdate): void {

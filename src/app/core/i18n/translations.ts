@@ -321,7 +321,6 @@ export interface Translations {
       contentLabel: string;
       help: string;
       save: string;
-      saveFailed: string;
     };
     progress: {
       collecting: string;
@@ -339,6 +338,26 @@ export interface Translations {
       generate: string;
       empty: string;
     };
+  };
+
+  /** Editing a story (of a session or of the campaign) together with the other members. */
+  storyEdit: {
+    /** Someone else holds the lock on the story. */
+    lockedBy: (name: string) => string;
+    /** While this member has the form open: someone else took the lock over. */
+    takenOver: (name: string) => string;
+    /** A member whose name is not known. */
+    someone: string;
+    startFailed: string;
+    changedBy: (name: string) => string;
+    changedBySomeone: string;
+    conflictHelp: string;
+    keepMine: string;
+    loadCurrent: string;
+    showCurrent: string;
+    newVersionBeingWritten: string;
+    confirmGenerate: (name: string) => string;
+    saveFailed: string;
   };
 
   /** Sessions: the list, the upload, the story tab and transcription. */

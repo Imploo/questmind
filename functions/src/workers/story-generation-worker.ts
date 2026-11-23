@@ -11,7 +11,7 @@ import {getAiFeatureConfig} from '../utils/ai-settings';
 import {TASK_WORKER_TIMEOUT_SECONDS} from '../services/task-queue.service';
 import {captureFunctionError, wrapCallable} from '../utils/sentry-error-handler';
 import {ensureAuthForTesting} from '../utils/emulator-helpers';
-import {assertValidId, loadSessionForMember, requireAuthUid} from '../utils/access';
+import {assertSessionOwner, assertValidId, requireAuthUid} from '../utils/access';
 import {getGeminiApiKey} from '../utils/gemini-client';
 import {sessionRef} from '../utils/session-ref';
 import {refusal} from '../utils/error-reasons';
@@ -189,7 +189,7 @@ export async function runStoryGeneration(
 }
 
 /**
- * (Re)generate a session's story on request of a campaign member. The story is
+ * (Re)generate a session's story on request of the session owner. The story is
  * written from the transcription stored on the session; the caller only picks
  * the session and the options.
  */
@@ -210,7 +210,8 @@ export const storyGenerationWorker = onCall(
       const sessionId = assertValidId(request.data?.sessionId, 'sessionId');
       const {enableKankaContext, userCorrections} = request.data;
 
-      const session = await loadSessionForMember(getFirestore(), campaignId, sessionId, uid);
+      // Every member can edit the story by hand; writing it again stays with the session owner.
+      const session = await assertSessionOwner(getFirestore(), campaignId, sessionId, uid);
       if (!session.rawStory) {
         throw refusal('failed-precondition', 'No transcription found for this session', 'no-transcription');
       }
