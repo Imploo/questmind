@@ -1,4 +1,4 @@
-import { Signal, signal } from '@angular/core';
+import { Signal, signal, untracked } from '@angular/core';
 import {
   addDoc,
   collection,
@@ -191,10 +191,18 @@ export abstract class FirestoreRepository<
     return doc(this.firestore, `${this.collectionPath}/${key}`);
   }
 
+  /**
+   * The first read can happen inside a computed or a template, where writing a
+   * signal is not allowed (NG0600): start listening outside the reactive context.
+   */
   private ensureListening(): void {
     if (this._listening) {
       return;
     }
+    untracked(() => this.startListening());
+  }
+
+  private startListening(): void {
     this._listening = true;
     this._loading.set(true);
 
