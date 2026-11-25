@@ -56,6 +56,35 @@ describe('SessionStoryComponent', () => {
     fixture.detectChanges();
   });
 
+  it('warns about parts of the recording that could not be transcribed, with their time range', () => {
+    expect(byTestId('missing-audio')).toBeNull();
+
+    set('missingAudio', [
+      { segment: 2, startSec: 1800, endSec: 3615, reason: 'unintelligible' },
+      { segment: 3, startSec: 3600, endSec: 5415, reason: 'failed' },
+    ]);
+
+    const warning = byTestId('missing-audio');
+    expect(warning?.textContent).toContain(en.audio.story.missingAudio.title);
+    const lines = Array.from(warning?.querySelectorAll('li') ?? []).map(li => li.textContent?.trim());
+    expect(lines).toEqual([
+      en.audio.story.missingAudio.unintelligible('0:30:00 – 1:00:15'),
+      en.audio.story.missingAudio.failed('1:00:00 – 1:30:15'),
+    ]);
+    expect(warning?.textContent).toContain(en.audio.story.missingAudio.retryHint);
+  });
+
+  it('only suggests transcribing again when a part actually failed', () => {
+    set('missingAudio', [{ segment: 1, startSec: 0, endSec: 615, reason: 'unintelligible' }]);
+
+    const warning = byTestId('missing-audio');
+    expect(warning?.querySelector('li')?.textContent?.trim()).toBe(
+      en.audio.story.missingAudio.unintelligible('0:00 – 10:15')
+    );
+    expect(warning?.textContent).not.toContain(en.audio.story.missingAudio.retryHint);
+    expect(warning?.textContent).toContain(en.audio.story.missingAudio.fillInHint);
+  });
+
   it('explains, while editing, that everyone can join in and that the edited story goes along with a regeneration', () => {
     expect(element.textContent).not.toContain(en.audio.story.editHelp);
 

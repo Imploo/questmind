@@ -184,11 +184,11 @@ interface FeatureDefinition {
                         />
                       </div>
                     }
-                    @if (currentModelIsGemini3()) {
+                    @if (currentModelSupportsThinkingLevel()) {
                       <div class="md:col-span-2">
                         <label class="qm-label">
                           Thinking Level
-                          <span class="font-sans font-normal normal-case tracking-normal">(Gemini 3.x — reasoning effort, replaces thinking budget)</span>
+                          <span class="font-sans font-normal normal-case tracking-normal">(Gemini 3.x and later — reasoning effort, replaces thinking budget)</span>
                         </label>
                         <select
                           [ngModel]="getFeatureValue('thinkingLevel')"
@@ -197,7 +197,7 @@ interface FeatureDefinition {
                           (change)="onFieldBlur()"
                           class="qm-input"
                         >
-                          <option value="">Model default (medium)</option>
+                          <option value="">Model default</option>
                           @for (level of thinkingLevels; track level) {
                             <option [value]="level">{{ level }}</option>
                           }
@@ -524,9 +524,11 @@ export class AdminComponent implements OnInit {
     });
   }
 
-  currentModelIsGemini3(): boolean {
+  /** Gemini 3.x and later (e.g. 3.8 Flash, 4 Neon) take a thinking level. */
+  currentModelSupportsThinkingLevel(): boolean {
     const model = this.getFeatureValue('model');
-    return typeof model === 'string' && /^gemini-3/.test(model);
+    const major = typeof model === 'string' ? /^gemini-(\d+)/.exec(model)?.[1] : undefined;
+    return major !== undefined && Number(major) >= 3;
   }
 
   getFeatureValue(field: string): unknown {

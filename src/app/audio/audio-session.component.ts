@@ -112,6 +112,7 @@ const PODCAST_STAGES: SessionProgressStage[] = ['generating-podcast-script', 'ge
             [story]="currentSession()?.content || ''"
             [edited]="!!currentSession()?.storyEditedAt"
             [transcript]="currentSession()?.rawStory || currentSession()?.transcription?.rawTranscript || ''"
+            [missingAudio]="currentSession()?.transcriptionFast?.missingSegments ?? []"
             [isBusy]="isBusy()"
             [canRegenerate]="canRegenerateStory()"
             [canEditStory]="canEditStory()"

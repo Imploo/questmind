@@ -448,6 +448,14 @@ export const en: Translations = {
       hideTranscript: 'Hide transcript',
       showTranscript: 'Show transcript preview',
       empty: 'The session story will appear here once generation completes.',
+      missingAudio: {
+        title: 'Part of the recording could not be transcribed',
+        intro: 'What happened in these parts is missing from the transcript, and so from the story:',
+        failed: (range) => `${range}: transcription failed`,
+        unintelligible: (range) => `${range}: no intelligible speech found`,
+        retryHint: 'A failed part often works when you transcribe the recording again (under Recording).',
+        fillInHint: 'You can also fill in what happened yourself, in the story or in the corrections.',
+      },
     },
     corrections: {
       title: 'Corrections & Guidance',

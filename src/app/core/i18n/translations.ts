@@ -451,6 +451,15 @@ export interface Translations {
       hideTranscript: string;
       showTranscript: string;
       empty: string;
+      /** Parts of the recording that could not be transcribed. */
+      missingAudio: {
+        title: string;
+        intro: string;
+        failed: (range: string) => string;
+        unintelligible: (range: string) => string;
+        retryHint: string;
+        fillInHint: string;
+      };
     };
     corrections: {
       title: string;

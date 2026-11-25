@@ -117,6 +117,18 @@ export interface SessionProgress {
   updatedAt: Date;                     // Last update timestamp
 }
 
+/**
+ * A stretch of the recording that is missing from the transcript: every attempt
+ * failed, or the model found no usable speech in it.
+ */
+export interface MissingAudioSegment {
+  /** 1-based segment number. */
+  segment: number;
+  startSec: number;
+  endSec: number;
+  reason: 'failed' | 'unintelligible';
+}
+
 /** Fast-transcription metadata persisted on the session (ticket #67). */
 export interface TranscriptionFastMetadata {
   mode?: string;
@@ -124,6 +136,8 @@ export interface TranscriptionFastMetadata {
   segmentCount?: number;
   audioFileName?: string;
   error?: string;
+  /** Parts of the recording that are not in the transcript (absent on older sessions). */
+  missingSegments?: MissingAudioSegment[];
 }
 
 /** The session's processed recording (compressed + normalized MP3) in Firebase Storage. */
