@@ -106,6 +106,7 @@ opname ──► 7. Gespreksverslag ──► 8. Verhaal ──► (op verzoek) 
 - Regels die niet in het formaat passen (bijv. gelekte denkstappen van het model) worden vóór opslaan weggefilterd (`functions/src/audio/session-log-sanitizer.ts`). Bij een leeg Gemini-antwoord wordt `finishReason`/`blockReason` gelogd.
 - **Off-game** (regeldiscussies, pauzes, grappen over het echte leven) → één korte `[OOC: ...]`-regel per stuk.
 - Bij een fout geeft het model `ERROR: NO_AUDIO_DETECTED` / `ERROR: AUDIO_CORRUPTED` terug; een mislukt segment wordt `[Segment X van Y: geen verstaanbare audio.]`.
+- Segmenten die ontbreken (mislukt na alle pogingen, of zonder verstaanbare spraak) komen met hun tijdsbereik in `transcriptionFast.missingSegments` (`{ segment, startSec, endSec, reason: 'failed' | 'unintelligible' }`). De sessiepagina toont daarover een waarschuwing boven het verhaal, met de tijdstippen in de opname; bij een mislukt stuk staat erbij dat opnieuw transcriberen kan helpen.
 - Na afloop start automatisch stap 8 via de worker-queue.
 
 **8. Verhaal** — `functions/src/workers/story-generation-worker.ts`

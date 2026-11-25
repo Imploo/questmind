@@ -454,6 +454,14 @@ export const nl: Translations = {
       hideTranscript: 'Transcript verbergen',
       showTranscript: 'Voorbeeld van het transcript tonen',
       empty: 'Het sessieverhaal verschijnt hier zodra het genereren klaar is.',
+      missingAudio: {
+        title: 'Een deel van de opname kon niet worden getranscribeerd',
+        intro: 'Wat in deze stukken gebeurde, ontbreekt in het transcript en dus ook in het verhaal:',
+        failed: (range) => `${range}: transcriberen is mislukt`,
+        unintelligible: (range) => `${range}: geen verstaanbare spraak gevonden`,
+        retryHint: 'Een mislukt stuk lukt vaak wel als je de opname opnieuw laat transcriberen (bij Opname).',
+        fillInHint: 'Je kunt ook zelf aanvullen wat er gebeurde, in het verhaal of bij de correcties.',
+      },
     },
     corrections: {
       title: 'Correcties en aanwijzingen',

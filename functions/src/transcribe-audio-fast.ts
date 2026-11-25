@@ -32,6 +32,20 @@ import {
 /** Base delay between transcription attempts of one segment (multiplied by the attempt number). */
 const RETRY_BACKOFF_MS = 5000;
 
+/**
+ * A stretch of the recording that is missing from the raw story, stored as
+ * `transcriptionFast.missingSegments` so the session page can warn about it.
+ * `failed`: every attempt failed (a gap marker took its place).
+ * `unintelligible`: the model found no usable speech in it.
+ */
+export interface MissingSegment {
+  /** 1-based segment number. */
+  segment: number;
+  startSec: number;
+  endSec: number;
+  reason: 'failed' | 'unintelligible';
+}
+
 export interface TranscribeAudioFastRequest {
   campaignId: string;
   sessionId: string;
@@ -315,8 +329,12 @@ async function processTranscriptionAsync(task: TranscriptionTaskPayload): Promis
     // story is always joined back together in the right order.
     let completedSegments = 0;
     const voiceIntroFallbackSegments: number[] = [];
+    const missingSegments: MissingSegment[] = [];
     const segmentTexts = await mapWithConcurrency(segments, concurrency, async (seg, i) => {
       const segmentMeta = { index: i + 1, total, startSec: seg.startSec ?? 0, endSec: seg.endSec ?? 0 };
+      const markMissing = (reason: MissingSegment['reason']): void => {
+        missingSegments.push({ segment: i + 1, startSec: segmentMeta.startSec, endSec: segmentMeta.endSec, reason });
+      };
       const segmentPrompt =
         total === 1
           ? fullPrompt
@@ -348,6 +366,7 @@ async function processTranscriptionAsync(task: TranscriptionTaskPayload): Promis
         if (segmentText.trim().startsWith('ERROR:') && total > 1) {
           logger.warn(`[Fast Transcription] Segment ${i + 1}/${total} returned ${segmentText.trim()}`);
           segmentText = `[Segment ${i + 1} van ${total}: geen verstaanbare audio.]`;
+          markMissing('unintelligible');
         }
       } catch (segmentError) {
         // Single-pass always hard-fails; multi-segment honours the configured
@@ -362,6 +381,7 @@ async function processTranscriptionAsync(task: TranscriptionTaskPayload): Promis
           segmentError
         );
         segmentText = `[Segment ${i + 1} van ${total} kon niet worden getranscribeerd.]`;
+        markMissing('failed');
       }
 
       // Gap markers and ERROR responses are control output, not log content — leave them intact.
@@ -374,10 +394,12 @@ async function processTranscriptionAsync(task: TranscriptionTaskPayload): Promis
             { sample: dropped.slice(0, 3).map((l) => l.slice(0, 200)) }
           );
         }
-        segmentText =
-          text.length > 0 || total === 1
-            ? text
-            : `[Segment ${i + 1} van ${total}: geen verstaanbare audio.]`;
+        if (text.length > 0 || total === 1) {
+          segmentText = text;
+        } else {
+          segmentText = `[Segment ${i + 1} van ${total}: geen verstaanbare audio.]`;
+          markMissing('unintelligible');
+        }
       }
 
       completedSegments += 1;
@@ -429,6 +451,8 @@ async function processTranscriptionAsync(task: TranscriptionTaskPayload): Promis
       'transcriptionFast.processingTimeMs': processingTimeMs,
       'transcriptionFast.modelUsed': model,
       'transcriptionFast.completedAt': FieldValue.serverTimestamp(),
+      // In segment order (segments finish in any order); empty when nothing is missing.
+      'transcriptionFast.missingSegments': missingSegments.sort((a, b) => a.segment - b.segment),
       'modelsUsed.transcription': model,
     });
 

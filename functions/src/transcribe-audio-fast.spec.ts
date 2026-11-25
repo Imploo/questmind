@@ -348,6 +348,75 @@ describe('transcribeAudioFast', () => {
     });
   });
 
+  // ── Missing parts of the recording ──
+
+  describe('segments that could not be transcribed', () => {
+    const segments = [0, 1, 2].map(index => ({
+      ...SEGMENT,
+      index,
+      fileName: `files/seg${index}`,
+      fileUri: `https://generativelanguage.googleapis.com/v1beta/files/seg${index}`,
+      startSec: index * 1800,
+      endSec: (index + 1) * 1800 + 15,
+    }));
+
+    beforeEach(async () => {
+      const { getTranscriptionSegmentationConfig } = await import('./utils/ai-settings');
+      vi.mocked(getTranscriptionSegmentationConfig).mockResolvedValue({
+        concurrency: 2,
+        maxAttempts: 1,
+        onSegmentFailure: 'gap',
+      } as Awaited<ReturnType<typeof getTranscriptionSegmentationConfig>>);
+      mockPrepareSegmentsFromStorage.mockResolvedValue(segments);
+    });
+
+    /** Answer each segment's Gemini call by the file it was sent. */
+    function answerPerSegment(answers: Record<string, () => Promise<{ text: string }>>) {
+      mockGenerateContent.mockImplementation((request: { contents: { parts: { fileData?: { fileUri: string } }[] }[] }) => {
+        const uri = request.contents[0].parts.at(-1)?.fileData?.fileUri ?? '';
+        const key = uri.split('/').pop() ?? '';
+        return (answers[key] ?? (() => Promise.resolve({ text: LOG_TEXT })))();
+      });
+    }
+
+    const completedUpdate = () =>
+      mockUpdate.mock.calls
+        .map(call => call[0] as Record<string, unknown>)
+        .find(update => update['transcriptionFast.status'] === 'completed');
+
+    it('stores an empty list when every segment was transcribed', async () => {
+      await runTranscription();
+
+      expect(completedUpdate()?.['transcriptionFast.missingSegments']).toEqual([]);
+    });
+
+    it('stores the time range of a failed and an unintelligible segment, in segment order', async () => {
+      answerPerSegment({
+        seg2: () => Promise.reject(new Error('503 overloaded')),
+        seg1: () => Promise.resolve({ text: 'ERROR: NO_AUDIO_DETECTED' }),
+      });
+
+      await runTranscription();
+
+      const update = completedUpdate();
+      expect(update?.['transcriptionFast.missingSegments']).toEqual([
+        { segment: 2, startSec: 1800, endSec: 3615, reason: 'unintelligible' },
+        { segment: 3, startSec: 3600, endSec: 5415, reason: 'failed' },
+      ]);
+      expect(update?.rawStory).toContain('[Segment 3 van 3 kon niet worden getranscribeerd.]');
+    });
+
+    it('counts a segment as unintelligible when nothing in the log format is left', async () => {
+      answerPerSegment({ seg0: () => Promise.resolve({ text: 'Thinking about the audio...' }) });
+
+      await runTranscription();
+
+      expect(completedUpdate()?.['transcriptionFast.missingSegments']).toEqual([
+        { segment: 1, startSec: 0, endSec: 1815, reason: 'unintelligible' },
+      ]);
+    });
+  });
+
   it('should use the Kanka campaign id from the task payload instead of re-reading the campaign', async () => {
     docs[CAMPAIGN] = { ...docs[CAMPAIGN], settings: { kankaEnabled: true, kankaCampaignId: 'kanka-1' } };
 
