@@ -13,7 +13,8 @@ import {
 } from '@angular/core';
 import { DomSanitizer } from '@angular/platform-browser';
 import { marked } from 'marked';
-import { PodcastVersion } from './services/audio-session.models';
+import { MissingAudioSegment, PodcastVersion } from './services/audio-session.models';
+import { formatDuration } from '../shared/formatting.service';
 import { ToastService } from '../shared/services/toast.service';
 import { PodcastVersionItemComponent } from '../shared/components/podcast-version-item.component';
 import { I18nService } from '../core/i18n/i18n.service';
@@ -132,6 +133,23 @@ export interface SessionStoryEdit {
       <div class="p-5 sm:p-6">
         <!-- Story Tab -->
         @if (activeTab() === 'story') {
+          @if (missingAudioLines().length) {
+            <div class="qm-alert qm-alert-warn mb-5 space-y-2" role="status" data-testid="missing-audio">
+              <p class="font-semibold">{{ 'audio.story.missingAudio.title' | translate }}</p>
+              <p>{{ 'audio.story.missingAudio.intro' | translate }}</p>
+              <ul class="list-disc pl-5 tabular-nums">
+                @for (line of missingAudioLines(); track $index) {
+                  <li>{{ line }}</li>
+                }
+              </ul>
+              <p>
+                @if (hasFailedAudio()) {
+                  {{ 'audio.story.missingAudio.retryHint' | translate }}
+                }
+                {{ 'audio.story.missingAudio.fillInHint' | translate }}
+              </p>
+            </div>
+          }
           @if (story().trim().length) {
             <div class="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
               <div class="space-y-4 min-w-0">
@@ -377,6 +395,8 @@ export class SessionStoryComponent {
   /** The story was edited by hand: it goes along when the story is regenerated. */
   edited = input(false);
   transcript = input('');
+  /** Parts of the recording that are not in the transcript; the story tab warns about them. */
+  missingAudio = input<MissingAudioSegment[]>([]);
   isBusy = input(false);
   canRegenerate = input(false);
   /** Every member of the campaign can rewrite a finished story. */
@@ -427,6 +447,18 @@ export class SessionStoryComponent {
   private readonly base = signal<string>('');
   private shownSessionId: string | undefined;
   showTranscript = signal<boolean>(false);
+
+  /** One line per missing part: its time range in the recording and why it is missing. */
+  readonly missingAudioLines = computed(() => {
+    const segments = this.missingAudio();
+    const texts = this.i18n.t().audio.story.missingAudio;
+    const withHours = segments.some(s => s.endSec >= 3600);
+    return segments.map(s => {
+      const range = `${formatDuration(s.startSec, withHours)} – ${formatDuration(s.endSec, withHours)}`;
+      return s.reason === 'failed' ? texts.failed(range) : texts.unintelligible(range);
+    });
+  });
+  readonly hasFailedAudio = computed(() => this.missingAudio().some(s => s.reason === 'failed'));
 
   readonly renderedStory = computed(
     () => this.sanitizer.sanitize(SecurityContext.HTML, this.convertMarkdown(this.story())) ?? ''
