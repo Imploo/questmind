@@ -32,7 +32,7 @@ export type GeminiThinkingLevel = 'low' | 'medium' | 'high';
 export interface AIFeatureConfig {
   model: string;
   maxOutputTokens: number;
-  /** Gemini 3.x reasoning effort — controls response speed vs. depth. */
+  /** Gemini 3.x-and-later reasoning effort — controls response speed vs. depth. */
   thinkingLevel?: GeminiThinkingLevel;
 }
 
